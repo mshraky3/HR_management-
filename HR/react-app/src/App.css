@@ -1,0 +1,111 @@
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: left;
+}
+
+.app h1 {
+  text-align: center;
+  color: #646cff;
+  margin-bottom: 2rem;
+}
+
+.section {
+  background: #1a1a1a;
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+}
+
+.section h2 {
+  color: #fff;
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #646cff;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.25s;
+  margin-right: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+button:hover {
+  background-color: #535bf2;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status {
+  padding: 1rem;
+  border-radius: 8px;
+  margin-top: 1rem;
+}
+
+.status.success {
+  background-color: #1a4d2e;
+  border: 1px solid #4ade80;
+  color: #4ade80;
+}
+
+.status.error {
+  background-color: #4d1a1a;
+  border: 1px solid #f87171;
+  color: #f87171;
+}
+
+.status p {
+  margin: 0.5rem 0;
+}
+
+.form {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.form input {
+  flex: 1;
+  padding: 0.6em 1em;
+  font-size: 1em;
+  border-radius: 8px;
+  border: 1px solid #646cff;
+  background-color: #1a1a1a;
+  color: #fff;
+}
+
+.form input:focus {
+  outline: none;
+  border-color: #535bf2;
+}
+
+.records-list {
+  list-style: none;
+  padding: 0;
+  margin-top: 1rem;
+}
+
+.records-list li {
+  background-color: #2a2a2a;
+  padding: 1rem;
+  margin-bottom: 0.5rem;
+  border-radius: 8px;
+  color: #fff;
+}
+
+.records-list li strong {
+  color: #646cff;
+  margin-right: 0.5rem;
+}
