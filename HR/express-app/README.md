@@ -44,6 +44,47 @@ The app automatically creates a `test_table` on startup with the following schem
 - `name` (VARCHAR(255))
 - `created_at` (TIMESTAMP)
 
+## Database Migration Logging
+
+**All database schema changes are automatically logged** to `database_migrations.txt`. This includes:
+
+- ✅ CREATE TABLE operations
+- ✅ ALTER TABLE operations (ADD COLUMN, DROP COLUMN, RENAME COLUMN)
+- ✅ DROP TABLE operations
+- ✅ All custom SQL queries
+
+The log file records:
+- Timestamp of each change
+- Action type (CREATE, ALTER, DROP)
+- Details of what was changed
+- The SQL query that was executed
+
+### Migration API Endpoints
+
+- `POST /api/migrations/create-table` - Create a new table
+  - Body: `{ "tableName": "users", "columns": ["id SERIAL PRIMARY KEY", "name VARCHAR(255)"] }`
+  
+- `POST /api/migrations/alter-table` - Alter an existing table
+  - Body: `{ "tableName": "users", "action": "ADD_COLUMN", "columnDefinition": "email VARCHAR(255)" }`
+  - Actions: `ADD_COLUMN`, `DROP_COLUMN`, `RENAME_COLUMN`
+  
+- `DELETE /api/migrations/drop-table/:tableName` - Drop a table
+
+- `GET /api/migrations/log` - Get the migration log file content
+
+### Using Helper Functions
+
+You can also use the helper functions in `db-helpers.js` for programmatic database changes:
+
+```javascript
+import { createTable, addColumn, dropTable } from './db-helpers.js';
+
+// All operations are automatically logged
+await createTable('users', 'id SERIAL PRIMARY KEY, name VARCHAR(255)');
+await addColumn('users', 'email VARCHAR(255)');
+await dropTable('old_table');
+```
+
 ## Vercel Deployment
 
 1. Connect your repository to Vercel
