@@ -1,0 +1,40 @@
+.branch-manager-layout {
+  background: #f0f4f8;
+}
+
+.branch-navbar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.branch-badge {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  margin-left: 10px;
+  font-weight: 600;
+}
+
+.branch-content {
+  background: #f0f4f8;
+}
+
+.branch-manager-layout .nav-links a {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 10px 20px;
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.branch-manager-layout .nav-links a:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.branch-manager-layout .nav-links a.active {
+  background: rgba(255, 255, 255, 0.3);
+  font-weight: 600;
+}
+
