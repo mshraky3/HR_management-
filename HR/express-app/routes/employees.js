@@ -70,7 +70,7 @@ router.get('/:id', async (req, res) => {
 router.post('/',
   validateRequired([
     'employee_id_number', 'branch_id', 'first_name', 'second_name', 'third_name', 'fourth_name',
-    'occupation', 'nationality', 'date_of_birth_gregorian', 'id_or_residency_number',
+    'occupation', 'nationality', 'id_or_residency_number',
     'id_type', 'gender'
   ]),
   validateEmployeeName,
@@ -82,17 +82,88 @@ router.post('/',
     try {
       const { Employee } = await import('../models/Employee.js');
       
-      // Check branch access
-      if (req.user.role === 'branch_manager' && req.user.branch_id !== req.body.branch_id) {
-        return res.status(403).json({
+      // Validate date of birth is provided (either hijri or gregorian)
+      const hasHijriDate = req.body.date_of_birth_hijri && req.body.date_of_birth_hijri.trim() !== '';
+      const hasGregorianDate = req.body.date_of_birth_gregorian && req.body.date_of_birth_gregorian.trim() !== '';
+      
+      if (!hasHijriDate && !hasGregorianDate) {
+        return res.status(400).json({
           success: false,
-          message: 'You can only add employees to your own branch'
+          message: 'تاريخ الميلاد مطلوب (يجب إدخال التاريخ إما هجري أو ميلادي)'
+        });
+      }
+      
+      // For branch managers, force branch_id to their branch (prevent manipulation)
+      if (req.user.role === 'branch_manager') {
+        if (req.body.branch_id && req.body.branch_id !== req.user.branch_id) {
+          return res.status(403).json({
+            success: false,
+            message: 'You can only add employees to your own branch'
+          });
+        }
+        // Force branch_id to their branch
+        req.body.branch_id = req.user.branch_id;
+      }
+      
+      // Ensure date fields are properly set (null if not provided)
+      if (!hasHijriDate) {
+        req.body.date_of_birth_hijri = null;
+      }
+      if (!hasGregorianDate) {
+        req.body.date_of_birth_gregorian = null;
+      }
+      
+      // Validate field lengths before insertion
+      const fieldLengths = {
+        'first_name': 100,
+        'second_name': 100,
+        'third_name': 100,
+        'fourth_name': 100,
+        'occupation': 100,
+        'nationality': 100,
+        'religion': 100,
+        'marital_status': 50,
+        'educational_qualification': 200,
+        'specialization': 200,
+        'bank_name': 200,
+        'email': 255,
+        'phone_number': 50,
+        'contract_type': 100,
+        'id_or_residency_number': 100,
+        'employee_id_number': 100
+      };
+      
+      for (const [field, maxLength] of Object.entries(fieldLengths)) {
+        if (req.body[field] && typeof req.body[field] === 'string' && req.body[field].length > maxLength) {
+          return res.status(400).json({
+            success: false,
+            message: `Field "${field}" exceeds maximum length of ${maxLength} characters`
+          });
+        }
+      }
+      
+      // Set created_by to branch_id (never null)
+      // For branch managers: use their branch_id
+      // For main managers: use the employee's branch_id
+      let createdByBranchId = req.body.branch_id;
+      
+      // If branch manager, force to their branch_id
+      if (req.user.role === 'branch_manager' && req.user.branch_id) {
+        createdByBranchId = req.user.branch_id;
+      }
+      
+      // Ensure branch_id is set (should never be null at this point)
+      if (!createdByBranchId) {
+        return res.status(400).json({
+          success: false,
+          message: 'لا يمكن تحديد الفرع. الرجاء المحاولة مرة أخرى.'
         });
       }
       
       const employee = await Employee.create({
         ...req.body,
-        created_by: req.user.id
+        created_by: createdByBranchId,
+        updated_by: createdByBranchId // For new records, updated_by = created_by
       });
       
       res.status(201).json({ success: true, data: employee });
@@ -133,10 +204,40 @@ router.put('/:id',
         });
       }
       
+      // For branch managers, prevent changing branch_id (force it to their branch)
+      if (req.user.role === 'branch_manager') {
+        if (req.body.branch_id && req.body.branch_id !== req.user.branch_id) {
+          return res.status(403).json({
+            success: false,
+            message: 'لا يمكنك تغيير فرع الموظف'
+          });
+        }
+        // Force branch_id to their branch (prevent manipulation)
+        req.body.branch_id = req.user.branch_id;
+      }
+      
+      // Set updated_by to branch_id (never null)
+      // For branch managers: use their branch_id
+      // For main managers: use the employee's branch_id (from existing employee or request)
+      let updatedByBranchId = req.body.branch_id || existingEmployee.branch_id;
+      
+      // If branch manager, force to their branch_id
+      if (req.user.role === 'branch_manager' && req.user.branch_id) {
+        updatedByBranchId = req.user.branch_id;
+      }
+      
+      // Ensure branch_id is set (should never be null at this point)
+      if (!updatedByBranchId) {
+        return res.status(400).json({
+          success: false,
+          message: 'لا يمكن تحديد الفرع. الرجاء المحاولة مرة أخرى.'
+        });
+      }
+      
       const employee = await Employee.update(
         parseInt(req.params.id),
         req.body,
-        req.user.id
+        updatedByBranchId
       );
       
       res.json({ success: true, data: employee });

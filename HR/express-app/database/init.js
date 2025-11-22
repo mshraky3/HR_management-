@@ -107,12 +107,12 @@ export async function initializeDatabase() {
       fourth_name VARCHAR(100) NOT NULL,
       occupation VARCHAR(100) NOT NULL,
       nationality VARCHAR(100) NOT NULL,
-      date_of_birth_hijri DATE,
-      date_of_birth_gregorian DATE NOT NULL,
+      date_of_birth_hijri VARCHAR(50),
+      date_of_birth_gregorian DATE,
       id_or_residency_number VARCHAR(100) UNIQUE NOT NULL,
       id_type VARCHAR(50) NOT NULL CHECK (id_type IN ('citizen', 'resident')),
       gender VARCHAR(20) NOT NULL CHECK (gender IN ('male', 'female')),
-      id_expiry_date_hijri DATE,
+      id_expiry_date_hijri VARCHAR(50),
       id_expiry_date_gregorian DATE,
       religion VARCHAR(100),
       marital_status VARCHAR(50),
@@ -127,11 +127,11 @@ export async function initializeDatabase() {
       is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      created_by INTEGER,
-      updated_by INTEGER,
+      created_by INTEGER NOT NULL,
+      updated_by INTEGER NOT NULL,
       FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE RESTRICT,
-      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-      FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+      FOREIGN KEY (created_by) REFERENCES branches(id) ON DELETE RESTRICT,
+      FOREIGN KEY (updated_by) REFERENCES branches(id) ON DELETE RESTRICT
     `);
 
     // Create indexes for employees
@@ -211,6 +211,67 @@ export async function initializeDatabase() {
     await executeQuery(
       'CREATE INDEX IF NOT EXISTS idx_documents_file_name ON employee_documents(file_name)',
       'Created index on employee_documents.file_name'
+    );
+
+    // 7. Create branch_documents table
+    console.log('Creating branch_documents table...');
+    await createTable('branch_documents', `
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER NOT NULL,
+      document_type VARCHAR(100) NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      file_path VARCHAR(500) NOT NULL,
+      file_size INTEGER,
+      mime_type VARCHAR(100) NOT NULL,
+      file_extension VARCHAR(10),
+      thumbnail_path VARCHAR(500),
+      description TEXT,
+      expiry_date DATE,
+      is_verified BOOLEAN DEFAULT false,
+      verified_at TIMESTAMP,
+      verified_by INTEGER,
+      version INTEGER DEFAULT 1,
+      is_active BOOLEAN DEFAULT true,
+      uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      uploaded_by INTEGER,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
+    `);
+
+    // Create indexes for branch_documents
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_branch_documents_branch_id ON branch_documents(branch_id)',
+      'Created index on branch_documents.branch_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_branch_documents_type ON branch_documents(document_type)',
+      'Created index on branch_documents.document_type'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_branch_documents_branch_type ON branch_documents(branch_id, document_type)',
+      'Created composite index on branch_documents(branch_id, document_type)'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_branch_documents_mime_type ON branch_documents(mime_type)',
+      'Created index on branch_documents.mime_type'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_branch_documents_uploaded_at ON branch_documents(uploaded_at)',
+      'Created index on branch_documents.uploaded_at'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_branch_documents_expiry_date ON branch_documents(expiry_date)',
+      'Created index on branch_documents.expiry_date'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_branch_documents_is_verified ON branch_documents(is_verified)',
+      'Created index on branch_documents.is_verified'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_branch_documents_file_name ON branch_documents(file_name)',
+      'Created index on branch_documents.file_name'
     );
 
     // 7. Create employee_professional_classifications table

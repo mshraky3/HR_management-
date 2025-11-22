@@ -7,7 +7,8 @@
     "dev": "node server.js",
     "start": "node server.js",
     "init-db": "node scripts/init-db.js",
-    "create-admin": "node scripts/create-admin.js"
+    "create-admin": "node scripts/create-admin.js",
+    "add-branches": "node scripts/add-branches.js"
   },
   "keywords": [],
   "author": "",

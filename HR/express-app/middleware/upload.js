@@ -88,10 +88,23 @@ export const validateUploadedFile = (req, res, next) => {
 
 /**
  * Move file from temp to final location
+ * @param {string} tempPath - Temporary file path
+ * @param {number} id - Employee ID or Branch ID
+ * @param {string} documentType - Document type
+ * @param {string} fileName - File name
+ * @param {string} type - 'employees' (default) or 'branches'
  */
-export async function moveFileToFinalLocation(tempPath, employeeId, documentType, fileName) {
+export async function moveFileToFinalLocation(tempPath, id, documentType, fileName, type = 'employees') {
   const fs = await import('fs');
-  const finalPath = getDocumentPath(employeeId, documentType, fileName);
+  const path = await import('path');
+  const { getDocumentPath, getBranchDocumentPath } = await import('../utils/fileUpload.js');
+  
+  let finalPath;
+  if (type === 'branches') {
+    finalPath = getBranchDocumentPath(id, documentType, fileName);
+  } else {
+    finalPath = getDocumentPath(id, documentType, fileName);
+  }
   
   // Ensure directory exists
   const finalDir = path.dirname(finalPath);
@@ -102,6 +115,8 @@ export async function moveFileToFinalLocation(tempPath, employeeId, documentType
   // Move file
   fs.renameSync(tempPath, finalPath);
   
-  return finalPath;
+  // Return relative path from project root (storage/uploads/...)
+  const projectRoot = path.join(__dirname, '..', '..');
+  return path.relative(projectRoot, finalPath).replace(/\\/g, '/');
 }
 

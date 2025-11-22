@@ -37,7 +37,6 @@ router.get('/', async (req, res) => {
       });
     }
 
-    console.log('GET /api/documents - User:', req.user.role, 'Query:', req.query);
 
     const filters = {
       document_type: req.query.document_type,
@@ -118,55 +117,6 @@ router.get('/', async (req, res) => {
 });
 
 /**
- * Get all documents (with filters)
- * GET /api/documents?employee_id=123&document_type=id_or_residency&mime_type=application/pdf&is_verified=false
- */
-// This route is already defined above, keeping for reference
-
-/**
- * Get document by ID
- * GET /api/documents/:id
- * NOTE: This must come AFTER the root route to avoid conflicts
- */
-router.get('/:id', async (req, res) => {
-  try {
-    const document = await Document.findById(parseInt(req.params.id));
-    
-    if (!document) {
-      return res.status(404).json({
-        success: false,
-        message: 'Document not found'
-      });
-    }
-
-    // Check branch access
-    const employee = await Employee.findById(document.employee_id);
-    if (!employee) {
-      return res.status(404).json({
-        success: false,
-        message: 'Employee not found'
-      });
-    }
-
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied'
-      });
-    }
-
-    res.json({ success: true, data: document });
-  } catch (error) {
-    console.error('Error fetching document:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch document',
-      error: error.message
-    });
-  }
-});
-
-/**
  * Upload document
  * POST /api/documents
  * Form data: file, employee_id, document_type, description, expiry_date
@@ -225,9 +175,30 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       req.file.path,
       parseInt(employee_id),
       document_type,
-      fileName
+      fileName,
+      'employees'
     );
 
+    // Verify user exists before setting uploaded_by
+    let uploadedByUserId = null;
+    if (req.user && req.user.id) {
+      try {
+        // Check if user exists in database (without is_active check)
+        const sql = (await import('../config/database.js')).default;
+        const [user] = await sql`
+          SELECT id FROM users WHERE id = ${req.user.id}
+        `;
+        if (user && user.id) {
+          uploadedByUserId = req.user.id;
+        } else {
+          console.warn(`User with ID ${req.user.id} not found in database, setting uploaded_by to null`);
+        }
+      } catch (error) {
+        console.error('Error verifying user:', error);
+        // Continue with null if user verification fails
+      }
+    }
+    
     // Create document record
     const document = await Document.create({
       employee_id: parseInt(employee_id),
@@ -239,7 +210,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       file_extension: getExtensionFromMimeType(req.file.mimetype),
       description: description || null,
       expiry_date: expiry_date || null,
-      uploaded_by: req.user.id
+      uploaded_by: uploadedByUserId
     });
 
     res.status(201).json({
@@ -266,6 +237,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
 /**
  * Download document file
  * GET /api/documents/:id/download
+ * NOTE: This must come BEFORE the generic /:id route to avoid conflicts
  */
 router.get('/:id/download', async (req, res) => {
   try {
@@ -288,12 +260,33 @@ router.get('/:id/download', async (req, res) => {
     }
 
     // Check if file exists
-    const filePath = path.join(__dirname, '..', document.file_path);
+    // Handle both absolute paths and relative paths that may include 'express-app/'
+    let filePath;
+    if (path.isAbsolute(document.file_path)) {
+      // If it's already an absolute path, use it directly
+      filePath = document.file_path;
+    } else {
+      // Remove 'express-app/' prefix if it exists in the relative path
+      let relativePath = document.file_path;
+      if (relativePath.startsWith('express-app/')) {
+        relativePath = relativePath.replace(/^express-app\//, '');
+      }
+      filePath = path.join(__dirname, '..', relativePath);
+    }
+    
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        success: false,
-        message: 'File not found on server'
-      });
+      // Try alternative path without express-app prefix
+      const altPath = document.file_path.replace(/^express-app\//, '');
+      const altFilePath = path.join(__dirname, '..', altPath);
+      if (fs.existsSync(altFilePath)) {
+        filePath = altFilePath;
+      } else {
+        console.error(`[DOWNLOAD] File not found: ${filePath} or ${altFilePath}`);
+        return res.status(404).json({
+          success: false,
+          message: 'File not found on server'
+        });
+      }
     }
 
     // Set headers and send file
@@ -313,6 +306,7 @@ router.get('/:id/download', async (req, res) => {
 /**
  * Get document preview/thumbnail
  * GET /api/documents/:id/preview
+ * NOTE: This must come BEFORE the generic /:id route to avoid conflicts
  */
 router.get('/:id/preview', async (req, res) => {
   try {
@@ -336,11 +330,32 @@ router.get('/:id/preview', async (req, res) => {
 
     // For images, return the file directly
     if (document.mime_type.startsWith('image/')) {
-      const filePath = path.join(__dirname, '..', document.file_path);
+      // Handle both absolute paths and relative paths that may include 'express-app/'
+      let filePath;
+      if (path.isAbsolute(document.file_path)) {
+        filePath = document.file_path;
+      } else {
+        // Remove 'express-app/' prefix if it exists in the relative path
+        let relativePath = document.file_path;
+        if (relativePath.startsWith('express-app/')) {
+          relativePath = relativePath.replace(/^express-app\//, '');
+        }
+        filePath = path.join(__dirname, '..', relativePath);
+      }
+      
       if (fs.existsSync(filePath)) {
         res.setHeader('Content-Type', document.mime_type);
         res.sendFile(path.resolve(filePath));
         return;
+      } else {
+        // Try alternative path without express-app prefix
+        const altPath = document.file_path.replace(/^express-app\//, '');
+        const altFilePath = path.join(__dirname, '..', altPath);
+        if (fs.existsSync(altFilePath)) {
+          res.setHeader('Content-Type', document.mime_type);
+          res.sendFile(path.resolve(altFilePath));
+          return;
+        }
       }
     }
 
@@ -360,6 +375,50 @@ router.get('/:id/preview', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to get document preview',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Get document by ID
+ * GET /api/documents/:id
+ * NOTE: This must come AFTER specific routes like /:id/download and /:id/preview
+ * The order ensures that specific routes are matched first
+ */
+router.get('/:id', async (req, res) => {
+  try {
+    const document = await Document.findById(parseInt(req.params.id));
+    
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: 'Document not found'
+      });
+    }
+
+    // Check branch access
+    const employee = await Employee.findById(document.employee_id);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found'
+      });
+    }
+
+    if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+
+    res.json({ success: true, data: document });
+  } catch (error) {
+    console.error('Error fetching document:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch document',
       error: error.message
     });
   }
@@ -433,7 +492,25 @@ router.post('/:id/verify', async (req, res) => {
       });
     }
 
-    const verifiedDocument = await Document.verify(parseInt(req.params.id), req.user.id);
+    // Verify user exists before verifying document
+    let verifiedByUserId = null;
+    if (req.user && req.user.id) {
+      try {
+        const sql = (await import('../config/database.js')).default;
+        const [user] = await sql`
+          SELECT id FROM users WHERE id = ${req.user.id}
+        `;
+        if (user && user.id) {
+          verifiedByUserId = req.user.id;
+        } else {
+          console.warn(`User with ID ${req.user.id} not found in database, setting verified_by to null`);
+        }
+      } catch (error) {
+        console.error('Error verifying user:', error);
+      }
+    }
+    
+    const verifiedDocument = await Document.verify(parseInt(req.params.id), verifiedByUserId);
     
     res.json({
       success: true,

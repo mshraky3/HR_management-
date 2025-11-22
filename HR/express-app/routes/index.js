@@ -9,6 +9,7 @@ import userRoutes from './users.js';
 import branchRoutes from './branches.js';
 import employeeRoutes from './employees.js';
 import documentRoutes from './documents.js';
+import branchDocumentRoutes from './branch-documents.js';
 
 const router = express.Router();
 
@@ -23,6 +24,7 @@ router.use('/users', userRoutes);
 router.use('/branches', branchRoutes);
 router.use('/employees', employeeRoutes);
 router.use('/documents', documentRoutes);
+router.use('/branch-documents', branchDocumentRoutes);
 
 export default router;
 

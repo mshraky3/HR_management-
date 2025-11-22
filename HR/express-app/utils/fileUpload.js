@@ -57,6 +57,20 @@ export function getDocumentPath(employeeId, documentType, fileName) {
 }
 
 /**
+ * Get branch document storage path
+ */
+export function getBranchDocumentPath(branchId, documentType, fileName) {
+  const branchDir = path.join(DOCUMENTS_DIR, 'branches', branchId.toString(), documentType);
+  
+  // Ensure directory exists
+  if (!fs.existsSync(branchDir)) {
+    fs.mkdirSync(branchDir, { recursive: true });
+  }
+  
+  return path.join(branchDir, fileName);
+}
+
+/**
  * Get thumbnail path
  */
 export function getThumbnailPath(employeeId, documentType, fileName) {

@@ -92,8 +92,15 @@ export const Employee = {
         occupation, nationality, date_of_birth_hijri, date_of_birth_gregorian,
         id_or_residency_number, id_type, gender, id_expiry_date_hijri, id_expiry_date_gregorian,
         religion, marital_status, educational_qualification, specialization,
-        bank_iban, bank_name, email, phone_number, contract_type, salary, created_by
+        bank_iban, bank_name, email, phone_number, contract_type, salary, created_by, updated_by
       } = employeeData;
+      
+      // If updated_by is not provided, use created_by (for new records)
+      const finalUpdatedBy = updated_by || created_by;
+      
+      if (!created_by || !finalUpdatedBy) {
+        throw new Error('created_by and updated_by are required');
+      }
       
       const [employee] = await sql`
         INSERT INTO employees (
@@ -101,15 +108,15 @@ export const Employee = {
           occupation, nationality, date_of_birth_hijri, date_of_birth_gregorian,
           id_or_residency_number, id_type, gender, id_expiry_date_hijri, id_expiry_date_gregorian,
           religion, marital_status, educational_qualification, specialization,
-          bank_iban, bank_name, email, phone_number, contract_type, salary, created_by
+          bank_iban, bank_name, email, phone_number, contract_type, salary, created_by, updated_by
         )
         VALUES (
           ${employee_id_number}, ${branch_id}, ${first_name}, ${second_name}, ${third_name}, ${fourth_name},
-          ${occupation}, ${nationality}, ${date_of_birth_hijri || null}, ${date_of_birth_gregorian},
+          ${occupation}, ${nationality}, ${date_of_birth_hijri || null}, ${date_of_birth_gregorian || null},
           ${id_or_residency_number}, ${id_type}, ${gender}, ${id_expiry_date_hijri || null}, ${id_expiry_date_gregorian || null},
           ${religion || null}, ${marital_status || null}, ${educational_qualification || null}, ${specialization || null},
           ${bank_iban || null}, ${bank_name || null}, ${email || null}, ${phone_number || null},
-          ${contract_type || null}, ${salary || null}, ${created_by || null}
+          ${contract_type || null}, ${salary || null}, ${created_by}, ${finalUpdatedBy}
         )
         RETURNING *
       `;

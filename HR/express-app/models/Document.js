@@ -227,7 +227,7 @@ export const Document = {
     try {
       const [document] = await sql`
         UPDATE employee_documents 
-        SET is_verified = true, verified_at = CURRENT_TIMESTAMP, verified_by = ${verifiedBy}, updated_at = CURRENT_TIMESTAMP
+        SET is_verified = true, verified_at = CURRENT_TIMESTAMP, verified_by = ${verifiedBy || null}, updated_at = CURRENT_TIMESTAMP
         WHERE id = ${id}
         RETURNING *
       `;
