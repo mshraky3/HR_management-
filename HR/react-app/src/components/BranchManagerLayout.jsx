@@ -3,6 +3,7 @@
  * Different UI for branch managers with limited features
  */
 
+import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import './BranchManagerLayout.css';
@@ -11,6 +12,7 @@ const BranchManagerLayout = ({ children }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -21,21 +23,32 @@ const BranchManagerLayout = ({ children }) => {
     return location.pathname === path ? 'active' : '';
   };
 
+  const toggleMobileMenu = () => {
+    setMobileMenuOpen(!mobileMenuOpen);
+  };
+
   return (
     <div className="layout branch-manager-layout">
       <nav className="navbar branch-navbar">
         <div className="nav-brand">
-          <h2>HRM - Branch Portal</h2>
+          <h2>HRM System</h2>
           <span className="branch-badge">Branch Manager</span>
         </div>
-        <div className="nav-links">
-          <Link to="/dashboard" className={isActive('/dashboard')}>
+        <button 
+          className="mobile-menu-toggle" 
+          onClick={toggleMobileMenu}
+          aria-label="Toggle menu"
+        >
+          {mobileMenuOpen ? '✕' : '☰'}
+        </button>
+        <div className={`nav-links ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+          <Link to="/dashboard" className={isActive('/dashboard')} onClick={() => setMobileMenuOpen(false)}>
             Dashboard
           </Link>
-          <Link to="/employees" className={isActive('/employees')}>
+          <Link to="/employees" className={isActive('/employees')} onClick={() => setMobileMenuOpen(false)}>
             My Employees
           </Link>
-          <Link to="/documents" className={isActive('/documents')}>
+          <Link to="/documents" className={isActive('/documents')} onClick={() => setMobileMenuOpen(false)}>
             Documents
           </Link>
         </div>
