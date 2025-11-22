@@ -57,6 +57,7 @@
   flex-wrap: wrap;
   flex: 1;
   justify-content: center;
+  direction: rtl;
 }
 
 .nav-links a {
@@ -118,8 +119,8 @@
     border-top: 1px solid var(--border);
     margin-top: var(--spacing-sm);
     padding: var(--spacing-sm) 0;
-  }
-  
+}
+
   .nav-links.mobile-open {
     display: flex;
   }
@@ -193,8 +194,8 @@
 /* Branch Manager Layout */
 .branch-manager-layout {
   background: var(--bg-secondary);
-}
-
+  }
+  
 .branch-navbar {
   background: var(--bg);
   border-bottom: 1px solid var(--border);

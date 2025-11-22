@@ -31,25 +31,25 @@ const BranchManagerLayout = ({ children }) => {
     <div className="layout branch-manager-layout">
       <nav className="navbar branch-navbar">
         <div className="nav-brand">
-          <h2>HRM System</h2>
-          <span className="branch-badge">Branch Manager</span>
+          <h2>نظام إدارة الموارد البشرية</h2>
+          <span className="branch-badge">مدير فرع</span>
         </div>
         <button 
           className="mobile-menu-toggle" 
           onClick={toggleMobileMenu}
-          aria-label="Toggle menu"
+          aria-label="تبديل القائمة"
         >
           {mobileMenuOpen ? '✕' : '☰'}
         </button>
         <div className={`nav-links ${mobileMenuOpen ? 'mobile-open' : ''}`}>
           <Link to="/dashboard" className={isActive('/dashboard')} onClick={() => setMobileMenuOpen(false)}>
-            Dashboard
+            لوحة التحكم
           </Link>
           <Link to="/employees" className={isActive('/employees')} onClick={() => setMobileMenuOpen(false)}>
-            My Employees
+            موظفي الفرع
           </Link>
-          <Link to="/documents" className={isActive('/documents')} onClick={() => setMobileMenuOpen(false)}>
-            Documents
+          <Link to="/branch-documents" className={isActive('/branch-documents')} onClick={() => setMobileMenuOpen(false)}>
+            مستندات الفرع
           </Link>
         </div>
         <div className="nav-user">
@@ -57,7 +57,7 @@ const BranchManagerLayout = ({ children }) => {
             {user?.full_name || user?.username}
           </span>
           <button onClick={handleLogout} className="logout-button">
-            Logout
+            تسجيل الخروج
           </button>
         </div>
       </nav>

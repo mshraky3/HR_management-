@@ -6,11 +6,12 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { branchesAPI, employeesAPI, usersAPI, documentsAPI } from '../utils/api';
+import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI } from '../utils/api';
 import './Dashboard.css';
 
 const Dashboard = () => {
   const { user, isMainManager } = useAuth();
+  const [branches, setBranches] = useState([]);
   const [stats, setStats] = useState({
     branches: 0,
     employees: 0,
@@ -25,18 +26,35 @@ const Dashboard = () => {
 
   const loadStats = async () => {
     try {
+      // Build filters based on user role
+      const branchFilters = { is_active: true };
+      const employeeFilters = { is_active: true };
+      const documentFilters = {};
+
+      // Branch managers only see their branch data
+      if (!isMainManager() && user?.branch_id) {
+        branchFilters.id = user.branch_id;
+        employeeFilters.branch_id = user.branch_id;
+        documentFilters.branch_id = user.branch_id;
+      }
+
       const [branchesRes, employeesRes] = await Promise.all([
-        branchesAPI.getAll({ is_active: true }),
-        employeesAPI.getAll({ is_active: true }),
+        branchesAPI.getAll(branchFilters),
+        employeesAPI.getAll(employeeFilters),
       ]);
 
-      // For documents, use unverified filter to get a count (or empty object if no filter)
+      // Store branches for display
+      if (branchesRes.data.success) {
+        setBranches(branchesRes.data.data || []);
+      }
+
+      // For branch documents
       let documentsRes = { data: { data: [] } };
       try {
-        documentsRes = await documentsAPI.getAll({ unverified: 'true' });
+        documentsRes = await branchDocumentsAPI.getAll(documentFilters);
       } catch (error) {
         // If no documents or error, just use empty array
-        console.log('No documents found or error:', error);
+        console.log('No branch documents found or error:', error);
       }
 
       let usersRes = { data: { data: [] } };
@@ -59,70 +77,71 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard">
-      <h1>Dashboard</h1>
+      <h1>لوحة التحكم</h1>
       <p className="welcome-message">
-        Welcome, {user?.full_name || user?.username}!
+        {isMainManager() 
+          ? `مرحباً، ${user?.full_name || user?.username}!`
+          : `مرحباً، ${user?.full_name || user?.username}! - فرعك: ${branches.find(b => b.id === user?.branch_id)?.branch_name || 'غير محدد'}`
+        }
       </p>
 
       {stats.loading ? (
-        <div className="loading">Loading statistics...</div>
+        <div className="loading">جاري تحميل الإحصائيات...</div>
       ) : (
         <div className="stats-grid">
-          <div className="stat-card">
-            <h3>Branches</h3>
-            <div className="stat-number">{stats.branches}</div>
-            <Link to="/branches" className="stat-link">View All →</Link>
-          </div>
-
-          <div className="stat-card">
-            <h3>Employees</h3>
-            <div className="stat-number">{stats.employees}</div>
-            <Link to="/employees" className="stat-link">View All →</Link>
-          </div>
-
           {isMainManager() && (
             <div className="stat-card">
-              <h3>Users</h3>
-              <div className="stat-number">{stats.users}</div>
-              <Link to="/users" className="stat-link">View All →</Link>
+              <h3>الفروع</h3>
+              <div className="stat-number">{stats.branches}</div>
+              <Link to="/branches" className="stat-link">عرض الكل ←</Link>
             </div>
           )}
 
           <div className="stat-card">
-            <h3>Documents</h3>
+            <h3>الموظفون</h3>
+            <div className="stat-number">{stats.employees}</div>
+            <Link to="/employees" className="stat-link">عرض الكل ←</Link>
+          </div>
+
+          {isMainManager() && (
+            <div className="stat-card">
+              <h3>المستخدمون</h3>
+              <div className="stat-number">{stats.users}</div>
+              <Link to="/users" className="stat-link">عرض الكل ←</Link>
+            </div>
+          )}
+
+          <div className="stat-card">
+            <h3>مستندات الفرع</h3>
             <div className="stat-number">{stats.documents}</div>
-            <Link to="/documents" className="stat-link">View All →</Link>
+            <Link to="/branch-documents" className="stat-link">عرض الكل ←</Link>
           </div>
         </div>
       )}
 
-      <div className="quick-actions">
-        <h2>Quick Actions</h2>
-        <div className="actions-grid">
-          {isMainManager() && (
+      {isMainManager() && (
+        <div className="quick-actions">
+          <h2>إجراءات سريعة</h2>
+          <div className="actions-grid">
             <Link to="/branches" className="action-card">
-              <h3>Manage Branches</h3>
-              <p>View and manage all branches</p>
+              <h3>إدارة الفروع</h3>
+              <p>عرض وإدارة جميع الفروع</p>
             </Link>
-          )}
-          <Link to="/employees" className="action-card">
-            <h3>{isMainManager() ? 'Manage Employees' : 'My Employees'}</h3>
-            <p>{isMainManager() ? 'View and manage employee records' : 'View and manage your branch employees'}</p>
-          </Link>
-          <Link to="/documents" className="action-card">
-            <h3>Manage Documents</h3>
-            <p>Upload and manage documents</p>
-          </Link>
-          {isMainManager() && (
-            <>
-              <Link to="/users" className="action-card">
-                <h3>Manage Users</h3>
-                <p>Create and manage user accounts</p>
-              </Link>
-            </>
-          )}
+            <Link to="/employees" className="action-card">
+              <h3>إدارة الموظفين</h3>
+              <p>عرض وإدارة سجلات الموظفين</p>
+            </Link>
+            <Link to="/branch-documents" className="action-card">
+              <h3>مستندات الفرع</h3>
+              <p>رفع وإدارة مستندات الفروع</p>
+            </Link>
+            <Link to="/users" className="action-card">
+              <h3>إدارة المستخدمين</h3>
+              <p>إنشاء وإدارة حسابات المستخدمين</p>
+            </Link>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

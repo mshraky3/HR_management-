@@ -160,5 +160,46 @@ export const documentsAPI = {
     }),
 };
 
+// Branch Documents API
+export const branchDocumentsAPI = {
+  getAll: (filters = {}) => {
+    const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+    return api.get('/api/branch-documents', { params: cleanFilters });
+  },
+  
+  getById: (id) => 
+    api.get(`/api/branch-documents/${id}`),
+  
+  upload: (formData) => 
+    api.post('/api/branch-documents', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  
+  download: (id) => 
+    api.get(`/api/branch-documents/${id}/download`, { responseType: 'blob' }),
+  
+  preview: (id) => 
+    api.get(`/api/branch-documents/${id}/preview`),
+  
+  update: (id, data) => 
+    api.put(`/api/branch-documents/${id}`, data),
+  
+  updateWithFile: (id, formData) => 
+    api.put(`/api/branch-documents/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  
+  verify: (id) => 
+    api.post(`/api/branch-documents/${id}/verify`),
+  
+  delete: (id) => 
+    api.delete(`/api/branch-documents/${id}`),
+};
+
 export default api;
 

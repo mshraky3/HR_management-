@@ -22,14 +22,10 @@ const Branches = () => {
     password: '',
   });
 
-  useEffect(() => {
-    loadBranches();
-  }, []);
-
   const loadBranches = async () => {
     try {
       setLoading(true);
-      const filters = { is_active: true };
+      const filters = { is_active: 'true' };
       
       // Branch managers only see their own branch
       if (!isMainManager() && user?.branch_id) {
@@ -37,16 +33,29 @@ const Branches = () => {
       }
       
       const response = await branchesAPI.getAll(filters);
-      if (response.data.success) {
-        setBranches(response.data.data);
+      if (response && response.data && response.data.success) {
+        setBranches(Array.isArray(response.data.data) ? response.data.data : []);
+      } else {
+        setBranches([]);
       }
     } catch (error) {
       console.error('Error loading branches:', error);
-      alert('Failed to load branches');
+      setBranches([]);
+      // Only show alert if we had branches before (not on initial load)
+      if (branches.length > 0) {
+        alert('Failed to load branches: ' + (error.response?.data?.message || error.message));
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (user !== undefined) {
+      loadBranches();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.branch_id]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -61,7 +70,7 @@ const Branches = () => {
       resetForm();
       loadBranches();
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to save branch');
+      alert(error.response?.data?.message || 'فشل حفظ الفرع');
     }
   };
 
@@ -78,12 +87,12 @@ const Branches = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to deactivate this branch?')) return;
+    if (!confirm('هل أنت متأكد من رغبتك في إلغاء تفعيل هذا الفرع؟')) return;
     try {
       await branchesAPI.delete(id);
       loadBranches();
     } catch (error) {
-      alert('Failed to delete branch');
+      alert('فشل حذف الفرع');
     }
   };
 
@@ -98,24 +107,16 @@ const Branches = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading branches...</div>;
+    return <div className="loading">جاري تحميل الفروع...</div>;
   }
-
-  // Branch managers can only view their own branch
-  useEffect(() => {
-    if (!isMainManager() && user?.branch_id) {
-      // Load only their branch
-      loadBranches();
-    }
-  }, [user?.branch_id, isMainManager()]);
 
   return (
     <div className="table-page">
       <div className="page-header">
-        <h1>{isMainManager() ? 'Branches Management' : 'My Branch'}</h1>
+        <h1>{isMainManager() ? 'إدارة الفروع' : 'فرعي'}</h1>
         {isMainManager() && (
           <button onClick={() => { setShowForm(true); resetForm(); setEditingBranch(null); }} className="btn-primary">
-            Add New Branch
+            إضافة فرع جديد
           </button>
         )}
       </div>
@@ -123,11 +124,11 @@ const Branches = () => {
       {showForm && isMainManager() && (
         <div className="modal">
           <div className="modal-content">
-            <h2>{editingBranch ? 'Edit Branch' : 'Create New Branch'}</h2>
+            <h2>{editingBranch ? 'تعديل الفرع' : 'إنشاء فرع جديد'}</h2>
             <form onSubmit={handleSubmit}>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Branch Name *</label>
+                  <label>اسم الفرع *</label>
                   <input
                     type="text"
                     value={formData.branch_name}
@@ -136,19 +137,19 @@ const Branches = () => {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Branch Type *</label>
+                  <label>نوع الفرع *</label>
                   <select
                     value={formData.branch_type}
                     onChange={(e) => setFormData({ ...formData, branch_type: e.target.value })}
                     required
                   >
-                    <option value="school">School</option>
-                    <option value="healthcare_center">Healthcare Center</option>
+                    <option value="school">مدرسة</option>
+                    <option value="healthcare_center">مركز صحي</option>
                   </select>
                 </div>
               </div>
               <div className="form-group">
-                <label>Branch Location *</label>
+                <label>موقع الفرع *</label>
                 <input
                   type="text"
                   value={formData.branch_location}
@@ -158,7 +159,7 @@ const Branches = () => {
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Username *</label>
+                  <label>اسم المستخدم *</label>
                   <input
                     type="text"
                     value={formData.username}
@@ -167,7 +168,7 @@ const Branches = () => {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Password {!editingBranch && '*'}</label>
+                  <label>كلمة المرور {!editingBranch && '*'}</label>
                   <input
                     type="password"
                     value={formData.password}
@@ -177,9 +178,9 @@ const Branches = () => {
                 </div>
               </div>
               <div className="form-actions">
-                <button type="submit" className="btn-primary">Save</button>
+                <button type="submit" className="btn-primary">حفظ</button>
                 <button type="button" onClick={() => { setShowForm(false); resetForm(); setEditingBranch(null); }} className="btn-secondary">
-                  Cancel
+                  إلغاء
                 </button>
               </div>
             </form>
@@ -191,37 +192,42 @@ const Branches = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Branch Name</th>
-              <th>Type</th>
-              <th>Location</th>
-              <th>Username</th>
-              <th>Status</th>
-              {isMainManager() && <th>Actions</th>}
+              <th>اسم الفرع</th>
+              <th>النوع</th>
+              <th>الموقع</th>
+              <th>اسم المستخدم</th>
+              <th>الحالة</th>
+              {isMainManager() && <th>الإجراءات</th>}
             </tr>
           </thead>
           <tbody>
             {branches.length === 0 ? (
               <tr>
-                <td colSpan={isMainManager() ? "7" : "6"} style={{ textAlign: 'center' }}>No branches found</td>
+                <td colSpan={isMainManager() ? "6" : "5"} style={{ textAlign: 'center' }}>لم يتم العثور على فروع</td>
               </tr>
             ) : (
               branches.map((branch) => (
                 <tr key={branch.id}>
-                  <td>{branch.id}</td>
                   <td>{branch.branch_name}</td>
-                  <td>{branch.branch_type === 'school' ? 'School' : 'Healthcare Center'}</td>
+                  <td>{branch.branch_type === 'school' ? 'مدرسة' : 'مركز صحي'}</td>
                   <td>{branch.branch_location}</td>
                   <td>{branch.username}</td>
                   <td>
                     <span className={`badge ${branch.is_active ? 'badge-success' : 'badge-danger'}`}>
-                      {branch.is_active ? 'Active' : 'Inactive'}
+                      {branch.is_active ? 'نشط' : 'غير نشط'}
                     </span>
                   </td>
                   {isMainManager() && (
                     <td>
-                      <button onClick={() => handleEdit(branch)} className="btn-sm btn-edit">Edit</button>
-                      <button onClick={() => handleDelete(branch.id)} className="btn-sm btn-delete">Delete</button>
+                      <button onClick={() => handleEdit(branch)} className="btn-sm btn-edit">تعديل</button>
+                      <button onClick={() => handleDelete(branch.id)} className="btn-sm btn-delete">حذف</button>
+                    </td>
+                  )}
+                  {!isMainManager() && (
+                    <td>
+                      <span className="badge badge-info" style={{ fontSize: '11px', padding: '4px 8px' }}>
+                        عرض فقط
+                      </span>
                     </td>
                   )}
                 </tr>

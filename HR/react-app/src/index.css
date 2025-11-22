@@ -27,8 +27,8 @@
   --spacing-lg: 1.5rem;
   --spacing-xl: 2rem;
   
-  /* Typography */
-  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+  /* Typography - Arabic Font */
+  --font-family: 'Cairo', 'Segoe UI', 'Tahoma', 'Arial', sans-serif;
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
   --font-size-base: 1rem;
@@ -48,21 +48,28 @@
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
 
+html {
+  direction: rtl;
+}
+
 body {
   font-family: var(--font-family);
   font-size: var(--font-size-base);
-  line-height: 1.5;
+  line-height: 1.8;
   color: var(--text);
   background-color: var(--bg-secondary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  direction: rtl;
+  text-align: right;
 }
 
 /* Typography */
 h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.8;
   color: var(--text);
+  text-align: right;
 }
 
 h1 { font-size: var(--font-size-3xl); }
@@ -75,6 +82,7 @@ a {
   color: var(--primary);
   text-decoration: none;
   transition: color 0.2s;
+  text-align: right;
 }
 
 a:hover {
@@ -119,7 +127,7 @@ input:focus, textarea:focus, select:focus {
 input:disabled, textarea:disabled, select:disabled {
   background: var(--bg-secondary);
   cursor: not-allowed;
-}
+  }
 
 /* Labels */
 label {
@@ -128,6 +136,7 @@ label {
   font-weight: 500;
   color: var(--text);
   margin-bottom: var(--spacing-xs);
+  text-align: right;
 }
 
 /* Responsive Typography */

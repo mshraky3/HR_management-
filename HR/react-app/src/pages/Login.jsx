@@ -25,7 +25,7 @@ const Login = () => {
     if (result.success) {
       navigate('/dashboard');
     } else {
-      setError(result.message || 'Login failed');
+      setError(result.message || 'فشل تسجيل الدخول');
     }
     
     setLoading(false);
@@ -34,14 +34,14 @@ const Login = () => {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1>HRM System</h1>
-        <h2>Login</h2>
+        <h1>نظام إدارة الموارد البشرية</h1>
+        <h2>تسجيل الدخول</h2>
         
         {error && <div className="error-message">{error}</div>}
         
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="username">Username</label>
+            <label htmlFor="username">اسم المستخدم</label>
             <input
               id="username"
               type="text"
@@ -49,12 +49,12 @@ const Login = () => {
               onChange={(e) => setUsername(e.target.value)}
               required
               disabled={loading}
-              placeholder="Enter your username"
+              placeholder="أدخل اسم المستخدم"
             />
           </div>
           
           <div className="form-group">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">كلمة المرور</label>
             <input
               id="password"
               type="password"
@@ -62,12 +62,12 @@ const Login = () => {
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={loading}
-              placeholder="Enter your password"
+              placeholder="أدخل كلمة المرور"
             />
           </div>
           
           <button type="submit" disabled={loading} className="login-button">
-            {loading ? 'Logging in...' : 'Login'}
+            {loading ? 'جاري تسجيل الدخول...' : 'تسجيل الدخول'}
           </button>
         </form>
       </div>

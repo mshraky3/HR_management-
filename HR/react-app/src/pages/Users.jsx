@@ -34,7 +34,7 @@ const Users = () => {
       }
     } catch (error) {
       console.error('Error loading users:', error);
-      alert('Failed to load users');
+      alert('فشل تحميل المستخدمين');
     } finally {
       setLoading(false);
     }
@@ -53,7 +53,7 @@ const Users = () => {
       resetForm();
       loadUsers();
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to save user');
+      alert(error.response?.data?.message || 'فشل حفظ المستخدم');
     }
   };
 
@@ -71,12 +71,12 @@ const Users = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to deactivate this user?')) return;
+    if (!confirm('هل أنت متأكد من رغبتك في إلغاء تفعيل هذا المستخدم؟')) return;
     try {
       await usersAPI.delete(id);
       loadUsers();
     } catch (error) {
-      alert('Failed to delete user');
+      alert('فشل حذف المستخدم');
     }
   };
 
@@ -92,26 +92,26 @@ const Users = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading users...</div>;
+    return <div className="loading">جاري تحميل المستخدمين...</div>;
   }
 
   return (
     <div className="table-page">
       <div className="page-header">
-        <h1>Users Management</h1>
+        <h1>إدارة المستخدمين</h1>
         <button onClick={() => { setShowForm(true); resetForm(); setEditingUser(null); }} className="btn-primary">
-          Add New User
+          إضافة مستخدم جديد
         </button>
       </div>
 
       {showForm && (
         <div className="modal">
           <div className="modal-content">
-            <h2>{editingUser ? 'Edit User' : 'Create New User'}</h2>
+            <h2>{editingUser ? 'تعديل المستخدم' : 'إنشاء مستخدم جديد'}</h2>
             <form onSubmit={handleSubmit}>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Username *</label>
+                  <label>اسم المستخدم *</label>
                   <input
                     type="text"
                     value={formData.username}
@@ -120,7 +120,7 @@ const Users = () => {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Password {!editingUser && '*'}</label>
+                  <label>كلمة المرور {!editingUser && '*'}</label>
                   <input
                     type="password"
                     value={formData.password}
@@ -131,7 +131,7 @@ const Users = () => {
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Full Name *</label>
+                  <label>الاسم الكامل *</label>
                   <input
                     type="text"
                     value={formData.full_name}
@@ -140,7 +140,7 @@ const Users = () => {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Email</label>
+                  <label>البريد الإلكتروني</label>
                   <input
                     type="email"
                     value={formData.email}
@@ -150,29 +150,29 @@ const Users = () => {
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Role *</label>
+                  <label>الدور *</label>
                   <select
                     value={formData.role}
                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                     required
                   >
-                    <option value="branch_manager">Branch Manager</option>
+                    <option value="branch_manager">مدير فرع</option>
                   </select>
                 </div>
                 <div className="form-group">
-                  <label>Branch ID</label>
+                  <label>معرف الفرع</label>
                   <input
                     type="number"
                     value={formData.branch_id}
                     onChange={(e) => setFormData({ ...formData, branch_id: e.target.value })}
-                    placeholder="Leave empty if main manager"
+                    placeholder="اتركه فارغاً إذا كان مدير رئيسي"
                   />
                 </div>
               </div>
               <div className="form-actions">
-                <button type="submit" className="btn-primary">Save</button>
+                <button type="submit" className="btn-primary">حفظ</button>
                 <button type="button" onClick={() => { setShowForm(false); resetForm(); setEditingUser(null); }} className="btn-secondary">
-                  Cancel
+                  إلغاء
                 </button>
               </div>
             </form>
@@ -184,38 +184,36 @@ const Users = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Username</th>
-              <th>Full Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Branch ID</th>
-              <th>Status</th>
-              <th>Actions</th>
+              <th>اسم المستخدم</th>
+              <th>الاسم الكامل</th>
+              <th>البريد الإلكتروني</th>
+              <th>الدور</th>
+              <th>معرف الفرع</th>
+              <th>الحالة</th>
+              <th>الإجراءات</th>
             </tr>
           </thead>
           <tbody>
             {users.length === 0 ? (
               <tr>
-                <td colSpan="8" style={{ textAlign: 'center' }}>No users found</td>
+                <td colSpan="7" style={{ textAlign: 'center' }}>لم يتم العثور على مستخدمين</td>
               </tr>
             ) : (
               users.map((user) => (
                 <tr key={user.id}>
-                  <td>{user.id}</td>
                   <td>{user.username}</td>
                   <td>{user.full_name}</td>
                   <td>{user.email || '-'}</td>
-                  <td>{user.role === 'main_manager' ? 'Main Manager' : 'Branch Manager'}</td>
+                  <td>{user.role === 'main_manager' ? 'مدير رئيسي' : 'مدير فرع'}</td>
                   <td>{user.branch_id || '-'}</td>
                   <td>
                     <span className={`badge ${user.is_active ? 'badge-success' : 'badge-danger'}`}>
-                      {user.is_active ? 'Active' : 'Inactive'}
+                      {user.is_active ? 'نشط' : 'غير نشط'}
                     </span>
                   </td>
                   <td>
-                    <button onClick={() => handleEdit(user)} className="btn-sm btn-edit">Edit</button>
-                    <button onClick={() => handleDelete(user.id)} className="btn-sm btn-delete">Delete</button>
+                    <button onClick={() => handleEdit(user)} className="btn-sm btn-edit">تعديل</button>
+                    <button onClick={() => handleDelete(user.id)} className="btn-sm btn-delete">حذف</button>
                   </td>
                 </tr>
               ))

@@ -12,7 +12,8 @@ import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Branches from './pages/Branches';
 import Employees from './pages/Employees';
-import Documents from './pages/Documents';
+import EmployeeDetails from './pages/EmployeeDetails';
+import BranchDocuments from './pages/BranchDocuments';
 import './App.css';
 
 // Wrapper component to choose layout based on role
@@ -68,11 +69,21 @@ function App() {
             }
           />
           <Route
-            path="/documents"
+            path="/employees/:id"
             element={
               <ProtectedRoute>
                 <RoleBasedLayout>
-                  <Documents />
+                  <EmployeeDetails />
+                </RoleBasedLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/branch-documents"
+            element={
+              <ProtectedRoute>
+                <RoleBasedLayout>
+                  <BranchDocuments />
                 </RoleBasedLayout>
               </ProtectedRoute>
             }
