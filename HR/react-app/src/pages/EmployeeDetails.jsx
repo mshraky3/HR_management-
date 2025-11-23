@@ -19,6 +19,8 @@ const EmployeeDetails = () => {
   const [loading, setLoading] = useState(true);
   const [previewDocument, setPreviewDocument] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [downloading, setDownloading] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(null);
 
   useEffect(() => {
     loadEmployeeData();
@@ -58,6 +60,7 @@ const EmployeeDetails = () => {
         return;
       }
 
+      setPreviewLoading(document.id);
       setPreviewDocument(document);
       // Check if it's an image
       if (document.mime_type && document.mime_type.startsWith('image/')) {
@@ -76,6 +79,9 @@ const EmployeeDetails = () => {
           const errorMsg = error.response?.data?.message || error.message || 'فشل تحميل الصورة';
           alert(`فشل تحميل الصورة للمعاينة: ${errorMsg}`);
           setPreviewDocument(null);
+          setPreviewUrl(null);
+        } finally {
+          setPreviewLoading(null);
         }
       } else if (document.mime_type === 'application/pdf') {
         // For PDFs, download as blob and open in new tab
@@ -97,16 +103,21 @@ const EmployeeDetails = () => {
           const errorMsg = error.response?.data?.message || error.message || 'فشل فتح ملف PDF';
           alert(`فشل فتح ملف PDF: ${errorMsg}`);
           setPreviewDocument(null);
+        } finally {
+          setPreviewLoading(null);
         }
       } else {
         // For other types, try download
         handleDownload(document.id);
         setPreviewDocument(null);
+        setPreviewLoading(null);
       }
     } catch (error) {
       console.error('Error previewing document:', error);
       alert('فشل عرض المستند');
       setPreviewDocument(null);
+      setPreviewUrl(null);
+      setPreviewLoading(null);
     }
   };
 
@@ -120,6 +131,7 @@ const EmployeeDetails = () => {
         return;
       }
 
+      setDownloading(documentId);
       const response = await documentsAPI.download(documentId);
       
       // Get filename from response headers
@@ -149,11 +161,14 @@ const EmployeeDetails = () => {
       console.error('Error downloading document:', error);
       const errorMsg = error.response?.data?.message || error.message || 'فشل تحميل المستند';
       alert(`فشل تحميل المستند: ${errorMsg}`);
+    } finally {
+      setDownloading(null);
     }
   };
 
   const closePreview = () => {
     setPreviewDocument(null);
+    setPreviewLoading(null);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
@@ -286,6 +301,11 @@ const EmployeeDetails = () => {
               <strong>رقم الهاتف:</strong> {employee.phone_number}
             </div>
           )}
+          {employee.national_address && (
+            <div>
+              <strong>العنوان الوطني الموحد (المختصر):</strong> {employee.national_address}
+            </div>
+          )}
           {employee.bank_name && (
             <div>
               <strong>البنك:</strong> {employee.bank_name}
@@ -301,9 +321,79 @@ const EmployeeDetails = () => {
               <strong>نوع العقد:</strong> {employee.contract_type}
             </div>
           )}
-          {employee.salary && (
+          {(employee.years_of_experience_in_same_institution !== undefined && employee.years_of_experience_in_same_institution !== null) && (
             <div>
-              <strong>الراتب:</strong> {employee.salary}
+              <strong>عدد سنين الخبرة داخل المؤسسة نفسها:</strong> {employee.years_of_experience_in_same_institution} سنة
+            </div>
+          )}
+          {(
+            (employee.base_salary || 0) !== 0 || 
+            (employee.housing_allowance || 0) !== 0 || 
+            (employee.transportation_allowance || 0) !== 0 || 
+            (employee.end_of_service_allowance || 0) !== 0 || 
+            (employee.annual_leave_allowance || 0) !== 0 || 
+            (employee.other_allowances || 0) !== 0 || 
+            (employee.deductions || 0) !== 0
+          ) && (
+            <div style={{ marginTop: '15px', padding: '15px', background: '#f9f9f9', borderRadius: '5px' }}>
+              <h3 style={{ marginBottom: '10px', color: '#2196F3' }}>الراتب والبدلات والاستقطاعات</h3>
+              <div style={{ marginBottom: '8px' }}>
+                <strong>الراتب الأساسي:</strong> {(employee.base_salary || 0).toLocaleString('ar-SA')} ريال
+              </div>
+              <div style={{ marginBottom: '8px' }}>
+                <strong>بدل السكن:</strong> {(employee.housing_allowance || 0).toLocaleString('ar-SA')} ريال
+              </div>
+              <div style={{ marginBottom: '8px' }}>
+                <strong>بدل النقل:</strong> {(employee.transportation_allowance || 0).toLocaleString('ar-SA')} ريال
+              </div>
+              <div style={{ marginBottom: '8px' }}>
+                <strong>بدل نهاية الخدمة:</strong> {(employee.end_of_service_allowance || 0).toLocaleString('ar-SA')} ريال
+              </div>
+              <div style={{ marginBottom: '8px' }}>
+                <strong>بدل الإجازة السنوية:</strong> {(employee.annual_leave_allowance || 0).toLocaleString('ar-SA')} ريال
+              </div>
+              <div style={{ marginBottom: '8px' }}>
+                <strong>بدلات أخرى:</strong> {(employee.other_allowances || 0).toLocaleString('ar-SA')} ريال
+              </div>
+              <div style={{ marginBottom: '8px', color: employee.deductions > 0 ? '#d32f2f' : 'inherit' }}>
+                <strong>الاستقطاعات (خصومات، سلف، إلخ):</strong> {(employee.deductions || 0) > 0 ? '-' : ''}{(employee.deductions || 0).toLocaleString('ar-SA')} ريال
+              </div>
+              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #ddd' }}>
+                <div style={{ fontWeight: 'bold', color: '#2196F3', marginBottom: '5px' }}>
+                  <strong>إجمالي الراتب والبدلات:</strong> {
+                    (parseFloat(employee.base_salary || 0) +
+                     parseFloat(employee.housing_allowance || 0) +
+                     parseFloat(employee.transportation_allowance || 0) +
+                     parseFloat(employee.end_of_service_allowance || 0) +
+                     parseFloat(employee.annual_leave_allowance || 0) +
+                     parseFloat(employee.other_allowances || 0)).toLocaleString('ar-SA')
+                  } ريال
+                </div>
+                {(employee.deductions || 0) > 0 && (
+                  <div style={{ fontWeight: 'bold', color: '#d32f2f', marginBottom: '5px' }}>
+                    <strong>الاستقطاعات:</strong> -{parseFloat(employee.deductions || 0).toLocaleString('ar-SA')} ريال
+                  </div>
+                )}
+                <div style={{ fontWeight: 'bold', color: '#2e7d32', fontSize: '1.1em', marginTop: '5px', paddingTop: '5px', borderTop: '1px solid #ddd' }}>
+                  <strong>صافي الراتب:</strong> {
+                    (parseFloat(employee.base_salary || 0) +
+                     parseFloat(employee.housing_allowance || 0) +
+                     parseFloat(employee.transportation_allowance || 0) +
+                     parseFloat(employee.end_of_service_allowance || 0) +
+                     parseFloat(employee.annual_leave_allowance || 0) +
+                     parseFloat(employee.other_allowances || 0) -
+                     parseFloat(employee.deductions || 0)).toLocaleString('ar-SA')
+                  } ريال
+                </div>
+              </div>
+            </div>
+          )}
+          {employee.salary && !employee.base_salary && (
+            <div style={{ marginTop: '10px', padding: '10px', background: '#fff3cd', borderRadius: '5px', fontSize: '0.9em' }}>
+              <strong>الراتب (قديم):</strong> {employee.salary.toLocaleString('ar-SA')} ريال
+              <div style={{ fontSize: '0.85em', color: '#856404', marginTop: '5px' }}>
+                ملاحظة: هذا الحقل للتوافق مع البيانات القديمة فقط
+              </div>
             </div>
           )}
         </div>
@@ -357,51 +447,78 @@ const EmployeeDetails = () => {
                   {doc.mime_type && doc.mime_type.startsWith('image/') && (
                     <button
                       onClick={() => handlePreview(doc)}
+                      disabled={previewLoading === doc.id}
                       style={{
                         padding: '8px 16px',
-                        backgroundColor: '#4CAF50',
+                        backgroundColor: previewLoading === doc.id ? '#ccc' : '#4CAF50',
                         color: 'white',
                         border: 'none',
                         borderRadius: '4px',
-                        cursor: 'pointer',
+                        cursor: previewLoading === doc.id ? 'not-allowed' : 'pointer',
                         fontSize: '14px',
-                        fontWeight: 'bold'
+                        fontWeight: 'bold',
+                        opacity: previewLoading === doc.id ? 0.7 : 1
                       }}
                     >
-                      👁️ عرض الصورة
+                      {previewLoading === doc.id ? (
+                        <>
+                          <span className="spinner" style={{ display: 'inline-block', marginLeft: '5px', width: '12px', height: '12px' }}></span>
+                          جاري التحميل...
+                        </>
+                      ) : (
+                        '👁️ عرض الصورة'
+                      )}
                     </button>
                   )}
                   {doc.mime_type && doc.mime_type === 'application/pdf' && (
                     <button
                       onClick={() => handlePreview(doc)}
+                      disabled={previewLoading === doc.id}
                       style={{
                         padding: '8px 16px',
-                        backgroundColor: '#FF9800',
+                        backgroundColor: previewLoading === doc.id ? '#ccc' : '#FF9800',
                         color: 'white',
                         border: 'none',
                         borderRadius: '4px',
-                        cursor: 'pointer',
+                        cursor: previewLoading === doc.id ? 'not-allowed' : 'pointer',
                         fontSize: '14px',
-                        fontWeight: 'bold'
+                        fontWeight: 'bold',
+                        opacity: previewLoading === doc.id ? 0.7 : 1
                       }}
                     >
-                      📄 فتح PDF
+                      {previewLoading === doc.id ? (
+                        <>
+                          <span className="spinner" style={{ display: 'inline-block', marginLeft: '5px', width: '12px', height: '12px' }}></span>
+                          جاري التحميل...
+                        </>
+                      ) : (
+                        '📄 فتح PDF'
+                      )}
                     </button>
                   )}
                   <button
                     onClick={() => handleDownload(doc.id)}
+                    disabled={downloading === doc.id}
                     style={{
                       padding: '8px 16px',
-                      backgroundColor: '#2196F3',
+                      backgroundColor: downloading === doc.id ? '#ccc' : '#2196F3',
                       color: 'white',
                       border: 'none',
                       borderRadius: '4px',
-                      cursor: 'pointer',
+                      cursor: downloading === doc.id ? 'not-allowed' : 'pointer',
                       fontSize: '14px',
-                      fontWeight: 'bold'
+                      fontWeight: 'bold',
+                      opacity: downloading === doc.id ? 0.7 : 1
                     }}
                   >
-                    ⬇️ تحميل
+                    {downloading === doc.id ? (
+                      <>
+                        <span className="spinner" style={{ display: 'inline-block', marginLeft: '5px', width: '12px', height: '12px' }}></span>
+                        جاري التحميل...
+                      </>
+                    ) : (
+                      '⬇️ تحميل'
+                    )}
                   </button>
                 </div>
               </div>

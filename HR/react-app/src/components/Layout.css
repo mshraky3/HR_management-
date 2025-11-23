@@ -5,11 +5,11 @@
   flex-direction: column;
 }
 
-/* Navigation Bar */
+/* Navigation Bar - Modern Design */
 .navbar {
   background: var(--bg);
-  border-bottom: 1px solid var(--border);
-  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 2px solid var(--border-light);
+  padding: var(--spacing-lg) var(--spacing-xl);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -18,7 +18,9 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.95);
 }
 
 .nav-brand {
@@ -61,24 +63,47 @@
 }
 
 .nav-links a {
-  color: var(--text);
+  color: var(--text-secondary);
   text-decoration: none;
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: var(--radius-md);
+  padding: 0.625rem 1.25rem;
+  border-radius: var(--radius-lg);
   font-size: var(--font-size-sm);
-  font-weight: 500;
-  transition: all 0.2s;
+  font-weight: 600;
+  transition: all var(--transition-base);
   white-space: nowrap;
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-links a::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 0;
+  height: 3px;
+  background: var(--primary);
+  transition: width var(--transition-base);
 }
 
 .nav-links a:hover {
-  background: var(--bg-secondary);
+  background: var(--primary-light);
   color: var(--primary);
+  transform: translateY(-2px);
+}
+
+.nav-links a:hover::before {
+  width: 100%;
 }
 
 .nav-links a.active {
-  background: var(--primary);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
   color: white;
+  box-shadow: var(--shadow-md);
+}
+
+.nav-links a.active::before {
+  display: none;
 }
 
 /* Mobile Menu Toggle */

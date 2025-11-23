@@ -19,6 +19,7 @@ const Dashboard = () => {
     documents: 0,
     loading: true,
   });
+  const [monthlyDocumentAlerts, setMonthlyDocumentAlerts] = useState([]);
 
   useEffect(() => {
     loadStats();
@@ -44,9 +45,8 @@ const Dashboard = () => {
       ]);
 
       // Store branches for display
-      if (branchesRes.data.success) {
-        setBranches(branchesRes.data.data || []);
-      }
+      const branchesList = branchesRes.data.success ? (branchesRes.data.data || []) : [];
+      setBranches(branchesList);
 
       // For branch documents
       let documentsRes = { data: { data: [] } };
@@ -56,6 +56,9 @@ const Dashboard = () => {
         // If no documents or error, just use empty array
         console.log('No branch documents found or error:', error);
       }
+
+      // Check monthly documents (payroll_file and attendance_file)
+      checkMonthlyDocuments(documentsRes.data.data || [], branchesList);
 
       let usersRes = { data: { data: [] } };
       if (isMainManager()) {
@@ -73,6 +76,88 @@ const Dashboard = () => {
       console.error('Error loading stats:', error);
       setStats((prev) => ({ ...prev, loading: false }));
     }
+  };
+
+  const checkMonthlyDocuments = (documents, branchesList) => {
+    const alerts = [];
+    const monthlyTypes = ['payroll_file', 'attendance_file'];
+    const typeLabels = {
+      payroll_file: 'ملف مسيرات الرواتب',
+      attendance_file: 'ملف الحضور و الانصراف'
+    };
+
+    // Get branches to check
+    const branchesToCheck = isMainManager() 
+      ? branchesList 
+      : branchesList.filter(b => b.id === user?.branch_id);
+
+    for (const branch of branchesToCheck) {
+      for (const docType of monthlyTypes) {
+        // Find the most recent document of this type for this branch
+        const branchDocs = documents.filter(
+          doc => doc.branch_id === branch.id && doc.document_type === docType
+        );
+
+        if (branchDocs.length === 0) {
+          // No document found - must do
+          alerts.push({
+            branchId: branch.id,
+            branchName: branch.branch_name,
+            documentType: docType,
+            documentLabel: typeLabels[docType],
+            status: 'must_do',
+            daysSinceUpload: null,
+            message: `لا يوجد ملف ${typeLabels[docType]} للفرع`
+          });
+        } else {
+          // Find the most recent upload
+          const mostRecent = branchDocs.reduce((latest, doc) => {
+            const docDate = new Date(doc.uploaded_at);
+            const latestDate = latest ? new Date(latest.uploaded_at) : new Date(0);
+            return docDate > latestDate ? doc : latest;
+          });
+
+          const uploadDate = new Date(mostRecent.uploaded_at);
+          const now = new Date();
+          const daysDiff = Math.floor((now - uploadDate) / (1000 * 60 * 60 * 24));
+
+          if (daysDiff > 30) {
+            // Must do - more than 30 days (overrides preferred)
+            alerts.push({
+              branchId: branch.id,
+              branchName: branch.branch_name,
+              documentType: docType,
+              documentLabel: typeLabels[docType],
+              status: 'must_do',
+              daysSinceUpload: daysDiff,
+              lastUploadDate: uploadDate,
+              message: `ملف ${typeLabels[docType]} لم يتم تحديثه منذ ${daysDiff} يوم - يجب التحديث فوراً`
+            });
+          } else if (daysDiff > 25) {
+            // Preferred to do - more than 25 days but not more than 30
+            alerts.push({
+              branchId: branch.id,
+              branchName: branch.branch_name,
+              documentType: docType,
+              documentLabel: typeLabels[docType],
+              status: 'preferred',
+              daysSinceUpload: daysDiff,
+              lastUploadDate: uploadDate,
+              message: `ملف ${typeLabels[docType]} لم يتم تحديثه منذ ${daysDiff} يوم - يُفضل التحديث قريباً`
+            });
+          }
+        }
+      }
+    }
+
+    // Sort: must_do first, then preferred
+    alerts.sort((a, b) => {
+      if (a.status === 'must_do' && b.status !== 'must_do') return -1;
+      if (a.status !== 'must_do' && b.status === 'must_do') return 1;
+      return (b.daysSinceUpload || 0) - (a.daysSinceUpload || 0);
+    });
+
+    setMonthlyDocumentAlerts(alerts);
   };
 
   return (
@@ -115,6 +200,44 @@ const Dashboard = () => {
             <h3>مستندات الفرع</h3>
             <div className="stat-number">{stats.documents}</div>
             <Link to="/branch-documents" className="stat-link">عرض الكل ←</Link>
+          </div>
+        </div>
+      )}
+
+      {/* Monthly Document Alerts */}
+      {monthlyDocumentAlerts.length > 0 && (
+        <div className="monthly-documents-alerts">
+          <h2>تنبيهات المستندات الشهرية</h2>
+          <div className="alerts-container">
+            {monthlyDocumentAlerts.map((alert, index) => (
+              <div 
+                key={`${alert.branchId}-${alert.documentType}-${index}`}
+                className={`alert-card ${alert.status === 'must_do' ? 'alert-must-do' : 'alert-preferred'}`}
+              >
+                <div className="alert-header">
+                  <span className={`alert-badge ${alert.status === 'must_do' ? 'badge-danger' : 'badge-warning'}`}>
+                    {alert.status === 'must_do' ? 'يجب التنفيذ' : 'يفضل التنفيذ'}
+                  </span>
+                  <h3>{alert.branchName}</h3>
+                </div>
+                <div className="alert-body">
+                  <p className="alert-message">{alert.message}</p>
+                  {alert.lastUploadDate && (
+                    <p className="alert-date">
+                      آخر تحديث: {new Date(alert.lastUploadDate).toLocaleDateString('ar-SA')}
+                    </p>
+                  )}
+                </div>
+                <div className="alert-actions">
+                  <Link 
+                    to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
+                    className="btn-alert"
+                  >
+                    رفع الملف الآن
+                  </Link>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

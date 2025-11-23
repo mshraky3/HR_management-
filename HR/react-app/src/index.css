@@ -6,19 +6,38 @@
 }
 
 :root {
-  /* Colors */
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
+  /* Modern Color Palette */
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+  --primary-light: #dbeafe;
   --secondary: #64748b;
+  --secondary-hover: #475569;
   --success: #10b981;
+  --success-hover: #059669;
   --danger: #ef4444;
+  --danger-hover: #dc2626;
   --warning: #f59e0b;
+  --warning-hover: #d97706;
+  --info: #06b6d4;
+  --info-hover: #0891b2;
+  
+  /* Background Colors */
   --bg: #ffffff;
   --bg-secondary: #f8fafc;
-  --text: #1e293b;
+  --bg-tertiary: #f1f5f9;
+  --bg-hover: #f8fafc;
+  
+  /* Text Colors */
+  --text: #0f172a;
+  --text-secondary: #334155;
   --text-light: #64748b;
+  --text-muted: #94a3b8;
+  
+  /* Border Colors */
   --border: #e2e8f0;
-  --border-focus: #2563eb;
+  --border-light: #f1f5f9;
+  --border-dark: #cbd5e1;
+  --border-focus: #3b82f6;
   
   /* Spacing */
   --spacing-xs: 0.25rem;
@@ -26,6 +45,7 @@
   --spacing-md: 1rem;
   --spacing-lg: 1.5rem;
   --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
   
   /* Typography - Arabic Font */
   --font-family: 'Cairo', 'Segoe UI', 'Tahoma', 'Arial', sans-serif;
@@ -37,15 +57,26 @@
   --font-size-2xl: 1.5rem;
   --font-size-3xl: 1.875rem;
   
-  /* Border Radius */
-  --radius-sm: 0.25rem;
+  /* Border Radius - Modern rounded corners */
+  --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-full: 9999px;
   
-  /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  /* Shadows - Modern depth */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html {

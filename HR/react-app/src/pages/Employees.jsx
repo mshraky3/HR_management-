@@ -21,6 +21,8 @@ const Employees = () => {
   const [employees, setEmployees] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploadingDocuments, setUploadingDocuments] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [formStep, setFormStep] = useState(1); // 1: branch type selection, 2: employee form
@@ -49,8 +51,25 @@ const Employees = () => {
     bank_name: '',
     email: '',
     phone_number: '',
+    national_address: '',
     contract_type: '',
     salary: '',
+    base_salary: '',
+    housing_allowance: '',
+    transportation_allowance: '',
+    end_of_service_allowance: '',
+    annual_leave_allowance: '',
+    other_allowances: '',
+    deductions: '',
+    years_of_experience_in_same_institution: '',
+    graduation_year: '',
+    university_gpa: '',
+    passport_number: '',
+    passport_issue_date: '',
+    passport_expiry_date: '',
+    passport_issue_place: '',
+    residency_issue_date: '',
+    job_title: '',
   });
   
   const [dateOfBirthCalendarType, setDateOfBirthCalendarType] = useState(null);
@@ -59,7 +78,7 @@ const Employees = () => {
   // Document uploads state
   const [documents, setDocuments] = useState({
     id_or_residency: null,
-    employment_letter: null,
+    direct_letter: null,
     bank_iban: null,
     primary_qualification: null,
     employment_contract: null,
@@ -70,6 +89,9 @@ const Employees = () => {
     classification: null,
     speech_therapy_course: null,
     physical_therapy_course: null,
+    medical_disclosure_form: null,
+    speech_therapy_70_hours_course: null,
+    therapy_40_hours_course: null,
   });
 
   useEffect(() => {
@@ -165,9 +187,13 @@ const Employees = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // Set saving state at the start
+    setSaving(true);
+    
     // Validate nationality is selected first
     if (!formData.nationality) {
       alert('الرجاء اختيار الجنسية أولاً');
+      setSaving(false);
       return;
     }
     
@@ -210,13 +236,9 @@ const Employees = () => {
       return;
     }
     
-    // Validate ID expiry calendar type matches nationality
-    if (formData.id_expiry_date_hijri || formData.id_expiry_date_gregorian) {
-      if (isSaudiNationality && idExpiryCalendarType !== 'hijri') {
-        alert('تاريخ انتهاء الهوية للسعوديين يجب أن يكون هجرياً');
-        return;
-      }
-      if (!isSaudiNationality && idExpiryCalendarType !== 'gregorian') {
+    // Validate ID expiry calendar type matches nationality (only for non-Saudis)
+    if (!isSaudiNationality && (formData.id_expiry_date_hijri || formData.id_expiry_date_gregorian)) {
+      if (idExpiryCalendarType !== 'gregorian') {
         alert('تاريخ انتهاء الإقامة لغير السعوديين يجب أن يكون ميلادياً');
         return;
       }
@@ -226,6 +248,47 @@ const Employees = () => {
     if (currentBranchType === 'school' && !editingEmployee && !documents.professional_license) {
       alert('الترخيص المهني مطلوب للمدارس');
       return;
+    }
+
+    // Validate medical disclosure form - required for women only
+    if (formData.gender === 'female' && !documents.medical_disclosure_form) {
+      alert('نموذج افصاح طبي مطلوب للنساء');
+      setSaving(false);
+      return;
+    }
+
+    // Validate job title requirements
+    if (formData.job_title) {
+      // Jobs that require Saudi nationality
+      const saudiOnlyJobs = ['مديرة مراكز', 'الموارد البشرية'];
+      if (saudiOnlyJobs.includes(formData.job_title) && !isSaudi()) {
+        alert(`المسمى الوظيفي "${formData.job_title}" يتطلب أن يكون الموظف سعودي`);
+        setSaving(false);
+        return;
+      }
+
+      // Jobs that require experience certificate
+      const experienceRequiredJobs = ['مديرة مراكز', 'مشرف فني عام'];
+      if (experienceRequiredJobs.includes(formData.job_title) && !documents.experience_certificate) {
+        alert(`المسمى الوظيفي "${formData.job_title}" يتطلب شهادة خبرة`);
+        setSaving(false);
+        return;
+      }
+
+      // Jobs that require 70 hours speech therapy course
+      if (formData.job_title === 'النطق و التخاطب' && !documents.speech_therapy_70_hours_course) {
+        alert('المسمى الوظيفي "النطق و التخاطب" يتطلب دورة 70 ساعة في التخاطب');
+        setSaving(false);
+        return;
+      }
+
+      // Jobs that require 40 hours therapy course
+      const therapy40HoursJobs = ['علاج طبيعي', 'علاج وظيفي'];
+      if (therapy40HoursJobs.includes(formData.job_title) && !documents.therapy_40_hours_course) {
+        alert(`المسمى الوظيفي "${formData.job_title}" يتطلب دورة 40 ساعة`);
+        setSaving(false);
+        return;
+      }
     }
     
     // Validate IBAN and bank name match if provided
@@ -324,14 +387,23 @@ const Employees = () => {
       'bank_name': { max: 200, label: 'اسم البنك' },
       'email': { max: 255, label: 'البريد الإلكتروني' },
       'phone_number': { max: 50, label: 'رقم الهاتف' },
+      'national_address': { max: 8, label: 'العنوان الوطني الموحد (المختصر)' },
       'contract_type': { max: 100, label: 'نوع العقد' },
       'id_or_residency_number': { max: 100, label: 'رقم الهوية أو الإقامة' }
     };
     
     for (const [field, { max, label }] of Object.entries(fieldLengths)) {
-      if (formData[field] && typeof formData[field] === 'string' && formData[field].length > max) {
-        alert(`الحقل "${label}" أطول من المسموح (${max} حرف)`);
-        return;
+      if (formData[field] && typeof formData[field] === 'string') {
+        // Special validation for national_address - must be exactly 8 characters if provided
+        if (field === 'national_address' && formData[field].trim() !== '' && formData[field].length !== 8) {
+          alert(`الحقل "${label}" يجب أن يكون بالضبط 8 خانات`);
+          return;
+        }
+        // General validation for other fields
+        if (formData[field].length > max) {
+          alert(`الحقل "${label}" أطول من المسموح (${max} حرف)`);
+          return;
+        }
       }
     }
     
@@ -352,12 +424,15 @@ const Employees = () => {
     try {
       const data = { ...formData };
       
-      // Remove empty strings and convert to null for optional fields
+      // Remove empty strings and convert to null for optional fields (non-numeric)
       const optionalFields = [
         'date_of_birth_hijri', 'date_of_birth_gregorian',
         'id_expiry_date_hijri', 'id_expiry_date_gregorian',
         'religion', 'marital_status', 'educational_qualification', 'specialization',
-        'bank_iban', 'bank_name', 'email', 'phone_number', 'contract_type', 'salary'
+        'bank_iban', 'bank_name', 'email', 'phone_number', 'national_address', 'contract_type',
+        'graduation_year', 'university_gpa',
+        'passport_number', 'passport_issue_date', 'passport_expiry_date', 'passport_issue_place', 'residency_issue_date',
+        'job_title'
       ];
       
       optionalFields.forEach(field => {
@@ -368,16 +443,36 @@ const Employees = () => {
         }
       });
       
-      // Parse salary if provided
-      if (data.salary && data.salary !== '' && data.salary !== null) {
-        const salaryValue = parseFloat(data.salary);
-        if (isNaN(salaryValue)) {
-          delete data.salary;
+      // Parse salary fields - set to 0 if empty instead of null
+      const salaryFields = [
+        'salary', 'base_salary', 'housing_allowance', 'transportation_allowance',
+        'end_of_service_allowance', 'annual_leave_allowance', 'other_allowances',
+        'deductions'
+      ];
+      
+      salaryFields.forEach(field => {
+        if (data[field] === '' || data[field] === null || data[field] === undefined) {
+          data[field] = 0; // Set to 0 instead of deleting
+        } else if (typeof data[field] === 'string' && data[field].trim() === '') {
+          data[field] = 0;
         } else {
-          data.salary = salaryValue;
+          const value = parseFloat(data[field]);
+          if (isNaN(value)) {
+            data[field] = 0; // Set to 0 if invalid number
+          } else {
+            data[field] = value;
+          }
         }
+      });
+      
+      // Parse years_of_experience_in_same_institution - set to 0 if empty
+      if (data.years_of_experience_in_same_institution === '' || data.years_of_experience_in_same_institution === null || data.years_of_experience_in_same_institution === undefined) {
+        data.years_of_experience_in_same_institution = 0;
+      } else if (typeof data.years_of_experience_in_same_institution === 'string' && data.years_of_experience_in_same_institution.trim() === '') {
+        data.years_of_experience_in_same_institution = 0;
       } else {
-        delete data.salary;
+        const value = parseInt(data.years_of_experience_in_same_institution);
+        data.years_of_experience_in_same_institution = isNaN(value) ? 0 : value;
       }
       
       // Set employee_id_number automatically from id_or_residency_number
@@ -421,6 +516,7 @@ const Employees = () => {
         const documentEntries = Object.entries(documents).filter(([_, file]) => file !== null);
         
         if (documentEntries.length > 0) {
+          setUploadingDocuments(true);
           const uploadPromises = documentEntries.map(async ([documentType, file]) => {
             const formData = new FormData();
             formData.append('file', file);
@@ -436,6 +532,7 @@ const Employees = () => {
           });
           
           await Promise.all(uploadPromises);
+          setUploadingDocuments(false);
         }
       } else {
         // Create employee first
@@ -446,6 +543,7 @@ const Employees = () => {
         const documentEntries = Object.entries(documents).filter(([_, file]) => file !== null);
         
         if (documentEntries.length > 0) {
+          setUploadingDocuments(true);
           const uploadPromises = documentEntries.map(async ([documentType, file]) => {
             const formData = new FormData();
             formData.append('file', file);
@@ -461,6 +559,7 @@ const Employees = () => {
           });
           
           await Promise.all(uploadPromises);
+          setUploadingDocuments(false);
         }
       }
       
@@ -481,16 +580,19 @@ const Employees = () => {
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       // Show clear error message
       alert(`❌ خطأ في حفظ الموظف\n\n${errorMessage}\n\nالرجاء التحقق من البيانات المدخلة والمحاولة مرة أخرى.`);
+    } finally {
+      setSaving(false);
+      setUploadingDocuments(false);
     }
   };
   
   const resetDocuments = () => {
     setDocuments({
       id_or_residency: null,
-      employment_letter: null,
+      direct_letter: null,
       bank_iban: null,
       primary_qualification: null,
       employment_contract: null,
@@ -501,6 +603,9 @@ const Employees = () => {
       classification: null,
       speech_therapy_course: null,
       physical_therapy_course: null,
+      medical_disclosure_form: null,
+      speech_therapy_70_hours_course: null,
+      therapy_40_hours_course: null,
     });
   };
   
@@ -513,13 +618,11 @@ const Employees = () => {
 
   const handleEdit = (employee) => {
     setEditingEmployee(employee);
-    // Find branch type from branches list
     const branch = branches.find(b => b.id === employee.branch_id);
     if (branch) {
       setSelectedBranchType(branch.branch_type);
     }
     
-    // Check if employee is Saudi based on nationality
     const isSaudiEmployee = employee.nationality === 'Saudi Arabia' || 
                             employee.nationality === 'المملكة العربية السعودية' ||
                             employee.nationality?.toLowerCase().includes('saudi') ||
@@ -533,6 +636,7 @@ const Employees = () => {
       third_name: employee.third_name,
       fourth_name: employee.fourth_name,
       occupation: employee.occupation,
+      job_title: employee.job_title || '',
       nationality: employee.nationality,
       date_of_birth_hijri: employee.date_of_birth_hijri || '',
       date_of_birth_gregorian: employee.date_of_birth_gregorian || '',
@@ -549,8 +653,24 @@ const Employees = () => {
       bank_name: employee.bank_name || '',
       email: employee.email || '',
       phone_number: employee.phone_number || '',
+      national_address: employee.national_address || '',
       contract_type: employee.contract_type || '',
       salary: employee.salary || '',
+      base_salary: employee.base_salary || '',
+      housing_allowance: employee.housing_allowance || '',
+      transportation_allowance: employee.transportation_allowance || '',
+      end_of_service_allowance: employee.end_of_service_allowance || '',
+      annual_leave_allowance: employee.annual_leave_allowance || '',
+      other_allowances: employee.other_allowances || '',
+      deductions: employee.deductions || '',
+      years_of_experience_in_same_institution: employee.years_of_experience_in_same_institution || '',
+      graduation_year: employee.graduation_year || '',
+      university_gpa: employee.university_gpa || '',
+      passport_number: employee.passport_number || '',
+      passport_issue_date: employee.passport_issue_date || '',
+      passport_expiry_date: employee.passport_expiry_date || '',
+      passport_issue_place: employee.passport_issue_place || '',
+      residency_issue_date: employee.residency_issue_date || '',
     });
     
     // Set calendar types based on nationality (not existing data)
@@ -600,6 +720,7 @@ const Employees = () => {
       third_name: '',
       fourth_name: '',
       occupation: '',
+      job_title: '',
       nationality: '',
       date_of_birth_hijri: '',
       date_of_birth_gregorian: '',
@@ -618,6 +739,20 @@ const Employees = () => {
       phone_number: '',
       contract_type: '',
       salary: '',
+      base_salary: '',
+      housing_allowance: '',
+      transportation_allowance: '',
+      end_of_service_allowance: '',
+      annual_leave_allowance: '',
+      other_allowances: '',
+      years_of_experience_in_same_institution: '',
+      graduation_year: '',
+      university_gpa: '',
+      passport_number: '',
+      passport_issue_date: '',
+      passport_expiry_date: '',
+      passport_issue_place: '',
+      residency_issue_date: '',
     });
     // Branch managers skip step 1, go directly to step 2
     setFormStep(!isMainManager() && user?.branch_id ? 2 : 1);
@@ -899,6 +1034,93 @@ const Employees = () => {
                   />
                 </div>
                 <div className="form-group col-3">
+                  <label>المسمى الوظيفي</label>
+                  <select
+                    value={formData.job_title}
+                    onChange={(e) => setFormData({ ...formData, job_title: e.target.value })}
+                  >
+                    <option value="">اختر المسمى الوظيفي</option>
+                    {(() => {
+                      // Get current branch type
+                      let currentBranchType = selectedBranchType;
+                      if (!isMainManager() && user?.branch_id && !selectedBranchType) {
+                        const userBranch = branches.find(b => b.id === user.branch_id);
+                        if (userBranch) {
+                          currentBranchType = userBranch.branch_type;
+                        }
+                      }
+                      if (isMainManager() && !currentBranchType && formData.branch_id) {
+                        const selectedBranch = branches.find(b => b.id === parseInt(formData.branch_id));
+                        if (selectedBranch) {
+                          currentBranchType = selectedBranch.branch_type;
+                        }
+                      }
+                      if (editingEmployee && !currentBranchType) {
+                        const employeeBranch = branches.find(b => b.id === editingEmployee.branch_id);
+                        if (employeeBranch) {
+                          currentBranchType = employeeBranch.branch_type;
+                        }
+                      }
+
+                      // School job titles
+                      if (currentBranchType === 'school') {
+                        return (
+                          <>
+                            <option value="مدير">مدير</option>
+                            <option value="وكيل">وكيل</option>
+                            <option value="معلم صفوف اولية">معلم صفوف اولية</option>
+                            <option value="معلم انجليزي">معلم انجليزي</option>
+                            <option value="معلم عربي">معلم عربي</option>
+                            <option value="معلم علوم">معلم علوم</option>
+                            <option value="معلم فيزياء">معلم فيزياء</option>
+                            <option value="معلم كيمياء">معلم كيمياء</option>
+                            <option value="معلم احياء">معلم احياء</option>
+                            <option value="معلم حساب آلي">معلم حساب آلي</option>
+                            <option value="معلم اجتماعيات">معلم اجتماعيات</option>
+                            <option value="معلم تاريخ">معلم تاريخ</option>
+                            <option value="معلم جغرافيا">معلم جغرافيا</option>
+                            <option value="معلم اسلاميات">معلم اسلاميات</option>
+                            <option value="معلم رياضيات">معلم رياضيات</option>
+                            <option value="معلم اسرية">معلم اسرية</option>
+                            <option value="معلم بدنية">معلم بدنية</option>
+                            <option value="معلم فنية">معلم فنية</option>
+                            <option value="معلم رياض اطفال">معلم رياض اطفال</option>
+                            <option value="حارس">حارس</option>
+                            <option value="سائق">سائق</option>
+                            <option value="مساعد اداري">مساعد اداري</option>
+                            <option value="عامل نظافة">عامل نظافة</option>
+                            <option value="مرافق باص">مرافق باص</option>
+                            <option value="مرشد طلابي">مرشد طلابي</option>
+                            <option value="معلم لغة صينية">معلم لغة صينية</option>
+                            <option value="معلم حساب ذهني">معلم حساب ذهني</option>
+                          </>
+                        );
+                      }
+                      // Healthcare center job titles
+                      return (
+                        <>
+                          <option value="مديرة مراكز">مديرة مراكز</option>
+                          <option value="الموارد البشرية">الموارد البشرية</option>
+                          <option value="حارس امن">حارس امن</option>
+                          <option value="سائق">سائق</option>
+                          <option value="مرافق سائق">مرافق سائق</option>
+                          <option value="تمريض">تمريض</option>
+                          <option value="علاج طبيعي">علاج طبيعي</option>
+                          <option value="علاج وظيفي">علاج وظيفي</option>
+                          <option value="النطق و التخاطب">النطق و التخاطب</option>
+                          <option value="اخصائي نفسي">اخصائي نفسي</option>
+                          <option value="اخصائي اجتماعي">اخصائي اجتماعي</option>
+                          <option value="مشرف فني عام">مشرف فني عام</option>
+                          <option value="مراقب اجتماعي">مراقب اجتماعي</option>
+                          <option value="الرعاية الشخصية">الرعاية الشخصية</option>
+                          <option value="معلم صف تربية خاصة">معلم صف تربية خاصة</option>
+                          <option value="معلم صف توحد">معلم صف توحد</option>
+                        </>
+                      );
+                    })()}
+                  </select>
+                </div>
+                <div className="form-group col-3">
                   <HijriDatePicker
                     label={isSaudi() ? "تاريخ الميلاد *" : "تاريخ الميلاد *"}
                     value={dateOfBirthCalendarType === 'hijri' ? formData.date_of_birth_hijri : (dateOfBirthCalendarType === 'gregorian' ? formData.date_of_birth_gregorian : '')}
@@ -918,15 +1140,18 @@ const Employees = () => {
                     placeholder={isSaudi() ? "رقم الهوية" : "رقم الإقامة"}
                   />
                 </div>
-                <div className="form-group col-3">
-                  <HijriDatePicker
-                    label={isSaudi() ? "انتهاء الهوية" : "انتهاء الإقامة"}
-                    value={idExpiryCalendarType === 'hijri' ? formData.id_expiry_date_hijri : (idExpiryCalendarType === 'gregorian' ? formData.id_expiry_date_gregorian : '')}
-                    onChange={(value, type) => handleIdExpiryChange(value, type)}
-                    calendarType={idExpiryCalendarType}
-                    forceCalendarType={formData.nationality ? (isSaudi() ? 'hijri' : 'gregorian') : null}
-                  />
-                </div>
+                {/* ID expiry date - only for non-Saudis */}
+                {!isSaudi() && (
+                  <div className="form-group col-3">
+                    <HijriDatePicker
+                      label="انتهاء الإقامة"
+                      value={idExpiryCalendarType === 'gregorian' ? formData.id_expiry_date_gregorian : ''}
+                      onChange={(value, type) => handleIdExpiryChange(value, type)}
+                      calendarType={idExpiryCalendarType}
+                      forceCalendarType={formData.nationality ? 'gregorian' : null}
+                    />
+                  </div>
+                )}
                 <div className="form-group col-2">
                   <label>نوع الهوية *</label>
                   <select
@@ -982,20 +1207,170 @@ const Employees = () => {
                   />
                 </div>
                 <div className="form-group col-2">
-                  <label>نوع العقد</label>
+                  <label>سنة التخرج</label>
                   <input
-                    type="text"
-                    value={formData.contract_type}
-                    onChange={(e) => setFormData({ ...formData, contract_type: e.target.value })}
+                    type="number"
+                    min="1950"
+                    max={new Date().getFullYear() + 5}
+                    value={formData.graduation_year}
+                    onChange={(e) => setFormData({ ...formData, graduation_year: e.target.value })}
+                    placeholder="مثال: 2020"
                   />
                 </div>
                 <div className="form-group col-2">
-                  <label>الراتب</label>
+                  <label>المعدل الجامعي</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="5"
+                    value={formData.university_gpa}
+                    onChange={(e) => setFormData({ ...formData, university_gpa: e.target.value })}
+                    placeholder="مثال: 4.5"
+                  />
+                </div>
+                {/* Passport fields - only for non-Saudis */}
+                {!isSaudi() && (
+                  <>
+                    <div className="form-group col-3">
+                      <label>رقم جواز السفر</label>
+                      <input
+                        type="text"
+                        value={formData.passport_number}
+                        onChange={(e) => setFormData({ ...formData, passport_number: e.target.value })}
+                        placeholder="رقم جواز السفر"
+                      />
+                    </div>
+                    <div className="form-group col-3">
+                      <label>تاريخ اصدار جواز السفر</label>
+                      <input
+                        type="date"
+                        value={formData.passport_issue_date}
+                        onChange={(e) => setFormData({ ...formData, passport_issue_date: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group col-3">
+                      <label>تاريخ انتهاء جواز السفر</label>
+                      <input
+                        type="date"
+                        value={formData.passport_expiry_date}
+                        onChange={(e) => setFormData({ ...formData, passport_expiry_date: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group col-3">
+                      <label>مكان إصدار جواز السفر</label>
+                      <input
+                        type="text"
+                        value={formData.passport_issue_place}
+                        onChange={(e) => setFormData({ ...formData, passport_issue_place: e.target.value })}
+                        placeholder="مكان الإصدار"
+                      />
+                    </div>
+                    <div className="form-group col-3">
+                      <label>تاريخ اصدار الإقامة</label>
+                      <input
+                        type="date"
+                        value={formData.residency_issue_date}
+                        onChange={(e) => setFormData({ ...formData, residency_issue_date: e.target.value })}
+                      />
+                    </div>
+                  </>
+                )}
+                <div className="form-group col-2">
+                  <label>نوع العقد</label>
+                  <select
+                    value={formData.contract_type}
+                    onChange={(e) => setFormData({ ...formData, contract_type: e.target.value })}
+                    className="form-select"
+                  >
+                    <option value="">اختر نوع العقد</option>
+                    <option value="ورقي">ورقي</option>
+                    <option value="قوى">قوى</option>
+                  </select>
+                </div>
+                <div className="form-group col-2">
+                  <label>عدد سنين الخبرة داخل المؤسسة نفسها</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.years_of_experience_in_same_institution}
+                    onChange={(e) => setFormData({ ...formData, years_of_experience_in_same_institution: e.target.value })}
+                  />
+                </div>
+                <h3 className="col-12">الراتب والبدلات</h3>
+                <div className="form-group col-3">
+                  <label>الراتب الأساسي</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.base_salary}
+                    onChange={(e) => setFormData({ ...formData, base_salary: e.target.value })}
+                  />
+                </div>
+                <div className="form-group col-3">
+                  <label>بدل السكن</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.housing_allowance}
+                    onChange={(e) => setFormData({ ...formData, housing_allowance: e.target.value })}
+                  />
+                </div>
+                <div className="form-group col-3">
+                  <label>بدل النقل</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.transportation_allowance}
+                    onChange={(e) => setFormData({ ...formData, transportation_allowance: e.target.value })}
+                  />
+                </div>
+                <div className="form-group col-3">
+                  <label>بدل نهاية الخدمة</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.end_of_service_allowance}
+                    onChange={(e) => setFormData({ ...formData, end_of_service_allowance: e.target.value })}
+                  />
+                </div>
+                <div className="form-group col-3">
+                  <label>بدل الإجازة السنوية</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.annual_leave_allowance}
+                    onChange={(e) => setFormData({ ...formData, annual_leave_allowance: e.target.value })}
+                  />
+                </div>
+                <div className="form-group col-3">
+                  <label>بدلات أخرى</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.other_allowances}
+                    onChange={(e) => setFormData({ ...formData, other_allowances: e.target.value })}
+                  />
+                </div>
+                <div className="form-group col-3">
+                  <label>الاستقطاعات (خصومات، سلف، إلخ)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.deductions}
+                    onChange={(e) => setFormData({ ...formData, deductions: e.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div className="form-group col-3">
+                  <label>الراتب الإجمالي (قديم - للتوافق)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.salary}
                     onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
+                    style={{ background: '#f0f0f0', opacity: 0.7 }}
+                    title="هذا الحقل للتوافق مع البيانات القديمة فقط"
                   />
                 </div>
                 <div className="form-group col-3">
@@ -1012,6 +1387,22 @@ const Employees = () => {
                     type="text"
                     value={formData.phone_number}
                     onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                  />
+                </div>
+                <div className="form-group col-3">
+                  <label>العنوان الوطني الموحد (المختصر)</label>
+                  <input
+                    type="text"
+                    value={formData.national_address}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\s/g, ''); // Remove spaces
+                      if (value.length <= 8) {
+                        setFormData({ ...formData, national_address: value });
+                      }
+                    }}
+                    placeholder="8 خانات"
+                    maxLength={8}
+                    style={{ textAlign: 'center', fontFamily: 'monospace', letterSpacing: '2px' }}
                   />
                 </div>
               
@@ -1039,13 +1430,13 @@ const Employees = () => {
                       {documents.id_or_residency && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.id_or_residency.name}</span>}
                     </div>
                     <div className="form-group col-3">
-                      <label>خطاب التوظيف</label>
+                      <label>خطاب مباشرة</label>
                       <input
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={(e) => handleDocumentChange('employment_letter', e.target.files[0] || null)}
+                        onChange={(e) => handleDocumentChange('direct_letter', e.target.files[0] || null)}
                       />
-                      {documents.employment_letter && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.employment_letter.name}</span>}
+                      {documents.direct_letter && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.direct_letter.name}</span>}
                     </div>
                     <div className="form-group col-3">
                       <label>مستند الآيبان</label>
@@ -1073,6 +1464,17 @@ const Employees = () => {
                         onChange={(e) => handleDocumentChange('employment_contract', e.target.files[0] || null)}
                       />
                       {documents.employment_contract && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.employment_contract.name}</span>}
+                    </div>
+                    {/* Medical disclosure form - required for women, optional for men */}
+                    <div className="form-group col-3">
+                      <label>نموذج افصاح طبي {formData.gender === 'female' && !editingEmployee && '*'}</label>
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onChange={(e) => handleDocumentChange('medical_disclosure_form', e.target.files[0] || null)}
+                        required={formData.gender === 'female' && !editingEmployee}
+                      />
+                      {documents.medical_disclosure_form && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.medical_disclosure_form.name}</span>}
                     </div>
                     {!isSaudi() && (
                       <div className="form-group col-3">
@@ -1119,19 +1521,24 @@ const Employees = () => {
                         </div>
                       </>
                     )}
-                    
-                    {/* Healthcare-specific documents */}
+  
                     {currentBranchType === 'healthcare_center' && (
                       <>
-                        <div className="form-group col-3">
-                          <label>شهادة التصنيف</label>
-                          <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={(e) => handleDocumentChange('classification', e.target.files[0] || null)}
-                          />
-                          {documents.classification && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.classification.name}</span>}
-                        </div>
+                        {/* Classification certificate - only for specific job titles */}
+                        {(formData.job_title === 'علاج طبيعي' || 
+                          formData.job_title === 'علاج وظيفي' || 
+                          formData.job_title === 'اخصائي نفسي' || 
+                          formData.job_title === 'تمريض') && (
+                          <div className="form-group col-3">
+                            <label>شهادة التصنيف</label>
+                            <input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={(e) => handleDocumentChange('classification', e.target.files[0] || null)}
+                            />
+                            {documents.classification && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.classification.name}</span>}
+                          </div>
+                        )}
                         <div className="form-group col-3">
                           <label>شهادة الخبرة</label>
                           <input
@@ -1150,6 +1557,19 @@ const Employees = () => {
                           />
                           {documents.speech_therapy_course && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.speech_therapy_course.name}</span>}
                         </div>
+                        {/* 70 hours speech therapy course - required for النطق و التخاطب job title */}
+                        {formData.job_title === 'النطق و التخاطب' && (
+                          <div className="form-group col-3">
+                            <label>دورة 70 ساعة في التخاطب {!editingEmployee && '*'}</label>
+                            <input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={(e) => handleDocumentChange('speech_therapy_70_hours_course', e.target.files[0] || null)}
+                              required={!editingEmployee}
+                            />
+                            {documents.speech_therapy_70_hours_course && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.speech_therapy_70_hours_course.name}</span>}
+                          </div>
+                        )}
                         <div className="form-group col-3">
                           <label>دورة العلاج الطبيعي</label>
                           <input
@@ -1159,6 +1579,19 @@ const Employees = () => {
                           />
                           {documents.physical_therapy_course && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.physical_therapy_course.name}</span>}
                         </div>
+                        {/* 40 hours therapy course - required for علاج طبيعي and علاج وظيفي job titles */}
+                        {(formData.job_title === 'علاج طبيعي' || formData.job_title === 'علاج وظيفي') && (
+                          <div className="form-group col-3">
+                            <label>دورة 40 ساعة {!editingEmployee && '*'}</label>
+                            <input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={(e) => handleDocumentChange('therapy_40_hours_course', e.target.files[0] || null)}
+                              required={!editingEmployee}
+                            />
+                            {documents.therapy_40_hours_course && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.therapy_40_hours_course.name}</span>}
+                          </div>
+                        )}
                         <div className="form-group col-3">
                           <label>الدورات الإضافية</label>
                           <input
@@ -1173,11 +1606,58 @@ const Employees = () => {
                   </div>
 
               <div className="form-actions">
-                <button type="submit" className="btn-primary">حفظ</button>
-                <button type="button" onClick={() => { setShowForm(false); resetForm(); setEditingEmployee(null); }} className="btn-secondary">
+                <button 
+                  type="submit" 
+                  className="btn-primary" 
+                  disabled={saving || uploadingDocuments}
+                >
+                  {saving ? (
+                    <>
+                      <span className="spinner" style={{ display: 'inline-block', marginLeft: '8px' }}></span>
+                      جاري الحفظ...
+                    </>
+                  ) : uploadingDocuments ? (
+                    <>
+                      <span className="spinner" style={{ display: 'inline-block', marginLeft: '8px' }}></span>
+                      جاري رفع الملفات...
+                    </>
+                  ) : 'حفظ'}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => { setShowForm(false); resetForm(); setEditingEmployee(null); }} 
+                  className="btn-secondary"
+                  disabled={saving || uploadingDocuments}
+                >
                   إلغاء
                 </button>
               </div>
+              
+              {/* Loading Overlay */}
+              {(saving || uploadingDocuments) && (
+                <div style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                  zIndex: 9999,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'column',
+                  gap: '20px'
+                }}>
+                  <div className="spinner-large"></div>
+                  <div style={{ color: 'white', fontSize: '18px', fontWeight: 'bold' }}>
+                    {saving ? 'جاري حفظ البيانات...' : 'جاري رفع الملفات...'}
+                  </div>
+                  <div style={{ color: 'white', fontSize: '14px' }}>
+                    الرجاء الانتظار ولا تغلق الصفحة
+                  </div>
+                </div>
+              )}
             </form>
             )}
           </div>

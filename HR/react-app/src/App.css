@@ -26,24 +26,66 @@
   color: var(--text-light);
 }
 
-/* Error Messages */
-.error-message {
-  background: #fef2f2;
-  color: var(--danger);
-  padding: var(--spacing-md);
-  border-radius: var(--radius-md);
-  border: 1px solid #fecaca;
-  margin-bottom: var(--spacing-md);
+/* Spinner */
+.spinner {
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+  vertical-align: middle;
 }
 
-/* Success Messages */
-.success-message {
-  background: #f0fdf4;
-  color: var(--success);
-  padding: var(--spacing-md);
-  border-radius: var(--radius-md);
-  border: 1px solid #bbf7d0;
+.spinner-large {
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top: 4px solid white;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Button disabled state */
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+button:disabled::before {
+  display: none !important;
+}
+
+/* Error Messages - Modern Design */
+.error-message {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  color: var(--danger);
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-lg);
+  border: 2px solid #fecaca;
   margin-bottom: var(--spacing-md);
+  box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.1);
+  font-weight: 500;
+}
+
+/* Success Messages - Modern Design */
+.success-message {
+  background: linear-gradient(135deg, #f0fdf4 0%, #d1fae5 100%);
+  color: var(--success);
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-lg);
+  border: 2px solid #bbf7d0;
+  margin-bottom: var(--spacing-md);
+  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.1);
+  font-weight: 500;
 }
 
 /* Empty States */
@@ -53,13 +95,38 @@
   color: var(--text-light);
 }
 
-/* Cards */
+/* Cards - Modern Design */
 .card {
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
-  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl);
+  box-shadow: var(--shadow-md);
+  transition: all var(--transition-base);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(180deg, var(--primary) 0%, var(--primary-hover) 100%);
+  transition: width var(--transition-base);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-xl);
+  transform: translateY(-2px);
+  border-color: var(--primary);
+}
+
+.card:hover::before {
+  width: 100%;
+  opacity: 0.05;
 }
 
 /* Responsive Grid */
