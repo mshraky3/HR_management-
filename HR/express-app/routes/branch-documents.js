@@ -8,10 +8,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { authenticate } from '../middleware/auth.js';
-import { uploadSingle, validateUploadedFile, moveFileToFinalLocation } from '../middleware/upload.js';
+import { uploadSingle, validateUploadedFile } from '../middleware/upload.js';
 import { BranchDocument } from '../models/BranchDocument.js';
 import { Branch } from '../models/Branch.js';
-import { getDocumentPath, deleteFile, getExtensionFromMimeType } from '../utils/fileUpload.js';
+import { getExtensionFromMimeType } from '../utils/fileUpload.js';
+import { uploadBranchDocumentToBlob, deleteFromBlob } from '../utils/blobStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,12 +76,9 @@ router.get('/', async (req, res) => {
  */
 router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
   try {
-    const { branch_id, document_type, description, expiry_date } = req.body;
+    const { branch_id, document_type, description, document_number, issue_date, expiry_date, iban_number, bank_name } = req.body;
 
     if (!branch_id || !document_type || !req.file) {
-      if (req.file) {
-        deleteFile(req.file.path);
-      }
       return res.status(400).json({
         success: false,
         message: 'branch_id, document_type, and file are required'
@@ -90,9 +88,6 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     // Check branch exists and user has access
     const branch = await Branch.findById(parseInt(branch_id));
     if (!branch) {
-      if (req.file) {
-        deleteFile(req.file.path);
-      }
       return res.status(404).json({
         success: false,
         message: 'Branch not found'
@@ -101,45 +96,46 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
 
     // Branch managers can only upload to their branch
     if (req.user.role === 'branch_manager' && req.user.branch_id !== parseInt(branch_id)) {
-      if (req.file) {
-        deleteFile(req.file.path);
-      }
       return res.status(403).json({
         success: false,
         message: 'You can only upload documents for your branch'
       });
     }
 
-    // Move file to final location (store in branches/{branch_id}/documents/{document_type}/)
-    const fileName = req.file.filename;
-    const relativePath = await moveFileToFinalLocation(
-      req.file.path,
-      parseInt(branch_id),
-      document_type,
-      fileName,
-      'branches' // Use 'branches' prefix instead of 'employees'
-    );
-    
-    // Store relative path - normalize the path format
-    // moveFileToFinalLocation returns path like: express-app/storage/uploads/documents/branches/...
-    // We need: storage/uploads/documents/branches/...
-    let finalPath = relativePath;
-    
-    // Remove 'express-app/' prefix if exists
-    if (finalPath.startsWith('express-app/')) {
-      finalPath = finalPath.replace(/^express-app\//, '');
+    // Validate healthcare-specific documents can only be uploaded to healthcare centers
+    const healthcareOnlyDocuments = [
+      'operational_plan', 
+      'decision_obligation', 
+      'decision_commitment', 
+      'staff_cadre',
+      'owner_civil_id_copy',
+      'disclosure_commitment',
+      'certification_commitment_form',
+      'financial_platform_declaration',
+      'financial_claim_form',
+      'student_cadre_file',
+      'dropped_students',
+      'free_seats',
+      'acceptance_notifications'
+    ];
+    if (healthcareOnlyDocuments.includes(document_type) && branch.branch_type !== 'healthcare_center') {
+      return res.status(400).json({
+        success: false,
+        message: 'This document type is only available for healthcare centers'
+      });
     }
-    
-    // Remove 'storage/' prefix if exists (we'll add it back)
-    if (finalPath.startsWith('storage/')) {
-      finalPath = finalPath.replace(/^storage\//, '');
-    }
-    
-    // Ensure it starts with 'storage/'
-    finalPath = `storage/${finalPath}`;
 
-    // Verify user exists before setting uploaded_by
-    let uploadedByUserId = null;
+    // Upload file to Vercel Blob Storage
+    const blobUrl = await uploadBranchDocumentToBlob(
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype,
+      parseInt(branch_id),
+      document_type
+    );
+
+    // Set uploaded_by to user ID (must not be null and must reference valid user)
+    let uploadedById = null;
     if (req.user && req.user.id) {
       try {
         // Check if user exists in database (without is_active check)
@@ -148,28 +144,60 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
           SELECT id FROM users WHERE id = ${req.user.id}
         `;
         if (user && user.id) {
-          uploadedByUserId = req.user.id;
-        } else {
-          console.warn(`User with ID ${req.user.id} not found in database, setting uploaded_by to null`);
+          uploadedById = req.user.id;
         }
       } catch (error) {
         console.error('Error verifying user:', error);
-        // Continue with null if user verification fails
       }
     }
+    
+    // If user not found, find first active user as fallback (usually main manager)
+    if (!uploadedById) {
+      try {
+        const sql = (await import('../config/database.js')).default;
+        const [fallbackUser] = await sql`
+          SELECT id FROM users WHERE is_active = true ORDER BY id ASC LIMIT 1
+        `;
+        if (fallbackUser && fallbackUser.id) {
+          uploadedById = fallbackUser.id;
+        } else {
+          // Last resort: try to find any user
+          const [anyUser] = await sql`
+            SELECT id FROM users ORDER BY id ASC LIMIT 1
+          `;
+          if (anyUser && anyUser.id) {
+            uploadedById = anyUser.id;
+          }
+        }
+      } catch (error) {
+        console.error('Error finding fallback user:', error);
+      }
+    }
+    
+    // If still no valid user found, throw error
+    if (!uploadedById) {
+      return res.status(500).json({
+        success: false,
+        message: 'No valid user found for uploaded_by field. Please ensure at least one user exists in the system.'
+      });
+    }
 
-    // Create document record
+    // Create document record - store blob URL
     const document = await BranchDocument.create({
       branch_id: parseInt(branch_id),
       document_type: document_type,
       file_name: req.file.originalname,
-      file_path: finalPath,
+      file_path: blobUrl, // Store blob URL instead of local path
       file_size: req.file.size,
       mime_type: req.file.mimetype,
       file_extension: getExtensionFromMimeType(req.file.mimetype),
       description: description || null,
+      document_number: document_number || null,
+      issue_date: issue_date || null,
       expiry_date: expiry_date || null,
-      uploaded_by: uploadedByUserId
+      iban_number: iban_number || null,
+      bank_name: bank_name || null,
+      uploaded_by: uploadedById // Always set - either user.id or branch_id
     });
 
     res.status(201).json({
@@ -179,12 +207,6 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     });
   } catch (error) {
     console.error('Error uploading branch document:', error);
-    
-    // Clean up uploaded file on error
-    if (req.file) {
-      deleteFile(req.file.path);
-    }
-
     res.status(500).json({
       success: false,
       message: 'Failed to upload branch document',
@@ -217,31 +239,36 @@ router.get('/:id/download', async (req, res) => {
       });
     }
 
-    // Check if file exists - handle both absolute paths and relative paths
+    // Validate file_path exists
+    if (!document.file_path) {
+      return res.status(404).json({
+        success: false,
+        message: 'File path not found in database'
+      });
+    }
+
+    // If file_path is a URL (Blob), redirect to it
+    if (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) {
+      return res.redirect(document.file_path);
+    }
+
+    // Fallback for local files (backward compatibility)
     let filePath;
     if (path.isAbsolute(document.file_path)) {
       filePath = document.file_path;
     } else {
-      // Handle different path formats
       let relativePath = document.file_path;
-      
-      // Remove 'express-app/' prefix if it exists
       if (relativePath.startsWith('express-app/')) {
         relativePath = relativePath.replace(/^express-app\//, '');
       }
-      
-      // If path starts with 'storage/', use it directly
-      // Otherwise, try to build the path
       if (relativePath.startsWith('storage/')) {
         filePath = path.join(__dirname, '..', relativePath);
       } else {
-        // Try with storage/ prefix
         filePath = path.join(__dirname, '..', 'storage', relativePath);
       }
     }
     
     if (!fs.existsSync(filePath)) {
-      // Try alternative paths
       const alternatives = [
         path.join(__dirname, '..', document.file_path),
         path.join(__dirname, '..', document.file_path.replace(/^express-app\//, '')),
@@ -258,7 +285,6 @@ router.get('/:id/download', async (req, res) => {
       }
       
       if (!found) {
-        console.error(`[DOWNLOAD] File not found. Tried: ${filePath} and alternatives`);
         return res.status(404).json({
           success: false,
           message: 'File not found on server'
@@ -266,7 +292,6 @@ router.get('/:id/download', async (req, res) => {
       }
     }
 
-    // Set headers and send file
     res.setHeader('Content-Type', document.mime_type);
     res.setHeader('Content-Disposition', `attachment; filename="${document.file_name}"`);
     res.sendFile(path.resolve(filePath));
@@ -306,6 +331,12 @@ router.get('/:id/preview', async (req, res) => {
 
     // For images, return the file directly
     if (document.mime_type && document.mime_type.startsWith('image/')) {
+      // If file_path is a URL (Blob), redirect to it
+      if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
+        return res.redirect(document.file_path);
+      }
+
+      // Fallback for local files
       let filePath;
       if (path.isAbsolute(document.file_path)) {
         filePath = document.file_path;
@@ -326,7 +357,6 @@ router.get('/:id/preview', async (req, res) => {
         res.sendFile(path.resolve(filePath));
         return;
       } else {
-        // Try alternative paths
         const alternatives = [
           path.join(__dirname, '..', document.file_path),
           path.join(__dirname, '..', document.file_path.replace(/^express-app\//, '')),
@@ -343,7 +373,7 @@ router.get('/:id/preview', async (req, res) => {
       }
     }
 
-    // For PDFs or if thumbnail doesn't exist, return document info
+    // For PDFs or if preview not available, return document info
     res.json({
       success: true,
       message: 'Preview not available for this document type',
@@ -351,7 +381,10 @@ router.get('/:id/preview', async (req, res) => {
         id: document.id,
         file_name: document.file_name,
         mime_type: document.mime_type,
-        download_url: `/api/branch-documents/${document.id}/download`
+        download_url: `/api/branch-documents/${document.id}/download`,
+        file_url: document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) 
+          ? document.file_path 
+          : null
       }
     });
   } catch (error) {
@@ -449,9 +482,6 @@ router.put('/:id', uploadSingle, async (req, res) => {
     const document = await BranchDocument.findById(parseInt(req.params.id));
     
     if (!document) {
-      if (req.file) {
-        deleteFile(req.file.path);
-      }
       return res.status(404).json({
         success: false,
         message: 'Document not found'
@@ -460,9 +490,6 @@ router.put('/:id', uploadSingle, async (req, res) => {
 
     // Check branch access
     if (req.user.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
-      if (req.file) {
-        deleteFile(req.file.path);
-      }
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -477,7 +504,6 @@ router.put('/:id', uploadSingle, async (req, res) => {
       const { isValidMimeType, isValidFileSize } = await import('../utils/validators.js');
       
       if (!isValidMimeType(req.file.mimetype)) {
-        deleteFile(req.file.path);
         return res.status(400).json({
           success: false,
           message: 'Invalid file type. Only PDF and image files are allowed.'
@@ -485,32 +511,20 @@ router.put('/:id', uploadSingle, async (req, res) => {
       }
 
       if (!isValidFileSize(req.file.size)) {
-        deleteFile(req.file.path);
         return res.status(400).json({
           success: false,
           message: 'File size exceeds maximum limit of 10MB'
         });
       }
 
-      // Move new file to final location
-      const fileName = req.file.filename;
-      const relativePath = await moveFileToFinalLocation(
-        req.file.path,
+      // Upload new file to Blob Storage
+      const blobUrl = await uploadBranchDocumentToBlob(
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype,
         document.branch_id,
-        document.document_type,
-        fileName,
-        'branches'
+        document.document_type
       );
-      
-      // Normalize the path format
-      let finalPath = relativePath;
-      if (finalPath.startsWith('express-app/')) {
-        finalPath = finalPath.replace(/^express-app\//, '');
-      }
-      if (finalPath.startsWith('storage/')) {
-        finalPath = finalPath.replace(/^storage\//, '');
-      }
-      finalPath = `storage/${finalPath}`;
 
       // For license type documents, deactivate old documents of the same type
       if (document.document_type === 'license') {
@@ -521,15 +535,9 @@ router.put('/:id', uploadSingle, async (req, res) => {
         );
       }
 
-      // Delete old file if it exists
-      const oldFilePath = path.join(__dirname, '..', document.file_path);
-      if (fs.existsSync(oldFilePath)) {
-        try {
-          fs.unlinkSync(oldFilePath);
-        } catch (error) {
-          console.error('Error deleting old file:', error);
-          // Continue even if old file deletion fails
-        }
+      // Delete old file from Blob Storage if it exists
+      if (document.file_path) {
+        await deleteFromBlob(document.file_path);
       }
 
       // Update document with new file
@@ -537,19 +545,27 @@ router.put('/:id', uploadSingle, async (req, res) => {
         parseInt(req.params.id),
         {
           file_name: req.file.originalname,
-          file_path: finalPath,
+          file_path: blobUrl, // Store blob URL
           file_size: req.file.size,
           mime_type: req.file.mimetype,
           file_extension: getExtensionFromMimeType(req.file.mimetype),
           description: req.body.description !== undefined ? req.body.description : document.description,
-          expiry_date: req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date
+          document_number: req.body.document_number !== undefined ? req.body.document_number : document.document_number,
+          issue_date: req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date,
+          expiry_date: req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date,
+          iban_number: req.body.iban_number !== undefined ? req.body.iban_number : document.iban_number,
+          bank_name: req.body.bank_name !== undefined ? req.body.bank_name : document.bank_name
         }
       );
     } else {
       // Just update metadata
       updatedDocument = await BranchDocument.update(parseInt(req.params.id), {
         description: req.body.description,
-        expiry_date: req.body.expiry_date
+        document_number: req.body.document_number,
+        issue_date: req.body.issue_date,
+        expiry_date: req.body.expiry_date,
+        iban_number: req.body.iban_number,
+        bank_name: req.body.bank_name
       });
     }
 
@@ -560,12 +576,6 @@ router.put('/:id', uploadSingle, async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating branch document:', error);
-    
-    // Clean up uploaded file on error
-    if (req.file) {
-      deleteFile(req.file.path);
-    }
-
     res.status(500).json({
       success: false,
       message: 'Failed to update document',

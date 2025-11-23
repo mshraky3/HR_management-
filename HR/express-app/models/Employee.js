@@ -92,7 +92,13 @@ export const Employee = {
         occupation, nationality, date_of_birth_hijri, date_of_birth_gregorian,
         id_or_residency_number, id_type, gender, id_expiry_date_hijri, id_expiry_date_gregorian,
         religion, marital_status, educational_qualification, specialization,
-        bank_iban, bank_name, email, phone_number, contract_type, salary, created_by, updated_by
+        bank_iban, bank_name, email, phone_number, national_address, contract_type, 
+        years_of_experience_in_same_institution, years_of_experience_in_company, salary,
+        base_salary, housing_allowance, transportation_allowance, 
+        end_of_service_allowance, annual_leave_allowance, other_allowances,
+        deductions, graduation_year, university_gpa,
+        passport_number, passport_issue_date, passport_expiry_date, passport_issue_place, residency_issue_date,
+        job_title, created_by, updated_by
       } = employeeData;
       
       // If updated_by is not provided, use created_by (for new records)
@@ -108,7 +114,12 @@ export const Employee = {
           occupation, nationality, date_of_birth_hijri, date_of_birth_gregorian,
           id_or_residency_number, id_type, gender, id_expiry_date_hijri, id_expiry_date_gregorian,
           religion, marital_status, educational_qualification, specialization,
-          bank_iban, bank_name, email, phone_number, contract_type, salary, created_by, updated_by
+          bank_iban, bank_name, email, phone_number, national_address, contract_type, years_of_experience_in_same_institution, years_of_experience_in_company, salary,
+          base_salary, housing_allowance, transportation_allowance,
+          end_of_service_allowance, annual_leave_allowance, other_allowances,
+          deductions, graduation_year, university_gpa,
+          passport_number, passport_issue_date, passport_expiry_date, passport_issue_place, residency_issue_date,
+          job_title, created_by, updated_by
         )
         VALUES (
           ${employee_id_number}, ${branch_id}, ${first_name}, ${second_name}, ${third_name}, ${fourth_name},
@@ -116,7 +127,17 @@ export const Employee = {
           ${id_or_residency_number}, ${id_type}, ${gender}, ${id_expiry_date_hijri || null}, ${id_expiry_date_gregorian || null},
           ${religion || null}, ${marital_status || null}, ${educational_qualification || null}, ${specialization || null},
           ${bank_iban || null}, ${bank_name || null}, ${email || null}, ${phone_number || null},
-          ${contract_type || null}, ${salary || null}, ${created_by}, ${finalUpdatedBy}
+          ${national_address || null}, ${contract_type || null}, ${years_of_experience_in_same_institution !== undefined && years_of_experience_in_same_institution !== null ? years_of_experience_in_same_institution : 0}, ${years_of_experience_in_company !== undefined && years_of_experience_in_company !== null ? years_of_experience_in_company : 0}, ${salary !== undefined && salary !== null ? salary : 0},
+          ${base_salary !== undefined && base_salary !== null ? base_salary : 0}, 
+          ${housing_allowance !== undefined && housing_allowance !== null ? housing_allowance : 0}, 
+          ${transportation_allowance !== undefined && transportation_allowance !== null ? transportation_allowance : 0},
+          ${end_of_service_allowance !== undefined && end_of_service_allowance !== null ? end_of_service_allowance : 0}, 
+          ${annual_leave_allowance !== undefined && annual_leave_allowance !== null ? annual_leave_allowance : 0}, 
+          ${other_allowances !== undefined && other_allowances !== null ? other_allowances : 0},
+          ${deductions !== undefined && deductions !== null ? deductions : 0}, 
+          ${graduation_year || null}, ${university_gpa || null},
+          ${passport_number || null}, ${passport_issue_date || null}, ${passport_expiry_date || null}, ${passport_issue_place || null}, ${residency_issue_date || null},
+          ${job_title || null}, ${created_by}, ${finalUpdatedBy}
         )
         RETURNING *
       `;
@@ -138,7 +159,12 @@ export const Employee = {
         'occupation', 'nationality', 'date_of_birth_hijri', 'date_of_birth_gregorian',
         'id_type', 'gender', 'id_expiry_date_hijri', 'id_expiry_date_gregorian',
         'religion', 'marital_status', 'educational_qualification', 'specialization',
-        'bank_iban', 'bank_name', 'email', 'phone_number', 'contract_type', 'salary'
+        'bank_iban', 'bank_name', 'email', 'phone_number', 'national_address', 'contract_type', 'years_of_experience_in_same_institution', 'years_of_experience_in_company', 'salary',
+        'base_salary', 'housing_allowance', 'transportation_allowance',
+        'end_of_service_allowance', 'annual_leave_allowance', 'other_allowances',
+        'deductions', 'graduation_year', 'university_gpa',
+        'passport_number', 'passport_issue_date', 'passport_expiry_date', 'passport_issue_place', 'residency_issue_date',
+        'job_title'
       ];
       
       const updateFields = Object.keys(updates).filter(key => allowedFields.includes(key));
@@ -149,6 +175,16 @@ export const Employee = {
       
       updates.updated_at = new Date();
       updates.updated_by = updatedBy;
+      
+      // Ensure salary fields are 0 instead of null
+      const salaryFields = ['salary', 'base_salary', 'housing_allowance', 'transportation_allowance',
+        'end_of_service_allowance', 'annual_leave_allowance', 'other_allowances', 'deductions'];
+      
+      salaryFields.forEach(field => {
+        if (updates.hasOwnProperty(field) && (updates[field] === null || updates[field] === undefined)) {
+          updates[field] = 0;
+        }
+      });
       
       // Build SET clause manually
       const setClause = updateFields.map((field, index) => {

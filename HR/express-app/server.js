@@ -18,6 +18,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
+// CORS - allow all origins (no restrictions)
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

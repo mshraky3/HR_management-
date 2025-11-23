@@ -122,8 +122,18 @@ export async function initializeDatabase() {
       bank_name VARCHAR(200),
       email VARCHAR(255),
       phone_number VARCHAR(50),
+      national_address VARCHAR(8),
       contract_type VARCHAR(100),
+      years_of_experience_in_same_institution INTEGER DEFAULT 0,
+      years_of_experience_in_company INTEGER DEFAULT 0,
       salary DECIMAL(10,2),
+      base_salary DECIMAL(10,2),
+      housing_allowance DECIMAL(10,2),
+      transportation_allowance DECIMAL(10,2),
+      end_of_service_allowance DECIMAL(10,2),
+      annual_leave_allowance DECIMAL(10,2),
+      other_allowances DECIMAL(10,2),
+      deductions DECIMAL(10,2),
       is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -172,10 +182,9 @@ export async function initializeDatabase() {
       version INTEGER DEFAULT 1,
       is_active BOOLEAN DEFAULT true,
       uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      uploaded_by INTEGER,
+      uploaded_by INTEGER NOT NULL,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
-      FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL,
       FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
     `);
 
@@ -233,10 +242,9 @@ export async function initializeDatabase() {
       version INTEGER DEFAULT 1,
       is_active BOOLEAN DEFAULT true,
       uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      uploaded_by INTEGER,
+      uploaded_by INTEGER NOT NULL,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
-      FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL,
       FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
     `);
 

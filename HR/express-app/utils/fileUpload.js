@@ -1,35 +1,18 @@
 /**
  * File Upload Utilities
  * Handles file uploads and storage
- * TODO: Implement multer configuration when multer package is added
+ * Updated for Vercel Blob Storage - keeping only utility functions still in use
  */
 
-import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Storage directories
-export const STORAGE_BASE = path.join(__dirname, '../storage');
-export const DOCUMENTS_DIR = path.join(STORAGE_BASE, 'uploads/documents');
-export const THUMBNAILS_DIR = path.join(STORAGE_BASE, 'uploads/thumbnails');
-export const TEMP_DIR = path.join(STORAGE_BASE, 'uploads/temp');
-
-/**
- * Ensure storage directories exist
- */
-export function ensureDirectoriesExist() {
-  const dirs = [STORAGE_BASE, DOCUMENTS_DIR, THUMBNAILS_DIR, TEMP_DIR];
-  
-  dirs.forEach(dir => {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-      console.log(`Created directory: ${dir}`);
-    }
-  });
-}
+// Note: Storage directories and local file system functions are no longer used
+// Files are now stored in Vercel Blob Storage
+// Keeping these constants for backward compatibility if needed
+export const STORAGE_BASE = null; // Deprecated - using Blob Storage
+export const DOCUMENTS_DIR = null; // Deprecated - using Blob Storage
+export const THUMBNAILS_DIR = null; // Deprecated - using Blob Storage
+export const TEMP_DIR = null; // Deprecated - using Blob Storage
 
 /**
  * Generate unique filename
@@ -43,62 +26,16 @@ export function generateFileName(originalName) {
 }
 
 /**
- * Get document storage path for an employee
+ * DEPRECATED: These functions are no longer used with Vercel Blob Storage
+ * Kept for reference but not exported/used
+ * 
+ * For new uploads, use functions from utils/blobStorage.js instead
  */
-export function getDocumentPath(employeeId, documentType, fileName) {
-  const employeeDir = path.join(DOCUMENTS_DIR, employeeId.toString(), documentType);
-  
-  // Ensure directory exists
-  if (!fs.existsSync(employeeDir)) {
-    fs.mkdirSync(employeeDir, { recursive: true });
-  }
-  
-  return path.join(employeeDir, fileName);
-}
 
-/**
- * Get branch document storage path
- */
-export function getBranchDocumentPath(branchId, documentType, fileName) {
-  const branchDir = path.join(DOCUMENTS_DIR, 'branches', branchId.toString(), documentType);
-  
-  // Ensure directory exists
-  if (!fs.existsSync(branchDir)) {
-    fs.mkdirSync(branchDir, { recursive: true });
-  }
-  
-  return path.join(branchDir, fileName);
-}
-
-/**
- * Get thumbnail path
- */
-export function getThumbnailPath(employeeId, documentType, fileName) {
-  const thumbnailDir = path.join(THUMBNAILS_DIR, employeeId.toString(), documentType);
-  
-  // Ensure directory exists
-  if (!fs.existsSync(thumbnailDir)) {
-    fs.mkdirSync(thumbnailDir, { recursive: true });
-  }
-  
-  return path.join(thumbnailDir, fileName.replace(/\.[^.]+$/, '_thumb.jpg'));
-}
-
-/**
- * Delete file
- */
-export function deleteFile(filePath) {
-  try {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('Error deleting file:', error);
-    return false;
-  }
-}
+// getDocumentPath - Deprecated (use uploadToBlob from blobStorage.js)
+// getBranchDocumentPath - Deprecated (use uploadBranchDocumentToBlob from blobStorage.js)
+// getThumbnailPath - Deprecated (thumbnails can be generated from Blob URLs)
+// deleteFile - Deprecated (use deleteFromBlob from blobStorage.js)
 
 /**
  * Get file extension from MIME type
@@ -114,6 +51,5 @@ export function getExtensionFromMimeType(mimeType) {
   return mimeToExt[mimeType] || '';
 }
 
-// Initialize directories on import
-ensureDirectoriesExist();
+// Directory initialization removed - no longer needed with Blob Storage
 

@@ -62,7 +62,7 @@ export const sanitizeString = (str) => {
 export const isValidDocumentType = (type) => {
   const validTypes = [
     'id_or_residency',
-    'employment_letter',
+    'direct_letter',
     'bank_iban',
     'primary_qualification',
     'employment_contract',

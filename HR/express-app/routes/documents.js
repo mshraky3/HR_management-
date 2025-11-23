@@ -9,11 +9,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { authenticate } from '../middleware/auth.js';
 import { checkBranchAccess } from '../middleware/authorization.js';
-import { uploadSingle, validateUploadedFile, moveFileToFinalLocation } from '../middleware/upload.js';
+import { uploadSingle, validateUploadedFile } from '../middleware/upload.js';
 import { Document } from '../models/Document.js';
 import { Employee } from '../models/Employee.js';
 import { isValidDocumentType } from '../utils/validators.js';
-import { getDocumentPath, getThumbnailPath, deleteFile, getExtensionFromMimeType } from '../utils/fileUpload.js';
+import { getExtensionFromMimeType } from '../utils/fileUpload.js';
+import { uploadToBlob, deleteFromBlob } from '../utils/blobStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -126,10 +127,6 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     const { employee_id, document_type, description, expiry_date } = req.body;
 
     if (!employee_id || !document_type) {
-      // Delete uploaded file if validation fails
-      if (req.file) {
-        deleteFile(req.file.path);
-      }
       return res.status(400).json({
         success: false,
         message: 'employee_id and document_type are required'
@@ -138,9 +135,6 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
 
     // Validate document type
     if (!isValidDocumentType(document_type)) {
-      if (req.file) {
-        deleteFile(req.file.path);
-      }
       return res.status(400).json({
         success: false,
         message: 'Invalid document_type'
@@ -150,9 +144,6 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     // Check employee exists and user has access
     const employee = await Employee.findById(parseInt(employee_id));
     if (!employee) {
-      if (req.file) {
-        deleteFile(req.file.path);
-      }
       return res.status(404).json({
         success: false,
         message: 'Employee not found'
@@ -160,27 +151,23 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     }
 
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
-      if (req.file) {
-        deleteFile(req.file.path);
-      }
       return res.status(403).json({
         success: false,
         message: 'You can only upload documents for employees in your branch'
       });
     }
 
-    // Move file to final location
-    const fileName = req.file.filename;
-    const finalPath = await moveFileToFinalLocation(
-      req.file.path,
+    // Upload file to Vercel Blob Storage
+    const blobUrl = await uploadToBlob(
+      req.file.buffer, // File buffer from memory storage
+      req.file.originalname,
+      req.file.mimetype,
       parseInt(employee_id),
-      document_type,
-      fileName,
-      'employees'
+      document_type
     );
 
-    // Verify user exists before setting uploaded_by
-    let uploadedByUserId = null;
+    // Set uploaded_by to user ID (must not be null and must reference valid user)
+    let uploadedById = null;
     if (req.user && req.user.id) {
       try {
         // Check if user exists in database (without is_active check)
@@ -189,28 +176,56 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
           SELECT id FROM users WHERE id = ${req.user.id}
         `;
         if (user && user.id) {
-          uploadedByUserId = req.user.id;
-        } else {
-          console.warn(`User with ID ${req.user.id} not found in database, setting uploaded_by to null`);
+          uploadedById = req.user.id;
         }
       } catch (error) {
         console.error('Error verifying user:', error);
-        // Continue with null if user verification fails
       }
     }
     
-    // Create document record
+    // If user not found, find first active user as fallback (usually main manager)
+    if (!uploadedById) {
+      try {
+        const sql = (await import('../config/database.js')).default;
+        const [fallbackUser] = await sql`
+          SELECT id FROM users WHERE is_active = true ORDER BY id ASC LIMIT 1
+        `;
+        if (fallbackUser && fallbackUser.id) {
+          uploadedById = fallbackUser.id;
+        } else {
+          // Last resort: try to find any user
+          const [anyUser] = await sql`
+            SELECT id FROM users ORDER BY id ASC LIMIT 1
+          `;
+          if (anyUser && anyUser.id) {
+            uploadedById = anyUser.id;
+          }
+        }
+      } catch (error) {
+        console.error('Error finding fallback user:', error);
+      }
+    }
+    
+    // If still no valid user found, throw error
+    if (!uploadedById) {
+      return res.status(500).json({
+        success: false,
+        message: 'No valid user found for uploaded_by field. Please ensure at least one user exists in the system.'
+      });
+    }
+    
+    // Create document record - store blob URL in file_path
     const document = await Document.create({
       employee_id: parseInt(employee_id),
       document_type: document_type,
       file_name: req.file.originalname,
-      file_path: finalPath,
+      file_path: blobUrl, // Store blob URL instead of local path
       file_size: req.file.size,
       mime_type: req.file.mimetype,
       file_extension: getExtensionFromMimeType(req.file.mimetype),
       description: description || null,
       expiry_date: expiry_date || null,
-      uploaded_by: uploadedByUserId
+      uploaded_by: uploadedById // Always set - either user.id or branch_id
     });
 
     res.status(201).json({
@@ -220,12 +235,6 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     });
   } catch (error) {
     console.error('Error uploading document:', error);
-    
-    // Clean up uploaded file on error
-    if (req.file) {
-      deleteFile(req.file.path);
-    }
-
     res.status(500).json({
       success: false,
       message: 'Failed to upload document',
@@ -259,14 +268,24 @@ router.get('/:id/download', async (req, res) => {
       });
     }
 
-    // Check if file exists
-    // Handle both absolute paths and relative paths that may include 'express-app/'
+    // Validate file_path exists
+    if (!document.file_path) {
+      return res.status(404).json({
+        success: false,
+        message: 'File path not found in database'
+      });
+    }
+
+    // If file_path is a URL (Blob), redirect to it
+    if (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) {
+      return res.redirect(document.file_path);
+    }
+
+    // Fallback for local files (backward compatibility during migration)
     let filePath;
     if (path.isAbsolute(document.file_path)) {
-      // If it's already an absolute path, use it directly
       filePath = document.file_path;
     } else {
-      // Remove 'express-app/' prefix if it exists in the relative path
       let relativePath = document.file_path;
       if (relativePath.startsWith('express-app/')) {
         relativePath = relativePath.replace(/^express-app\//, '');
@@ -275,13 +294,11 @@ router.get('/:id/download', async (req, res) => {
     }
     
     if (!fs.existsSync(filePath)) {
-      // Try alternative path without express-app prefix
       const altPath = document.file_path.replace(/^express-app\//, '');
       const altFilePath = path.join(__dirname, '..', altPath);
       if (fs.existsSync(altFilePath)) {
         filePath = altFilePath;
       } else {
-        console.error(`[DOWNLOAD] File not found: ${filePath} or ${altFilePath}`);
         return res.status(404).json({
           success: false,
           message: 'File not found on server'
@@ -289,7 +306,6 @@ router.get('/:id/download', async (req, res) => {
       }
     }
 
-    // Set headers and send file
     res.setHeader('Content-Type', document.mime_type);
     res.setHeader('Content-Disposition', `attachment; filename="${document.file_name}"`);
     res.sendFile(path.resolve(filePath));
@@ -329,37 +345,42 @@ router.get('/:id/preview', async (req, res) => {
     }
 
     // For images, return the file directly
-    if (document.mime_type.startsWith('image/')) {
-      // Handle both absolute paths and relative paths that may include 'express-app/'
-      let filePath;
-      if (path.isAbsolute(document.file_path)) {
-        filePath = document.file_path;
-      } else {
-        // Remove 'express-app/' prefix if it exists in the relative path
-        let relativePath = document.file_path;
-        if (relativePath.startsWith('express-app/')) {
-          relativePath = relativePath.replace(/^express-app\//, '');
-        }
-        filePath = path.join(__dirname, '..', relativePath);
+    if (document.mime_type && document.mime_type.startsWith('image/')) {
+      // If file_path is a URL (Blob), redirect to it
+      if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
+        return res.redirect(document.file_path);
       }
-      
-      if (fs.existsSync(filePath)) {
-        res.setHeader('Content-Type', document.mime_type);
-        res.sendFile(path.resolve(filePath));
-        return;
-      } else {
-        // Try alternative path without express-app prefix
-        const altPath = document.file_path.replace(/^express-app\//, '');
-        const altFilePath = path.join(__dirname, '..', altPath);
-        if (fs.existsSync(altFilePath)) {
+
+      // Fallback for local files (backward compatibility)
+      if (document.file_path) {
+        let filePath;
+        if (path.isAbsolute(document.file_path)) {
+          filePath = document.file_path;
+        } else {
+          let relativePath = document.file_path;
+          if (relativePath.startsWith('express-app/')) {
+            relativePath = relativePath.replace(/^express-app\//, '');
+          }
+          filePath = path.join(__dirname, '..', relativePath);
+        }
+        
+        if (fs.existsSync(filePath)) {
           res.setHeader('Content-Type', document.mime_type);
-          res.sendFile(path.resolve(altFilePath));
+          res.sendFile(path.resolve(filePath));
           return;
+        } else {
+          const altPath = document.file_path.replace(/^express-app\//, '');
+          const altFilePath = path.join(__dirname, '..', altPath);
+          if (fs.existsSync(altFilePath)) {
+            res.setHeader('Content-Type', document.mime_type);
+            res.sendFile(path.resolve(altFilePath));
+            return;
+          }
         }
       }
     }
 
-    // For PDFs or if thumbnail doesn't exist, return document info
+    // For PDFs or if preview not available, return document info
     res.json({
       success: true,
       message: 'Preview not available for this document type',
@@ -367,7 +388,10 @@ router.get('/:id/preview', async (req, res) => {
         id: document.id,
         file_name: document.file_name,
         mime_type: document.mime_type,
-        download_url: `/api/documents/${document.id}/download`
+        download_url: `/api/documents/${document.id}/download`,
+        file_url: document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) 
+          ? document.file_path 
+          : null
       }
     });
   } catch (error) {
@@ -561,9 +585,9 @@ router.delete('/:id', async (req, res) => {
 
     const deletedDocument = await Document.softDelete(parseInt(req.params.id));
     
-    // Optionally delete physical file
+    // Delete physical file from Blob Storage if requested
     if (req.query.deleteFile === 'true') {
-      deleteFile(document.file_path);
+      await deleteFromBlob(document.file_path);
     }
     
     res.json({

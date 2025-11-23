@@ -145,7 +145,7 @@ export const BranchDocument = {
         INSERT INTO branch_documents (
           branch_id, document_type, file_name, file_path, file_size,
           mime_type, file_extension, thumbnail_path, description,
-          expiry_date, uploaded_by
+          document_number, issue_date, expiry_date, iban_number, bank_name, uploaded_by
         )
         VALUES (
           ${documentData.branch_id},
@@ -157,7 +157,11 @@ export const BranchDocument = {
           ${documentData.file_extension || null},
           ${documentData.thumbnail_path || null},
           ${documentData.description || null},
+          ${documentData.document_number || null},
+          ${documentData.issue_date || null},
           ${documentData.expiry_date || null},
+          ${documentData.iban_number || null},
+          ${documentData.bank_name || null},
           ${documentData.uploaded_by || null}
         )
         RETURNING *
@@ -178,7 +182,11 @@ export const BranchDocument = {
         UPDATE branch_documents
         SET 
           description = ${updateData.description !== undefined ? updateData.description : sql`description`},
+          document_number = ${updateData.document_number !== undefined ? updateData.document_number : sql`document_number`},
+          issue_date = ${updateData.issue_date !== undefined ? updateData.issue_date : sql`issue_date`},
           expiry_date = ${updateData.expiry_date !== undefined ? updateData.expiry_date : sql`expiry_date`},
+          iban_number = ${updateData.iban_number !== undefined ? updateData.iban_number : sql`iban_number`},
+          bank_name = ${updateData.bank_name !== undefined ? updateData.bank_name : sql`bank_name`},
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ${id} AND is_active = true
         RETURNING *
@@ -204,6 +212,8 @@ export const BranchDocument = {
           mime_type = ${updateData.mime_type},
           file_extension = ${updateData.file_extension || null},
           description = ${updateData.description !== undefined ? updateData.description : sql`description`},
+          document_number = ${updateData.document_number !== undefined ? updateData.document_number : sql`document_number`},
+          issue_date = ${updateData.issue_date !== undefined ? updateData.issue_date : sql`issue_date`},
           expiry_date = ${updateData.expiry_date !== undefined ? updateData.expiry_date : sql`expiry_date`},
           uploaded_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
