@@ -51,6 +51,9 @@ const BranchManagerLayout = ({ children }) => {
           <Link to="/branch-documents" className={isActive('/branch-documents')} onClick={() => setMobileMenuOpen(false)}>
             مستندات الفرع
           </Link>
+          <Link to="/reports" className={isActive('/reports')} onClick={() => setMobileMenuOpen(false)}>
+            إصدار التقارير
+          </Link>
         </div>
         <div className="nav-user">
           <span className="user-info">

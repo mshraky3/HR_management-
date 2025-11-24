@@ -9,11 +9,13 @@ import Layout from './components/Layout';
 import BranchManagerLayout from './components/BranchManagerLayout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-import Users from './pages/Users';
+import AccountManagement from './pages/AccountManagement';
 import Branches from './pages/Branches';
 import Employees from './pages/Employees';
 import EmployeeDetails from './pages/EmployeeDetails';
 import BranchDocuments from './pages/BranchDocuments';
+import Reports from './pages/Reports';
+import EmployeeFile from './pages/EmployeeFile';
 import './App.css';
 
 // Wrapper component to choose layout based on role
@@ -39,11 +41,11 @@ function App() {
             }
           />
           <Route
-            path="/users"
+            path="/account-management"
             element={
               <ProtectedRoute requireMainManager>
                 <Layout>
-                  <Users />
+                  <AccountManagement />
                 </Layout>
               </ProtectedRoute>
             }
@@ -85,6 +87,26 @@ function App() {
                 <RoleBasedLayout>
                   <BranchDocuments />
                 </RoleBasedLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <ProtectedRoute>
+                <RoleBasedLayout>
+                  <Reports />
+                </RoleBasedLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/employee-file"
+            element={
+              <ProtectedRoute requireMainManager>
+                <Layout>
+                  <EmployeeFile />
+                </Layout>
               </ProtectedRoute>
             }
           />

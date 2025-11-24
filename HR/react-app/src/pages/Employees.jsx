@@ -3,8 +3,8 @@
  * Manage employees
  */
 
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { employeesAPI, branchesAPI, documentsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import HijriDatePicker from '../components/HijriDatePicker';
@@ -13,10 +13,41 @@ import NationalitySelect from '../components/NationalitySelect';
 import ReligionSelect from '../components/ReligionSelect';
 import MaritalStatusSelect from '../components/MaritalStatusSelect';
 import BankSelect from '../components/BankSelect';
+import {
+  isSaudi as isSaudiHelper,
+  isNonSaudi,
+  getIdTypeFromNationality,
+  getDateOfBirthCalendarType,
+  getIdExpiryCalendarType,
+  isSchool,
+  isHealthcareCenter,
+  requiresClassification,
+  requiresExperienceCertificate,
+  requiresSpeechTherapy70Hours,
+  requiresTherapy40Hours,
+  requiresPassport,
+  requiresProfessionalLicense,
+  requiresClassificationDocument,
+  requiresExperienceCertificateDocument,
+  requiresSpeechTherapy70HoursDocument,
+  requiresTherapy40HoursDocument,
+  requiresPassportNumber,
+  requiresIdExpiryDate,
+  requiresDateOfBirthHijri,
+  requiresDateOfBirthGregorian,
+  validateDocumentType
+} from '../utils/employeeHelpers';
+import { 
+  SCHOOL_JOB_TITLES, 
+  HEALTHCARE_JOB_TITLES,
+  getJobTitlesByBranchType 
+} from '../utils/employeeConstants';
 import './TablePage.css';
 
 const Employees = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { isMainManager, user } = useAuth();
   const [employees, setEmployees] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -27,6 +58,20 @@ const Employees = () => {
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [formStep, setFormStep] = useState(1); // 1: branch type selection, 2: employee form
   const [selectedBranchType, setSelectedBranchType] = useState(null); // 'healthcare_center' or 'school'
+  const [filterIncomplete, setFilterIncomplete] = useState(false); // Filter for incomplete employees
+  const [searchFilters, setSearchFilters] = useState({
+    search_name: '',
+    search_id: '',
+    search_phone: ''
+  });
+  
+  // Refs to maintain focus on search inputs
+  const searchNameRef = useRef(null);
+  const searchIdRef = useRef(null);
+  const searchPhoneRef = useRef(null);
+  
+  // Ref to track which input was focused before update
+  const focusedInputRef = useRef(null);
   const [formData, setFormData] = useState({
     employee_id_number: '',
     branch_id: user?.branch_id || '',
@@ -96,8 +141,76 @@ const Employees = () => {
 
   useEffect(() => {
     loadBranches();
-    loadEmployees();
+    
+    // Check if we need to edit an employee from location state
+    if (location.state?.editEmployeeId) {
+      const editId = location.state.editEmployeeId;
+      // Find the employee and open edit form
+      employeesAPI.getById(editId).then(response => {
+        if (response.data.success) {
+          handleEdit(response.data.data);
+        }
+      }).catch(error => {
+        console.error('Error loading employee for edit:', error);
+      });
+      // Clear the state
+      window.history.replaceState({}, document.title);
+    }
   }, []);
+
+  useEffect(() => {
+    // Check URL params for filter on mount
+    const statusFilter = searchParams.get('data_completion_status');
+    if (statusFilter === 'incomplete' && !filterIncomplete) {
+      setFilterIncomplete(true);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    loadEmployees();
+  }, [filterIncomplete]);
+
+  // Debounced search effect - wait for user to stop typing
+  useEffect(() => {
+    // Store which input had focus before the update
+    const activeElement = document.activeElement;
+    if (activeElement === searchNameRef.current) {
+      focusedInputRef.current = 'name';
+    } else if (activeElement === searchIdRef.current) {
+      focusedInputRef.current = 'id';
+    } else if (activeElement === searchPhoneRef.current) {
+      focusedInputRef.current = 'phone';
+    }
+    
+    const timeoutId = setTimeout(async () => {
+      await loadEmployees();
+      
+      // Restore focus after loading completes
+      // Use requestAnimationFrame to ensure DOM has updated
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          let inputToFocus = null;
+          
+          if (focusedInputRef.current === 'name' && searchNameRef.current) {
+            inputToFocus = searchNameRef.current;
+          } else if (focusedInputRef.current === 'id' && searchIdRef.current) {
+            inputToFocus = searchIdRef.current;
+          } else if (focusedInputRef.current === 'phone' && searchPhoneRef.current) {
+            inputToFocus = searchPhoneRef.current;
+          }
+          
+          if (inputToFocus) {
+            inputToFocus.focus();
+            // Move cursor to end of input
+            const length = inputToFocus.value.length;
+            inputToFocus.setSelectionRange(length, length);
+          }
+        });
+      });
+    }, 500); // Wait 500ms after user stops typing
+
+    return () => clearTimeout(timeoutId);
+  }, [searchFilters.search_name, searchFilters.search_id, searchFilters.search_phone]);
 
   const loadBranches = async () => {
     try {
@@ -120,6 +233,24 @@ const Employees = () => {
         filters.branch_id = user.branch_id;
       }
       
+      // Filter incomplete employees if requested
+      if (filterIncomplete) {
+        filters.data_completion_status = 'incomplete';
+      }
+      
+      // Add search filters (only for main manager)
+      if (isMainManager()) {
+        if (searchFilters.search_name.trim()) {
+          filters.search_name = searchFilters.search_name.trim();
+        }
+        if (searchFilters.search_id.trim()) {
+          filters.search_id = searchFilters.search_id.trim();
+        }
+        if (searchFilters.search_phone.trim()) {
+          filters.search_phone = searchFilters.search_phone.trim();
+        }
+      }
+      
       const response = await employeesAPI.getAll(filters);
       if (response.data.success) {
         setEmployees(response.data.data);
@@ -132,50 +263,41 @@ const Employees = () => {
     }
   };
 
-  // Check if nationality is Saudi
+  // Check if nationality is Saudi (using centralized helper)
   const isSaudi = () => {
-    return formData.nationality === 'Saudi Arabia' || 
-           formData.nationality === 'المملكة العربية السعودية' ||
-           formData.nationality?.toLowerCase().includes('saudi') ||
-           formData.nationality?.toLowerCase().includes('سعودي');
+    return isSaudiHelper(formData.nationality);
   };
 
   // Handle nationality change - auto-set ID type and calendar types
   const handleNationalityChange = (nationality) => {
-    const isSaudiNationality = nationality === 'Saudi Arabia' || 
-                                nationality === 'المملكة العربية السعودية' ||
-                                nationality?.toLowerCase().includes('saudi') ||
-                                nationality?.toLowerCase().includes('سعودي');
+    const isSaudiNationality = isSaudiHelper(nationality);
     
     setFormData(prev => {
       const newData = { ...prev, nationality };
       
-      // Auto-set ID type based on nationality
-      if (isSaudiNationality) {
-        newData.id_type = 'citizen';
-      } else {
-        newData.id_type = 'resident';
-      }
+      // Auto-set ID type based on nationality (using centralized helper)
+      newData.id_type = getIdTypeFromNationality(nationality);
       
       return newData;
     });
     
-    // Auto-set calendar types based on nationality
+    // Auto-set calendar types based on nationality (using centralized helpers)
+    const dobCalendarType = getDateOfBirthCalendarType(nationality);
+    const idExpiryCalendarType = getIdExpiryCalendarType(nationality);
+    
+    setDateOfBirthCalendarType(dobCalendarType);
+    setIdExpiryCalendarType(idExpiryCalendarType);
+    
+    // Clear dates based on nationality
     if (isSaudiNationality) {
-      // Saudi: Force Hijri calendar
-      setDateOfBirthCalendarType('hijri');
-      setIdExpiryCalendarType('hijri');
-      // Clear Gregorian dates
+      // Saudi: Clear Gregorian dates
       setFormData(prev => ({
         ...prev,
         date_of_birth_gregorian: '',
         id_expiry_date_gregorian: ''
       }));
     } else {
-      // Non-Saudi: Force Gregorian calendar
-      setDateOfBirthCalendarType('gregorian');
-      setIdExpiryCalendarType('gregorian');
-      // Clear Hijri dates
+      // Non-Saudi: Clear Hijri dates
       setFormData(prev => ({
         ...prev,
         date_of_birth_hijri: '',
@@ -213,83 +335,47 @@ const Employees = () => {
       return;
     }
     
-    // Validate that all 4 names are provided
+    // Validate that all 4 names are provided (REQUIRED)
     if (!formData.first_name || !formData.second_name || !formData.third_name || !formData.fourth_name) {
       alert('الرجاء إدخال جميع الأسماء الأربعة');
       return;
     }
     
-    // Validate date of birth is provided
-    if (!dateOfBirthCalendarType) {
-      alert('الرجاء إدخال تاريخ الميلاد');
+    // Validate id_or_residency_number is provided (REQUIRED)
+    if (!formData.id_or_residency_number || formData.id_or_residency_number.trim() === '') {
+      alert('الرجاء إدخال رقم الهوية أو الإقامة');
       return;
     }
     
-    // Validate calendar type matches nationality
+    // Validate nationality is provided (REQUIRED)
+    if (!formData.nationality || formData.nationality.trim() === '') {
+      alert('الرجاء إدخال الجنسية');
+      return;
+    }
+    
+    // Validate calendar type matches nationality (only if date is provided)
     const isSaudiNationality = isSaudi();
-    if (isSaudiNationality && dateOfBirthCalendarType !== 'hijri') {
-      alert('السعوديون يجب أن يستخدموا التقويم الهجري فقط');
-      return;
-    }
-    if (!isSaudiNationality && dateOfBirthCalendarType !== 'gregorian') {
-      alert('غير السعوديين يجب أن يستخدموا التقويم الميلادي فقط');
-      return;
+    if (dateOfBirthCalendarType) {
+      if (isSaudiNationality && dateOfBirthCalendarType !== 'hijri') {
+        alert('السعوديون يجب أن يستخدموا التقويم الهجري فقط');
+        return;
+      }
+      if (!isSaudiNationality && dateOfBirthCalendarType !== 'gregorian') {
+        alert('غير السعوديين يجب أن يستخدموا التقويم الميلادي فقط');
+        return;
+      }
     }
     
-    // Validate ID expiry calendar type matches nationality (only for non-Saudis)
-    if (!isSaudiNationality && (formData.id_expiry_date_hijri || formData.id_expiry_date_gregorian)) {
+    // Validate ID expiry calendar type matches nationality (only for non-Saudis and if date is provided)
+    if (!isSaudiNationality && idExpiryCalendarType && (formData.id_expiry_date_hijri || formData.id_expiry_date_gregorian)) {
       if (idExpiryCalendarType !== 'gregorian') {
         alert('تاريخ انتهاء الإقامة لغير السعوديين يجب أن يكون ميلادياً');
         return;
       }
     }
-
-    // Validate school-specific requirements
-    if (currentBranchType === 'school' && !editingEmployee && !documents.professional_license) {
-      alert('الترخيص المهني مطلوب للمدارس');
-      return;
-    }
-
-    // Validate medical disclosure form - required for women only
-    if (formData.gender === 'female' && !documents.medical_disclosure_form) {
-      alert('نموذج افصاح طبي مطلوب للنساء');
-      setSaving(false);
-      return;
-    }
-
-    // Validate job title requirements
-    if (formData.job_title) {
-      // Jobs that require Saudi nationality
-      const saudiOnlyJobs = ['مديرة مراكز', 'الموارد البشرية'];
-      if (saudiOnlyJobs.includes(formData.job_title) && !isSaudi()) {
-        alert(`المسمى الوظيفي "${formData.job_title}" يتطلب أن يكون الموظف سعودي`);
-        setSaving(false);
-        return;
-      }
-
-      // Jobs that require experience certificate
-      const experienceRequiredJobs = ['مديرة مراكز', 'مشرف فني عام'];
-      if (experienceRequiredJobs.includes(formData.job_title) && !documents.experience_certificate) {
-        alert(`المسمى الوظيفي "${formData.job_title}" يتطلب شهادة خبرة`);
-        setSaving(false);
-        return;
-      }
-
-      // Jobs that require 70 hours speech therapy course
-      if (formData.job_title === 'النطق و التخاطب' && !documents.speech_therapy_70_hours_course) {
-        alert('المسمى الوظيفي "النطق و التخاطب" يتطلب دورة 70 ساعة في التخاطب');
-        setSaving(false);
-        return;
-      }
-
-      // Jobs that require 40 hours therapy course
-      const therapy40HoursJobs = ['علاج طبيعي', 'علاج وظيفي'];
-      if (therapy40HoursJobs.includes(formData.job_title) && !documents.therapy_40_hours_course) {
-        alert(`المسمى الوظيفي "${formData.job_title}" يتطلب دورة 40 ساعة`);
-        setSaving(false);
-        return;
-      }
-    }
+    
+    // NOTE: All document validations removed - documents are now optional
+    // The system will track incomplete employees and show them in Dashboard
     
     // Validate IBAN and bank name match if provided
     if (formData.bank_iban || formData.bank_name) {
@@ -350,18 +436,15 @@ const Employees = () => {
       }
     }
     
-    // Validate all required fields before sending
+    // Validate only truly required fields (name, ID, nationality)
+    // All other fields are optional and will be tracked for completion status
     const requiredFields = {
-      'branch_id': 'الفرع',
       'first_name': 'الاسم الأول',
       'second_name': 'الاسم الثاني',
       'third_name': 'الاسم الثالث',
       'fourth_name': 'الاسم الرابع',
-      'occupation': 'المهنة',
-      'nationality': 'الجنسية',
       'id_or_residency_number': 'رقم الهوية أو الإقامة',
-      'id_type': 'نوع الهوية',
-      'gender': 'الجنس'
+      'nationality': 'الجنسية'
     };
     
     // Check required fields
@@ -370,6 +453,39 @@ const Employees = () => {
         alert(`الحقل "${label}" مطلوب`);
         return;
       }
+    }
+    
+    // Validate database-required fields that have defaults but can be empty
+    if (!formData.gender || formData.gender.trim() === '') {
+      alert('الرجاء اختيار الجنس');
+      return;
+    }
+    
+    if (!formData.id_type || formData.id_type.trim() === '') {
+      alert('الرجاء اختيار نوع الهوية');
+      return;
+    }
+    
+    // Occupation is required by database - use job_title if available, otherwise require it
+    if (!formData.occupation || formData.occupation.trim() === '') {
+      if (formData.job_title && formData.job_title.trim() !== '') {
+        // Use job_title as occupation if occupation is empty
+        formData.occupation = formData.job_title;
+      } else {
+        alert('الرجاء إدخال المهنة أو اختيار المسمى الوظيفي');
+        return;
+      }
+    }
+    
+    // For branch managers, ensure branch_id is set
+    if (!isMainManager() && user?.branch_id) {
+      formData.branch_id = user.branch_id;
+    }
+    
+    // Validate branch_id is set
+    if (!formData.branch_id) {
+      alert('الرجاء اختيار الفرع');
+      return;
     }
     
     // Validate field lengths
@@ -407,19 +523,8 @@ const Employees = () => {
       }
     }
     
-    // Validate date of birth based on nationality
-    const isSaudiNationalityCheck = isSaudi();
-    if (isSaudiNationalityCheck) {
-      if (!formData.date_of_birth_hijri || formData.date_of_birth_hijri.trim() === '') {
-        alert('تاريخ الميلاد (هجري) مطلوب للسعوديين');
-        return;
-      }
-    } else {
-      if (!formData.date_of_birth_gregorian || formData.date_of_birth_gregorian.trim() === '') {
-        alert('تاريخ الميلاد (ميلادي) مطلوب لغير السعوديين');
-        return;
-      }
-    }
+    // Date of birth is now optional - no validation needed
+    // If provided, it will be validated for format and calendar type above
     
     try {
       const data = { ...formData };
@@ -475,8 +580,33 @@ const Employees = () => {
         data.years_of_experience_in_same_institution = isNaN(value) ? 0 : value;
       }
       
-      // Set employee_id_number automatically from id_or_residency_number
-      data.employee_id_number = data.id_or_residency_number;
+      // Set employee_id_number automatically from id_or_residency_number (if not provided)
+      if (!data.employee_id_number) {
+        data.employee_id_number = data.id_or_residency_number;
+      }
+      
+      // Ensure occupation is set (required by database)
+      // Use job_title if occupation is empty
+      if (!data.occupation || data.occupation.trim() === '') {
+        if (data.job_title && data.job_title.trim() !== '') {
+          data.occupation = data.job_title;
+        } else {
+          data.occupation = 'غير محدد'; // Fallback default
+        }
+      }
+      
+      // Ensure gender and id_type are set (required by database, should have defaults but double-check)
+      if (!data.gender || data.gender.trim() === '') {
+        data.gender = 'male'; // Default fallback
+      }
+      if (!data.id_type || data.id_type.trim() === '') {
+        // Auto-set based on nationality if not set
+        const isSaudiNationality = data.nationality === 'Saudi Arabia' || 
+                                    data.nationality === 'المملكة العربية السعودية' ||
+                                    data.nationality?.toLowerCase().includes('saudi') ||
+                                    data.nationality?.toLowerCase().includes('سعودي');
+        data.id_type = isSaudiNationality ? 'citizen' : 'resident';
+      }
       
       // For branch managers, force branch_id to their branch (prevent manipulation)
       if (!isMainManager() && user?.branch_id) {
@@ -513,7 +643,32 @@ const Employees = () => {
         employee = { id: editingEmployee.id };
         
         // Upload documents if any were provided during edit
-        const documentEntries = Object.entries(documents).filter(([_, file]) => file !== null);
+        // Filter out documents that are not allowed for this employee
+        let currentBranchTypeForValidation = selectedBranchType;
+        if (!currentBranchTypeForValidation && editingEmployee?.branch_id) {
+          const employeeBranch = branches.find(b => b.id === editingEmployee.branch_id);
+          if (employeeBranch) {
+            currentBranchTypeForValidation = employeeBranch.branch_type;
+          }
+        }
+        
+        const documentEntries = Object.entries(documents).filter(([documentType, file]) => {
+          if (!file) return false;
+          
+          // Validate document type before upload (silently filter out invalid ones)
+          if (currentBranchTypeForValidation) {
+            const validation = validateDocumentType(documentType, {
+              nationality: data.nationality,
+              job_title: data.job_title,
+              branch_type: currentBranchTypeForValidation
+            });
+            
+            // Only upload if allowed
+            return validation.allowed;
+          }
+          
+          return true; // If branch type unknown, allow (backward compatibility)
+        });
         
         if (documentEntries.length > 0) {
           setUploadingDocuments(true);
@@ -534,13 +689,45 @@ const Employees = () => {
           await Promise.all(uploadPromises);
           setUploadingDocuments(false);
         }
+        
+        // Update completion status after documents are uploaded
+        try {
+          await employeesAPI.updateCompletionStatus(editingEmployee.id);
+        } catch (error) {
+          console.error('Error updating completion status:', error);
+        }
       } else {
         // Create employee first
         const createResponse = await employeesAPI.create(data);
         employee = createResponse.data.data;
         
         // Upload documents if any were provided
-        const documentEntries = Object.entries(documents).filter(([_, file]) => file !== null);
+        // Filter out documents that are not allowed for this employee
+        let currentBranchTypeForValidation = selectedBranchType;
+        if (!currentBranchTypeForValidation && employee?.branch_id) {
+          const employeeBranch = branches.find(b => b.id === employee.branch_id);
+          if (employeeBranch) {
+            currentBranchTypeForValidation = employeeBranch.branch_type;
+          }
+        }
+        
+        const documentEntries = Object.entries(documents).filter(([documentType, file]) => {
+          if (!file) return false;
+          
+          // Validate document type before upload (silently filter out invalid ones)
+          if (currentBranchTypeForValidation) {
+            const validation = validateDocumentType(documentType, {
+              nationality: data.nationality,
+              job_title: data.job_title,
+              branch_type: currentBranchTypeForValidation
+            });
+            
+            // Only upload if allowed
+            return validation.allowed;
+          }
+          
+          return true; // If branch type unknown, allow (backward compatibility)
+        });
         
         if (documentEntries.length > 0) {
           setUploadingDocuments(true);
@@ -560,6 +747,13 @@ const Employees = () => {
           
           await Promise.all(uploadPromises);
           setUploadingDocuments(false);
+        }
+        
+        // Update completion status after documents are uploaded
+        try {
+          await employeesAPI.updateCompletionStatus(employee.id);
+        } catch (error) {
+          console.error('Error updating completion status:', error);
         }
       }
       
@@ -610,6 +804,38 @@ const Employees = () => {
   };
   
   const handleDocumentChange = (documentType, file) => {
+    // Silently validate document type before allowing upload
+    // Don't show error messages - just prevent upload if not allowed
+    if (file) {
+      // Get current branch type
+      let branchTypeForValidation = selectedBranchType;
+      if (!branchTypeForValidation && formData.branch_id) {
+        const branch = branches.find(b => b.id === parseInt(formData.branch_id));
+        if (branch) {
+          branchTypeForValidation = branch.branch_type;
+        }
+      }
+      if (!branchTypeForValidation && !isMainManager() && user?.branch_id) {
+        const userBranch = branches.find(b => b.id === user.branch_id);
+        if (userBranch) {
+          branchTypeForValidation = userBranch.branch_type;
+        }
+      }
+      
+      if (branchTypeForValidation) {
+        const validation = validateDocumentType(documentType, {
+          nationality: formData.nationality,
+          job_title: formData.job_title,
+          branch_type: branchTypeForValidation
+        });
+        
+        // Silently reject if not allowed (don't set the file)
+        if (!validation.allowed) {
+          return; // Don't set the file, effectively preventing upload
+        }
+      }
+    }
+    
     setDocuments(prev => ({
       ...prev,
       [documentType]: file
@@ -725,8 +951,8 @@ const Employees = () => {
       date_of_birth_hijri: '',
       date_of_birth_gregorian: '',
       id_or_residency_number: '',
-      id_type: 'citizen',
-      gender: 'male',
+      id_type: '',
+      gender: '',
       id_expiry_date_hijri: '',
       id_expiry_date_gregorian: '',
       religion: '',
@@ -823,25 +1049,90 @@ const Employees = () => {
         <>
       <div className="page-header">
             <h1>إدارة الموظفين</h1>
-            <button onClick={() => { 
-              resetForm(); 
-              // Auto-set branch_id and branch type for branch managers
-              if (!isMainManager() && user?.branch_id) {
-                const userBranch = branches.find(b => b.id === user.branch_id);
-                if (userBranch) {
-                  setFormData(prev => ({ ...prev, branch_id: user.branch_id }));
-                  setSelectedBranchType(userBranch.branch_type);
-                  setFormStep(2); // Skip branch type selection, go directly to form
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <button 
+                onClick={() => setFilterIncomplete(!filterIncomplete)}
+                className={filterIncomplete ? 'btn-primary' : 'btn-secondary'}
+                style={{ fontSize: '14px', padding: '8px 16px' }}
+              >
+                {filterIncomplete ? 'عرض الجميع' : 'عرض غير مكتملي البيانات'}
+              </button>
+              <button onClick={() => { 
+                resetForm(); 
+                // Auto-set branch_id and branch type for branch managers
+                if (!isMainManager() && user?.branch_id) {
+                  const userBranch = branches.find(b => b.id === user.branch_id);
+                  if (userBranch) {
+                    setFormData(prev => ({ ...prev, branch_id: user.branch_id }));
+                    setSelectedBranchType(userBranch.branch_type);
+                    setFormStep(2); // Skip branch type selection, go directly to form
+                  }
+                } else {
+                  setFormStep(1); // Main managers need to select branch type
                 }
-              } else {
-                setFormStep(1); // Main managers need to select branch type
-              }
-              setShowForm(true); 
-              setEditingEmployee(null); 
-            }} className="btn-primary">
-              إضافة موظف جديد
-        </button>
+                setShowForm(true); 
+                setEditingEmployee(null); 
+              }} className="btn-primary">
+                إضافة موظف جديد
+              </button>
+            </div>
       </div>
+
+      {isMainManager() && (
+        <div style={{ 
+          marginBottom: '20px', 
+          padding: '15px', 
+          backgroundColor: '#f5f5f5', 
+          borderRadius: '8px',
+          display: 'flex',
+          gap: '15px',
+          flexWrap: 'wrap',
+          alignItems: 'flex-end'
+        }}>
+          <div style={{ flex: '1', minWidth: '200px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>البحث بالاسم:</label>
+            <input
+              ref={searchNameRef}
+              type="text"
+              value={searchFilters.search_name}
+              onChange={(e) => setSearchFilters({ ...searchFilters, search_name: e.target.value })}
+              placeholder="أدخل جزء من الاسم (مثال: مح)"
+              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+            />
+          </div>
+          <div style={{ flex: '1', minWidth: '200px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>البحث برقم الهوية/الإقامة:</label>
+            <input
+              ref={searchIdRef}
+              type="text"
+              value={searchFilters.search_id}
+              onChange={(e) => setSearchFilters({ ...searchFilters, search_id: e.target.value })}
+              placeholder="أدخل رقم الهوية أو الإقامة"
+              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+            />
+          </div>
+          <div style={{ flex: '1', minWidth: '200px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>البحث برقم الهاتف:</label>
+            <input
+              ref={searchPhoneRef}
+              type="text"
+              value={searchFilters.search_phone}
+              onChange={(e) => setSearchFilters({ ...searchFilters, search_phone: e.target.value })}
+              placeholder="أدخل رقم الهاتف"
+              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+            />
+          </div>
+          {(searchFilters.search_name || searchFilters.search_id || searchFilters.search_phone) && (
+            <button
+              onClick={() => setSearchFilters({ search_name: '', search_id: '', search_phone: '' })}
+              className="btn-secondary"
+              style={{ padding: '8px 16px' }}
+            >
+              مسح البحث
+            </button>
+          )}
+        </div>
+      )}
 
           <div className="table-container">
             <table className="data-table">
@@ -852,6 +1143,7 @@ const Employees = () => {
                   <th>المهنة</th>
                   <th>الجنسية</th>
                   {isMainManager() && <th>الفرع</th>}
+                  <th>حالة البيانات</th>
                   <th>الحالة</th>
                   <th>الإجراءات</th>
                 </tr>
@@ -859,18 +1151,24 @@ const Employees = () => {
               <tbody>
                 {employees.length === 0 ? (
                   <tr>
-                    <td colSpan={isMainManager() ? "7" : "6"} style={{ textAlign: 'center' }}>لا يوجد موظفون</td>
+                    <td colSpan={isMainManager() ? "8" : "7"} style={{ textAlign: 'center' }}>لا يوجد موظفون</td>
                   </tr>
                 ) : (
                   employees.map((employee) => {
                     const branch = branches.find(b => b.id === employee.branch_id);
+                    const isComplete = employee.data_completion_status === 'complete';
                     return (
                     <tr key={employee.id}>
                       <td>{employee.id_or_residency_number}</td>
                       <td>{employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}</td>
-                      <td>{employee.occupation}</td>
+                      <td>{employee.occupation || '-'}</td>
                       <td>{employee.nationality}</td>
                       {isMainManager() && <td>{branch ? branch.branch_name : employee.branch_id}</td>}
+                      <td>
+                        <span className={`badge ${isComplete ? 'badge-success' : 'badge-warning'}`}>
+                          {isComplete ? 'مكتمل' : 'غير مكتمل'}
+                        </span>
+                      </td>
                       <td>
                         <span className={`badge ${employee.is_active ? 'badge-success' : 'badge-danger'}`}>
                           {employee.is_active ? 'نشط' : 'غير نشط'}
@@ -949,7 +1247,7 @@ const Employees = () => {
                 {isMainManager() && (
                   <div style={{ marginBottom: 'var(--spacing-sm)', padding: 'var(--spacing-xs) var(--spacing-sm)', background: '#e3f2fd', borderRadius: 'var(--radius-sm)', textAlign: 'center', fontSize: 'var(--font-size-sm)' }}>
                     <strong>نوع الفرع: </strong>
-                    {currentBranchType === 'healthcare_center' ? 'مركز رعاية صحية' : currentBranchType === 'school' ? 'مدرسة' : 'غير محدد'}
+                    {currentBranchType ? (isHealthcareCenter(currentBranchType) ? 'مركز رعاية صحية' : isSchool(currentBranchType) ? 'مدرسة' : 'غير محدد') : 'غير محدد'}
                     {!editingEmployee && (
                       <button
                         type="button"
@@ -1025,12 +1323,11 @@ const Employees = () => {
 
                 <h3 className="col-12">المعلومات الشخصية</h3>
                 <div className="form-group col-3">
-                  <label>المهنة *</label>
+                  <label>المهنة</label>
                   <input
                     type="text"
                     value={formData.occupation}
                     onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
-                    required
                   />
                 </div>
                 <div className="form-group col-3">
@@ -1062,59 +1359,15 @@ const Employees = () => {
                         }
                       }
 
-                      // School job titles
-                      if (currentBranchType === 'school') {
-                        return (
-                          <>
-                            <option value="مدير">مدير</option>
-                            <option value="وكيل">وكيل</option>
-                            <option value="معلم صفوف اولية">معلم صفوف اولية</option>
-                            <option value="معلم انجليزي">معلم انجليزي</option>
-                            <option value="معلم عربي">معلم عربي</option>
-                            <option value="معلم علوم">معلم علوم</option>
-                            <option value="معلم فيزياء">معلم فيزياء</option>
-                            <option value="معلم كيمياء">معلم كيمياء</option>
-                            <option value="معلم احياء">معلم احياء</option>
-                            <option value="معلم حساب آلي">معلم حساب آلي</option>
-                            <option value="معلم اجتماعيات">معلم اجتماعيات</option>
-                            <option value="معلم تاريخ">معلم تاريخ</option>
-                            <option value="معلم جغرافيا">معلم جغرافيا</option>
-                            <option value="معلم اسلاميات">معلم اسلاميات</option>
-                            <option value="معلم رياضيات">معلم رياضيات</option>
-                            <option value="معلم اسرية">معلم اسرية</option>
-                            <option value="معلم بدنية">معلم بدنية</option>
-                            <option value="معلم فنية">معلم فنية</option>
-                            <option value="معلم رياض اطفال">معلم رياض اطفال</option>
-                            <option value="حارس">حارس</option>
-                            <option value="سائق">سائق</option>
-                            <option value="مساعد اداري">مساعد اداري</option>
-                            <option value="عامل نظافة">عامل نظافة</option>
-                            <option value="مرافق باص">مرافق باص</option>
-                            <option value="مرشد طلابي">مرشد طلابي</option>
-                            <option value="معلم لغة صينية">معلم لغة صينية</option>
-                            <option value="معلم حساب ذهني">معلم حساب ذهني</option>
-                          </>
-                        );
-                      }
-                      // Healthcare center job titles
+                      // Get job titles from constants based on branch type
+                      const jobTitles = getJobTitlesByBranchType(currentBranchType);
                       return (
                         <>
-                          <option value="مديرة مراكز">مديرة مراكز</option>
-                          <option value="الموارد البشرية">الموارد البشرية</option>
-                          <option value="حارس امن">حارس امن</option>
-                          <option value="سائق">سائق</option>
-                          <option value="مرافق سائق">مرافق سائق</option>
-                          <option value="تمريض">تمريض</option>
-                          <option value="علاج طبيعي">علاج طبيعي</option>
-                          <option value="علاج وظيفي">علاج وظيفي</option>
-                          <option value="النطق و التخاطب">النطق و التخاطب</option>
-                          <option value="اخصائي نفسي">اخصائي نفسي</option>
-                          <option value="اخصائي اجتماعي">اخصائي اجتماعي</option>
-                          <option value="مشرف فني عام">مشرف فني عام</option>
-                          <option value="مراقب اجتماعي">مراقب اجتماعي</option>
-                          <option value="الرعاية الشخصية">الرعاية الشخصية</option>
-                          <option value="معلم صف تربية خاصة">معلم صف تربية خاصة</option>
-                          <option value="معلم صف توحد">معلم صف توحد</option>
+                          {jobTitles.map((title) => (
+                            <option key={title} value={title}>
+                              {title}
+                            </option>
+                          ))}
                         </>
                       );
                     })()}
@@ -1122,11 +1375,10 @@ const Employees = () => {
                 </div>
                 <div className="form-group col-3">
                   <HijriDatePicker
-                    label={isSaudi() ? "تاريخ الميلاد *" : "تاريخ الميلاد *"}
+                    label="تاريخ الميلاد"
                     value={dateOfBirthCalendarType === 'hijri' ? formData.date_of_birth_hijri : (dateOfBirthCalendarType === 'gregorian' ? formData.date_of_birth_gregorian : '')}
                     onChange={(value, type) => handleDateOfBirthChange(value, type)}
                     calendarType={dateOfBirthCalendarType}
-                    required
                     forceCalendarType={formData.nationality ? (isSaudi() ? 'hijri' : 'gregorian') : null}
                   />
                 </div>
@@ -1141,7 +1393,7 @@ const Employees = () => {
                   />
                 </div>
                 {/* ID expiry date - only for non-Saudis */}
-                {!isSaudi() && (
+                {isNonSaudi(formData.nationality) && (
                   <div className="form-group col-3">
                     <HijriDatePicker
                       label="انتهاء الإقامة"
@@ -1155,12 +1407,13 @@ const Employees = () => {
                 <div className="form-group col-2">
                   <label>نوع الهوية *</label>
                   <select
-                    value={formData.id_type}
+                    value={formData.id_type || ''}
                     onChange={(e) => setFormData({ ...formData, id_type: e.target.value })}
-                    required
                     disabled={!!formData.nationality}
                     style={formData.nationality ? { background: '#f0f0f0', cursor: 'not-allowed' } : {}}
+                    required
                   >
+                    <option value="">اختر النوع</option>
                     <option value="citizen">مواطن</option>
                     <option value="resident">مقيم</option>
                   </select>
@@ -1168,10 +1421,11 @@ const Employees = () => {
                 <div className="form-group col-2">
                   <label>الجنس *</label>
                   <select
-                    value={formData.gender}
+                    value={formData.gender || ''}
                     onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
                     required
                   >
+                    <option value="">اختر الجنس</option>
                     <option value="male">ذكر</option>
                     <option value="female">أنثى</option>
                   </select>
@@ -1230,7 +1484,7 @@ const Employees = () => {
                   />
                 </div>
                 {/* Passport fields - only for non-Saudis */}
-                {!isSaudi() && (
+                {isNonSaudi(formData.nationality) && (
                   <>
                     <div className="form-group col-3">
                       <label>رقم جواز السفر</label>
@@ -1416,16 +1670,15 @@ const Employees = () => {
                 />
               </div>
 
-              <h3 className="col-12">{editingEmployee ? 'تحديث المستندات (اختياري)' : 'المستندات المطلوبة'}</h3>
+
               <div className="documents-section col-12">
                     {/* Common documents for all types */}
                     <div className="form-group col-3">
-                      <label>الهوية/الإقامة {!editingEmployee && '*'}</label>
+                      <label>الهوية/الإقامة</label>
                       <input
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png"
                         onChange={(e) => handleDocumentChange('id_or_residency', e.target.files[0] || null)}
-                        required={!editingEmployee}
                       />
                       {documents.id_or_residency && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.id_or_residency.name}</span>}
                     </div>
@@ -1465,18 +1718,17 @@ const Employees = () => {
                       />
                       {documents.employment_contract && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.employment_contract.name}</span>}
                     </div>
-                    {/* Medical disclosure form - required for women, optional for men */}
+                    {/* Medical disclosure form - optional */}
                     <div className="form-group col-3">
-                      <label>نموذج افصاح طبي {formData.gender === 'female' && !editingEmployee && '*'}</label>
+                      <label>نموذج افصاح طبي</label>
                       <input
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png"
                         onChange={(e) => handleDocumentChange('medical_disclosure_form', e.target.files[0] || null)}
-                        required={formData.gender === 'female' && !editingEmployee}
                       />
                       {documents.medical_disclosure_form && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.medical_disclosure_form.name}</span>}
                     </div>
-                    {!isSaudi() && (
+                    {isNonSaudi(formData.nationality) && (
                       <div className="form-group col-3">
                         <label>جواز السفر</label>
                         <input
@@ -1489,27 +1741,29 @@ const Employees = () => {
                     )}
                     
                     {/* School-specific documents */}
-                    {currentBranchType === 'school' && (
+                    {isSchool(currentBranchType) && (
                       <>
                         <div className="form-group col-3">
-                          <label>الترخيص المهني {!editingEmployee && '*'}</label>
+                          <label>الترخيص المهني</label>
                           <input
                             type="file"
                             accept=".pdf,.jpg,.jpeg,.png"
                             onChange={(e) => handleDocumentChange('professional_license', e.target.files[0] || null)}
-                            required={!editingEmployee}
                           />
                           {documents.professional_license && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.professional_license.name}</span>}
                         </div>
-                        <div className="form-group col-3">
-                          <label>شهادة الخبرة</label>
-                          <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={(e) => handleDocumentChange('experience_certificate', e.target.files[0] || null)}
-                          />
-                          {documents.experience_certificate && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.experience_certificate.name}</span>}
-                        </div>
+                        {/* Experience certificate - only for managers/supervisors */}
+                        {requiresExperienceCertificate(formData.job_title, currentBranchType) && (
+                          <div className="form-group col-3">
+                            <label>شهادة الخبرة</label>
+                            <input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={(e) => handleDocumentChange('experience_certificate', e.target.files[0] || null)}
+                            />
+                            {documents.experience_certificate && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.experience_certificate.name}</span>}
+                          </div>
+                        )}
                         <div className="form-group col-3">
                           <label>الدورات الإضافية</label>
                           <input
@@ -1522,13 +1776,10 @@ const Employees = () => {
                       </>
                     )}
   
-                    {currentBranchType === 'healthcare_center' && (
+                    {isHealthcareCenter(currentBranchType) && (
                       <>
                         {/* Classification certificate - only for specific job titles */}
-                        {(formData.job_title === 'علاج طبيعي' || 
-                          formData.job_title === 'علاج وظيفي' || 
-                          formData.job_title === 'اخصائي نفسي' || 
-                          formData.job_title === 'تمريض') && (
+                        {requiresClassificationDocument(formData.job_title) && (
                           <div className="form-group col-3">
                             <label>شهادة التصنيف</label>
                             <input
@@ -1539,55 +1790,62 @@ const Employees = () => {
                             {documents.classification && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.classification.name}</span>}
                           </div>
                         )}
-                        <div className="form-group col-3">
-                          <label>شهادة الخبرة</label>
-                          <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={(e) => handleDocumentChange('experience_certificate', e.target.files[0] || null)}
-                          />
-                          {documents.experience_certificate && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.experience_certificate.name}</span>}
-                        </div>
-                        <div className="form-group col-3">
-                          <label>دورة علاج النطق</label>
-                          <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={(e) => handleDocumentChange('speech_therapy_course', e.target.files[0] || null)}
-                          />
-                          {documents.speech_therapy_course && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.speech_therapy_course.name}</span>}
-                        </div>
-                        {/* 70 hours speech therapy course - required for النطق و التخاطب job title */}
-                        {formData.job_title === 'النطق و التخاطب' && (
+                        {/* Experience certificate - only for managers/supervisors */}
+                        {requiresExperienceCertificateDocument(formData.job_title, currentBranchType) && (
                           <div className="form-group col-3">
-                            <label>دورة 70 ساعة في التخاطب {!editingEmployee && '*'}</label>
+                            <label>شهادة الخبرة</label>
                             <input
                               type="file"
                               accept=".pdf,.jpg,.jpeg,.png"
-                              onChange={(e) => handleDocumentChange('speech_therapy_70_hours_course', e.target.files[0] || null)}
-                              required={!editingEmployee}
+                              onChange={(e) => handleDocumentChange('experience_certificate', e.target.files[0] || null)}
                             />
-                            {documents.speech_therapy_70_hours_course && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.speech_therapy_70_hours_course.name}</span>}
+                            {documents.experience_certificate && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.experience_certificate.name}</span>}
                           </div>
                         )}
-                        <div className="form-group col-3">
-                          <label>دورة العلاج الطبيعي</label>
-                          <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={(e) => handleDocumentChange('physical_therapy_course', e.target.files[0] || null)}
-                          />
-                          {documents.physical_therapy_course && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.physical_therapy_course.name}</span>}
-                        </div>
-                        {/* 40 hours therapy course - required for علاج طبيعي and علاج وظيفي job titles */}
+                        {/* Speech therapy course - only for speech therapists */}
+                        {formData.job_title === 'النطق و التخاطب' && (
+                          <>
+                            <div className="form-group col-3">
+                              <label>دورة علاج النطق</label>
+                              <input
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                onChange={(e) => handleDocumentChange('speech_therapy_course', e.target.files[0] || null)}
+                              />
+                              {documents.speech_therapy_course && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.speech_therapy_course.name}</span>}
+                            </div>
+                            {/* 70 hours speech therapy course - required for speech therapists */}
+                            <div className="form-group col-3">
+                              <label>دورة 70 ساعة في التخاطب</label>
+                              <input
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                onChange={(e) => handleDocumentChange('speech_therapy_70_hours_course', e.target.files[0] || null)}
+                              />
+                              {documents.speech_therapy_70_hours_course && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.speech_therapy_70_hours_course.name}</span>}
+                            </div>
+                          </>
+                        )}
+                        {/* Physical therapy course - only for physical/occupational therapists */}
                         {(formData.job_title === 'علاج طبيعي' || formData.job_title === 'علاج وظيفي') && (
                           <div className="form-group col-3">
-                            <label>دورة 40 ساعة {!editingEmployee && '*'}</label>
+                            <label>دورة العلاج الطبيعي</label>
+                            <input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={(e) => handleDocumentChange('physical_therapy_course', e.target.files[0] || null)}
+                            />
+                            {documents.physical_therapy_course && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.physical_therapy_course.name}</span>}
+                          </div>
+                        )}
+                        {/* 40 hours therapy course - optional */}
+                        {requiresTherapy40HoursDocument(formData.job_title) && (
+                          <div className="form-group col-3">
+                            <label>دورة 40 ساعة</label>
                             <input
                               type="file"
                               accept=".pdf,.jpg,.jpeg,.png"
                               onChange={(e) => handleDocumentChange('therapy_40_hours_course', e.target.files[0] || null)}
-                              required={!editingEmployee}
                             />
                             {documents.therapy_40_hours_course && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.therapy_40_hours_course.name}</span>}
                           </div>

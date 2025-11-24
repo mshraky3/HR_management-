@@ -11,16 +11,81 @@ import './TablePage.css';
 const Branches = () => {
   const { isMainManager, user } = useAuth();
   const [branches, setBranches] = useState([]);
+  const [allBranches, setAllBranches] = useState([]); // Store all branches for filtering
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingBranch, setEditingBranch] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({
     branch_name: '',
     branch_location: '',
     branch_type: 'school',
     username: '',
     password: '',
+    branch_documents_password: '',
   });
+
+  // Function to filter and sort branches based on search query
+  const filterAndSortBranches = (branchesList, query) => {
+    if (!query || !query.trim()) {
+      setBranches(branchesList);
+      return;
+    }
+
+    const searchTerm = query.toLowerCase().trim();
+    
+    // Calculate relevance score for each branch
+    const branchesWithScore = branchesList.map(branch => {
+      let score = 0;
+      const searchableText = [
+        branch.branch_name || '',
+        branch.branch_location || '',
+        branch.username || '',
+        branch.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية',
+        branch.password || ''
+      ].join(' ').toLowerCase();
+
+      // Exact match gets highest score
+      if (searchableText.includes(searchTerm)) {
+        score += 100;
+      }
+
+      // Check if search term appears at the start (higher priority)
+      if (branch.branch_name?.toLowerCase().startsWith(searchTerm)) {
+        score += 50;
+      }
+      if (branch.username?.toLowerCase().startsWith(searchTerm)) {
+        score += 40;
+      }
+      if (branch.branch_location?.toLowerCase().startsWith(searchTerm)) {
+        score += 30;
+      }
+
+      // Check for partial matches in each field
+      if (branch.branch_name?.toLowerCase().includes(searchTerm)) {
+        score += 20;
+      }
+      if (branch.username?.toLowerCase().includes(searchTerm)) {
+        score += 15;
+      }
+      if (branch.branch_location?.toLowerCase().includes(searchTerm)) {
+        score += 10;
+      }
+      if (branch.password?.toLowerCase().includes(searchTerm)) {
+        score += 5;
+      }
+
+      return { branch, score };
+    });
+
+    // Filter branches that have any match (score > 0)
+    const filteredBranches = branchesWithScore
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score) // Sort by score descending
+      .map(item => item.branch);
+
+    setBranches(filteredBranches);
+  };
 
   const loadBranches = async () => {
     try {
@@ -34,8 +99,16 @@ const Branches = () => {
       
       const response = await branchesAPI.getAll(filters);
       if (response && response.data && response.data.success) {
-        setBranches(Array.isArray(response.data.data) ? response.data.data : []);
+        const branchesList = Array.isArray(response.data.data) ? response.data.data : [];
+        setAllBranches(branchesList);
+        // Apply search filter if exists
+        if (searchQuery && searchQuery.trim()) {
+          filterAndSortBranches(branchesList, searchQuery);
+        } else {
+          setBranches(branchesList);
+        }
       } else {
+        setAllBranches([]);
         setBranches([]);
       }
     } catch (error) {
@@ -61,7 +134,10 @@ const Branches = () => {
     e.preventDefault();
     try {
       if (editingBranch) {
-        await branchesAPI.update(editingBranch.id, formData);
+        // Don't send branch_type when updating - it cannot be changed
+        const updateData = { ...formData };
+        delete updateData.branch_type;
+        await branchesAPI.update(editingBranch.id, updateData);
       } else {
         await branchesAPI.create(formData);
       }
@@ -82,6 +158,7 @@ const Branches = () => {
       branch_type: branch.branch_type,
       username: branch.username,
       password: '',
+      branch_documents_password: branch.branch_documents_password || '',
     });
     setShowForm(true);
   };
@@ -103,7 +180,15 @@ const Branches = () => {
       branch_type: 'school',
       username: '',
       password: '',
+      branch_documents_password: 'test',
     });
+  };
+
+  // Handle search input change
+  const handleSearchChange = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    filterAndSortBranches(allBranches, query);
   };
 
   if (loading) {
@@ -121,6 +206,37 @@ const Branches = () => {
         )}
       </div>
 
+      {isMainManager() && (
+        <div style={{ 
+          marginBottom: '20px', 
+          padding: '15px', 
+          backgroundColor: '#f5f5f5', 
+          borderRadius: '8px'
+        }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+            البحث في الفروع:
+          </label>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={handleSearchChange}
+            placeholder="ابحث عن فرع بالاسم، الموقع، اسم المستخدم، أو أي معلومة أخرى..."
+            style={{ 
+              width: '100%', 
+              padding: '10px', 
+              borderRadius: '4px', 
+              border: '1px solid #ddd',
+              fontSize: '14px'
+            }}
+          />
+          {searchQuery && (
+            <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
+              عرض {branches.length} من {allBranches.length} فرع
+            </div>
+          )}
+        </div>
+      )}
+
       {showForm && isMainManager() && (
         <div className="modal">
           <div className="modal-content">
@@ -136,17 +252,33 @@ const Branches = () => {
                     required
                   />
                 </div>
-                <div className="form-group">
-                  <label>نوع الفرع *</label>
-                  <select
-                    value={formData.branch_type}
-                    onChange={(e) => setFormData({ ...formData, branch_type: e.target.value })}
-                    required
-                  >
-                    <option value="school">مدرسة</option>
-                    <option value="healthcare_center">مركز صحي</option>
-                  </select>
-                </div>
+                {!editingBranch && (
+                  <div className="form-group">
+                    <label>نوع الفرع *</label>
+                    <select
+                      value={formData.branch_type}
+                      onChange={(e) => setFormData({ ...formData, branch_type: e.target.value })}
+                      required
+                    >
+                      <option value="school">مدرسة</option>
+                      <option value="healthcare_center">مركز رعاية نهارية</option>
+                    </select>
+                  </div>
+                )}
+                {editingBranch && (
+                  <div className="form-group">
+                    <label>نوع الفرع</label>
+                    <input
+                      type="text"
+                      value={formData.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية'}
+                      disabled
+                      style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
+                    />
+                    <small style={{ color: '#666', fontSize: '12px', marginTop: '5px', display: 'block' }}>
+                      نوع الفرع لا يمكن تغييره بعد الإنشاء
+                    </small>
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label>موقع الفرع *</label>
@@ -174,8 +306,22 @@ const Branches = () => {
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     required={!editingBranch}
+                    placeholder={editingBranch ? 'اتركه فارغاً للاحتفاظ بالقيمة الحالية' : ''}
                   />
                 </div>
+              </div>
+              <div className="form-group">
+                <label>كلمة مرور مستندات الفرع *</label>
+                <input
+                  type="password"
+                  value={formData.branch_documents_password}
+                  onChange={(e) => setFormData({ ...formData, branch_documents_password: e.target.value })}
+                  required
+                  placeholder="كلمة المرور للوصول إلى مستندات الفرع"
+                />
+                <small style={{ color: '#666', fontSize: '12px', marginTop: '5px', display: 'block' }}>
+                  هذه كلمة المرور المطلوبة للوصول إلى مستندات الفرع. القيمة الافتراضية: test
+                </small>
               </div>
               <div className="form-actions">
                 <button type="submit" className="btn-primary">حفظ</button>
@@ -196,7 +342,7 @@ const Branches = () => {
               <th>النوع</th>
               <th>الموقع</th>
               <th>اسم المستخدم</th>
-              <th>الحالة</th>
+              <th>كلمة المرور</th>
               {isMainManager() && <th>الإجراءات</th>}
             </tr>
           </thead>
@@ -209,14 +355,10 @@ const Branches = () => {
               branches.map((branch) => (
                 <tr key={branch.id}>
                   <td>{branch.branch_name}</td>
-                  <td>{branch.branch_type === 'school' ? 'مدرسة' : 'مركز صحي'}</td>
+                  <td>{branch.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية'}</td>
                   <td>{branch.branch_location}</td>
                   <td>{branch.username}</td>
-                  <td>
-                    <span className={`badge ${branch.is_active ? 'badge-success' : 'badge-danger'}`}>
-                      {branch.is_active ? 'نشط' : 'غير نشط'}
-                    </span>
-                  </td>
+                  <td>{branch.password || '-'}</td>
                   {isMainManager() && (
                     <td>
                       <button onClick={() => handleEdit(branch)} className="btn-sm btn-edit">تعديل</button>

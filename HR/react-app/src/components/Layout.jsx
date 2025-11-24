@@ -45,17 +45,20 @@ const Layout = ({ children }) => {
           <Link to="/dashboard" className={isActive('/dashboard')} onClick={() => setMobileMenuOpen(false)}>
             لوحة التحكم
           </Link>
-          <Link to="/users" className={isActive('/users')} onClick={() => setMobileMenuOpen(false)}>
-            المستخدمون
+          <Link to="/account-management" className={isActive('/account-management')} onClick={() => setMobileMenuOpen(false)}>
+            إدارة الحسابات
           </Link>
           <Link to="/branches" className={isActive('/branches')} onClick={() => setMobileMenuOpen(false)}>
-            الفروع
+            حسابات الفروع
           </Link>
           <Link to="/employees" className={isActive('/employees')} onClick={() => setMobileMenuOpen(false)}>
             الموظفون
           </Link>
-          <Link to="/branch-documents" className={isActive('/branch-documents')} onClick={() => setMobileMenuOpen(false)}>
-            مستندات الفروع
+          <Link to="/reports" className={isActive('/reports')} onClick={() => setMobileMenuOpen(false)}>
+            إصدار التقارير
+          </Link>
+          <Link to="/employee-file" className={isActive('/employee-file')} onClick={() => setMobileMenuOpen(false)}>
+            ملف موظف
           </Link>
         </div>
         <div className="nav-user">

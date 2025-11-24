@@ -5,22 +5,22 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { employeesAPI, documentsAPI } from '../utils/api';
-import { API_URL } from '../config/api';
-import { useAuth } from '../contexts/AuthContext';
+import { employeesAPI, documentsAPI, branchesAPI } from '../utils/api';
+import { getDocumentTypeLabel } from '../utils/employeeConstants';
 import './TablePage.css';
 
 const EmployeeDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isMainManager, user } = useAuth();
   const [employee, setEmployee] = useState(null);
   const [documents, setDocuments] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [previewDocument, setPreviewDocument] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [downloading, setDownloading] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(null);
+  const [missingData, setMissingData] = useState(null);
 
   useEffect(() => {
     loadEmployeeData();
@@ -29,17 +29,54 @@ const EmployeeDetails = () => {
   const loadEmployeeData = async () => {
     try {
       setLoading(true);
-      const [employeeResponse, documentsResponse] = await Promise.all([
+      const [employeeResponse, documentsResponse, branchesResponse] = await Promise.all([
         employeesAPI.getById(id),
-        employeesAPI.getDocuments(id)
+        employeesAPI.getDocuments(id),
+        branchesAPI.getAll({ is_active: true })
       ]);
 
       if (employeeResponse.data.success) {
         setEmployee(employeeResponse.data.data);
+        
+        // Load missing data for display (but use data_completion_status from DB as source of truth)
+        try {
+          const missingDataResponse = await employeesAPI.getMissingData(id);
+          if (missingDataResponse.data.success) {
+            setMissingData(missingDataResponse.data.data);
+            
+            // IMPORTANT: Always update DB status to match actual calculation
+            // This ensures consistency across all pages (Dashboard, Employees list, Details)
+            try {
+              await employeesAPI.updateCompletionStatus(id);
+              // Reload employee to get updated status from DB
+              const updatedResponse = await employeesAPI.getById(id);
+              if (updatedResponse.data.success) {
+                setEmployee(updatedResponse.data.data);
+              }
+            } catch (updateError) {
+              // Silently handle - status will be updated on next page load
+            }
+          } else {
+            setMissingData({
+              isComplete: employeeResponse.data.data.data_completion_status === 'complete',
+              missingFields: []
+            });
+          }
+        } catch (error) {
+          // Fallback: use DB status
+          setMissingData({
+            isComplete: employeeResponse.data.data.data_completion_status === 'complete',
+            missingFields: []
+          });
+        }
       }
 
       if (documentsResponse.data.success) {
         setDocuments(documentsResponse.data.data || []);
+      }
+
+      if (branchesResponse.data.success) {
+        setBranches(branchesResponse.data.data || []);
       }
     } catch (error) {
       console.error('Error loading employee data:', error);
@@ -202,6 +239,133 @@ const EmployeeDetails = () => {
       </div>
 
       <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '30px', marginTop: '20px' }}>
+        {/* Missing Data Alert */}
+        {/* Use data_completion_status from DB as source of truth, but show missing fields from calculation */}
+        {employee.data_completion_status === 'incomplete' && (
+          <div style={{
+            marginBottom: '30px',
+            padding: '20px',
+            backgroundColor: '#fff3cd',
+            border: '2px solid #f59e0b',
+            borderRadius: '8px',
+            borderRight: '5px solid #f59e0b'
+          }}>
+            <h2 style={{
+              marginTop: 0,
+              marginBottom: '15px',
+              color: '#92400e',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              <span style={{ fontSize: '24px' }}>⚠️</span>
+              البيانات الناقصة
+            </h2>
+            <p style={{ marginBottom: '15px', color: '#856404', fontWeight: '500' }}>
+              هذا الموظف يحتاج إلى إكمال البيانات التالية:
+            </p>
+            {missingData.missingFields && missingData.missingFields.length > 0 ? (
+              <ul style={{
+                margin: 0,
+                paddingRight: '20px',
+                color: '#856404',
+                lineHeight: '1.8'
+              }}>
+                {missingData.missingFields.map((field, index) => (
+                  <li key={index} style={{ marginBottom: '8px' }}>
+                    {field}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div style={{ color: '#856404' }}>
+                <p style={{ fontStyle: 'italic', marginBottom: '10px' }}>
+                  جاري تحميل قائمة البيانات الناقصة...
+                </p>
+                <p style={{ fontSize: '13px', color: '#856404' }}>
+                  قد تشمل البيانات الناقصة: المعلومات الشخصية، المستندات المطلوبة، أو البيانات الخاصة بالمهنة أو نوع الفرع.
+                </p>
+              </div>
+            )}
+            <div style={{ marginTop: '15px' }}>
+              <button
+                onClick={() => navigate(`/employees`, { state: { editEmployeeId: id } })}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#f59e0b',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#d97706';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f59e0b';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                إكمال البيانات الآن
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Data Completion Status */}
+        {/* Use data_completion_status from DB as single source of truth */}
+        {employee.data_completion_status && (
+          <div style={{
+            marginBottom: '20px',
+            padding: '15px',
+            backgroundColor: employee.data_completion_status === 'complete' ? '#d1fae5' : '#fef3c7',
+            border: `2px solid ${employee.data_completion_status === 'complete' ? '#10b981' : '#f59e0b'}`,
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '20px' }}>
+                {employee.data_completion_status === 'complete' ? '✅' : '⚠️'}
+              </span>
+              <strong style={{ color: employee.data_completion_status === 'complete' ? '#065f46' : '#92400e' }}>
+                حالة البيانات: {employee.data_completion_status === 'complete' ? 'مكتملة' : 'غير مكتملة'}
+              </strong>
+            </div>
+            {employee.data_completion_status === 'incomplete' && (
+              <button
+                onClick={() => navigate(`/employees`, { state: { editEmployeeId: id } })}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#f59e0b',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  fontWeight: '500',
+                  fontSize: '13px',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#d97706';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f59e0b';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                إكمال البيانات
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Basic Information */}
         <h2 style={{ marginTop: 0, marginBottom: '20px', color: '#333', borderBottom: '2px solid #2196F3', paddingBottom: '10px' }}>
           المعلومات الأساسية
@@ -220,7 +384,7 @@ const EmployeeDetails = () => {
             <strong>الجنسية:</strong> {employee.nationality}
           </div>
           <div>
-            <strong>الفرع:</strong> {employee.branch_id}
+            <strong>الفرع:</strong> {branches.find(b => b.id === employee.branch_id)?.branch_name || employee.branch_id}
           </div>
           <div>
             <strong>الجنس:</strong> {employee.gender === 'male' ? 'ذكر' : 'أنثى'}
@@ -421,7 +585,7 @@ const EmployeeDetails = () => {
               onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}
               >
                 <div style={{ marginBottom: '15px' }}>
-                  <strong style={{ fontSize: '16px', color: '#333' }}>{doc.document_type}</strong>
+                  <strong style={{ fontSize: '16px', color: '#333' }}>{getDocumentTypeLabel(doc.document_type)}</strong>
                 </div>
                 <div style={{ marginBottom: '10px', color: '#666' }}>
                   <strong>اسم الملف:</strong> {doc.file_name}

@@ -1,12 +1,12 @@
 /**
  * Branch Documents Page
- * Manage branch-level documents (licenses, permits, insurance, etc.)
+ * Manage branch-level documents
  * Completely separate from employee documents
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { branchDocumentsAPI, branchesAPI } from '../utils/api';
+import { branchDocumentsAPI, branchesAPI, setBranchDocumentsPassword, setDocumentBranchMapping, clearAllBranchDocumentsPasswords } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import BankSelect from '../components/BankSelect';
 import './TablePage.css';
@@ -17,7 +17,7 @@ const BranchDocuments = () => {
   const [documents, setDocuments] = useState([]);
   const [allDocuments, setAllDocuments] = useState([]); // Store all documents for filtering
   const [branches, setBranches] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [downloading, setDownloading] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(null);
@@ -28,6 +28,11 @@ const BranchDocuments = () => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [activeTab, setActiveTab] = useState('all'); // Tab state: 'all', 'payroll_file', 'attendance_file', or other types
   const [documentAlert, setDocumentAlert] = useState(null); // Alert message for document type
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [isPasswordVerified, setIsPasswordVerified] = useState(false);
+  const [currentBranchId, setCurrentBranchId] = useState(null);
   const [uploadData, setUploadData] = useState({
     branch_id: '',
     document_type: '',
@@ -64,6 +69,10 @@ const BranchDocuments = () => {
         // Auto-set branch_id for branch managers
         if (!isMainManager() && user?.branch_id) {
           setUploadData(prev => ({ ...prev, branch_id: user.branch_id }));
+          // Always show password modal - never store password
+          setCurrentBranchId(user.branch_id);
+          setIsPasswordVerified(false);
+          setShowPasswordModal(true);
         }
       }
     } catch (error) {
@@ -72,7 +81,67 @@ const BranchDocuments = () => {
     }
   };
 
+  // Check password verification when branch changes (for main manager)
+  useEffect(() => {
+    if (isMainManager() && branches.length > 0) {
+      const branchIdFromUrl = searchParams.get('branch_id');
+      if (branchIdFromUrl) {
+        const branchId = parseInt(branchIdFromUrl);
+        // Always show password modal - never store password
+        setCurrentBranchId(branchId);
+        setIsPasswordVerified(false);
+        setShowPasswordModal(true);
+      } else {
+        // No branch selected - don't show password modal
+        setIsPasswordVerified(false);
+        setCurrentBranchId(null);
+        setShowPasswordModal(false);
+      }
+    }
+  }, [searchParams, isMainManager, branches]);
+
+  // Get current branch ID helper
+  const getCurrentBranchId = useCallback(() => {
+    return currentBranchId || 
+           (!isMainManager() && user?.branch_id ? user.branch_id : null) ||
+           (isMainManager() ? parseInt(searchParams.get('branch_id') || '0') || null : null);
+  }, [currentBranchId, isMainManager, user, searchParams]);
+
+  const handlePasswordSubmit = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    
+    if (!password.trim()) {
+      setPasswordError('الرجاء إدخال كلمة المرور');
+      return;
+    }
+
+    const targetBranchId = getCurrentBranchId();
+    if (!targetBranchId) {
+      setPasswordError('الرجاء تحديد الفرع أولاً');
+      return;
+    }
+
+    try {
+      const response = await branchDocumentsAPI.verifyPassword(targetBranchId, password);
+      if (response.data.success) {
+        setBranchDocumentsPassword(targetBranchId, password);
+        setIsPasswordVerified(true);
+        setShowPasswordModal(false);
+        setCurrentBranchId(targetBranchId);
+        setPassword('');
+      }
+    } catch (error) {
+      setPasswordError(error.response?.data?.message || 'كلمة المرور غير صحيحة');
+    }
+  };
+
   const loadDocuments = useCallback(async () => {
+    // Safety check: Don't load if password is not verified
+    if (!isPasswordVerified || !currentBranchId) {
+      return;
+    }
+
     try {
       setLoading(true);
       const filters = {};
@@ -89,6 +158,12 @@ const BranchDocuments = () => {
       if (response.data.success) {
         const docs = response.data.data || [];
         setAllDocuments(docs);
+        // Store document-to-branch mapping for API interceptor (metadata only)
+        docs.forEach(doc => {
+          if (doc.id && doc.branch_id) {
+            setDocumentBranchMapping(doc.id, doc.branch_id);
+          }
+        });
       } else {
         // If API returns success: false, just set empty array, don't show alert
         setAllDocuments([]);
@@ -105,35 +180,42 @@ const BranchDocuments = () => {
     } finally {
       setLoading(false);
     }
-  }, [searchParams, isMainManager, user]);
+  }, [searchParams, isMainManager, user, isPasswordVerified, currentBranchId]);
 
   useEffect(() => {
     if (user) {
       loadBranches();
-      loadDocuments();
     }
-  }, [user, loadDocuments]);
+  }, [user]);
 
   // Handle URL parameters for filtering (from Dashboard links)
   useEffect(() => {
-    const branchId = searchParams.get('branch_id');
     const documentType = searchParams.get('document_type');
+    const branchId = searchParams.get('branch_id');
     
-    if (documentType) {
-      setActiveTab(documentType);
-      // Auto-select branch if provided
-      if (branchId && !isMainManager()) {
-        setUploadData(prev => ({ ...prev, branch_id: branchId }));
-      }
-    } else {
-      setActiveTab('all');
+    setActiveTab(documentType || 'all');
+    
+    if (branchId) {
+      setUploadData(prev => ({ ...prev, branch_id: branchId }));
     }
-    
-    // Reload documents when searchParams change (for branch filtering from Dashboard)
-    if (user) {
+  }, [searchParams]);
+
+  // Load documents only after password is verified
+  useEffect(() => {
+    // Only load if password is verified AND we have a branch ID
+    // Also check that password modal is not showing (to prevent race conditions)
+    if (user && isPasswordVerified && currentBranchId && !showPasswordModal) {
       loadDocuments();
     }
-  }, [searchParams, isMainManager, user, loadDocuments]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isPasswordVerified, currentBranchId, showPasswordModal]);
+
+  // Clear password when component unmounts (security: don't persist passwords)
+  useEffect(() => {
+    return () => {
+      clearAllBranchDocumentsPasswords();
+    };
+  }, []);
 
   // Filter documents based on active tab
   useEffect(() => {
@@ -523,21 +605,19 @@ const BranchDocuments = () => {
   // All document types
   const allBranchDocumentTypes = [
     // Common documents (all branches)
-    { value: 'license', label: 'الترخيص', requiresDefaultFields: true, branchType: null },
-    { value: 'permit', label: 'التصريح', requiresDefaultFields: true, branchType: null },
     { value: 'payroll_file', label: 'ملف مسيرات الرواتب', requiresDefaultFields: false, branchType: null },
     { value: 'attendance_file', label: 'ملف الحضور و الانصراف', requiresDefaultFields: false, branchType: null },
-    { value: 'insurance', label: 'التأمين', requiresDefaultFields: true, branchType: null },
-    { value: 'contract', label: 'العقد', requiresDefaultFields: true, branchType: null },
-    { value: 'certification', label: 'الشهادة', requiresDefaultFields: true, branchType: null },
     { value: 'registration', label: 'السجل التجاري', requiresDefaultFields: true, branchType: null },
     { value: 'iban_file', label: 'ملف الآيبان', requiresDefaultFields: false, branchType: null },
-    // New documents with default fields (all branches)
-    { value: 'security_contract', label: 'عقد الامن و السالامة', requiresDefaultFields: true, branchType: null },
+    // Common documents with default fields (all branches)
     { value: 'civil_defense_certificate', label: 'شهادة الدفاع المدني', requiresDefaultFields: true, branchType: null },
     { value: 'municipality_certificate', label: 'شهادة بلدي', requiresDefaultFields: true, branchType: null },
-    { value: 'insurance_certificate', label: 'شهادة التامينات', requiresDefaultFields: true, branchType: null },
-    // Healthcare center only documents
+    // School-specific documents
+    { value: 'insurance_statement', label: 'كشف التأمينات', requiresDefaultFields: true, branchType: 'school' },
+    { value: 'rental_contract', label: 'عقد الايجار', requiresDefaultFields: true, branchType: 'school' },
+    // Healthcare center specific documents
+    { value: 'insurance_print', label: 'برينت التأمينات', requiresDefaultFields: true, branchType: 'healthcare_center' },
+    { value: 'rental_contract', label: 'عقد الايجار', requiresDefaultFields: true, branchType: 'healthcare_center' },
     { value: 'operational_plan', label: 'الخطة التشغلية للمركز', requiresDefaultFields: true, branchType: 'healthcare_center' },
     { value: 'decision_obligation', label: 'قرار و الزام', requiresDefaultFields: false, branchType: 'healthcare_center' },
     { value: 'decision_commitment', label: 'قرار و تعهد', requiresDefaultFields: false, branchType: 'healthcare_center' },
@@ -547,35 +627,111 @@ const BranchDocuments = () => {
     { value: 'certification_commitment_form', label: 'نموذج تصديق و تعقد', requiresDefaultFields: true, branchType: 'healthcare_center' },
     { value: 'financial_platform_declaration', label: 'ملف اقرار المنصة المالية', requiresDefaultFields: true, branchType: 'healthcare_center' },
     { value: 'financial_claim_form', label: 'نموذج مطالبة مالية', requiresDefaultFields: true, branchType: 'healthcare_center' },
-    // Student-related documents for healthcare centers only
-    { value: 'student_cadre_file', label: 'ملف الكادر الطلابي', requiresDefaultFields: false, branchType: 'healthcare_center', hasAlert: true },
-    { value: 'dropped_students', label: 'الطلاب المنقطعين', requiresDefaultFields: false, branchType: 'healthcare_center', hasAlert: true },
-    { value: 'free_seats', label: 'المقاعد المجانية', requiresDefaultFields: false, branchType: 'healthcare_center', hasAlert: true },
-    { value: 'acceptance_notifications', label: 'ملف اشعارات القبول', requiresDefaultFields: false, branchType: 'healthcare_center', hasAlert: true },
+    // Student-related documents for healthcare centers only (should appear in alerts)
+    { value: 'student_cadre_file', label: 'كادر الطلاب', requiresDefaultFields: false, branchType: 'healthcare_center' },
+    { value: 'dropped_students', label: 'الطلاب المتسربين', requiresDefaultFields: false, branchType: 'healthcare_center' },
+    { value: 'free_seats', label: 'المقاعد المتاحة', requiresDefaultFields: false, branchType: 'healthcare_center' },
+    { value: 'acceptance_notifications', label: 'إشعارات القبول', requiresDefaultFields: false, branchType: 'healthcare_center' },
     { value: 'other', label: 'أخرى', requiresDefaultFields: true, branchType: null },
   ];
 
-  // Get current branch type
-  const getCurrentBranchType = () => {
+  // Get current branch type (memoized)
+  const currentBranchType = useMemo(() => {
     const branchId = uploadData.branch_id || (!isMainManager() && user?.branch_id ? user.branch_id : null);
     if (!branchId) return null;
     const branch = branches.find(b => b.id === parseInt(branchId));
     return branch?.branch_type || null;
-  };
+  }, [uploadData.branch_id, isMainManager, user?.branch_id, branches]);
 
-  // Filter document types based on branch type
-  const branchDocumentTypes = allBranchDocumentTypes.filter(type => {
-    // If document type is restricted to a specific branch type
-    if (type.branchType) {
-      const currentBranchType = getCurrentBranchType();
-      return currentBranchType === type.branchType;
-    }
-    // Otherwise, show for all branches
-    return true;
-  });
+  // Filter document types based on branch type (memoized)
+  const branchDocumentTypes = useMemo(() => {
+    return allBranchDocumentTypes.filter(type => {
+      if (type.branchType) {
+        return currentBranchType === type.branchType;
+      }
+      return true;
+    });
+  }, [currentBranchType]);
 
-  if (loading) {
-    return <div className="loading">جاري تحميل مستندات الفرع...</div>;
+  // Show password modal if not verified
+  if (showPasswordModal && !isPasswordVerified) {
+    const targetBranchId = getCurrentBranchId();
+    const branch = branches.find(b => b.id === targetBranchId);
+
+    return (
+      <div className="modal" style={{ display: 'flex' }}>
+        <div className="modal-content" style={{ maxWidth: '400px' }}>
+          <h2>إدخال كلمة مرور مستندات الفرع</h2>
+          <p style={{ marginBottom: '20px', color: '#666' }}>
+            {branch ? `الرجاء إدخال كلمة مرور مستندات الفرع: ${branch.branch_name}` : 'الرجاء إدخال كلمة مرور مستندات الفرع'}
+          </p>
+          <form onSubmit={handlePasswordSubmit}>
+            <div className="form-group">
+              <label>كلمة المرور *</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setPasswordError('');
+                }}
+                placeholder="أدخل كلمة المرور"
+                required
+                autoFocus
+              />
+              {passwordError && (
+                <span style={{ color: 'red', fontSize: '14px', marginTop: '5px', display: 'block' }}>
+                  {passwordError}
+                </span>
+              )}
+            </div>
+            <div className="form-actions">
+              <button type="submit" className="btn-primary">
+                تأكيد
+              </button>
+              <button 
+                type="button" 
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setPassword('');
+                  setPasswordError('');
+                  // Navigate away from branch documents page
+                  window.history.back();
+                }} 
+                className="btn-secondary"
+              >
+                إلغاء
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // For main managers: show message if no branch selected
+  if (isMainManager() && !searchParams.get('branch_id') && branches.length > 0) {
+    return (
+      <div className="table-page">
+        <div className="page-header">
+          <h1>مستندات الفروع</h1>
+        </div>
+        <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+          الرجاء اختيار فرع لعرض مستنداته
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading states
+  if (loading || (branches.length === 0 && user)) {
+    return <div className="loading">جاري التحميل...</div>;
+  }
+
+  if ((!isPasswordVerified && !showPasswordModal) && 
+      ((!isMainManager() && user?.branch_id) || 
+       (isMainManager() && searchParams.get('branch_id')))) {
+    return <div className="loading">جاري التحميل...</div>;
   }
 
   const handleTabChange = (tab) => {
@@ -591,15 +747,29 @@ const BranchDocuments = () => {
   };
 
   const handleOpenUploadForm = () => {
-    // Auto-select document type based on active tab if it's a monthly document type
+    // Auto-select document type based on active tab or URL parameter
+    const documentTypeFromUrl = searchParams.get('document_type');
     let documentType = '';
-    if (activeTab === 'payroll_file' || activeTab === 'attendance_file') {
+    
+    // Priority: URL parameter > active tab (for monthly documents)
+    if (documentTypeFromUrl) {
+      documentType = documentTypeFromUrl;
+    } else if (activeTab === 'payroll_file' || activeTab === 'attendance_file') {
       documentType = activeTab;
+    }
+    
+    // Get branch_id from URL or user's branch
+    const branchIdFromUrl = searchParams.get('branch_id');
+    let branchId = '';
+    if (branchIdFromUrl) {
+      branchId = branchIdFromUrl;
+    } else if (!isMainManager() && user?.branch_id) {
+      branchId = user.branch_id;
     }
     
     setDocumentAlert(null);
     setUploadData({
-      branch_id: !isMainManager() && user?.branch_id ? user.branch_id : '',
+      branch_id: branchId,
       document_type: documentType,
       description: '',
       document_number: '',
@@ -640,24 +810,6 @@ const BranchDocuments = () => {
           onClick={() => handleTabChange('attendance_file')}
         >
           ملف الحضور و الانصراف
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'license' ? 'active' : ''}`}
-          onClick={() => handleTabChange('license')}
-        >
-          الترخيص
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'permit' ? 'active' : ''}`}
-          onClick={() => handleTabChange('permit')}
-        >
-          التصريح
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'insurance' ? 'active' : ''}`}
-          onClick={() => handleTabChange('insurance')}
-        >
-          التأمين
         </button>
         <button
           className={`tab-button ${activeTab === 'other' ? 'active' : ''}`}
@@ -993,11 +1145,6 @@ const BranchDocuments = () => {
                 {editData.file && (
                   <span className="file-name" style={{fontSize: '12px', color: '#4CAF50', display: 'block', marginTop: '5px'}}>
                     ✓ {editData.file.name}
-                  </span>
-                )}
-                {editingDocument.document_type === 'license' && editData.file && (
-                  <span style={{fontSize: '11px', color: '#ff9800', display: 'block', marginTop: '5px'}}>
-                    ⚠️ سيتم إخفاء المستندات القديمة من نوع "ترخيص" تلقائياً
                   </span>
                 )}
               </div>
