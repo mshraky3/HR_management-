@@ -21,6 +21,7 @@ export async function initializeDatabase() {
       branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
       username VARCHAR(255) UNIQUE NOT NULL,
       password VARCHAR(255) NOT NULL,
+      branch_documents_password VARCHAR(255) DEFAULT 'test',
       is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -134,6 +135,7 @@ export async function initializeDatabase() {
       annual_leave_allowance DECIMAL(10,2),
       other_allowances DECIMAL(10,2),
       deductions DECIMAL(10,2),
+      data_completion_status VARCHAR(20) DEFAULT 'incomplete' CHECK (data_completion_status IN ('incomplete', 'complete')),
       is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -160,6 +162,10 @@ export async function initializeDatabase() {
     await executeQuery(
       'CREATE INDEX IF NOT EXISTS idx_employees_occupation ON employees(occupation)',
       'Created index on employees.occupation'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_employees_data_completion_status ON employees(data_completion_status)',
+      'Created index on employees.data_completion_status'
     );
 
     // 6. Create employee_documents table

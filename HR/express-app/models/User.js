@@ -28,7 +28,7 @@ export const User = {
   async findById(id) {
     try {
       const [user] = await sql`
-        SELECT id, username, role, branch_id, full_name, email, is_active, created_at, updated_at
+        SELECT id, username, role, branch_id, full_name, email, phone_number, is_active, created_at, updated_at
         FROM users 
         WHERE id = ${id} AND is_active = true
       `;
@@ -44,12 +44,12 @@ export const User = {
    */
   async create(userData) {
     try {
-      const { username, password, role, branch_id, full_name, email, created_by } = userData;
+      const { username, password, role, branch_id, full_name, email, phone_number, created_by } = userData;
       
       const [user] = await sql`
-        INSERT INTO users (username, password, role, branch_id, full_name, email, created_by)
-        VALUES (${username}, ${password}, ${role}, ${branch_id || null}, ${full_name}, ${email || null}, ${created_by || null})
-        RETURNING id, username, role, branch_id, full_name, email, is_active, created_at
+        INSERT INTO users (username, password, role, branch_id, full_name, email, phone_number, created_by)
+        VALUES (${username}, ${password}, ${role}, ${branch_id || null}, ${full_name}, ${email || null}, ${phone_number || null}, ${created_by || null})
+        RETURNING id, username, role, branch_id, full_name, email, phone_number, is_active, created_at
       `;
       
       return user;
@@ -65,7 +65,7 @@ export const User = {
   async findAll(filters = {}) {
     try {
       let query = sql`
-        SELECT id, username, role, branch_id, full_name, email, is_active, created_at, updated_at 
+        SELECT id, username, password, role, branch_id, full_name, email, phone_number, is_active, created_at, updated_at 
         FROM users 
         WHERE 1=1
       `;
@@ -96,7 +96,7 @@ export const User = {
    */
   async update(id, updates) {
     try {
-      const allowedFields = ['username', 'password', 'full_name', 'email', 'is_active', 'branch_id'];
+      const allowedFields = ['username', 'password', 'full_name', 'email', 'phone_number', 'is_active', 'branch_id'];
       const updateFields = Object.keys(updates).filter(key => allowedFields.includes(key));
       
       if (updateFields.length === 0) {
@@ -117,7 +117,7 @@ export const User = {
         UPDATE users 
         SET ${setClause}, updated_at = $${values.length + 1}
         WHERE id = $1
-        RETURNING id, username, role, branch_id, full_name, email, is_active, updated_at
+        RETURNING id, username, role, branch_id, full_name, email, phone_number, is_active, updated_at
       `;
       
       values.push(updates.updated_at);

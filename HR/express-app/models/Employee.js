@@ -59,23 +59,70 @@ export const Employee = {
    */
   async findAll(filters = {}) {
     try {
-      let query = sql`SELECT * FROM employees WHERE 1=1`;
+      const conditions = [];
+      const params = [];
+      let paramIndex = 1;
+      
+      // Base condition
+      conditions.push('1=1');
       
       if (filters.branch_id) {
-        query = sql`${query} AND branch_id = ${filters.branch_id}`;
+        if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
+          // Multiple branch IDs
+          const placeholders = filters.branch_id.map(() => `$${paramIndex++}`).join(', ');
+          conditions.push(`branch_id IN (${placeholders})`);
+          params.push(...filters.branch_id);
+        } else if (!Array.isArray(filters.branch_id)) {
+          // Single branch ID
+          conditions.push(`branch_id = $${paramIndex++}`);
+          params.push(filters.branch_id);
+        }
       }
       
       if (filters.occupation) {
-        query = sql`${query} AND occupation = ${filters.occupation}`;
+        conditions.push(`occupation = $${paramIndex++}`);
+        params.push(filters.occupation);
       }
       
       if (filters.is_active !== undefined) {
-        query = sql`${query} AND is_active = ${filters.is_active}`;
+        conditions.push(`is_active = $${paramIndex++}`);
+        params.push(filters.is_active);
       }
       
-      query = sql`${query} ORDER BY created_at DESC`;
+      if (filters.data_completion_status) {
+        conditions.push(`data_completion_status = $${paramIndex++}`);
+        params.push(filters.data_completion_status);
+      }
       
-      return await query;
+      // Search by name (partial match on any name field)
+      if (filters.search_name) {
+        const namePattern = `%${filters.search_name}%`;
+        conditions.push(`(
+          first_name ILIKE $${paramIndex} OR 
+          second_name ILIKE $${paramIndex} OR 
+          third_name ILIKE $${paramIndex} OR 
+          fourth_name ILIKE $${paramIndex}
+        )`);
+        params.push(namePattern);
+        paramIndex++;
+      }
+      
+      // Search by ID or residency number (exact or partial match)
+      if (filters.search_id) {
+        conditions.push(`id_or_residency_number ILIKE $${paramIndex++}`);
+        params.push(`%${filters.search_id}%`);
+      }
+      
+      // Search by phone number (partial match)
+      if (filters.search_phone) {
+        conditions.push(`phone_number ILIKE $${paramIndex++}`);
+        params.push(`%${filters.search_phone}%`);
+      }
+      
+      const whereClause = conditions.join(' AND ');
+      const queryString = `SELECT * FROM employees WHERE ${whereClause} ORDER BY created_at DESC`;
+      
+      return await sql.unsafe(queryString, params);
     } catch (error) {
       console.error('Error finding employees:', error);
       throw error;
@@ -98,7 +145,7 @@ export const Employee = {
         end_of_service_allowance, annual_leave_allowance, other_allowances,
         deductions, graduation_year, university_gpa,
         passport_number, passport_issue_date, passport_expiry_date, passport_issue_place, residency_issue_date,
-        job_title, created_by, updated_by
+        job_title, data_completion_status, created_by, updated_by
       } = employeeData;
       
       // If updated_by is not provided, use created_by (for new records)
@@ -119,12 +166,12 @@ export const Employee = {
           end_of_service_allowance, annual_leave_allowance, other_allowances,
           deductions, graduation_year, university_gpa,
           passport_number, passport_issue_date, passport_expiry_date, passport_issue_place, residency_issue_date,
-          job_title, created_by, updated_by
+          job_title, data_completion_status, created_by, updated_by
         )
         VALUES (
-          ${employee_id_number}, ${branch_id}, ${first_name}, ${second_name}, ${third_name}, ${fourth_name},
-          ${occupation}, ${nationality}, ${date_of_birth_hijri || null}, ${date_of_birth_gregorian || null},
-          ${id_or_residency_number}, ${id_type}, ${gender}, ${id_expiry_date_hijri || null}, ${id_expiry_date_gregorian || null},
+          ${employee_id_number || null}, ${branch_id}, ${first_name}, ${second_name}, ${third_name}, ${fourth_name},
+          ${occupation || null}, ${nationality}, ${date_of_birth_hijri || null}, ${date_of_birth_gregorian || null},
+          ${id_or_residency_number}, ${id_type || null}, ${gender || null}, ${id_expiry_date_hijri || null}, ${id_expiry_date_gregorian || null},
           ${religion || null}, ${marital_status || null}, ${educational_qualification || null}, ${specialization || null},
           ${bank_iban || null}, ${bank_name || null}, ${email || null}, ${phone_number || null},
           ${national_address || null}, ${contract_type || null}, ${years_of_experience_in_same_institution !== undefined && years_of_experience_in_same_institution !== null ? years_of_experience_in_same_institution : 0}, ${years_of_experience_in_company !== undefined && years_of_experience_in_company !== null ? years_of_experience_in_company : 0}, ${salary !== undefined && salary !== null ? salary : 0},
@@ -137,7 +184,7 @@ export const Employee = {
           ${deductions !== undefined && deductions !== null ? deductions : 0}, 
           ${graduation_year || null}, ${university_gpa || null},
           ${passport_number || null}, ${passport_issue_date || null}, ${passport_expiry_date || null}, ${passport_issue_place || null}, ${residency_issue_date || null},
-          ${job_title || null}, ${created_by}, ${finalUpdatedBy}
+          ${job_title || null}, ${data_completion_status || 'incomplete'}, ${created_by}, ${finalUpdatedBy}
         )
         RETURNING *
       `;
@@ -164,7 +211,7 @@ export const Employee = {
         'end_of_service_allowance', 'annual_leave_allowance', 'other_allowances',
         'deductions', 'graduation_year', 'university_gpa',
         'passport_number', 'passport_issue_date', 'passport_expiry_date', 'passport_issue_place', 'residency_issue_date',
-        'job_title'
+        'job_title', 'data_completion_status'
       ];
       
       const updateFields = Object.keys(updates).filter(key => allowedFields.includes(key));
