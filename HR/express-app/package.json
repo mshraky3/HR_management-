@@ -15,12 +15,17 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@digicole/pdfmake-rtl": "^1.2.0",
     "@vercel/blob": "^2.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
+    "pdf-lib": "^1.17.1",
+    "pdfkit": "^0.17.2",
+    "pdfmake": "^0.2.20",
     "postgres": "^3.4.7"
   }
 }

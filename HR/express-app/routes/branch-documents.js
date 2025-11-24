@@ -9,55 +9,183 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { authenticate } from '../middleware/auth.js';
 import { uploadSingle, validateUploadedFile } from '../middleware/upload.js';
+import { verifyBranchDocumentsPassword } from '../middleware/branchDocumentsPassword.js';
 import { BranchDocument } from '../models/BranchDocument.js';
 import { Branch } from '../models/Branch.js';
 import { getExtensionFromMimeType } from '../utils/fileUpload.js';
-import { uploadBranchDocumentToBlob, deleteFromBlob } from '../utils/blobStorage.js';
+import { uploadBranchDocumentToBlob, deleteFromBlob, fetchFromBlob } from '../utils/blobStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
+/**
+ * Get valid user ID for uploaded_by field
+ */
+const getUploadedByUserId = async (userId) => {
+  if (!userId) return null;
+  
+  try {
+    const sql = (await import('../config/database.js')).default;
+    const [user] = await sql`SELECT id FROM users WHERE id = ${userId}`;
+    if (user?.id) return user.id;
+  } catch (error) {
+    console.error('Error verifying user:', error);
+  }
+  
+  // Fallback: find first active user
+  try {
+    const sql = (await import('../config/database.js')).default;
+    const [fallbackUser] = await sql`
+      SELECT id FROM users WHERE is_active = true ORDER BY id ASC LIMIT 1
+    `;
+    if (fallbackUser?.id) return fallbackUser.id;
+    
+    // Last resort: find any user
+    const [anyUser] = await sql`SELECT id FROM users ORDER BY id ASC LIMIT 1`;
+    return anyUser?.id || null;
+  } catch (error) {
+    console.error('Error finding fallback user:', error);
+    return null;
+  }
+};
+
+/**
+ * Safely parse document ID from request params
+ */
+const parseDocumentId = (req) => {
+  const id = parseInt(req.params?.id);
+  if (isNaN(id)) {
+    return { error: 'Invalid document ID' };
+  }
+  return { documentId: id };
+};
+
+/**
+ * Resolve file path for backward compatibility with old local files
+ * Note: New files are stored in Blob Storage, this is only for legacy files
+ */
+const resolveFilePath = (filePath) => {
+  if (!filePath) return null;
+  
+  // If it's already a URL (Blob Storage), return null (handled elsewhere)
+  if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+    return null;
+  }
+  
+  // If absolute path, use as is
+  if (path.isAbsolute(filePath)) {
+    return fs.existsSync(filePath) ? filePath : null;
+  }
+  
+  // Try different relative path combinations (for legacy files only)
+  const alternatives = [
+    path.join(__dirname, '..', filePath),
+    path.join(__dirname, '..', filePath.replace(/^express-app\//, '')),
+  ];
+  
+  for (const altPath of alternatives) {
+    if (fs.existsSync(altPath)) {
+      return altPath;
+    }
+  }
+  
+  return null;
+};
+
 // All routes require authentication
 router.use(authenticate);
 
 /**
+ * Verify branch documents password
+ * POST /api/branch-documents/verify-password
+ * Body: { branch_id, password }
+ */
+router.post('/verify-password', async (req, res) => {
+  try {
+    const { branch_id, password } = req.body;
+
+    if (!branch_id || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'branch_id and password are required'
+      });
+    }
+
+    const parsedBranchId = parseInt(branch_id);
+    if (isNaN(parsedBranchId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid branch ID format'
+      });
+    }
+
+    // Get branch
+    const branch = await Branch.findById(parsedBranchId);
+    if (!branch) {
+      return res.status(404).json({ success: false, message: 'Branch not found' });
+    }
+
+    // Check access - branch managers can only verify their own branch
+    if (req.user.role === 'branch_manager' && req.user.branch_id !== parsedBranchId) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    // Verify password
+    if (branch.branch_documents_password !== password) {
+      return res.status(401).json({ success: false, message: 'Invalid password' });
+    }
+
+    res.json({ success: true, message: 'Password verified successfully' });
+  } catch (error) {
+    console.error('Error verifying password:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to verify password',
+      error: error.message
+    });
+  }
+});
+
+/**
  * Get all branch documents (with filters)
  * GET /api/branch-documents?branch_id=123&document_type=license&is_verified=false
+ * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.get('/', async (req, res) => {
+/**
+ * Build filters from query parameters
+ */
+const buildFilters = (query) => {
+  const filters = {};
+  
+  if (query.branch_id) filters.branch_id = parseInt(query.branch_id);
+  if (query.document_type) filters.document_type = query.document_type;
+  if (query.mime_type) filters.mime_type = query.mime_type;
+  if (query.is_verified !== undefined) {
+    filters.is_verified = query.is_verified === 'true';
+  }
+  
+  return filters;
+};
+
+/**
+ * Get documents based on user role
+ */
+const getDocumentsByRole = async (user, filters) => {
+  if (user.role === 'branch_manager' && user.branch_id) {
+    return await BranchDocument.findByBranchId(user.branch_id, filters);
+  }
+  if (user.role === 'main_manager') {
+    return await BranchDocument.findAll(filters);
+  }
+  return [];
+};
+
+router.get('/', verifyBranchDocumentsPassword, async (req, res) => {
   try {
-    const filters = {};
-
-    if (req.query.branch_id) {
-      filters.branch_id = parseInt(req.query.branch_id);
-    }
-
-    if (req.query.document_type) {
-      filters.document_type = req.query.document_type;
-    }
-
-    if (req.query.mime_type) {
-      filters.mime_type = req.query.mime_type;
-    }
-
-    if (req.query.is_verified !== undefined) {
-      filters.is_verified = req.query.is_verified === 'true';
-    }
-
-    let documents = [];
-
-    // Branch managers only see their branch documents
-    if (req.user.role === 'branch_manager' && req.user.branch_id) {
-      documents = await BranchDocument.findByBranchId(req.user.branch_id, filters);
-    } else if (req.user.role === 'main_manager') {
-      // Main manager can see all branch documents
-      documents = await BranchDocument.findAll(filters);
-    } else {
-      documents = [];
-    }
-
+    const filters = buildFilters(req.query);
+    const documents = await getDocumentsByRole(req.user, filters);
     return res.json({ success: true, data: documents || [] });
   } catch (error) {
     console.error('Error fetching branch documents:', error);
@@ -73,8 +201,9 @@ router.get('/', async (req, res) => {
  * Upload branch document
  * POST /api/branch-documents
  * Form data: branch_id, document_type, file, description (optional), expiry_date (optional)
+ * Requires: X-Branch-Documents-Password header or branch_documents_password in form data
  */
-router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
+router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFile, async (req, res) => {
   try {
     const { branch_id, document_type, description, document_number, issue_date, expiry_date, iban_number, bank_name } = req.body;
 
@@ -134,47 +263,8 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       document_type
     );
 
-    // Set uploaded_by to user ID (must not be null and must reference valid user)
-    let uploadedById = null;
-    if (req.user && req.user.id) {
-      try {
-        // Check if user exists in database (without is_active check)
-        const sql = (await import('../config/database.js')).default;
-        const [user] = await sql`
-          SELECT id FROM users WHERE id = ${req.user.id}
-        `;
-        if (user && user.id) {
-          uploadedById = req.user.id;
-        }
-      } catch (error) {
-        console.error('Error verifying user:', error);
-      }
-    }
-    
-    // If user not found, find first active user as fallback (usually main manager)
-    if (!uploadedById) {
-      try {
-        const sql = (await import('../config/database.js')).default;
-        const [fallbackUser] = await sql`
-          SELECT id FROM users WHERE is_active = true ORDER BY id ASC LIMIT 1
-        `;
-        if (fallbackUser && fallbackUser.id) {
-          uploadedById = fallbackUser.id;
-        } else {
-          // Last resort: try to find any user
-          const [anyUser] = await sql`
-            SELECT id FROM users ORDER BY id ASC LIMIT 1
-          `;
-          if (anyUser && anyUser.id) {
-            uploadedById = anyUser.id;
-          }
-        }
-      } catch (error) {
-        console.error('Error finding fallback user:', error);
-      }
-    }
-    
-    // If still no valid user found, throw error
+    // Get valid user ID for uploaded_by field
+    const uploadedById = await getUploadedByUserId(req.user?.id);
     if (!uploadedById) {
       return res.status(500).json({
         success: false,
@@ -182,11 +272,14 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       });
     }
 
+    // Fix filename encoding for Arabic characters
+    const fileName = fixFilenameEncoding(req.file.originalname);
+    
     // Create document record - store blob URL
     const document = await BranchDocument.create({
       branch_id: parseInt(branch_id),
       document_type: document_type,
-      file_name: req.file.originalname,
+      file_name: fileName,
       file_path: blobUrl, // Store blob URL instead of local path
       file_size: req.file.size,
       mime_type: req.file.mimetype,
@@ -219,10 +312,16 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
  * Download branch document file
  * GET /api/branch-documents/:id/download
  * NOTE: This must come BEFORE the generic /:id route to avoid conflicts
+ * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.get('/:id/download', async (req, res) => {
+router.get('/:id/download', verifyBranchDocumentsPassword, async (req, res) => {
   try {
-    const document = await BranchDocument.findById(parseInt(req.params.id));
+    const idResult = parseDocumentId(req);
+    if (idResult.error) {
+      return res.status(400).json({ success: false, message: idResult.error });
+    }
+    
+    const document = await BranchDocument.findById(idResult.documentId);
     
     if (!document) {
       return res.status(404).json({
@@ -247,49 +346,30 @@ router.get('/:id/download', async (req, res) => {
       });
     }
 
-    // If file_path is a URL (Blob), redirect to it
+    // If file_path is a URL (Blob), fetch and proxy it to maintain password protection
     if (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) {
-      return res.redirect(document.file_path);
+      try {
+        const { buffer, contentType } = await fetchFromBlob(document.file_path);
+        res.setHeader('Content-Type', contentType || document.mime_type);
+        res.setHeader('Content-Disposition', `attachment; filename="${document.file_name}"`);
+        return res.send(buffer);
+      } catch (error) {
+        console.error('Error fetching blob file:', error);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to fetch document file',
+          error: error.message
+        });
+      }
     }
 
     // Fallback for local files (backward compatibility)
-    let filePath;
-    if (path.isAbsolute(document.file_path)) {
-      filePath = document.file_path;
-    } else {
-      let relativePath = document.file_path;
-      if (relativePath.startsWith('express-app/')) {
-        relativePath = relativePath.replace(/^express-app\//, '');
-      }
-      if (relativePath.startsWith('storage/')) {
-        filePath = path.join(__dirname, '..', relativePath);
-      } else {
-        filePath = path.join(__dirname, '..', 'storage', relativePath);
-      }
-    }
-    
-    if (!fs.existsSync(filePath)) {
-      const alternatives = [
-        path.join(__dirname, '..', document.file_path),
-        path.join(__dirname, '..', document.file_path.replace(/^express-app\//, '')),
-        path.join(__dirname, '..', 'storage', document.file_path.replace(/^storage\//, '').replace(/^express-app\//, '')),
-      ];
-      
-      let found = false;
-      for (const altPath of alternatives) {
-        if (fs.existsSync(altPath)) {
-          filePath = altPath;
-          found = true;
-          break;
-        }
-      }
-      
-      if (!found) {
-        return res.status(404).json({
-          success: false,
-          message: 'File not found on server'
-        });
-      }
+    const filePath = resolveFilePath(document.file_path);
+    if (!filePath) {
+      return res.status(404).json({
+        success: false,
+        message: 'File not found on server'
+      });
     }
 
     res.setHeader('Content-Type', document.mime_type);
@@ -309,11 +389,19 @@ router.get('/:id/download', async (req, res) => {
  * Get branch document preview/thumbnail
  * GET /api/branch-documents/:id/preview
  * NOTE: This must come BEFORE the generic /:id route to avoid conflicts
+ * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.get('/:id/preview', async (req, res) => {
+router.get('/:id/preview', verifyBranchDocumentsPassword, async (req, res) => {
   try {
-    const document = await BranchDocument.findById(parseInt(req.params.id));
-    
+    const documentId = parseInt(req.params?.id);
+    if (isNaN(documentId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid document ID'
+      });
+    }
+
+    const document = await BranchDocument.findById(documentId);
     if (!document) {
       return res.status(404).json({
         success: false,
@@ -331,45 +419,28 @@ router.get('/:id/preview', async (req, res) => {
 
     // For images, return the file directly
     if (document.mime_type && document.mime_type.startsWith('image/')) {
-      // If file_path is a URL (Blob), redirect to it
+      // If file_path is a URL (Blob), fetch and proxy it to maintain password protection
       if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
-        return res.redirect(document.file_path);
+        try {
+          const { buffer, contentType } = await fetchFromBlob(document.file_path);
+          res.setHeader('Content-Type', contentType || document.mime_type);
+          return res.send(buffer);
+        } catch (error) {
+          console.error('Error fetching blob file:', error);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch document preview',
+            error: error.message
+          });
+        }
       }
 
       // Fallback for local files
-      let filePath;
-      if (path.isAbsolute(document.file_path)) {
-        filePath = document.file_path;
-      } else {
-        let relativePath = document.file_path;
-        if (relativePath.startsWith('express-app/')) {
-          relativePath = relativePath.replace(/^express-app\//, '');
-        }
-        if (relativePath.startsWith('storage/')) {
-          filePath = path.join(__dirname, '..', relativePath);
-        } else {
-          filePath = path.join(__dirname, '..', 'storage', relativePath);
-        }
-      }
-      
-      if (fs.existsSync(filePath)) {
+      const filePath = resolveFilePath(document.file_path);
+      if (filePath) {
         res.setHeader('Content-Type', document.mime_type);
         res.sendFile(path.resolve(filePath));
         return;
-      } else {
-        const alternatives = [
-          path.join(__dirname, '..', document.file_path),
-          path.join(__dirname, '..', document.file_path.replace(/^express-app\//, '')),
-          path.join(__dirname, '..', 'storage', document.file_path.replace(/^storage\//, '').replace(/^express-app\//, '')),
-        ];
-        
-        for (const altPath of alternatives) {
-          if (fs.existsSync(altPath)) {
-            res.setHeader('Content-Type', document.mime_type);
-            res.sendFile(path.resolve(altPath));
-            return;
-          }
-        }
       }
     }
 
@@ -401,11 +472,19 @@ router.get('/:id/preview', async (req, res) => {
  * Get branch document by ID
  * GET /api/branch-documents/:id
  * NOTE: This must come AFTER specific routes like /:id/download and /:id/preview
+ * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', verifyBranchDocumentsPassword, async (req, res) => {
   try {
-    const document = await BranchDocument.findById(parseInt(req.params.id));
-    
+    const documentId = parseInt(req.params?.id);
+    if (isNaN(documentId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid document ID'
+      });
+    }
+
+    const document = await BranchDocument.findById(documentId);
     if (!document) {
       return res.status(404).json({
         success: false,
@@ -414,7 +493,7 @@ router.get('/:id', async (req, res) => {
     }
 
     // Check branch access
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
+    if (req.user?.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -435,11 +514,16 @@ router.get('/:id', async (req, res) => {
 /**
  * Verify branch document
  * POST /api/branch-documents/:id/verify
+ * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.post('/:id/verify', async (req, res) => {
+router.post('/:id/verify', verifyBranchDocumentsPassword, async (req, res) => {
   try {
-    const document = await BranchDocument.findById(parseInt(req.params.id));
-    
+    const idResult = parseDocumentId(req);
+    if (idResult.error) {
+      return res.status(400).json({ success: false, message: idResult.error });
+    }
+
+    const document = await BranchDocument.findById(idResult.documentId);
     if (!document) {
       return res.status(404).json({
         success: false,
@@ -448,14 +532,14 @@ router.post('/:id/verify', async (req, res) => {
     }
 
     // Only main manager can verify
-    if (req.user.role !== 'main_manager') {
+    if (req.user?.role !== 'main_manager') {
       return res.status(403).json({
         success: false,
         message: 'Only main manager can verify documents'
       });
     }
 
-    const verifiedDocument = await BranchDocument.verify(parseInt(req.params.id), req.user.id);
+    const verifiedDocument = await BranchDocument.verify(idResult.documentId, req.user.id);
 
     res.json({
       success: true,
@@ -476,11 +560,16 @@ router.post('/:id/verify', async (req, res) => {
  * Update branch document (replace file or update metadata)
  * PUT /api/branch-documents/:id
  * If file is provided, it will replace the old file and deactivate old documents of same type
+ * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.put('/:id', uploadSingle, async (req, res) => {
+router.put('/:id', verifyBranchDocumentsPassword, uploadSingle, async (req, res) => {
   try {
-    const document = await BranchDocument.findById(parseInt(req.params.id));
-    
+    const idResult = parseDocumentId(req);
+    if (idResult.error) {
+      return res.status(400).json({ success: false, message: idResult.error });
+    }
+
+    const document = await BranchDocument.findById(idResult.documentId);
     if (!document) {
       return res.status(404).json({
         success: false,
@@ -489,7 +578,7 @@ router.put('/:id', uploadSingle, async (req, res) => {
     }
 
     // Check branch access
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
+    if (req.user?.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -540,11 +629,14 @@ router.put('/:id', uploadSingle, async (req, res) => {
         await deleteFromBlob(document.file_path);
       }
 
+      // Fix filename encoding for Arabic characters
+      const fileName = fixFilenameEncoding(req.file.originalname);
+      
       // Update document with new file
       updatedDocument = await BranchDocument.updateFile(
-        parseInt(req.params.id),
+        idResult.documentId,
         {
-          file_name: req.file.originalname,
+          file_name: fileName,
           file_path: blobUrl, // Store blob URL
           file_size: req.file.size,
           mime_type: req.file.mimetype,
@@ -559,7 +651,7 @@ router.put('/:id', uploadSingle, async (req, res) => {
       );
     } else {
       // Just update metadata
-      updatedDocument = await BranchDocument.update(parseInt(req.params.id), {
+      updatedDocument = await BranchDocument.update(idResult.documentId, {
         description: req.body.description,
         document_number: req.body.document_number,
         issue_date: req.body.issue_date,
@@ -587,11 +679,16 @@ router.put('/:id', uploadSingle, async (req, res) => {
 /**
  * Delete branch document (soft delete)
  * DELETE /api/branch-documents/:id
+ * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', verifyBranchDocumentsPassword, async (req, res) => {
   try {
-    const document = await BranchDocument.findById(parseInt(req.params.id));
-    
+    const idResult = parseDocumentId(req);
+    if (idResult.error) {
+      return res.status(400).json({ success: false, message: idResult.error });
+    }
+
+    const document = await BranchDocument.findById(idResult.documentId);
     if (!document) {
       return res.status(404).json({
         success: false,
@@ -600,14 +697,14 @@ router.delete('/:id', async (req, res) => {
     }
 
     // Check branch access - branch managers can delete their own branch documents
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
+    if (req.user?.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
       });
     }
 
-    await BranchDocument.delete(parseInt(req.params.id));
+    await BranchDocument.delete(idResult.documentId);
 
     res.json({
       success: true,

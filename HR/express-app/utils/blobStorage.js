@@ -129,3 +129,29 @@ export async function blobFileExists(blobUrl) {
   }
 }
 
+/**
+ * Fetch file from Blob Storage
+ * @param {string} blobUrl - Blob URL to fetch
+ * @returns {Promise<{buffer: Buffer, contentType: string}>} - File buffer and content type
+ */
+export async function fetchFromBlob(blobUrl) {
+  try {
+    if (!blobUrl || (!blobUrl.startsWith('http://') && !blobUrl.startsWith('https://'))) {
+      throw new Error('Invalid blob URL');
+    }
+    
+    const response = await fetch(blobUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch blob: ${response.statusText}`);
+    }
+    
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    
+    return { buffer, contentType };
+  } catch (error) {
+    console.error('Error fetching from Blob:', error);
+    throw new Error(`Failed to fetch file from Blob: ${error.message}`);
+  }
+}
+

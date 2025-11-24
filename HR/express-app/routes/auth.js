@@ -29,12 +29,34 @@ router.post('/login', async (req, res) => {
     }
 
     // First, try to find user in users table
-    let user = await User.findByUsername(username);
+    let user;
     let isBranchLogin = false;
+    
+    try {
+      user = await User.findByUsername(username);
+    } catch (dbError) {
+      console.error('Database error in User.findByUsername:', dbError);
+      return res.status(500).json({
+        success: false,
+        message: 'Database connection error. Please check server configuration.',
+        error: process.env.NODE_ENV === 'development' ? dbError.message : undefined
+      });
+    }
 
     // If not found in users table, check branches table
     if (!user) {
-      const branch = await Branch.findByUsername(username);
+      let branch;
+      try {
+        branch = await Branch.findByUsername(username);
+      } catch (dbError) {
+        console.error('Database error in Branch.findByUsername:', dbError);
+        return res.status(500).json({
+          success: false,
+          message: 'Database connection error. Please check server configuration.',
+          error: process.env.NODE_ENV === 'development' ? dbError.message : undefined
+        });
+      }
+      
       if (branch) {
         // Check branch password
         if (branch.password !== password) {
@@ -113,10 +135,14 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Login failed',
-      error: error.message
+      error: process.env.NODE_ENV === 'production' 
+        ? 'Internal server error. Please check server logs.' 
+        : error.message,
+      ...(process.env.NODE_ENV !== 'production' && { stack: error.stack })
     });
   }
 });

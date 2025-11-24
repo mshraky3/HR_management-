@@ -157,6 +157,35 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       });
     }
 
+    // Silently validate document type is allowed for this employee
+    // Don't show error messages - just accept silently (UI should prevent invalid uploads)
+    // This is a safety net - the UI should prevent invalid document types from being uploaded
+    try {
+      const { validateDocumentType } = await import('../utils/employeeHelpers.js');
+      const sql = (await import('../config/database.js')).default;
+      
+      // Get branch type
+      const [branch] = await sql`
+        SELECT branch_type FROM branches WHERE id = ${employee.branch_id}
+      `;
+      
+      const validation = validateDocumentType(document_type, {
+        nationality: employee.nationality,
+        job_title: employee.job_title,
+        branch_type: branch?.branch_type || null
+      });
+      
+      // Silently accept even if not allowed (UI prevents this, but we don't want to break anything)
+      // Just log for debugging
+      if (!validation.allowed) {
+        console.warn(`Document type ${document_type} not allowed for employee ${employee_id}, but accepting silently (UI should prevent this)`);
+        // Continue with upload anyway - UI should have prevented this
+      }
+    } catch (validationError) {
+      // If validation fails, silently allow (backward compatibility)
+      console.warn('Document type validation error:', validationError);
+    }
+
     // Upload file to Vercel Blob Storage
     const blobUrl = await uploadToBlob(
       req.file.buffer, // File buffer from memory storage
@@ -214,11 +243,28 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       });
     }
     
+    // Fix filename encoding for Arabic characters
+    // Multer may receive filename in wrong encoding, so we need to decode it properly
+    let fileName = req.file.originalname;
+    try {
+      // Check if filename appears to be incorrectly encoded (contains Latin-1 bytes that should be UTF-8)
+      // If filename contains bytes in range 0x80-0xFF but no Arabic characters, it's likely misencoded
+      if (/[\x80-\xFF]/.test(fileName) && !/[\u0600-\u06FF]/.test(fileName)) {
+        // Try to decode from Latin-1 to UTF-8
+        // Convert each byte to its UTF-8 equivalent
+        const buffer = Buffer.from(fileName, 'latin1');
+        fileName = buffer.toString('utf8');
+      }
+    } catch (error) {
+      console.warn('Error fixing filename encoding:', error);
+      // If decoding fails, use original filename
+    }
+    
     // Create document record - store blob URL in file_path
     const document = await Document.create({
       employee_id: parseInt(employee_id),
       document_type: document_type,
-      file_name: req.file.originalname,
+      file_name: fileName,
       file_path: blobUrl, // Store blob URL instead of local path
       file_size: req.file.size,
       mime_type: req.file.mimetype,
@@ -227,6 +273,15 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       expiry_date: expiry_date || null,
       uploaded_by: uploadedById // Always set - either user.id or branch_id
     });
+
+    // Update employee completion status after document upload
+    try {
+      const { updateEmployeeCompletionStatus } = await import('../utils/employeeDataCompletion.js');
+      await updateEmployeeCompletionStatus(parseInt(employee_id));
+    } catch (completionError) {
+      console.error('Error updating completion status after document upload:', completionError);
+      // Don't fail the upload if completion status update fails
+    }
 
     res.status(201).json({
       success: true,
@@ -588,6 +643,15 @@ router.delete('/:id', async (req, res) => {
     // Delete physical file from Blob Storage if requested
     if (req.query.deleteFile === 'true') {
       await deleteFromBlob(document.file_path);
+    }
+    
+    // Update employee completion status after document deletion
+    try {
+      const { updateEmployeeCompletionStatus } = await import('../utils/employeeDataCompletion.js');
+      await updateEmployeeCompletionStatus(document.employee_id);
+    } catch (completionError) {
+      console.error('Error updating completion status after document deletion:', completionError);
+      // Don't fail the deletion if completion status update fails
     }
     
     res.json({

@@ -68,11 +68,15 @@ export const isValidDocumentType = (type) => {
     'employment_contract',
     'additional_courses',
     'passport',
+    'passport_copy', // Alternative name for passport
     'professional_license',
     'experience_certificate',
     'classification',
     'speech_therapy_course',
-    'physical_therapy_course'
+    'speech_therapy_70_hours_course', // Alternative name
+    'physical_therapy_course',
+    'therapy_40_hours_course', // Alternative name
+    'medical_disclosure_form'
   ];
   return validTypes.includes(type);
 };

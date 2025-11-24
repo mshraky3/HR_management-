@@ -10,6 +10,8 @@ import branchRoutes from './branches.js';
 import employeeRoutes from './employees.js';
 import documentRoutes from './documents.js';
 import branchDocumentRoutes from './branch-documents.js';
+import reportRoutes from './reports.js';
+import employeeFileRoutes from './employee-file.js';
 
 const router = express.Router();
 
@@ -25,6 +27,8 @@ router.use('/branches', branchRoutes);
 router.use('/employees', employeeRoutes);
 router.use('/documents', documentRoutes);
 router.use('/branch-documents', branchDocumentRoutes);
+router.use('/reports', reportRoutes);
+router.use('/employee-file', employeeFileRoutes);
 
 export default router;
 
