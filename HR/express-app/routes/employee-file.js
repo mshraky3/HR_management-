@@ -90,12 +90,8 @@ import sql from '../config/database.js';
 
 const router = express.Router();
 
-// Directory for storing generated files
-const FILES_DIR = path.join(__dirname, '..', 'storage', 'reports');
-
-if (!fs.existsSync(FILES_DIR)) {
-  fs.mkdirSync(FILES_DIR, { recursive: true });
-}
+// Note: In serverless environments (like Vercel), we don't save files to disk
+// Files are generated in memory and sent directly to the client
 
 // All routes require authentication and main manager
 router.use(authenticate);
@@ -728,34 +724,10 @@ router.post('/generate', async (req, res) => {
     // Generate PDF
     const pdfBuffer = await generateEmployeeFilePDF(title, employees, selectedFields, allBranches, documentsMap);
     
-    // Save PDF to file
-    const timestamp = Date.now();
-    const filename = `employee_file_${timestamp}.pdf`;
-    const filepath = path.join(FILES_DIR, filename);
-    
-    fs.writeFileSync(filepath, pdfBuffer);
-    
-    // Return PDF as response
+    // Return PDF directly as response (no file system write in serverless environment)
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.pdf"`);
     res.send(pdfBuffer);
-    
-    // Clean up old files (older than 24 hours)
-    setTimeout(() => {
-      try {
-        const files = fs.readdirSync(FILES_DIR);
-        const now = Date.now();
-        files.forEach(file => {
-          const filePath = path.join(FILES_DIR, file);
-          const stats = fs.statSync(filePath);
-          if (now - stats.mtimeMs > 24 * 60 * 60 * 1000) {
-            fs.unlinkSync(filePath);
-          }
-        });
-      } catch (error) {
-        console.error('Error cleaning up old files:', error);
-      }
-    }, 0);
     
   } catch (error) {
     console.error('Error generating employee file:', error);
