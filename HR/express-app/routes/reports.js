@@ -10,6 +10,7 @@ import { authenticate } from '../middleware/auth.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+// Note: fs is still used for reading font files, but not for saving report files
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -93,13 +94,8 @@ import sql from '../config/database.js';
 
 const router = express.Router();
 
-// Directory for storing generated reports
-const REPORTS_DIR = path.join(__dirname, '..', 'storage', 'reports');
-
-// Ensure reports directory exists
-if (!fs.existsSync(REPORTS_DIR)) {
-  fs.mkdirSync(REPORTS_DIR, { recursive: true });
-}
+// Note: In serverless environments (like Vercel), we don't save files to disk
+// Files are generated in memory and sent directly to the client
 
 // All routes require authentication
 router.use(authenticate);
@@ -647,20 +643,11 @@ router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
     }
     
     // Generate file based on fileType
-    const timestamp = Date.now();
-    const branchIdForFilename = validBranchIds.length === 1 ? validBranchIds[0] : 'multi';
-    
     if (fileType === 'excel') {
       // Generate Excel file
       const excelBuffer = await generateExcel(title, employees, selectedFields, allBranches, validBranchIds);
       
-      // Save Excel to file
-      const filename = `report_${branchIdForFilename}_${timestamp}.xlsx`;
-      const filepath = path.join(REPORTS_DIR, filename);
-      
-      fs.writeFileSync(filepath, excelBuffer);
-      
-      // Return Excel as response
+      // Return Excel directly as response (no file system write in serverless environment)
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.xlsx"`);
       res.send(excelBuffer);
@@ -668,34 +655,11 @@ router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
       // Generate PDF file (default)
       const pdfBuffer = await generatePDF(title, employees, selectedFields, allBranches, validBranchIds);
       
-      // Save PDF to file
-      const filename = `report_${branchIdForFilename}_${timestamp}.pdf`;
-      const filepath = path.join(REPORTS_DIR, filename);
-      
-      fs.writeFileSync(filepath, pdfBuffer);
-      
-      // Return PDF as response
+      // Return PDF directly as response (no file system write in serverless environment)
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.pdf"`);
       res.send(pdfBuffer);
     }
-    
-    // Clean up old files (older than 24 hours)
-    setTimeout(() => {
-      try {
-        const files = fs.readdirSync(REPORTS_DIR);
-        const now = Date.now();
-        files.forEach(file => {
-          const filePath = path.join(REPORTS_DIR, file);
-          const stats = fs.statSync(filePath);
-          if (now - stats.mtimeMs > 24 * 60 * 60 * 1000) {
-            fs.unlinkSync(filePath);
-          }
-        });
-      } catch (error) {
-        console.error('Error cleaning up old reports:', error);
-      }
-    }, 0);
     
   } catch (error) {
     console.error('Error generating report:', error);
@@ -709,24 +673,18 @@ router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
 
 /**
  * GET /api/reports/preview/:filename
- * Preview a generated report (optional - for future use)
+ * Preview a generated report
+ * Note: In serverless environments, files are not saved, so this endpoint may not work as expected
+ * Reports should be downloaded directly from the generate endpoint
  */
 router.get('/preview/:filename', verifyBranchDocumentsPassword, async (req, res) => {
   try {
-    const { filename } = req.params;
-    const filepath = path.join(REPORTS_DIR, filename);
-    
-    if (!fs.existsSync(filepath)) {
-      return res.status(404).json({
-        success: false,
-        message: 'التقرير غير موجود'
-      });
-    }
-    
-    const pdfBuffer = fs.readFileSync(filepath);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-    res.send(pdfBuffer);
+    // In serverless environments, files are not saved to disk
+    // This endpoint is kept for backward compatibility but won't work in serverless deployments
+    return res.status(404).json({
+      success: false,
+      message: 'التقرير غير موجود - في بيئة السيرفر، يجب تحميل التقرير مباشرة من صفحة الإنشاء'
+    });
     
   } catch (error) {
     console.error('Error previewing report:', error);
