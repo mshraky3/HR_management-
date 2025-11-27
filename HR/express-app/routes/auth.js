@@ -119,6 +119,35 @@ router.post('/login', async (req, res) => {
       branch_id: user.branch_id
     });
 
+    // Track login for branch managers (only track once per day per branch)
+    if (user.role === 'branch_manager' && user.branch_id) {
+      try {
+        const sql = (await import('../config/database.js')).default;
+        const today = new Date().toISOString().split('T')[0];
+        const ipAddress = req.ip || req.connection.remoteAddress || null;
+        const userAgent = req.get('user-agent') || null;
+        
+        // Check if login already recorded for today
+        const [existingLogin] = await sql`
+          SELECT id FROM user_logins
+          WHERE branch_id = ${user.branch_id}
+          AND login_date = ${today}
+          LIMIT 1
+        `;
+        
+        // Only insert if no login recorded for today
+        if (!existingLogin) {
+          await sql`
+            INSERT INTO user_logins (user_id, branch_id, login_date, ip_address, user_agent)
+            VALUES (${isBranchLogin ? null : user.id}, ${user.branch_id}, ${today}, ${ipAddress}, ${userAgent})
+          `;
+        }
+      } catch (loginTrackingError) {
+        // Don't fail login if tracking fails, just log it
+        console.error('Error tracking login:', loginTrackingError);
+      }
+    }
+
     // Return token and user info (without password)
     res.json({
       success: true,

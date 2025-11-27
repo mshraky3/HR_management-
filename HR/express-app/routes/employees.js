@@ -42,6 +42,7 @@ router.get('/', async (req, res) => {
       occupation: req.query.occupation,
       is_active: req.query.is_active !== undefined ? req.query.is_active === 'true' : undefined,
       data_completion_status: req.query.data_completion_status,
+      status: req.query.status,
       // Search filters (only for main manager)
       search_name: req.query.search_name,
       search_id: req.query.search_id,
@@ -399,32 +400,272 @@ router.put('/:id',
   }
 );
 
-// Soft delete employee (main manager only)
-router.delete('/:id', async (req, res) => {
+// Update employee status (instead of delete - employees are archived, not deleted)
+router.put('/:id/status', async (req, res) => {
   try {
-    // Only main manager can delete
-    if (req.user.role !== 'main_manager') {
-      return res.status(403).json({
+    const { Employee } = await import('../models/Employee.js');
+    const { Branch } = await import('../models/Branch.js');
+    
+    const employeeId = parseInt(req.params.id);
+    const { status, reason } = req.body;
+    
+    // Validation
+    const validStatuses = ['active', 'pending', 'terminated', 'resigned', 'contract_ended', 'non_renewal', 'other'];
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({
         success: false,
-        message: 'Only main manager can delete employees'
+        message: 'حالة غير صحيحة'
       });
     }
     
-    const { Employee } = await import('../models/Employee.js');
-    const employee = await Employee.softDelete(parseInt(req.params.id));
-    
+    // Check if employee exists and user has access
+    const employee = await Employee.findById(employeeId);
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found'
+        message: 'الموظف غير موجود'
       });
     }
     
-    res.json({ success: true, message: 'Employee deactivated successfully', data: employee });
+    // Check access: branch managers can only update their branch employees
+    if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'غير مصرح لك بتغيير حالة هذا الموظف'
+      });
+    }
+    
+    // Determine who changed the status
+    let statusChangedBy = employee.branch_id; // Default to employee's branch
+    if (req.user.role === 'branch_manager' && req.user.branch_id) {
+      statusChangedBy = req.user.branch_id;
+    }
+    
+    // Update status
+    const updatedEmployee = await Employee.updateStatus(
+      employeeId,
+      status,
+      statusChangedBy,
+      reason || null
+    );
+    
+    res.json({
+      success: true,
+      message: 'تم تحديث حالة الموظف بنجاح',
+      data: updatedEmployee
+    });
   } catch (error) {
+    console.error('Error updating employee status:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to delete employee',
+      message: 'فشل تحديث حالة الموظف',
+      error: error.message
+    });
+  }
+});
+
+// Renew employee (pending -> active) - Branch Manager only
+router.post('/:id/renew', async (req, res) => {
+  try {
+    const { Employee } = await import('../models/Employee.js');
+    const { Document } = await import('../models/Document.js');
+    const { Branch } = await import('../models/Branch.js');
+    const { Term } = await import('../models/Term.js');
+    const { AcademicYear } = await import('../models/AcademicYear.js');
+    
+    const employeeId = parseInt(req.params.id);
+    
+    // Check if user is branch manager
+    if (req.user.role !== 'branch_manager' || !req.user.branch_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'فقط مديرو الفروع يمكنهم تجديد عقود الموظفين'
+      });
+    }
+    
+    // Get employee
+    const employee = await Employee.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'الموظف غير موجود'
+      });
+    }
+    
+    // Check access
+    if (employee.branch_id !== req.user.branch_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'غير مصرح لك بتجديد عقد هذا الموظف'
+      });
+    }
+    
+    // Check if employee is pending
+    if (employee.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'هذا الموظف ليس في حالة انتظار التجديد'
+      });
+    }
+    
+    // Get branch to determine branch type
+    const branch = await Branch.findById(employee.branch_id);
+    if (!branch) {
+      return res.status(404).json({
+        success: false,
+        message: 'الفرع غير موجود'
+      });
+    }
+    
+    // Get current academic year and term
+    const currentYear = await AcademicYear.getCurrentYear(branch.branch_type);
+    if (!currentYear) {
+      return res.status(400).json({
+        success: false,
+        message: 'لا توجد سنة دراسية حالية لهذا النوع من الفروع'
+      });
+    }
+    
+    const currentTerm = await Term.getCurrentTerm(branch.branch_type);
+    if (!currentTerm) {
+      return res.status(400).json({
+        success: false,
+        message: 'لا يوجد فصل دراسي حالياً'
+      });
+    }
+    
+    // Get employee documents
+    const documents = await Document.findByEmployeeId(employeeId);
+    const documentTypes = documents.map(d => d.document_type);
+    
+    // Validate required documents for renewal
+    const requiredDocs = ['employment_contract', 'employment_letter'];
+    if (employee.gender === 'female') {
+      requiredDocs.push('medical_examination');
+    }
+    
+    const missingDocs = requiredDocs.filter(docType => 
+      !documentTypes.includes(docType) &&
+      !documentTypes.includes(docType.replace('_', '_')) // Handle variations
+    );
+    
+    // Check if documents are recent (uploaded/updated in last 90 days)
+    const now = new Date();
+    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    
+    const recentDocs = documents.filter(doc => {
+      if (!requiredDocs.includes(doc.document_type)) return false;
+      const uploadDate = new Date(doc.uploaded_at);
+      return uploadDate >= ninetyDaysAgo;
+    });
+    
+    if (missingDocs.length > 0 || recentDocs.length < requiredDocs.length) {
+      return res.status(400).json({
+        success: false,
+        message: `يجب تحديث المستندات التالية: ${requiredDocs.join(', ')}`,
+        missing_documents: missingDocs,
+        required_documents: requiredDocs
+      });
+    }
+    
+    // Renew employee
+    const renewedEmployee = await Employee.renewEmployee(
+      employeeId,
+      currentYear.year_label,
+      currentTerm.id,
+      req.user.branch_id
+    );
+    
+    if (!renewedEmployee) {
+      return res.status(400).json({
+        success: false,
+        message: 'فشل تجديد العقد. تأكد من أن حالة الموظف هي "قيد الانتظار"'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'تم تجديد عقد الموظف بنجاح',
+      data: renewedEmployee
+    });
+  } catch (error) {
+    console.error('Error renewing employee:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل تجديد العقد',
+      error: error.message
+    });
+  }
+});
+
+// Non-renewal (pending -> archived status) - Branch Manager only
+router.post('/:id/non-renewal', async (req, res) => {
+  try {
+    const { Employee } = await import('../models/Employee.js');
+    
+    const employeeId = parseInt(req.params.id);
+    const { status, reason } = req.body;
+    
+    // Check if user is branch manager
+    if (req.user.role !== 'branch_manager' || !req.user.branch_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'فقط مديرو الفروع يمكنهم تحديد عدم التجديد'
+      });
+    }
+    
+    // Get employee
+    const employee = await Employee.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'الموظف غير موجود'
+      });
+    }
+    
+    // Check access
+    if (employee.branch_id !== req.user.branch_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'غير مصرح لك بتحديد عدم التجديد لهذا الموظف'
+      });
+    }
+    
+    // Check if employee is pending
+    if (employee.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'هذا الموظف ليس في حالة انتظار التجديد'
+      });
+    }
+    
+    // Validate status (must be an archived status, not active or pending)
+    const archivedStatuses = ['terminated', 'resigned', 'contract_ended', 'non_renewal', 'other'];
+    if (!status || !archivedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'يجب اختيار حالة أرشيفية (مثل: إنهاء العقد، الاستقالة، إلخ)'
+      });
+    }
+    
+    // Update status to archived status
+    const updatedEmployee = await Employee.updateStatus(
+      employeeId,
+      status,
+      req.user.branch_id,
+      reason || 'عدم تجديد العقد'
+    );
+    
+    res.json({
+      success: true,
+      message: 'تم نقل الموظف إلى الأرشيف بنجاح',
+      data: updatedEmployee
+    });
+  } catch (error) {
+    console.error('Error processing non-renewal:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل تحديد عدم التجديد',
       error: error.message
     });
   }

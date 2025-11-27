@@ -8,12 +8,14 @@ import sql from '../config/database.js';
 export const Employee = {
   /**
    * Find employee by ID
+   * Note: Removed is_active filter to allow viewing archived employees
+   * Access control should be handled at the route level if needed
    */
   async findById(id) {
     try {
       const [employee] = await sql`
         SELECT * FROM employees 
-        WHERE id = ${id} AND is_active = true
+        WHERE id = ${id}
       `;
       return employee || null;
     } catch (error) {
@@ -24,12 +26,14 @@ export const Employee = {
 
   /**
    * Find employee by employee_id_number
+   * Note: Removed is_active filter to allow finding archived employees if needed
+   * For active employees only, use findAll with status filter
    */
   async findByEmployeeId(employeeIdNumber) {
     try {
       const [employee] = await sql`
         SELECT * FROM employees 
-        WHERE employee_id_number = ${employeeIdNumber} AND is_active = true
+        WHERE employee_id_number = ${employeeIdNumber}
       `;
       return employee || null;
     } catch (error) {
@@ -40,12 +44,14 @@ export const Employee = {
 
   /**
    * Find employee by ID/residency number
+   * Note: Removed is_active filter to allow finding archived employees if needed
+   * For active employees only, use findAll with status filter
    */
   async findByIdOrResidencyNumber(idOrResidencyNumber) {
     try {
       const [employee] = await sql`
         SELECT * FROM employees 
-        WHERE id_or_residency_number = ${idOrResidencyNumber} AND is_active = true
+        WHERE id_or_residency_number = ${idOrResidencyNumber}
       `;
       return employee || null;
     } catch (error) {
@@ -84,7 +90,22 @@ export const Employee = {
         params.push(filters.occupation);
       }
       
-      if (filters.is_active !== undefined) {
+      // Handle status filter (takes precedence over is_active for employee filtering)
+      if (filters.status) {
+        // If status is explicitly set, use it (allows filtering by specific status)
+        conditions.push(`status = $${paramIndex++}`);
+        params.push(filters.status);
+      } else {
+        // By default, exclude archived employees (only show active or pending)
+        // This ensures archived employees only appear in the archive page
+        conditions.push(`(status IS NULL OR status IN ('active', 'pending'))`);
+      }
+      
+      // Note: is_active filter is kept for backward compatibility but status takes precedence
+      // For employees, status should be used instead of is_active
+      if (filters.is_active !== undefined && !filters.status) {
+        // Only apply is_active filter if status is not explicitly set
+        // This maintains backward compatibility while prioritizing status
         conditions.push(`is_active = $${paramIndex++}`);
         params.push(filters.is_active);
       }
@@ -145,7 +166,7 @@ export const Employee = {
         end_of_service_allowance, annual_leave_allowance, other_allowances,
         deductions, graduation_year, university_gpa,
         passport_number, passport_issue_date, passport_expiry_date, passport_issue_place, residency_issue_date,
-        job_title, data_completion_status, created_by, updated_by
+        job_title, data_completion_status, status, created_by, updated_by
       } = employeeData;
       
       // If updated_by is not provided, use created_by (for new records)
@@ -154,6 +175,9 @@ export const Employee = {
       if (!created_by || !finalUpdatedBy) {
         throw new Error('created_by and updated_by are required');
       }
+      
+      // Ensure status is set to 'active' for new employees (unless explicitly provided)
+      const employeeStatus = status || 'active';
       
       const [employee] = await sql`
         INSERT INTO employees (
@@ -166,7 +190,7 @@ export const Employee = {
           end_of_service_allowance, annual_leave_allowance, other_allowances,
           deductions, graduation_year, university_gpa,
           passport_number, passport_issue_date, passport_expiry_date, passport_issue_place, residency_issue_date,
-          job_title, data_completion_status, created_by, updated_by
+          job_title, data_completion_status, status, created_by, updated_by
         )
         VALUES (
           ${employee_id_number || null}, ${branch_id}, ${first_name}, ${second_name}, ${third_name}, ${fourth_name},
@@ -184,7 +208,7 @@ export const Employee = {
           ${deductions !== undefined && deductions !== null ? deductions : 0}, 
           ${graduation_year || null}, ${university_gpa || null},
           ${passport_number || null}, ${passport_issue_date || null}, ${passport_expiry_date || null}, ${passport_issue_place || null}, ${residency_issue_date || null},
-          ${job_title || null}, ${data_completion_status || 'incomplete'}, ${created_by}, ${finalUpdatedBy}
+          ${job_title || null}, ${data_completion_status || 'incomplete'}, ${employeeStatus}, ${created_by}, ${finalUpdatedBy}
         )
         RETURNING *
       `;
@@ -259,7 +283,7 @@ export const Employee = {
   },
 
   /**
-   * Soft delete employee
+   * Soft delete employee (deprecated - use updateStatus instead)
    */
   async softDelete(id) {
     try {
@@ -273,6 +297,182 @@ export const Employee = {
       return employee;
     } catch (error) {
       console.error('Error soft deleting employee:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update employee status
+   * Also updates is_active to keep it in sync with status
+   */
+  async updateStatus(id, status, statusChangedBy, reason = null) {
+    try {
+      const validStatuses = ['active', 'pending', 'terminated', 'resigned', 'contract_ended', 'non_renewal', 'other'];
+      if (!validStatuses.includes(status)) {
+        throw new Error('Invalid status');
+      }
+      
+      // Keep is_active in sync with status
+      // Active and pending employees should have is_active = true
+      // Archived employees (terminated, resigned, etc.) should have is_active = false
+      const isActive = (status === 'active' || status === 'pending');
+      
+      const [employee] = await sql`
+        UPDATE employees 
+        SET status = ${status},
+            is_active = ${isActive},
+            status_changed_at = CURRENT_TIMESTAMP,
+            status_changed_by = ${statusChangedBy},
+            status_change_reason = ${reason || null},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ${id}
+        RETURNING *
+      `;
+      
+      return employee;
+    } catch (error) {
+      console.error('Error updating employee status:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get employees by status
+   */
+  async findByStatus(status, filters = {}) {
+    try {
+      const conditions = [];
+      const params = [];
+      let paramIndex = 1;
+      
+      conditions.push('status = $' + paramIndex++);
+      params.push(status);
+      
+      if (filters.branch_id) {
+        if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
+          const placeholders = filters.branch_id.map(() => `$${paramIndex++}`).join(', ');
+          conditions.push(`branch_id IN (${placeholders})`);
+          params.push(...filters.branch_id);
+        } else if (!Array.isArray(filters.branch_id)) {
+          conditions.push(`branch_id = $${paramIndex++}`);
+          params.push(filters.branch_id);
+        }
+      }
+      
+      if (filters.academic_year) {
+        conditions.push(`academic_year = $${paramIndex++}`);
+        params.push(filters.academic_year);
+      }
+      
+      const whereClause = conditions.join(' AND ');
+      const queryString = `SELECT * FROM employees WHERE ${whereClause} ORDER BY created_at DESC`;
+      
+      return await sql.unsafe(queryString, params);
+    } catch (error) {
+      console.error('Error finding employees by status:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get archived employees (non-active statuses)
+   */
+  async findArchived(filters = {}) {
+    try {
+      // Check if status column exists
+      const statusColumnExists = await sql`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'employees' AND column_name = 'status'
+      `;
+      
+      if (!statusColumnExists || statusColumnExists.length === 0) {
+        console.log('Status column does not exist. Please run migration script: node express-app/scripts/migrate-add-employee-status-and-terms.js');
+        return []; // Return empty array if column doesn't exist
+      }
+      
+      const conditions = [];
+      const params = [];
+      let paramIndex = 1;
+      
+      // Exclude active and pending (pending are not archived yet)
+      conditions.push("status NOT IN ('active', 'pending')");
+      
+      if (filters.branch_id) {
+        if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
+          const placeholders = filters.branch_id.map(() => `$${paramIndex++}`).join(', ');
+          conditions.push(`branch_id IN (${placeholders})`);
+          params.push(...filters.branch_id);
+        } else if (!Array.isArray(filters.branch_id)) {
+          conditions.push(`branch_id = $${paramIndex++}`);
+          params.push(filters.branch_id);
+        }
+      }
+      
+      if (filters.status) {
+        conditions.push(`status = $${paramIndex++}`);
+        params.push(filters.status);
+      }
+      
+      if (filters.academic_year) {
+        conditions.push(`academic_year = $${paramIndex++}`);
+        params.push(filters.academic_year);
+      }
+      
+      // Date range filters
+      if (filters.registration_date_from) {
+        conditions.push(`created_at >= $${paramIndex++}`);
+        params.push(filters.registration_date_from);
+      }
+      
+      if (filters.registration_date_to) {
+        conditions.push(`created_at <= $${paramIndex++}`);
+        params.push(filters.registration_date_to);
+      }
+      
+      if (filters.status_change_date_from) {
+        conditions.push(`status_changed_at >= $${paramIndex++}`);
+        params.push(filters.status_change_date_from);
+      }
+      
+      if (filters.status_change_date_to) {
+        conditions.push(`status_changed_at <= $${paramIndex++}`);
+        params.push(filters.status_change_date_to);
+      }
+      
+      const whereClause = conditions.join(' AND ');
+      const queryString = `SELECT * FROM employees WHERE ${whereClause} ORDER BY status_changed_at DESC, created_at DESC`;
+      
+      return await sql.unsafe(queryString, params);
+    } catch (error) {
+      console.error('Error finding archived employees:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Renew employee (pending -> active)
+   * Also updates is_active to true
+   */
+  async renewEmployee(id, academicYear, termId, updatedBy) {
+    try {
+      const [employee] = await sql`
+        UPDATE employees 
+        SET status = 'active',
+            is_active = true,
+            academic_year = ${academicYear},
+            current_term_id = ${termId},
+            status_changed_at = CURRENT_TIMESTAMP,
+            status_changed_by = ${updatedBy},
+            status_change_reason = 'تجديد العقد',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ${id} AND status = 'pending'
+        RETURNING *
+      `;
+      
+      return employee;
+    } catch (error) {
+      console.error('Error renewing employee:', error);
       throw error;
     }
   }

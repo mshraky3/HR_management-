@@ -33,7 +33,7 @@ export const upload = multer({
   storage: storage, // Changed from diskStorage to memoryStorage
   fileFilter: fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB max file size
+    fileSize: 1 * 1024 * 1024 // 1MB max file size
   }
 });
 
@@ -66,7 +66,7 @@ export const validateUploadedFile = (req, res, next) => {
   if (!isValidFileSize(req.file.size)) {
     return res.status(400).json({
       success: false,
-      message: 'File size exceeds maximum limit of 10MB'
+      message: 'File size exceeds maximum limit of 1MB'
     });
   }
 

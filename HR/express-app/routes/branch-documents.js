@@ -602,7 +602,7 @@ router.put('/:id', verifyBranchDocumentsPassword, uploadSingle, async (req, res)
       if (!isValidFileSize(req.file.size)) {
         return res.status(400).json({
           success: false,
-          message: 'File size exceeds maximum limit of 10MB'
+          message: 'File size exceeds maximum limit of 1MB'
         });
       }
 
