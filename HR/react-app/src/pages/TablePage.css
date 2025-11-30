@@ -26,7 +26,7 @@
   text-align: right;
   font-size: var(--font-size-2xl);
   font-weight: 700;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -60,7 +60,7 @@
 .search-input:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(185, 210, 207, 0.15);
   background: var(--bg);
 }
 
@@ -88,7 +88,7 @@
 .filter-select:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(185, 210, 207, 0.15);
 }
 
 .filter-select:hover {
@@ -139,16 +139,16 @@
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: var(--text);
   padding: 1%;
-  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3), 0 2px 4px -2px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 4px 6px -1px rgba(185, 210, 207, 0.3), 0 2px 4px -2px rgba(185, 210, 207, 0.2);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary) 100%);
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
   transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.4), 0 4px 6px -4px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 10px 15px -3px rgba(185, 210, 207, 0.4), 0 4px 6px -4px rgba(185, 210, 207, 0.3);
 }
 
 .btn-primary:active:not(:disabled) {
@@ -276,7 +276,7 @@ tbody tr:nth-child(even) {
 tbody tr:hover {
   background: var(--primary-light);
   transform: scale(1.01);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 2px 8px rgba(185, 210, 207, 0.15);
 }
 
 tbody tr:last-child td {
@@ -386,9 +386,9 @@ tbody tr:last-child td:last-child {
 }
 
 .pagination button:hover:not(:disabled) {
-  background: var(--primary);
-  color: white;
-  border-color: var(--primary);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: var(--text);
+  border-color: var(--primary-dark);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
@@ -400,9 +400,9 @@ tbody tr:last-child td:last-child {
 }
 
 .pagination button.active {
-  background: var(--primary);
-  color: white;
-  border-color: var(--primary);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: var(--text);
+  border-color: var(--primary-dark);
   box-shadow: var(--shadow-md);
 }
 
@@ -710,7 +710,7 @@ tbody tr:last-child td:last-child {
 .employee-form-container .form-group textarea:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 2px rgba(185, 210, 207, 0.15);
 }
 
 .employee-form-container .form-group textarea {
@@ -779,15 +779,15 @@ tbody tr:last-child td:last-child {
 }
 
 .employee-form-container .form-actions .btn-primary {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: var(--text);
   border: none;
 }
 
 .employee-form-container .form-actions .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary) 100%);
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
   transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.4), 0 4px 6px -4px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 10px 15px -3px rgba(185, 210, 207, 0.4), 0 4px 6px -4px rgba(185, 210, 207, 0.3);
 }
 
 .employee-form-container .form-actions .btn-secondary {
@@ -799,8 +799,8 @@ tbody tr:last-child td:last-child {
 
 .employee-form-container .form-actions .btn-secondary:hover:not(:disabled) {
   background: var(--bg-secondary);
-  border-color: var(--primary);
-  color: var(--primary);
+  border-color: var(--primary-dark);
+  color: var(--primary-dark);
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }

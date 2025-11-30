@@ -78,13 +78,13 @@ button:disabled::before {
 
 /* Success Messages - Modern Design */
 .success-message {
-  background: linear-gradient(135deg, #f0fdf4 0%, #d1fae5 100%);
+  background: linear-gradient(135deg, #e8f2f0 0%, #d4e4e1 100%);
   color: var(--success);
   padding: var(--spacing-lg);
   border-radius: var(--radius-lg);
-  border: 2px solid #bbf7d0;
+  border: 2px solid var(--primary);
   margin-bottom: var(--spacing-md);
-  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.1);
+  box-shadow: 0 4px 6px -1px rgba(185, 210, 207, 0.15);
   font-weight: 500;
 }
 
@@ -114,14 +114,14 @@ button:disabled::before {
   right: 0;
   width: 4px;
   height: 100%;
-  background: linear-gradient(180deg, var(--primary) 0%, var(--primary-hover) 100%);
+  background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%);
   transition: width var(--transition-base);
 }
 
 .card:hover {
   box-shadow: var(--shadow-xl);
   transform: translateY(-2px);
-  border-color: var(--primary);
+  border-color: var(--primary-dark);
 }
 
 .card:hover::before {

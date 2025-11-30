@@ -28,9 +28,9 @@
 }
 
 .calendar-type-btn.active {
-  background: var(--primary);
-  color: white;
-  border-color: var(--primary);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: var(--text);
+  border-color: var(--primary-dark);
 }
 
 .hijri-inputs {

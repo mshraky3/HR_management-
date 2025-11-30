@@ -8,7 +8,7 @@
 /* Navigation Bar - Modern Design */
 .navbar {
   background: var(--bg);
-  border-bottom: 2px solid var(--border-light);
+  border-bottom: 2px solid var(--primary-light);
   padding: var(--spacing-lg) var(--spacing-xl);
   display: flex;
   align-items: center;
@@ -18,9 +18,9 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 2px 8px rgba(185, 210, 207, 0.1);
   backdrop-filter: blur(10px);
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.98);
 }
 
 .nav-brand {
@@ -44,12 +44,13 @@
 
 .manager-badge {
   display: inline-block;
-  background: var(--primary);
-  color: white;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: var(--text);
   padding: var(--spacing-xs) var(--spacing-sm);
   border-radius: var(--radius-sm);
   font-size: var(--font-size-xs);
   font-weight: 600;
+  box-shadow: 0 2px 4px rgba(185, 210, 207, 0.2);
 }
 
 /* Navigation Links */
@@ -97,8 +98,8 @@
 }
 
 .nav-links a.active {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: var(--text);
   box-shadow: var(--shadow-md);
 }
 
