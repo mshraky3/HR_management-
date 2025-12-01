@@ -96,9 +96,9 @@ export const isValidMimeType = (mimeType) => {
 };
 
 /**
- * Validate file size (max 10MB)
+ * Validate file size (max 1MB)
  */
-export const isValidFileSize = (sizeInBytes, maxMB = 10) => {
+export const isValidFileSize = (sizeInBytes, maxMB = 1) => {
   const maxBytes = maxMB * 1024 * 1024;
   return sizeInBytes <= maxBytes;
 };

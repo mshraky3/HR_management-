@@ -136,6 +136,13 @@ export async function initializeDatabase() {
       other_allowances DECIMAL(10,2),
       deductions DECIMAL(10,2),
       data_completion_status VARCHAR(20) DEFAULT 'incomplete' CHECK (data_completion_status IN ('incomplete', 'complete')),
+      status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'pending', 'terminated', 'resigned', 'contract_ended', 'non_renewal', 'other')),
+      status_changed_at TIMESTAMP,
+      status_changed_by INTEGER,
+      status_change_reason TEXT,
+      academic_year VARCHAR(20),
+      registration_term_id INTEGER,
+      current_term_id INTEGER,
       is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -143,7 +150,10 @@ export async function initializeDatabase() {
       updated_by INTEGER NOT NULL,
       FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE RESTRICT,
       FOREIGN KEY (created_by) REFERENCES branches(id) ON DELETE RESTRICT,
-      FOREIGN KEY (updated_by) REFERENCES branches(id) ON DELETE RESTRICT
+      FOREIGN KEY (updated_by) REFERENCES branches(id) ON DELETE RESTRICT,
+      FOREIGN KEY (status_changed_by) REFERENCES branches(id) ON DELETE SET NULL,
+      FOREIGN KEY (registration_term_id) REFERENCES terms(id) ON DELETE SET NULL,
+      FOREIGN KEY (current_term_id) REFERENCES terms(id) ON DELETE SET NULL
     `);
 
     // Create indexes for employees
@@ -341,6 +351,248 @@ export async function initializeDatabase() {
       'CREATE INDEX IF NOT EXISTS idx_certificates_course_type ON employee_course_certificates(course_type)',
       'Created index on employee_course_certificates.course_type'
     );
+
+    // 9. Create notifications table
+    console.log('Creating notifications table...');
+    await createTable('notifications', `
+      id SERIAL PRIMARY KEY,
+      message TEXT NOT NULL,
+      importance_level INTEGER NOT NULL CHECK (importance_level IN (1, 2, 3)),
+      created_by INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      is_active BOOLEAN DEFAULT true,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+    `);
+
+    // Create indexes for notifications
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_notifications_created_by ON notifications(created_by)',
+      'Created index on notifications.created_by'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_notifications_importance ON notifications(importance_level)',
+      'Created index on notifications.importance_level'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at)',
+      'Created index on notifications.created_at'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_notifications_is_active ON notifications(is_active)',
+      'Created index on notifications.is_active'
+    );
+
+    // 10. Create notification_branches table (many-to-many relationship)
+    console.log('Creating notification_branches table...');
+    await createTable('notification_branches', `
+      id SERIAL PRIMARY KEY,
+      notification_id INTEGER NOT NULL,
+      branch_id INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      UNIQUE(notification_id, branch_id)
+    `);
+
+    // Create indexes for notification_branches
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_notification_branches_notification_id ON notification_branches(notification_id)',
+      'Created index on notification_branches.notification_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_notification_branches_branch_id ON notification_branches(branch_id)',
+      'Created index on notification_branches.branch_id'
+    );
+
+    // 11. Create notification_responses table
+    console.log('Creating notification_responses table...');
+    await createTable('notification_responses', `
+      id SERIAL PRIMARY KEY,
+      notification_id INTEGER NOT NULL,
+      branch_id INTEGER NOT NULL,
+      response_status VARCHAR(50) NOT NULL CHECK (response_status IN ('done', 'working_on_it', 'seen')),
+      response_message TEXT,
+      responded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      UNIQUE(notification_id, branch_id)
+    `);
+
+    // Create indexes for notification_responses
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_notification_responses_notification_id ON notification_responses(notification_id)',
+      'Created index on notification_responses.notification_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_notification_responses_branch_id ON notification_responses(branch_id)',
+      'Created index on notification_responses.branch_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_notification_responses_status ON notification_responses(response_status)',
+      'Created index on notification_responses.response_status'
+    );
+
+    // 12. Create terms table
+    console.log('Creating terms table...');
+    await createTable('terms', `
+      id SERIAL PRIMARY KEY,
+      branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
+      term_name VARCHAR(100) NOT NULL,
+      term_number INTEGER NOT NULL CHECK (term_number IN (1, 2)),
+      start_date DATE NOT NULL,
+      end_date DATE NOT NULL,
+      academic_year_start DATE NOT NULL,
+      academic_year_end DATE NOT NULL,
+      academic_year_label VARCHAR(20) NOT NULL,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_by INTEGER,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+      CHECK (start_date <= end_date),
+      CHECK (academic_year_start <= academic_year_end)
+    `);
+
+    // Create indexes for terms
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_terms_branch_type ON terms(branch_type)',
+      'Created index on terms.branch_type'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_terms_academic_year ON terms(academic_year_start, academic_year_end)',
+      'Created index on terms academic year dates'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_terms_dates ON terms(start_date, end_date)',
+      'Created index on terms dates'
+    );
+
+    // 13. Create academic_years table
+    console.log('Creating academic_years table...');
+    await createTable('academic_years', `
+      id SERIAL PRIMARY KEY,
+      branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
+      year_label VARCHAR(20) NOT NULL,
+      year_start DATE NOT NULL,
+      year_end DATE NOT NULL,
+      term1_id INTEGER,
+      term2_id INTEGER,
+      is_current BOOLEAN DEFAULT false,
+      is_completed BOOLEAN DEFAULT false,
+      completed_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (term1_id) REFERENCES terms(id) ON DELETE SET NULL,
+      FOREIGN KEY (term2_id) REFERENCES terms(id) ON DELETE SET NULL,
+      UNIQUE(branch_type, year_label),
+      CHECK (year_start <= year_end)
+    `);
+
+    // Create indexes for academic_years
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_academic_years_branch_type ON academic_years(branch_type)',
+      'Created index on academic_years.branch_type'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_academic_years_dates ON academic_years(year_start, year_end)',
+      'Created index on academic_years dates'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_academic_years_current ON academic_years(is_current, branch_type)',
+      'Created index on academic_years is_current'
+    );
+
+    // Create index for employees status (only if column exists)
+    // Note: If employees table already exists without status column, run migration script first
+    try {
+      const statusColumnExists = await sql`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'employees' AND column_name = 'status'
+      `;
+      if (statusColumnExists && statusColumnExists.length > 0) {
+        await executeQuery(
+          'CREATE INDEX IF NOT EXISTS idx_employees_status ON employees(status)',
+          'Created index on employees.status'
+        );
+      } else {
+        console.log('Skipping employees.status index - column does not exist. Please run migration script first.');
+      }
+    } catch (error) {
+      console.log('Could not create index on employees.status:', error.message);
+      console.log('Note: If employees table exists without status column, run: node express-app/scripts/migrate-add-employee-status-and-terms.js');
+    }
+    
+    try {
+      const academicYearColumnExists = await sql`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'employees' AND column_name = 'academic_year'
+      `;
+      if (academicYearColumnExists && academicYearColumnExists.length > 0) {
+        await executeQuery(
+          'CREATE INDEX IF NOT EXISTS idx_employees_academic_year ON employees(academic_year)',
+          'Created index on employees.academic_year'
+        );
+      } else {
+        console.log('Skipping employees.academic_year index - column does not exist. Please run migration script first.');
+      }
+    } catch (error) {
+      console.log('Could not create index on employees.academic_year:', error.message);
+      console.log('Note: If employees table exists without academic_year column, run: node express-app/scripts/migrate-add-employee-status-and-terms.js');
+    }
+
+    // Add foreign key constraints for employees term references (after terms table is created)
+    // Only add if columns exist
+    try {
+      const regTermColumnExists = await sql`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'employees' AND column_name = 'registration_term_id'
+      `;
+      if (regTermColumnExists && regTermColumnExists.length > 0) {
+        // Check if constraint already exists
+        const constraintExists = await sql`
+          SELECT constraint_name 
+          FROM information_schema.table_constraints 
+          WHERE table_name = 'employees' AND constraint_name = 'fk_employees_registration_term'
+        `;
+        if (!constraintExists || constraintExists.length === 0) {
+          await executeQuery(
+            'ALTER TABLE employees ADD CONSTRAINT fk_employees_registration_term FOREIGN KEY (registration_term_id) REFERENCES terms(id) ON DELETE SET NULL',
+            'Added foreign key for employees.registration_term_id'
+          );
+        }
+      }
+    } catch (error) {
+      console.log('Could not add foreign key for registration_term_id:', error.message);
+    }
+    
+    try {
+      const currentTermColumnExists = await sql`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'employees' AND column_name = 'current_term_id'
+      `;
+      if (currentTermColumnExists && currentTermColumnExists.length > 0) {
+        // Check if constraint already exists
+        const constraintExists = await sql`
+          SELECT constraint_name 
+          FROM information_schema.table_constraints 
+          WHERE table_name = 'employees' AND constraint_name = 'fk_employees_current_term'
+        `;
+        if (!constraintExists || constraintExists.length === 0) {
+          await executeQuery(
+            'ALTER TABLE employees ADD CONSTRAINT fk_employees_current_term FOREIGN KEY (current_term_id) REFERENCES terms(id) ON DELETE SET NULL',
+            'Added foreign key for employees.current_term_id'
+          );
+        }
+      }
+    } catch (error) {
+      console.log('Could not add foreign key for current_term_id:', error.message);
+    }
 
     console.log('Database initialization completed successfully!');
     return { success: true, message: 'All tables created successfully' };

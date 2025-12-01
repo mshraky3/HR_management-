@@ -132,10 +132,43 @@ router.get('/', async (req, res) => {
         
         // 5. Last login date
         const lastLogin = await sql`
-          SELECT MAX(login_time) as last_login
+          SELECT MAX(login_date) as last_login
           FROM user_logins
           WHERE branch_id = ${branch.id}
         `;
+        
+        // 6. Monthly login history (last 6 months)
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        const sixMonthsAgoStr = sixMonthsAgo.toISOString().split('T')[0];
+        
+        const monthlyLogins = await sql`
+          SELECT 
+            DATE_TRUNC('month', login_date)::date as month,
+            COUNT(DISTINCT login_date)::int as login_days
+          FROM user_logins
+          WHERE branch_id = ${branch.id}
+          AND login_date >= ${sixMonthsAgoStr}
+          GROUP BY DATE_TRUNC('month', login_date)
+          ORDER BY month DESC
+        `;
+        
+        // 7. Determine operational status
+        const daysSinceLastLogin = lastLogin[0]?.last_login 
+          ? Math.floor((new Date() - new Date(lastLogin[0].last_login)) / (1000 * 60 * 60 * 24))
+          : null;
+        const daysSinceLastActivity = lastActivity[0]?.last_activity
+          ? Math.floor((new Date() - new Date(lastActivity[0].last_activity)) / (1000 * 60 * 60 * 24))
+          : null;
+        
+        // Operational criteria:
+        // - Has logged in within last 30 days OR has activity within last 30 days
+        // - Has employees
+        // - Has some activity in last 30 days
+        const isOperational = (
+          (daysSinceLastLogin !== null && daysSinceLastLogin <= 30) ||
+          (daysSinceLastActivity !== null && daysSinceLastActivity <= 30)
+        ) && stats.total_employees > 0 && totalActivities > 0;
         
         return {
           branch_id: branch.id,
@@ -157,7 +190,14 @@ router.get('/', async (req, res) => {
             total: totalActivities
           },
           last_activity: lastActivity[0]?.last_activity || null,
-          last_login: lastLogin[0]?.last_login || null
+          last_login: lastLogin[0]?.last_login || null,
+          monthly_login_history: monthlyLogins.map(m => ({
+            month: m.month,
+            login_days: m.login_days
+          })),
+          is_operational: isOperational,
+          days_since_last_login: daysSinceLastLogin,
+          days_since_last_activity: daysSinceLastActivity
         };
       })
     );
@@ -177,6 +217,193 @@ router.get('/', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'فشل جلب إحصائيات الفروع',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/branch-statistics/performance-report
+ * Generate performance report for branches
+ */
+router.post('/performance-report', async (req, res) => {
+  try {
+    const { month, year, branch_ids, format = 'excel' } = req.body;
+    
+    // Get statistics
+    let branchesQuery = sql`
+      SELECT * FROM branches WHERE is_active = true
+    `;
+    
+    if (branch_ids && Array.isArray(branch_ids) && branch_ids.length > 0) {
+      branchesQuery = sql`
+        SELECT * FROM branches 
+        WHERE is_active = true 
+        AND id = ANY(${branch_ids})
+        ORDER BY branch_name
+      `;
+    } else {
+      branchesQuery = sql`
+        SELECT * FROM branches 
+        WHERE is_active = true 
+        ORDER BY branch_name
+      `;
+    }
+    
+    const branches = await branchesQuery;
+    const targetMonth = month || new Date().getMonth() + 1;
+    const targetYear = year || new Date().getFullYear();
+    
+    const firstDayOfMonth = new Date(targetYear, targetMonth - 1, 1).toISOString().split('T')[0];
+    const lastDayOfMonth = new Date(targetYear, targetMonth, 0).toISOString().split('T')[0];
+    
+    // Get detailed statistics for each branch
+    const detailedStats = await Promise.all(
+      branches.map(async (branch) => {
+        const loginDays = await sql`
+          SELECT COUNT(DISTINCT login_date)::int as login_count
+          FROM user_logins
+          WHERE branch_id = ${branch.id}
+          AND login_date >= ${firstDayOfMonth}
+          AND login_date <= ${lastDayOfMonth}
+        `;
+        
+        const employeeStats = await sql`
+          SELECT 
+            COUNT(*) as total_employees,
+            COUNT(*) FILTER (WHERE data_completion_status = 'complete') as complete_employees,
+            COUNT(*) FILTER (WHERE status = 'active') as active_employees
+          FROM employees
+          WHERE branch_id = ${branch.id}
+          AND (status = 'active' OR status = 'pending')
+        `;
+        
+        const stats = employeeStats[0] || {
+          total_employees: 0,
+          complete_employees: 0,
+          active_employees: 0
+        };
+        
+        const completionPercentage = stats.total_employees > 0
+          ? Math.round((stats.complete_employees / stats.total_employees) * 100)
+          : 0;
+        
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+        
+        const activities = await sql`
+          SELECT 
+            COUNT(DISTINCT e.id) FILTER (WHERE e.updated_at >= ${thirtyDaysAgoStr}) as employee_updates,
+            COUNT(DISTINCT ed.id) FILTER (WHERE ed.uploaded_at >= ${thirtyDaysAgoStr} AND ed.is_active = true) as document_uploads,
+            COUNT(DISTINCT e2.id) FILTER (WHERE e2.created_at >= ${thirtyDaysAgoStr}) as employee_creations
+          FROM employees e
+          LEFT JOIN employee_documents ed ON ed.employee_id = e.id
+          LEFT JOIN employees e2 ON e2.branch_id = e.branch_id
+          WHERE e.branch_id = ${branch.id}
+        `;
+        
+        const lastLogin = await sql`
+          SELECT MAX(login_date) as last_login
+          FROM user_logins
+          WHERE branch_id = ${branch.id}
+        `;
+        
+        const daysSinceLastLogin = lastLogin[0]?.last_login 
+          ? Math.floor((new Date() - new Date(lastLogin[0].last_login)) / (1000 * 60 * 60 * 24))
+          : null;
+        
+        const isOperational = (
+          (daysSinceLastLogin !== null && daysSinceLastLogin <= 30) ||
+          parseInt(activities[0]?.employee_updates || 0) > 0 ||
+          parseInt(activities[0]?.document_uploads || 0) > 0
+        ) && stats.total_employees > 0;
+        
+        return {
+          branch_name: branch.branch_name,
+          branch_type: branch.branch_type,
+          login_days: parseInt(loginDays[0]?.login_count || 0),
+          total_employees: parseInt(stats.total_employees),
+          complete_employees: parseInt(stats.complete_employees),
+          completion_percentage: completionPercentage,
+          activities_last_30_days: {
+            employee_updates: parseInt(activities[0]?.employee_updates || 0),
+            document_uploads: parseInt(activities[0]?.document_uploads || 0),
+            employee_creations: parseInt(activities[0]?.employee_creations || 0)
+          },
+          last_login: lastLogin[0]?.last_login,
+          days_since_last_login: daysSinceLastLogin,
+          is_operational: isOperational
+        };
+      })
+    );
+    
+    // Generate report based on format
+    if (format === 'excel') {
+      const ExcelJS = (await import('exceljs')).default;
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('تقرير الأداء');
+      
+      // Add headers
+      worksheet.columns = [
+        { header: 'اسم الفرع', key: 'branch_name', width: 30 },
+        { header: 'نوع الفرع', key: 'branch_type', width: 15 },
+        { header: 'أيام تسجيل الدخول', key: 'login_days', width: 18 },
+        { header: 'إجمالي الموظفين', key: 'total_employees', width: 15 },
+        { header: 'الموظفون المكتملون', key: 'complete_employees', width: 18 },
+        { header: 'نسبة الإكمال %', key: 'completion_percentage', width: 15 },
+        { header: 'تحديثات الموظفين', key: 'employee_updates', width: 18 },
+        { header: 'رفع المستندات', key: 'document_uploads', width: 18 },
+        { header: 'آخر تسجيل دخول', key: 'last_login', width: 18 },
+        { header: 'أيام منذ آخر دخول', key: 'days_since_last_login', width: 20 },
+        { header: 'حالة التشغيل', key: 'is_operational', width: 15 }
+      ];
+      
+      // Add data
+      detailedStats.forEach(stat => {
+        worksheet.addRow({
+          branch_name: stat.branch_name,
+          branch_type: stat.branch_type === 'school' ? 'مدرسة' : 'مركز صحي',
+          login_days: stat.login_days,
+          total_employees: stat.total_employees,
+          complete_employees: stat.complete_employees,
+          completion_percentage: stat.completion_percentage,
+          employee_updates: stat.activities_last_30_days.employee_updates,
+          document_uploads: stat.activities_last_30_days.document_uploads,
+          last_login: stat.last_login ? new Date(stat.last_login).toLocaleDateString('ar-SA') : 'لا يوجد',
+          days_since_last_login: stat.days_since_last_login !== null ? stat.days_since_last_login : 'لا يوجد',
+          is_operational: stat.is_operational ? 'نشط' : 'غير نشط'
+        });
+      });
+      
+      // Style header row
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).alignment = { horizontal: 'center' };
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="performance-report-${targetYear}-${targetMonth}.xlsx"`);
+      
+      await workbook.xlsx.write(res);
+      res.end();
+    } else {
+      // PDF format
+      const PdfPrinter = (await import('@digicole/pdfmake-rtl')).default;
+      // PDF generation would go here - similar to reports.js
+      // For now, return JSON
+      res.json({
+        success: true,
+        data: detailedStats,
+        period: {
+          month: targetMonth,
+          year: targetYear
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Error generating performance report:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل إنشاء تقرير الأداء',
       error: error.message
     });
   }

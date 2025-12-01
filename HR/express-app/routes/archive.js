@@ -220,5 +220,96 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+/**
+ * PUT /api/archive/:id/status
+ * Update archived employee status
+ */
+router.put('/:id/status', async (req, res) => {
+  try {
+    const { Employee } = await import('../models/Employee.js');
+    const employeeId = parseInt(req.params.id);
+    const { status, reason } = req.body;
+    
+    // Validation
+    const validStatuses = ['active', 'pending', 'terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'حالة غير صحيحة'
+      });
+    }
+    
+    // Check if employee exists
+    const employee = await Employee.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'الموظف غير موجود'
+      });
+    }
+    
+    // Update status
+    const updatedEmployee = await Employee.updateStatus(
+      employeeId,
+      status,
+      req.user.branch_id || employee.branch_id,
+      reason || null
+    );
+    
+    res.json({
+      success: true,
+      message: 'تم تحديث حالة الموظف بنجاح',
+      data: updatedEmployee
+    });
+  } catch (error) {
+    console.error('Error updating employee status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل تحديث حالة الموظف',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/archive/branch-documents/all
+ * Get archived branch documents (is_active = false)
+ */
+router.get('/branch-documents/all', async (req, res) => {
+  try {
+    let query = sql`
+      SELECT bd.*, b.branch_name, b.branch_type
+      FROM branch_documents bd
+      INNER JOIN branches b ON bd.branch_id = b.id
+      WHERE bd.is_active = false
+    `;
+    
+    if (req.query.branch_id) {
+      query = sql`${query} AND bd.branch_id = ${parseInt(req.query.branch_id)}`;
+    }
+    
+    if (req.query.document_type) {
+      query = sql`${query} AND bd.document_type = ${req.query.document_type}`;
+    }
+    
+    query = sql`${query} ORDER BY bd.uploaded_at DESC`;
+    
+    const documents = await query;
+    
+    res.json({
+      success: true,
+      data: documents || [],
+      count: documents?.length || 0
+    });
+  } catch (error) {
+    console.error('Error fetching archived branch documents:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل جلب مستندات الفرع المؤرشفة',
+      error: error.message
+    });
+  }
+});
+
 export default router;
 

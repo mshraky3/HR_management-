@@ -6,7 +6,7 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { checkBranchAccess } from '../middleware/authorization.js';
-import { validateRequired, validateEmployeeName, validateDate } from '../middleware/validation.js';
+import { validateRequired, validateEmployeeName, validateDate, validateEmail } from '../middleware/validation.js';
 import { Document } from '../models/Document.js';
 
 const router = express.Router();
@@ -204,9 +204,11 @@ router.get('/:id', async (req, res) => {
 router.post('/',
   validateRequired([
     'first_name', 'second_name', 'third_name', 'fourth_name',
-    'id_or_residency_number', 'nationality'
+    'id_or_residency_number', 'job_title', 'phone_number', 'email',
+    'gender', 'bank_iban', 'bank_name', 'national_address'
   ]),
   validateEmployeeName,
+  validateEmail,
   validateDate('date_of_birth_gregorian'),
   validateDate('date_of_birth_hijri'),
   validateDate('id_expiry_date_gregorian'),
@@ -410,7 +412,7 @@ router.put('/:id/status', async (req, res) => {
     const { status, reason } = req.body;
     
     // Validation
-    const validStatuses = ['active', 'pending', 'terminated', 'resigned', 'contract_ended', 'non_renewal', 'other'];
+    const validStatuses = ['active', 'pending', 'terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
     if (!status || !validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -640,7 +642,7 @@ router.post('/:id/non-renewal', async (req, res) => {
     }
     
     // Validate status (must be an archived status, not active or pending)
-    const archivedStatuses = ['terminated', 'resigned', 'contract_ended', 'non_renewal', 'other'];
+    const archivedStatuses = ['terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
     if (!status || !archivedStatuses.includes(status)) {
       return res.status(400).json({
         success: false,

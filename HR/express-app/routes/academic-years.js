@@ -256,5 +256,38 @@ router.post('/:id/end-year', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/academic-years/:id/complete
+ * Complete academic year (alias for end-year)
+ */
+router.post('/:id/complete', async (req, res) => {
+  try {
+    const yearId = parseInt(req.params.id);
+    const year = await AcademicYear.findById(yearId);
+    
+    if (!year) {
+      return res.status(404).json({
+        success: false,
+        message: 'السنة الدراسية غير موجودة'
+      });
+    }
+    
+    const result = await AcademicYear.endYear(yearId, year.branch_type);
+    
+    res.json({
+      success: true,
+      message: `تم إتمام السنة الدراسية بنجاح. تم تحديث حالة ${result.employeesUpdated} موظف إلى "قيد الانتظار"`,
+      data: result
+    });
+  } catch (error) {
+    console.error('Error completing academic year:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل إتمام السنة الدراسية',
+      error: error.message
+    });
+  }
+});
+
 export default router;
 
