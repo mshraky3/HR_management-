@@ -6,7 +6,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI } from '../utils/api';
+import { useNotification } from '../contexts/NotificationContext';
+import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI } from '../utils/api';
 import { 
   getRequiredBranchDocuments, 
   getBranchTypeLabel,
@@ -18,6 +19,7 @@ import './Dashboard.css';
 
 const Dashboard = () => {
   const { user, isMainManager } = useAuth();
+  const { showError, showSuccess, showWarning } = useNotification();
   const [branches, setBranches] = useState([]);
   const [stats, setStats] = useState({
     branches: 0,
@@ -29,6 +31,16 @@ const Dashboard = () => {
   const [monthlyDocumentAlerts, setMonthlyDocumentAlerts] = useState([]);
   const [incompleteEmployees, setIncompleteEmployees] = useState([]);
   const [missingBranchDocumentAlerts, setMissingBranchDocumentAlerts] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [respondingTo, setRespondingTo] = useState(null);
+  const [responseStatus, setResponseStatus] = useState('');
+  const [responseMessage, setResponseMessage] = useState('');
+  const [pendingEmployees, setPendingEmployees] = useState([]);
+  const [processingRenewal, setProcessingRenewal] = useState(null);
+  const [showNonRenewalForm, setShowNonRenewalForm] = useState(null);
+  const [nonRenewalData, setNonRenewalData] = useState({ status: '', reason: '' });
+  const [branchStats, setBranchStats] = useState(null);
+  const [loadingStats, setLoadingStats] = useState(false);
 
   useEffect(() => {
     loadStats();
@@ -65,22 +77,69 @@ const Dashboard = () => {
         // If no documents or error, just use empty array
       }
 
+      // Load notifications for branch managers
+      if (!isMainManager() && user?.branch_id) {
+        try {
+          const notificationsRes = await notificationsAPI.getMyBranchNotifications();
+          if (notificationsRes.data.success) {
+            setNotifications(notificationsRes.data.data || []);
+          }
+        } catch (error) {
+          console.error('Error loading notifications:', error);
+          setNotifications([]);
+        }
+      }
+
+      // Load branch statistics for main manager
+      if (isMainManager()) {
+        try {
+          setLoadingStats(true);
+          const statsRes = await branchStatisticsAPI.getAll();
+          if (statsRes.data.success) {
+            setBranchStats(statsRes.data.data || []);
+          }
+        } catch (error) {
+          console.error('Error loading branch statistics:', error);
+        } finally {
+          setLoadingStats(false);
+        }
+      }
+
       // Only load incomplete employees, monthly documents, and missing branch documents for branch managers
       // These sections have been removed from main manager dashboard
       if (!isMainManager()) {
-        // Load incomplete employees for branch managers
+        // Load incomplete employees for branch managers (only active or pending)
         const incompleteFilters = { 
           ...employeeFilters, 
-          data_completion_status: 'incomplete' 
+          data_completion_status: 'incomplete'
+          // Note: status filter is not set, so backend will default to active/pending only
         };
         try {
           const incompleteRes = await employeesAPI.getAll(incompleteFilters);
           if (incompleteRes.data.success) {
-            setIncompleteEmployees(incompleteRes.data.data || []);
+            // Double-check: filter out any archived employees that might have slipped through
+            const filtered = (incompleteRes.data.data || []).filter(emp => 
+              !emp.status || emp.status === 'active' || emp.status === 'pending'
+            );
+            setIncompleteEmployees(filtered);
           }
         } catch (error) {
           console.error('Error loading incomplete employees:', error);
           setIncompleteEmployees([]);
+        }
+
+        // Load pending employees (end of year, awaiting renewal)
+        try {
+          const pendingRes = await employeesAPI.getAll({ 
+            ...employeeFilters,
+            status: 'pending'
+          });
+          if (pendingRes.data.success) {
+            setPendingEmployees(pendingRes.data.data || []);
+          }
+        } catch (error) {
+          console.error('Error loading pending employees:', error);
+          setPendingEmployees([]);
         }
 
         // Check monthly documents (payroll_file and attendance_file) for branch managers
@@ -363,6 +422,142 @@ const Dashboard = () => {
         </div>
       )}
 
+      {/* Notifications Section - Only for branch managers */}
+      {!isMainManager() && notifications.length > 0 && (
+        <div className="notifications-section">
+          <h2>الإشعارات</h2>
+          <div className="notifications-list-dashboard">
+            {notifications.map((notification) => {
+              const importanceColors = {
+                1: '#4CAF50',
+                2: '#FF9800',
+                3: '#F44336'
+              };
+              const importanceLabels = {
+                1: 'منخفض',
+                2: 'متوسط',
+                3: 'عالي'
+              };
+              const responseLabels = {
+                done: { text: 'تم', color: '#4CAF50' },
+                working_on_it: { text: 'قيد العمل', color: 'var(--primary)' },
+                seen: { text: 'شوهد', color: '#9E9E9E' }
+              };
+              const currentResponse = responseLabels[notification.response_status] || null;
+              
+              return (
+                <div 
+                  key={notification.id} 
+                  className={`notification-item ${notification.response_status ? 'has-response' : 'no-response'}`}
+                  style={{ borderRight: `4px solid ${importanceColors[notification.importance_level] || '#FF9800'}` }}
+                >
+                  <div className="notification-header-dashboard">
+                    <div className="notification-importance-dashboard">
+                      <span 
+                        className="importance-badge-dashboard"
+                        style={{ backgroundColor: importanceColors[notification.importance_level] || '#FF9800' }}
+                      >
+                        {importanceLabels[notification.importance_level] || 'متوسط'}
+                      </span>
+                      {currentResponse && (
+                        <span 
+                          className="response-badge-dashboard"
+                          style={{ color: currentResponse.color }}
+                        >
+                          {currentResponse.text}
+                        </span>
+                      )}
+                    </div>
+                    <span className="notification-date-dashboard">
+                      {new Date(notification.created_at).toLocaleDateString('ar-SA')}
+                    </span>
+                  </div>
+                  <div className="notification-message-dashboard">
+                    {notification.message}
+                  </div>
+                  {notification.response_message && (
+                    <div className="notification-response-message-dashboard">
+                      <strong>ردك:</strong> {notification.response_message}
+                    </div>
+                  )}
+                  <div className="notification-actions-dashboard">
+                    {respondingTo === notification.id ? (
+                      <div className="response-form-dashboard">
+                        <select
+                          value={responseStatus}
+                          onChange={(e) => setResponseStatus(e.target.value)}
+                          className="response-select"
+                        >
+                          <option value="">اختر حالة الرد</option>
+                          <option value="seen">شوهد</option>
+                          <option value="working_on_it">قيد العمل</option>
+                          <option value="done">تم</option>
+                        </select>
+                        <textarea
+                          value={responseMessage}
+                          onChange={(e) => setResponseMessage(e.target.value)}
+                          placeholder="رسالة إضافية (اختياري)"
+                          rows="2"
+                          className="response-textarea"
+                        />
+                        <div className="response-form-actions">
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={async () => {
+                              if (!responseStatus) {
+                                showWarning('يرجى اختيار حالة الرد');
+                                return;
+                              }
+                              try {
+                                await notificationsAPI.respond(notification.id, {
+                                  response_status: responseStatus,
+                                  response_message: responseMessage || null
+                                });
+                                showSuccess('تم حفظ الرد بنجاح');
+                                setRespondingTo(null);
+                                setResponseStatus('');
+                                setResponseMessage('');
+                                loadStats();
+                              } catch (error) {
+                                console.error('Error responding:', error);
+                                showError(error.response?.data?.message || 'فشل حفظ الرد');
+                              }
+                            }}
+                          >
+                            حفظ
+                          </button>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              setRespondingTo(null);
+                              setResponseStatus('');
+                              setResponseMessage('');
+                            }}
+                          >
+                            إلغاء
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => {
+                          setRespondingTo(notification.id);
+                          setResponseStatus(notification.response_status || '');
+                          setResponseMessage(notification.response_message || '');
+                        }}
+                      >
+                        {notification.response_status ? 'تعديل الرد' : 'رد على الإشعار'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Incomplete Employees Alert - Only for branch managers */}
       {!isMainManager() && incompleteEmployees.length > 0 && (
         <div className="incomplete-employees-alert">
@@ -524,6 +719,50 @@ const Dashboard = () => {
         </div>
       )}
 
+      {/* Branch Statistics Summary - Main Manager Only */}
+      {isMainManager() && branchStats && branchStats.length > 0 && (
+        <div className="branch-stats-summary">
+          <h2>ملخص إحصائيات الفروع</h2>
+          <div className="stats-summary-grid">
+            <div className="stat-summary-card">
+              <div className="stat-summary-label">الفروع النشطة</div>
+              <div className="stat-summary-value operational">
+                {branchStats.filter(s => s.is_operational).length} / {branchStats.length}
+              </div>
+            </div>
+            <div className="stat-summary-card">
+              <div className="stat-summary-label">متوسط نسبة الإكمال</div>
+              <div className="stat-summary-value">
+                {Math.round(
+                  branchStats.reduce((sum, s) => sum + s.completion_percentage, 0) /
+                    branchStats.length
+                )}%
+              </div>
+            </div>
+            <div className="stat-summary-card">
+              <div className="stat-summary-label">متوسط أيام تسجيل الدخول (هذا الشهر)</div>
+              <div className="stat-summary-value">
+                {Math.round(
+                  branchStats.reduce((sum, s) => sum + s.login_days_this_month, 0) /
+                    branchStats.length
+                )}
+              </div>
+            </div>
+            <div className="stat-summary-card">
+              <div className="stat-summary-label">إجمالي الموظفين</div>
+              <div className="stat-summary-value">
+                {branchStats.reduce((sum, s) => sum + s.total_employees, 0)}
+              </div>
+            </div>
+          </div>
+          <div style={{ marginTop: '15px' }}>
+            <Link to="/branch-statistics" className="btn btn-primary">
+              عرض التفاصيل الكاملة →
+            </Link>
+          </div>
+        </div>
+      )}
+
       {isMainManager() && (
         <div className="quick-actions">
           <h2>إجراءات سريعة</h2>
@@ -543,6 +782,18 @@ const Dashboard = () => {
             <Link to="/account-management" className="action-card">
               <h3>إدارة الحسابات</h3>
               <p>إنشاء وإدارة حسابات المدير الرئيسي</p>
+            </Link>
+            <Link to="/notify-branches" className="action-card">
+              <h3>إشعارات الفروع</h3>
+              <p>إرسال إشعارات ومتابعة الردود</p>
+            </Link>
+            <Link to="/archive" className="action-card">
+              <h3>الأرشيف</h3>
+              <p>عرض الموظفين والمستندات المؤرشفة</p>
+            </Link>
+            <Link to="/branch-statistics" className="action-card">
+              <h3>إحصائيات الفروع</h3>
+              <p>متابعة نشاط الفروع وتقارير الأداء</p>
             </Link>
           </div>
         </div>

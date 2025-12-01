@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { reportsAPI, branchesAPI, employeesAPI, branchDocumentsAPI, setBranchDocumentsPassword } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
 import NationalitySelect from '../components/NationalitySelect';
 import BankSelect from '../components/BankSelect';
 import './TablePage.css';
@@ -14,6 +15,7 @@ import './Reports.css';
 
 const Reports = () => {
   const { isMainManager, user } = useAuth();
+  const { showError, showSuccess, showWarning } = useNotification();
   const [searchParams, setSearchParams] = useSearchParams();
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -322,25 +324,25 @@ const Reports = () => {
     e.preventDefault();
     
     if (!reportTitle.trim()) {
-      alert('الرجاء إدخال عنوان التقرير');
+      showWarning('الرجاء إدخال عنوان التقرير');
       return;
     }
     
     if (selectedFields.length === 0) {
-      alert('الرجاء اختيار حقل واحد على الأقل للعرض');
+      showWarning('الرجاء اختيار حقل واحد على الأقل للعرض');
       return;
     }
     
     // For main manager: check if branches are selected
     if (isMainManager()) {
       if (!selectAllBranches && selectedBranchIds.length === 0) {
-        alert('الرجاء تحديد فرع واحد على الأقل أو اختيار كل الفروع');
+        showWarning('الرجاء تحديد فرع واحد على الأقل أو اختيار كل الفروع');
         return;
       }
     } else {
       const targetBranchId = getCurrentBranchId();
       if (!targetBranchId) {
-        alert('الرجاء تحديد الفرع');
+        showWarning('الرجاء تحديد الفرع');
         return;
       }
     }
@@ -412,11 +414,11 @@ const Reports = () => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
-      alert('تم إنشاء التقرير بنجاح');
+      showSuccess('تم إنشاء التقرير بنجاح');
       
     } catch (error) {
       console.error('Error generating report:', error);
-      alert(error.response?.data?.message || 'فشل إنشاء التقرير');
+      showError(error.response?.data?.message || 'فشل إنشاء التقرير');
     } finally {
       setGenerating(false);
     }
@@ -468,7 +470,7 @@ const Reports = () => {
   return (
     <div className="table-page">
       <div className="page-header">
-        <h1>إصدار التقارير</h1>
+        <h1> التقارير</h1>
       </div>
 
       {isMainManager() && (

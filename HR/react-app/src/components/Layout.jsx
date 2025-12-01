@@ -13,6 +13,7 @@ const Layout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState(null);
 
   const handleLogout = () => {
     logout();
@@ -25,6 +26,48 @@ const Layout = ({ children }) => {
 
   const toggleMobileMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen);
+  };
+
+  const toggleDropdown = (dropdownName) => {
+    setOpenDropdown(openDropdown === dropdownName ? null : dropdownName);
+  };
+
+  const closeDropdown = () => {
+    setOpenDropdown(null);
+  };
+
+  // Navigation menu structure
+  const menuItems = {
+    management: {
+      label: 'الإدارة',
+      items: [
+        { path: '/dashboard', label: 'لوحة التحكم' },
+        { path: '/account-management', label: 'إدارة الحسابات' },
+        { path: '/branches', label: 'حسابات الفروع' },
+      ]
+    },
+    employees: {
+      label: 'الموظفون',
+      items: [
+        { path: '/employees', label: 'قائمة الموظفين' },
+        { path: '/employee-file', label: 'ملف موظف' },
+        { path: '/reports', label: 'إصدار التقارير' },
+      ]
+    },
+    monitoring: {
+      label: 'المتابعة والمراقبة',
+      items: [
+        { path: '/branch-statistics', label: 'إحصائيات الفروع' },
+        { path: '/notify-branches', label: 'إشعار الفروع' },
+        { path: '/archive', label: 'الأرشيف' },
+      ]
+    },
+    academic: {
+      label: 'السنة الدراسية',
+      items: [
+        { path: '/term-management', label: 'إدارة الفصول' },
+      ]
+    }
   };
 
   return (
@@ -42,30 +85,38 @@ const Layout = ({ children }) => {
           {mobileMenuOpen ? '✕' : '☰'}
         </button>
         <div className={`nav-links ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-          <Link to="/dashboard" className={isActive('/dashboard')} onClick={() => setMobileMenuOpen(false)}>
-            لوحة التحكم
-          </Link>
-          <Link to="/account-management" className={isActive('/account-management')} onClick={() => setMobileMenuOpen(false)}>
-            إدارة الحسابات
-          </Link>
-          <Link to="/branches" className={isActive('/branches')} onClick={() => setMobileMenuOpen(false)}>
-            حسابات الفروع
-          </Link>
-          <Link to="/employees" className={isActive('/employees')} onClick={() => setMobileMenuOpen(false)}>
-            الموظفون
-          </Link>
-          <Link to="/reports" className={isActive('/reports')} onClick={() => setMobileMenuOpen(false)}>
-            إصدار التقارير
-          </Link>
-          <Link to="/employee-file" className={isActive('/employee-file')} onClick={() => setMobileMenuOpen(false)}>
-            ملف موظف
-          </Link>
+          {Object.entries(menuItems).map(([key, menu]) => (
+            <div key={key} className="nav-dropdown">
+              <button
+                className={`dropdown-toggle ${isActive(menu.items.map(item => item.path).find(path => location.pathname === path)) ? 'active' : ''}`}
+                onClick={() => toggleDropdown(key)}
+              >
+                {menu.label}
+                <span className="dropdown-arrow">▼</span>
+              </button>
+              <div className={`dropdown-menu ${openDropdown === key ? 'open' : ''}`}>
+                {menu.items.map((item) => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={isActive(item.path)}
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      closeDropdown();
+                    }}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
         <div className="nav-user">
           <span className="user-info">
             {user?.full_name || user?.username}
           </span>
-          <button onClick={handleLogout} className="logout-button">
+          <button onClick={handleLogout} className="btn btn-secondary btn-sm">
             تسجيل الخروج
           </button>
         </div>

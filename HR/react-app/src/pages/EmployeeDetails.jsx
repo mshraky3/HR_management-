@@ -7,11 +7,15 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { employeesAPI, documentsAPI, branchesAPI } from '../utils/api';
 import { getDocumentTypeLabel } from '../utils/employeeConstants';
+import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
 import './TablePage.css';
 
 const EmployeeDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { isBranchManager } = useAuth();
+  const { showError, showSuccess, showWarning } = useNotification();
   const [employee, setEmployee] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -21,6 +25,9 @@ const EmployeeDetails = () => {
   const [downloading, setDownloading] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(null);
   const [missingData, setMissingData] = useState(null);
+  const [processingRenewal, setProcessingRenewal] = useState(false);
+  const [showNonRenewalForm, setShowNonRenewalForm] = useState(false);
+  const [nonRenewalData, setNonRenewalData] = useState({ status: '', reason: '' });
 
   useEffect(() => {
     loadEmployeeData();
@@ -80,7 +87,7 @@ const EmployeeDetails = () => {
       }
     } catch (error) {
       console.error('Error loading employee data:', error);
-      alert('فشل تحميل بيانات الموظف');
+      showError('فشل تحميل بيانات الموظف');
       navigate('/employees');
     } finally {
       setLoading(false);
@@ -92,7 +99,7 @@ const EmployeeDetails = () => {
       // Check if token exists
       const token = localStorage.getItem('token');
       if (!token) {
-        alert('يرجى تسجيل الدخول مرة أخرى');
+        showWarning('يرجى تسجيل الدخول مرة أخرى');
         navigate('/login');
         return;
       }
@@ -114,7 +121,7 @@ const EmployeeDetails = () => {
         } catch (error) {
           console.error('Error loading image:', error);
           const errorMsg = error.response?.data?.message || error.message || 'فشل تحميل الصورة';
-          alert(`فشل تحميل الصورة للمعاينة: ${errorMsg}`);
+          showError(`فشل تحميل الصورة للمعاينة: ${errorMsg}`);
           setPreviewDocument(null);
           setPreviewUrl(null);
         } finally {
@@ -129,7 +136,7 @@ const EmployeeDetails = () => {
             const blobUrl = URL.createObjectURL(response.data);
             const newWindow = window.open(blobUrl, '_blank');
             if (!newWindow) {
-              alert('يرجى السماح للنافذة المنبثقة بفتح ملف PDF');
+              showWarning('يرجى السماح للنافذة المنبثقة بفتح ملف PDF');
             }
           } else {
             throw new Error('Invalid response format');
@@ -138,7 +145,7 @@ const EmployeeDetails = () => {
         } catch (error) {
           console.error('Error opening PDF:', error);
           const errorMsg = error.response?.data?.message || error.message || 'فشل فتح ملف PDF';
-          alert(`فشل فتح ملف PDF: ${errorMsg}`);
+          showError(`فشل فتح ملف PDF: ${errorMsg}`);
           setPreviewDocument(null);
         } finally {
           setPreviewLoading(null);
@@ -151,7 +158,7 @@ const EmployeeDetails = () => {
       }
     } catch (error) {
       console.error('Error previewing document:', error);
-      alert('فشل عرض المستند');
+      showError('فشل عرض المستند');
       setPreviewDocument(null);
       setPreviewUrl(null);
       setPreviewLoading(null);
@@ -163,7 +170,7 @@ const EmployeeDetails = () => {
       // Check if token exists
       const token = localStorage.getItem('token');
       if (!token) {
-        alert('يرجى تسجيل الدخول مرة أخرى');
+        showWarning('يرجى تسجيل الدخول مرة أخرى');
         navigate('/login');
         return;
       }
@@ -197,7 +204,7 @@ const EmployeeDetails = () => {
     } catch (error) {
       console.error('Error downloading document:', error);
       const errorMsg = error.response?.data?.message || error.message || 'فشل تحميل المستند';
-      alert(`فشل تحميل المستند: ${errorMsg}`);
+      showError(`فشل تحميل المستند: ${errorMsg}`);
     } finally {
       setDownloading(null);
     }
@@ -219,9 +226,9 @@ const EmployeeDetails = () => {
   if (!employee) {
     return (
       <div className="table-page">
-        <div style={{ textAlign: 'center', padding: '40px' }}>
+        <div className="empty-state">
           <p>الموظف غير موجود</p>
-          <button onClick={() => navigate('/employees')} className="btn-primary">
+          <button onClick={() => navigate('/employees')} className="btn btn-primary btn-md">
             العودة للقائمة
           </button>
         </div>
@@ -233,56 +240,37 @@ const EmployeeDetails = () => {
     <div className="table-page">
       <div className="page-header">
         <h1>تفاصيل الموظف</h1>
-        <button onClick={() => navigate('/employees')} className="btn-secondary">
+        <button onClick={() => navigate('/employees')} className="btn btn-secondary btn-md">
           العودة للقائمة
         </button>
       </div>
 
-      <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '30px', marginTop: '20px' }}>
+      <div className="card">
         {/* Missing Data Alert */}
         {/* Use data_completion_status from DB as source of truth, but show missing fields from calculation */}
         {employee.data_completion_status === 'incomplete' && (
-          <div style={{
-            marginBottom: '30px',
-            padding: '20px',
-            backgroundColor: '#fff3cd',
-            border: '2px solid #f59e0b',
-            borderRadius: '8px',
-            borderRight: '5px solid #f59e0b'
-          }}>
-            <h2 style={{
-              marginTop: 0,
-              marginBottom: '15px',
-              color: '#92400e',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px'
-            }}>
-              <span style={{ fontSize: '24px' }}>⚠️</span>
+          <div className="alert alert-warning">
+            <h2>
+              <span className="icon-lg">⚠️</span>
               البيانات الناقصة
             </h2>
-            <p style={{ marginBottom: '15px', color: '#856404', fontWeight: '500' }}>
+            <p>
               هذا الموظف يحتاج إلى إكمال البيانات التالية:
             </p>
             {missingData.missingFields && missingData.missingFields.length > 0 ? (
-              <ul style={{
-                margin: 0,
-                paddingRight: '20px',
-                color: '#856404',
-                lineHeight: '1.8'
-              }}>
+              <ul>
                 {missingData.missingFields.map((field, index) => (
-                  <li key={index} style={{ marginBottom: '8px' }}>
+                  <li key={index}>
                     {field}
                   </li>
                 ))}
               </ul>
             ) : (
-              <div style={{ color: '#856404' }}>
+              <div>
                 <p style={{ fontStyle: 'italic', marginBottom: '10px' }}>
                   جاري تحميل قائمة البيانات الناقصة...
                 </p>
-                <p style={{ fontSize: '13px', color: '#856404' }}>
+                <p style={{ fontSize: '13px' }}>
                   قد تشمل البيانات الناقصة: المعلومات الشخصية، المستندات المطلوبة، أو البيانات الخاصة بالمهنة أو نوع الفرع.
                 </p>
               </div>
@@ -290,25 +278,7 @@ const EmployeeDetails = () => {
             <div style={{ marginTop: '15px' }}>
               <button
                 onClick={() => navigate(`/employees`, { state: { editEmployeeId: id } })}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#f59e0b',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '5px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  fontSize: '14px',
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#d97706';
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f59e0b';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
+                className="btn btn-warning btn-md"
               >
                 إكمال البيانات الآن
               </button>
@@ -319,46 +289,19 @@ const EmployeeDetails = () => {
         {/* Data Completion Status */}
         {/* Use data_completion_status from DB as single source of truth */}
         {employee.data_completion_status && (
-          <div style={{
-            marginBottom: '20px',
-            padding: '15px',
-            backgroundColor: employee.data_completion_status === 'complete' ? '#d1fae5' : '#fef3c7',
-            border: `2px solid ${employee.data_completion_status === 'complete' ? '#10b981' : '#f59e0b'}`,
-            borderRadius: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between'
-          }}>
+          <div className={`status-completion-box ${employee.data_completion_status === 'complete' ? 'complete' : 'incomplete'}`}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontSize: '20px' }}>
+              <span className="icon-md">
                 {employee.data_completion_status === 'complete' ? '✅' : '⚠️'}
               </span>
-              <strong style={{ color: employee.data_completion_status === 'complete' ? '#065f46' : '#92400e' }}>
+              <strong>
                 حالة البيانات: {employee.data_completion_status === 'complete' ? 'مكتملة' : 'غير مكتملة'}
               </strong>
             </div>
             {employee.data_completion_status === 'incomplete' && (
               <button
                 onClick={() => navigate(`/employees`, { state: { editEmployeeId: id } })}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#f59e0b',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '5px',
-                  cursor: 'pointer',
-                  fontWeight: '500',
-                  fontSize: '13px',
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#d97706';
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f59e0b';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
+                className="btn btn-warning btn-sm"
               >
                 إكمال البيانات
               </button>
@@ -366,11 +309,142 @@ const EmployeeDetails = () => {
           </div>
         )}
 
+        {/* Pending Employee Renewal/Non-Renewal Section - Only for branch managers */}
+        {isBranchManager() && employee.status === 'pending' && (
+            <div className="renewal-section">
+              <h2>
+                <span className="icon-lg">⏳</span>
+                قرار التجديد - نهاية السنة الدراسية
+              </h2>
+              <p>
+                هذا الموظف في حالة انتظار قرار التجديد. يجب تحديث المستندات المطلوبة ثم اختيار أحد الخيارات:
+              </p>
+              
+              {!showNonRenewalForm ? (
+                <div className="renewal-actions">
+                  <button
+                    onClick={async () => {
+                      if (processingRenewal) return;
+                      setProcessingRenewal(true);
+                      try {
+                        await employeesAPI.renew(id);
+                        showSuccess('تم تجديد العقد بنجاح');
+                        loadEmployeeData();
+                      } catch (error) {
+                        console.error('Error renewing employee:', error);
+                        const errorMsg = error.response?.data?.message || 'فشل تجديد العقد';
+                        if (error.response?.data?.missing_documents) {
+                          showError(`${errorMsg}\n\nالمستندات المطلوبة:\n${error.response.data.required_documents.join('\n')}\n\nيرجى تحديث هذه المستندات أولاً.`);
+                        } else {
+                          showError(errorMsg);
+                        }
+                      } finally {
+                        setProcessingRenewal(false);
+                      }
+                    }}
+                    disabled={processingRenewal}
+                    className="btn btn-success btn-md"
+                  >
+                    {processingRenewal ? 'جاري المعالجة...' : '✅ تجديد العقد'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowNonRenewalForm(true);
+                      setNonRenewalData({ status: '', reason: '' });
+                    }}
+                    className="btn btn-danger btn-md"
+                  >
+                    ❌ عدم التجديد
+                  </button>
+                </div>
+              ) : (
+                <div style={{ marginTop: '15px' }}>
+                  <div className="alert-form-group">
+                    <label>
+                      سبب عدم التجديد *
+                    </label>
+                    <select
+                      value={nonRenewalData.status}
+                      onChange={(e) => setNonRenewalData(prev => ({ ...prev, status: e.target.value }))}
+                    >
+                      <option value="">اختر السبب</option>
+                      <option value="non_renewal">عدم تجديد العقد</option>
+                      <option value="terminated_article_80">فصل حسب المادة 80</option>
+                      <option value="terminated_article_77">فصل حسب المادة 77</option>
+                      <option value="resigned">استقالة</option>
+                      <option value="contract_ended">انتهاء العقد</option>
+                      <option value="other">أخرى</option>
+                    </select>
+                  </div>
+                  <div className="alert-form-group">
+                    <label>
+                      تفاصيل إضافية (اختياري)
+                    </label>
+                    <textarea
+                      value={nonRenewalData.reason}
+                      onChange={(e) => setNonRenewalData(prev => ({ ...prev, reason: e.target.value }))}
+                      placeholder="أضف تفاصيل إضافية عن سبب عدم التجديد..."
+                      rows="3"
+                    />
+                  </div>
+                  <div className="alert-form-actions">
+                    <button
+                      onClick={async () => {
+                        if (!nonRenewalData.status) {
+                          showWarning('يرجى اختيار سبب عدم التجديد');
+                          return;
+                        }
+                        try {
+                          await employeesAPI.nonRenewal(id, nonRenewalData);
+                          showSuccess('تم نقل الموظف إلى الأرشيف بنجاح');
+                          setShowNonRenewalForm(false);
+                          setNonRenewalData({ status: '', reason: '' });
+                          loadEmployeeData();
+                        } catch (error) {
+                          console.error('Error processing non-renewal:', error);
+                          showError(error.response?.data?.message || 'فشل معالجة عدم التجديد');
+                        }
+                      }}
+                      className="btn btn-danger btn-md"
+                    >
+                      تأكيد عدم التجديد
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowNonRenewalForm(false);
+                        setNonRenewalData({ status: '', reason: '' });
+                      }}
+                      className="btn btn-secondary btn-md"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              <div className="renewal-note">
+                <p>
+                  <strong>ملاحظة:</strong> لتجديد العقد، يجب تحديث المستندات التالية:
+                </p>
+                <ul>
+                  <li>عقد العمل (employment_contract)</li>
+                  <li>خطاب بدء العمل (employment_letter)</li>
+                  {employee.gender === 'female' && (
+                    <li>الفحص الطبي (medical_examination) - مطلوب للإناث</li>
+                  )}
+                </ul>
+                <p style={{ margin: '10px 0 0 0', fontSize: '12px', fontStyle: 'italic' }}>
+                  يجب أن تكون المستندات محدثة (تم رفعها خلال آخر 90 يوم)
+                </p>
+              </div>
+            </div>
+          )}
+
         {/* Basic Information */}
-        <h2 style={{ marginTop: 0, marginBottom: '20px', color: '#333', borderBottom: '2px solid #2196F3', paddingBottom: '10px' }}>
+        <h2 className="section-header">
           المعلومات الأساسية
         </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+        <div className="info-grid">
           <div>
             <strong>رقم الموظف:</strong> {employee.employee_id_number}
           </div>
@@ -395,19 +469,35 @@ const EmployeeDetails = () => {
           <div>
             <strong>رقم الهوية/الإقامة:</strong> {employee.id_or_residency_number}
           </div>
-          <div>
+          <div className="info-item">
             <strong>الحالة:</strong> 
-            <span className={`badge ${employee.is_active ? 'badge-success' : 'badge-danger'}`} style={{ marginRight: '10px' }}>
-              {employee.is_active ? 'نشط' : 'غير نشط'}
-            </span>
+            {(() => {
+              const status = employee.status || 'active';
+              const statusLabels = {
+                'active': { text: 'نشط', class: 'badge-success' },
+                'pending': { text: 'قيد الانتظار', class: 'badge-warning' },
+                'terminated_article_80': { text: 'فصل حسب المادة 80', class: 'badge-danger' },
+                'terminated_article_77': { text: 'فصل حسب المادة 77', class: 'badge-danger' },
+                'resigned': { text: 'استقال', class: 'badge-danger' },
+                'contract_ended': { text: 'انتهى العقد', class: 'badge-secondary' },
+                'non_renewal': { text: 'عدم التجديد', class: 'badge-secondary' },
+                'other': { text: 'أخرى', class: 'badge-secondary' }
+              };
+              const statusInfo = statusLabels[status] || { text: status, class: 'badge-secondary' };
+              return (
+                <span className={`badge ${statusInfo.class}`} style={{ marginRight: '10px' }}>
+                  {statusInfo.text}
+                </span>
+              );
+            })()}
           </div>
         </div>
 
         {/* Personal Information */}
-        <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#333', borderBottom: '2px solid #2196F3', paddingBottom: '10px' }}>
+        <h2 className="section-header">
           المعلومات الشخصية
         </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+        <div className="info-grid">
           {employee.date_of_birth_hijri && (
             <div>
               <strong>تاريخ الميلاد (هجري):</strong> {employee.date_of_birth_hijri}
@@ -451,10 +541,10 @@ const EmployeeDetails = () => {
         </div>
 
         {/* Contact Information */}
-        <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#333', borderBottom: '2px solid #2196F3', paddingBottom: '10px' }}>
+        <h2 className="section-header">
           معلومات الاتصال
         </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+        <div className="info-grid">
           {employee.email && (
             <div>
               <strong>البريد الإلكتروني:</strong> {employee.email}
@@ -499,31 +589,31 @@ const EmployeeDetails = () => {
             (employee.other_allowances || 0) !== 0 || 
             (employee.deductions || 0) !== 0
           ) && (
-            <div style={{ marginTop: '15px', padding: '15px', background: '#f9f9f9', borderRadius: '5px' }}>
-              <h3 style={{ marginBottom: '10px', color: '#2196F3' }}>الراتب والبدلات والاستقطاعات</h3>
-              <div style={{ marginBottom: '8px' }}>
+            <div className="salary-box">
+              <h3>الراتب والبدلات والاستقطاعات</h3>
+              <div className="salary-item">
                 <strong>الراتب الأساسي:</strong> {(employee.base_salary || 0).toLocaleString('ar-SA')} ريال
               </div>
-              <div style={{ marginBottom: '8px' }}>
+              <div className="salary-item">
                 <strong>بدل السكن:</strong> {(employee.housing_allowance || 0).toLocaleString('ar-SA')} ريال
               </div>
-              <div style={{ marginBottom: '8px' }}>
+              <div className="salary-item">
                 <strong>بدل النقل:</strong> {(employee.transportation_allowance || 0).toLocaleString('ar-SA')} ريال
               </div>
-              <div style={{ marginBottom: '8px' }}>
+              <div className="salary-item">
                 <strong>بدل نهاية الخدمة:</strong> {(employee.end_of_service_allowance || 0).toLocaleString('ar-SA')} ريال
               </div>
-              <div style={{ marginBottom: '8px' }}>
+              <div className="salary-item">
                 <strong>بدل الإجازة السنوية:</strong> {(employee.annual_leave_allowance || 0).toLocaleString('ar-SA')} ريال
               </div>
-              <div style={{ marginBottom: '8px' }}>
+              <div className="salary-item">
                 <strong>بدلات أخرى:</strong> {(employee.other_allowances || 0).toLocaleString('ar-SA')} ريال
               </div>
-              <div style={{ marginBottom: '8px', color: employee.deductions > 0 ? '#d32f2f' : 'inherit' }}>
+              <div className="salary-item" style={{ color: employee.deductions > 0 ? 'var(--danger)' : 'inherit' }}>
                 <strong>الاستقطاعات (خصومات، سلف، إلخ):</strong> {(employee.deductions || 0) > 0 ? '-' : ''}{(employee.deductions || 0).toLocaleString('ar-SA')} ريال
               </div>
-              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #ddd' }}>
-                <div style={{ fontWeight: 'bold', color: '#2196F3', marginBottom: '5px' }}>
+              <div className="salary-total">
+                <div style={{ fontWeight: 'bold', color: 'var(--primary)', marginBottom: '5px' }}>
                   <strong>إجمالي الراتب والبدلات:</strong> {
                     (parseFloat(employee.base_salary || 0) +
                      parseFloat(employee.housing_allowance || 0) +
@@ -534,11 +624,11 @@ const EmployeeDetails = () => {
                   } ريال
                 </div>
                 {(employee.deductions || 0) > 0 && (
-                  <div style={{ fontWeight: 'bold', color: '#d32f2f', marginBottom: '5px' }}>
+                  <div style={{ fontWeight: 'bold', color: 'var(--danger)', marginBottom: '5px' }}>
                     <strong>الاستقطاعات:</strong> -{parseFloat(employee.deductions || 0).toLocaleString('ar-SA')} ريال
                   </div>
                 )}
-                <div style={{ fontWeight: 'bold', color: '#2e7d32', fontSize: '1.1em', marginTop: '5px', paddingTop: '5px', borderTop: '1px solid #ddd' }}>
+                <div style={{ fontWeight: 'bold', color: 'var(--success)', fontSize: '1.1em', marginTop: '5px', paddingTop: '5px', borderTop: '1px solid var(--border)' }}>
                   <strong>صافي الراتب:</strong> {
                     (parseFloat(employee.base_salary || 0) +
                      parseFloat(employee.housing_allowance || 0) +
@@ -563,11 +653,11 @@ const EmployeeDetails = () => {
         </div>
 
         {/* Documents Section */}
-        <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#333', borderBottom: '2px solid #2196F3', paddingBottom: '10px' }}>
+        <h2 className="section-header">
           المستندات المرفوعة ({documents.length})
         </h2>
         {documents.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+          <div className="empty-state">
             لا توجد مستندات مرفوعة
           </div>
         ) : (
@@ -612,17 +702,7 @@ const EmployeeDetails = () => {
                     <button
                       onClick={() => handlePreview(doc)}
                       disabled={previewLoading === doc.id}
-                      style={{
-                        padding: '8px 16px',
-                        backgroundColor: previewLoading === doc.id ? '#ccc' : '#4CAF50',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: previewLoading === doc.id ? 'not-allowed' : 'pointer',
-                        fontSize: '14px',
-                        fontWeight: 'bold',
-                        opacity: previewLoading === doc.id ? 0.7 : 1
-                      }}
+                      className="btn btn-success btn-sm"
                     >
                       {previewLoading === doc.id ? (
                         <>
@@ -638,17 +718,7 @@ const EmployeeDetails = () => {
                     <button
                       onClick={() => handlePreview(doc)}
                       disabled={previewLoading === doc.id}
-                      style={{
-                        padding: '8px 16px',
-                        backgroundColor: previewLoading === doc.id ? '#ccc' : '#FF9800',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: previewLoading === doc.id ? 'not-allowed' : 'pointer',
-                        fontSize: '14px',
-                        fontWeight: 'bold',
-                        opacity: previewLoading === doc.id ? 0.7 : 1
-                      }}
+                      className="btn btn-warning btn-sm"
                     >
                       {previewLoading === doc.id ? (
                         <>
@@ -663,17 +733,7 @@ const EmployeeDetails = () => {
                   <button
                     onClick={() => handleDownload(doc.id)}
                     disabled={downloading === doc.id}
-                    style={{
-                      padding: '8px 16px',
-                      backgroundColor: downloading === doc.id ? '#ccc' : '#2196F3',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: downloading === doc.id ? 'not-allowed' : 'pointer',
-                      fontSize: '14px',
-                      fontWeight: 'bold',
-                      opacity: downloading === doc.id ? 0.7 : 1
-                    }}
+                    className="btn btn-primary btn-sm"
                   >
                     {downloading === doc.id ? (
                       <>

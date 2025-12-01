@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { employeesAPI, branchesAPI, documentsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
 import HijriDatePicker from '../components/HijriDatePicker';
 import NameInput from '../components/NameInput';
 import NationalitySelect from '../components/NationalitySelect';
@@ -49,6 +50,7 @@ const Employees = () => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { isMainManager, user } = useAuth();
+  const { showError, showSuccess, showWarning, showInfo } = useNotification();
   const [employees, setEmployees] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -90,6 +92,7 @@ const Employees = () => {
     id_expiry_date_gregorian: '',
     religion: '',
     marital_status: '',
+    status: 'active',
     educational_qualification: '',
     specialization: '',
     bank_iban: '',
@@ -228,6 +231,9 @@ const Employees = () => {
       setLoading(true);
       const filters = { is_active: true };
       
+      // Only show active or pending employees (archived employees should only appear in archive)
+      // We'll filter by status on the frontend, but also add it to backend filter for efficiency
+      
       // Branch managers only see their branch employees
       if (!isMainManager() && user?.branch_id) {
         filters.branch_id = user.branch_id;
@@ -253,11 +259,15 @@ const Employees = () => {
       
       const response = await employeesAPI.getAll(filters);
       if (response.data.success) {
-        setEmployees(response.data.data);
+        // Filter out archived employees (only show active or pending)
+        const filteredEmployees = response.data.data.filter(emp => 
+          !emp.status || emp.status === 'active' || emp.status === 'pending'
+        );
+        setEmployees(filteredEmployees);
       }
     } catch (error) {
       console.error('Error loading employees:', error);
-      alert('فشل تحميل الموظفين');
+      showError('فشل تحميل الموظفين');
     } finally {
       setLoading(false);
     }
@@ -314,7 +324,7 @@ const Employees = () => {
     
     // Validate nationality is selected first
     if (!formData.nationality) {
-      alert('الرجاء اختيار الجنسية أولاً');
+      showWarning('الرجاء اختيار الجنسية أولاً');
       setSaving(false);
       return;
     }
@@ -331,25 +341,25 @@ const Employees = () => {
     
     // Only require branch type selection for main managers
     if (isMainManager() && !currentBranchType && !editingEmployee) {
-      alert('الرجاء اختيار نوع الفرع أولاً');
+      showWarning('الرجاء اختيار نوع الفرع أولاً');
       return;
     }
     
     // Validate that all 4 names are provided (REQUIRED)
     if (!formData.first_name || !formData.second_name || !formData.third_name || !formData.fourth_name) {
-      alert('الرجاء إدخال جميع الأسماء الأربعة');
+      showWarning('الرجاء إدخال جميع الأسماء الأربعة');
       return;
     }
     
     // Validate id_or_residency_number is provided (REQUIRED)
     if (!formData.id_or_residency_number || formData.id_or_residency_number.trim() === '') {
-      alert('الرجاء إدخال رقم الهوية أو الإقامة');
+      showWarning('الرجاء إدخال رقم الهوية أو الإقامة');
       return;
     }
     
     // Validate nationality is provided (REQUIRED)
     if (!formData.nationality || formData.nationality.trim() === '') {
-      alert('الرجاء إدخال الجنسية');
+      showWarning('الرجاء إدخال الجنسية');
       return;
     }
     
@@ -357,11 +367,11 @@ const Employees = () => {
     const isSaudiNationality = isSaudi();
     if (dateOfBirthCalendarType) {
       if (isSaudiNationality && dateOfBirthCalendarType !== 'hijri') {
-        alert('السعوديون يجب أن يستخدموا التقويم الهجري فقط');
+        showWarning('السعوديون يجب أن يستخدموا التقويم الهجري فقط');
         return;
       }
       if (!isSaudiNationality && dateOfBirthCalendarType !== 'gregorian') {
-        alert('غير السعوديين يجب أن يستخدموا التقويم الميلادي فقط');
+        showWarning('غير السعوديين يجب أن يستخدموا التقويم الميلادي فقط');
         return;
       }
     }
@@ -369,7 +379,7 @@ const Employees = () => {
     // Validate ID expiry calendar type matches nationality (only for non-Saudis and if date is provided)
     if (!isSaudiNationality && idExpiryCalendarType && (formData.id_expiry_date_hijri || formData.id_expiry_date_gregorian)) {
       if (idExpiryCalendarType !== 'gregorian') {
-        alert('تاريخ انتهاء الإقامة لغير السعوديين يجب أن يكون ميلادياً');
+        showWarning('تاريخ انتهاء الإقامة لغير السعوديين يجب أن يكون ميلادياً');
         return;
       }
     }
@@ -380,11 +390,11 @@ const Employees = () => {
     // Validate IBAN and bank name match if provided
     if (formData.bank_iban || formData.bank_name) {
       if (formData.bank_iban && !formData.bank_name) {
-        alert('الرجاء اختيار اسم البنك');
+        showWarning('الرجاء اختيار اسم البنك');
         return;
       }
       if (formData.bank_name && !formData.bank_iban) {
-        alert('الرجاء إدخال رقم الآيبان البنكي');
+        showWarning('الرجاء إدخال رقم الآيبان البنكي');
         return;
       }
       
@@ -392,7 +402,7 @@ const Employees = () => {
       if (formData.bank_iban && formData.bank_name) {
         const cleanIban = formData.bank_iban.replace(/\s/g, '').toUpperCase();
         if (cleanIban.length !== 24 || !cleanIban.startsWith('SA')) {
-          alert('صيغة IBAN غير صحيحة. يجب أن يكون بالشكل: SAXX XXXX XXXX XXXX XXXX XXXX');
+          showWarning('صيغة IBAN غير صحيحة. يجب أن يكون بالشكل: SAXX XXXX XXXX XXXX XXXX XXXX');
           return;
         }
         
@@ -425,12 +435,12 @@ const Employees = () => {
         
         const ibanBank = banks.find(b => bankCodeMatches(b, bankCode));
         if (!ibanBank) {
-          alert('كود البنك في IBAN غير معروف');
+          showWarning('كود البنك في IBAN غير معروف');
           return;
         }
-        
+
         if (ibanBank.nameAr !== formData.bank_name) {
-          alert(`IBAN لا يطابق البنك المختار. IBAN يخص: ${ibanBank.nameAr}`);
+          showWarning(`IBAN لا يطابق البنك المختار. IBAN يخص: ${ibanBank.nameAr}`);
           return;
         }
       }
@@ -450,19 +460,19 @@ const Employees = () => {
     // Check required fields
     for (const [field, label] of Object.entries(requiredFields)) {
       if (!formData[field] || formData[field].toString().trim() === '') {
-        alert(`الحقل "${label}" مطلوب`);
+        showWarning(`الحقل "${label}" مطلوب`);
         return;
       }
     }
     
     // Validate database-required fields that have defaults but can be empty
     if (!formData.gender || formData.gender.trim() === '') {
-      alert('الرجاء اختيار الجنس');
+      showWarning('الرجاء اختيار الجنس');
       return;
     }
     
     if (!formData.id_type || formData.id_type.trim() === '') {
-      alert('الرجاء اختيار نوع الهوية');
+      showWarning('الرجاء اختيار نوع الهوية');
       return;
     }
     
@@ -472,7 +482,7 @@ const Employees = () => {
         // Use job_title as occupation if occupation is empty
         formData.occupation = formData.job_title;
       } else {
-        alert('الرجاء إدخال المهنة أو اختيار المسمى الوظيفي');
+        showWarning('الرجاء إدخال المهنة أو اختيار المسمى الوظيفي');
         return;
       }
     }
@@ -484,7 +494,7 @@ const Employees = () => {
     
     // Validate branch_id is set
     if (!formData.branch_id) {
-      alert('الرجاء اختيار الفرع');
+      showWarning('الرجاء اختيار الفرع');
       return;
     }
     
@@ -512,12 +522,12 @@ const Employees = () => {
       if (formData[field] && typeof formData[field] === 'string') {
         // Special validation for national_address - must be exactly 8 characters if provided
         if (field === 'national_address' && formData[field].trim() !== '' && formData[field].length !== 8) {
-          alert(`الحقل "${label}" يجب أن يكون بالضبط 8 خانات`);
+          showWarning(`الحقل "${label}" يجب أن يكون بالضبط 8 خانات`);
           return;
         }
         // General validation for other fields
         if (formData[field].length > max) {
-          alert(`الحقل "${label}" أطول من المسموح (${max} حرف)`);
+          showWarning(`الحقل "${label}" أطول من المسموح (${max} حرف)`);
           return;
         }
       }
@@ -639,8 +649,43 @@ const Employees = () => {
       
       let employee;
       if (editingEmployee) {
+        // Check if status changed (only for main manager)
+        const originalStatus = editingEmployee.status || 'active';
+        const newStatus = formData.status || 'active';
+        const statusChanged = originalStatus !== newStatus;
+        
+        // Remove status from data - we'll handle status separately via updateStatus endpoint
+        const statusToUpdate = data.status;
+        delete data.status;
+        
         await employeesAPI.update(editingEmployee.id, data);
         employee = { id: editingEmployee.id };
+        
+        // Update status separately if it changed (only for main manager)
+        if (isMainManager() && statusToUpdate) {
+          if (statusChanged) {
+            // Status changed, update it
+            try {
+              await employeesAPI.updateStatus(editingEmployee.id, {
+                status: statusToUpdate,
+                reason: `تم تغيير الحالة من ${originalStatus} إلى ${newStatus}`
+              });
+            } catch (error) {
+              console.error('Error updating employee status:', error);
+              // Don't fail the whole update, just log the error
+            }
+          } else if (!editingEmployee.status && statusToUpdate !== 'active') {
+            // Status was not set before, and user selected a non-default status
+            try {
+              await employeesAPI.updateStatus(editingEmployee.id, {
+                status: statusToUpdate,
+                reason: 'تحديد الحالة الأولي'
+              });
+            } catch (error) {
+              console.error('Error updating employee status:', error);
+            }
+          }
+        }
         
         // Upload documents if any were provided during edit
         // Filter out documents that are not allowed for this employee
@@ -762,7 +807,7 @@ const Employees = () => {
       resetForm();
       resetDocuments();
       loadEmployees();
-      alert(editingEmployee ? 'تم تحديث الموظف بنجاح' : 'تم إضافة الموظف بنجاح');
+      showSuccess(editingEmployee ? 'تم تحديث الموظف بنجاح' : 'تم إضافة الموظف بنجاح');
     } catch (error) {
       console.error('Error saving employee:', error);
       let errorMessage = 'فشل حفظ الموظف';
@@ -776,7 +821,7 @@ const Employees = () => {
       }
 
       // Show clear error message
-      alert(`❌ خطأ في حفظ الموظف\n\n${errorMessage}\n\nالرجاء التحقق من البيانات المدخلة والمحاولة مرة أخرى.`);
+      showError(`❌ خطأ في حفظ الموظف\n\n${errorMessage}\n\nالرجاء التحقق من البيانات المدخلة والمحاولة مرة أخرى.`);
     } finally {
       setSaving(false);
       setUploadingDocuments(false);
@@ -807,6 +852,13 @@ const Employees = () => {
     // Silently validate document type before allowing upload
     // Don't show error messages - just prevent upload if not allowed
     if (file) {
+      // Validate file size (1MB max)
+      const maxSize = 1 * 1024 * 1024; // 1MB in bytes
+      if (file.size > maxSize) {
+        showWarning(`حجم الملف كبير جداً. الحد الأقصى لحجم الملف هو 1 ميجابايت.`);
+        return;
+      }
+      
       // Get current branch type
       let branchTypeForValidation = selectedBranchType;
       if (!branchTypeForValidation && formData.branch_id) {
@@ -897,6 +949,7 @@ const Employees = () => {
       passport_expiry_date: employee.passport_expiry_date || '',
       passport_issue_place: employee.passport_issue_place || '',
       residency_issue_date: employee.residency_issue_date || '',
+      status: employee.status || 'active',
     });
     
     // Set calendar types based on nationality (not existing data)
@@ -918,7 +971,7 @@ const Employees = () => {
       await employeesAPI.delete(id);
       loadEmployees();
     } catch (error) {
-      alert('فشل حذف الموظف');
+      showError('فشل حذف الموظف');
     }
   };
 
@@ -957,6 +1010,7 @@ const Employees = () => {
       id_expiry_date_gregorian: '',
       religion: '',
       marital_status: '',
+      status: 'active',
       educational_qualification: '',
       specialization: '',
       bank_iban: '',
@@ -1170,12 +1224,28 @@ const Employees = () => {
                         </span>
                       </td>
                       <td>
-                        <span className={`badge ${employee.is_active ? 'badge-success' : 'badge-danger'}`}>
-                          {employee.is_active ? 'نشط' : 'غير نشط'}
-                        </span>
+                        {(() => {
+                          const status = employee.status || 'active';
+                          const statusLabels = {
+                            'active': { text: 'نشط', class: 'badge-success' },
+                            'pending': { text: 'قيد الانتظار', class: 'badge-warning' },
+                            'terminated_article_80': { text: 'فصل حسب المادة 80', class: 'badge-danger' },
+                            'terminated_article_77': { text: 'فصل حسب المادة 77', class: 'badge-danger' },
+                            'resigned': { text: 'استقال', class: 'badge-danger' },
+                            'contract_ended': { text: 'انتهى العقد', class: 'badge-secondary' },
+                            'non_renewal': { text: 'عدم التجديد', class: 'badge-secondary' },
+                            'other': { text: 'أخرى', class: 'badge-secondary' }
+                          };
+                          const statusInfo = statusLabels[status] || { text: status, class: 'badge-secondary' };
+                          return (
+                            <span className={`badge ${statusInfo.class}`}>
+                              {statusInfo.text}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td>
-                        <button onClick={() => handleViewDetails(employee)} className="btn-sm" style={{ backgroundColor: '#2196F3', color: 'white', marginLeft: '5px' }}>عرض التفاصيل</button>
+                        <button onClick={() => handleViewDetails(employee)} className="btn btn-primary btn-sm">عرض التفاصيل</button>
                         <button onClick={() => handleEdit(employee)} className="btn-sm btn-edit">تعديل</button>
                         {isMainManager() && (
                           <button onClick={() => handleDelete(employee.id)} className="btn-sm btn-delete">حذف</button>
@@ -1293,6 +1363,26 @@ const Employees = () => {
                     ))}
                   </select>
                 </div>
+                )}
+                
+                {/* Status field - Only for main manager when editing */}
+                {isMainManager() && editingEmployee && (
+                  <div className="form-group col-3">
+                    <label>حالة الموظف</label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                    >
+                      <option value="active">نشط</option>
+                      <option value="pending">قيد الانتظار</option>
+                      <option value="terminated_article_80">فصل حسب المادة 80</option>
+                      <option value="terminated_article_77">فصل حسب المادة 77</option>
+                      <option value="resigned">استقال</option>
+                      <option value="contract_ended">انتهى العقد</option>
+                      <option value="non_renewal">عدم التجديد</option>
+                      <option value="other">أخرى</option>
+                    </select>
+                  </div>
                 )}
                 {!isMainManager() && user?.branch_id && (
                   <div className="form-group col-3">

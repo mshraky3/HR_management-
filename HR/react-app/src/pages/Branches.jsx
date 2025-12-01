@@ -6,10 +6,12 @@
 import { useState, useEffect } from 'react';
 import { branchesAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
 import './TablePage.css';
 
 const Branches = () => {
   const { isMainManager, user } = useAuth();
+  const { showError, showSuccess } = useNotification();
   const [branches, setBranches] = useState([]);
   const [allBranches, setAllBranches] = useState([]); // Store all branches for filtering
   const [loading, setLoading] = useState(true);
@@ -116,7 +118,7 @@ const Branches = () => {
       setBranches([]);
       // Only show alert if we had branches before (not on initial load)
       if (branches.length > 0) {
-        alert('Failed to load branches: ' + (error.response?.data?.message || error.message));
+        showError('فشل تحميل الفروع: ' + (error.response?.data?.message || error.message));
       }
     } finally {
       setLoading(false);
@@ -145,8 +147,9 @@ const Branches = () => {
       setEditingBranch(null);
       resetForm();
       loadBranches();
+      showSuccess(editingBranch ? 'تم تحديث الفرع بنجاح' : 'تم إنشاء الفرع بنجاح');
     } catch (error) {
-      alert(error.response?.data?.message || 'فشل حفظ الفرع');
+      showError(error.response?.data?.message || 'فشل حفظ الفرع');
     }
   };
 
@@ -168,8 +171,9 @@ const Branches = () => {
     try {
       await branchesAPI.delete(id);
       loadBranches();
+      showSuccess('تم حذف الفرع بنجاح');
     } catch (error) {
-      alert('فشل حذف الفرع');
+      showError('فشل حذف الفرع');
     }
   };
 

@@ -261,6 +261,15 @@ export const employeesAPI = {
       ...config,
       responseType: config.responseType || 'blob',
     }),
+  
+  updateStatus: (id, data) => 
+    api.put(`/api/employees/${id}/status`, data),
+  
+  renew: (id) => 
+    api.post(`/api/employees/${id}/renew`),
+  
+  nonRenewal: (id, data) => 
+    api.post(`/api/employees/${id}/non-renewal`, data),
 };
 
 // Documents API
@@ -367,6 +376,133 @@ export const reportsAPI = {
   
   preview: (filename) => 
     api.get(`/api/reports/preview/${filename}`, { responseType: 'blob' }),
+};
+
+// Notifications API
+export const notificationsAPI = {
+  // Main Manager APIs
+  getAll: (filters = {}) => 
+    api.get('/api/notifications', { params: filters }),
+  
+  getById: (id) => 
+    api.get(`/api/notifications/${id}`),
+  
+  create: (data) => 
+    api.post('/api/notifications', data),
+  
+  update: (id, data) => 
+    api.put(`/api/notifications/${id}`, data),
+  
+  delete: (id) => 
+    api.delete(`/api/notifications/${id}`),
+  
+  // Branch Manager APIs
+  getMyBranchNotifications: (filters = {}) => 
+    api.get('/api/notifications/my-branch/notifications', { params: filters }),
+  
+  getBranchNotifications: (branchId, filters = {}) => 
+    api.get(`/api/notifications/branch/${branchId}`, { params: filters }),
+  
+  respond: (notificationId, data) => 
+    api.post(`/api/notifications/${notificationId}/respond`, data),
+};
+
+// Terms API
+export const termsAPI = {
+  getAll: (filters = {}) => 
+    api.get('/api/terms', { params: filters }),
+  
+  getById: (id) => 
+    api.get(`/api/terms/${id}`),
+  
+  create: (data) => 
+    api.post('/api/terms', data),
+  
+  createAcademicYear: (data) => 
+    api.post('/api/terms/create-academic-year', data),
+  
+  update: (id, data) => 
+    api.put(`/api/terms/${id}`, data),
+  
+  delete: (id) => 
+    api.delete(`/api/terms/${id}`),
+  
+  getCurrent: (branchType) => 
+    api.get(`/api/terms/current/${branchType}`),
+};
+
+// Academic Years API
+export const academicYearsAPI = {
+  getAll: (filters = {}) => 
+    api.get('/api/academic-years', { params: filters }),
+  
+  getById: (id) => 
+    api.get(`/api/academic-years/${id}`),
+  
+  getCurrent: (branchType) => 
+    api.get(`/api/academic-years/current/${branchType}`),
+  
+  create: (data) => 
+    api.post('/api/academic-years', data),
+  
+  update: (id, data) => 
+    api.put(`/api/academic-years/${id}`, data),
+  
+  endYear: (yearId, branchType) => 
+    api.post(`/api/academic-years/${yearId}/end-year`, { branch_type: branchType }),
+  
+  completeYear: (id) => 
+    api.post(`/api/academic-years/${id}/complete`),
+};
+
+// Archive API
+export const archiveAPI = {
+  getAll: (filters = {}) => 
+    api.get('/api/archive', { params: filters }),
+  
+  getById: (id) => 
+    api.get(`/api/archive/${id}`),
+  
+  getStatistics: (filters = {}) => 
+    api.get('/api/archive/statistics', { params: filters }),
+  
+  updateStatus: (id, data) => 
+    api.put(`/api/archive/${id}/status`, data),
+  
+  getArchivedBranchDocuments: (filters = {}) => 
+    api.get('/api/archive/branch-documents', { params: filters }),
+  
+  getArchivedBranchDocumentById: (id) => 
+    api.get(`/api/archive/branch-documents/${id}`),
+};
+
+// Branch Statistics API
+export const branchStatisticsAPI = {
+  getAll: () => 
+    api.get('/api/branch-statistics'),
+  
+  generatePerformanceReport: async (data) => {
+    try {
+      return await api.post('/api/branch-statistics/performance-report', data, { 
+        responseType: 'blob'
+      });
+    } catch (error) {
+      // When responseType is 'blob', axios converts error responses to blobs too
+      // We need to check if the error response is actually JSON wrapped in a blob
+      if (error.response && error.response.data instanceof Blob) {
+        try {
+          const text = await error.response.data.text();
+          const jsonError = JSON.parse(text);
+          // Replace blob with parsed JSON
+          error.response.data = jsonError;
+        } catch (parseError) {
+          // If parsing fails, it's a real blob error, keep it as is
+          console.error('Failed to parse error blob:', parseError);
+        }
+      }
+      throw error;
+    }
+  },
 };
 
 export default api;

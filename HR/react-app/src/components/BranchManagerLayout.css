@@ -3,13 +3,12 @@
 
 .branch-badge {
   display: inline-block;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-  color: var(--text);
+  background: var(--success);
+  color: white;
   padding: var(--spacing-xs) var(--spacing-sm);
   border-radius: var(--radius-sm);
   font-size: var(--font-size-xs);
   font-weight: 600;
-  box-shadow: 0 2px 4px rgba(185, 210, 207, 0.2);
 }
 
 .branch-content {

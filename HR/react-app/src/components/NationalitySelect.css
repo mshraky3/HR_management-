@@ -29,12 +29,12 @@
 }
 
 .nationality-option:hover {
-  background: var(--primary-light);
+  background: var(--bg-secondary);
 }
 
 .nationality-option.selected {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-  color: var(--text);
+  background: var(--primary);
+  color: white;
 }
 
 .nationality-option.no-results {

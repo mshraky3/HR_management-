@@ -5,24 +5,30 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { employeesAPI, documentsAPI } from '../utils/api';
+import { employeesAPI, documentsAPI, branchesAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
+import { getDocumentTypeLabel } from '../utils/employeeConstants';
 import './TablePage.css';
 import './EmployeeFile.css';
 
 const EmployeeFile = () => {
   const { isMainManager } = useAuth();
+  const { showError, showSuccess, showWarning } = useNotification();
   const [employees, setEmployees] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null); // Single employee only
+  const [selectedEmployee, setSelectedEmployee] = useState(null); // Store selected employee data
   const [documents, setDocuments] = useState([]); // Documents for selected employee
   const [selectedDocumentIds, setSelectedDocumentIds] = useState([]); // Selected document IDs
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [searchFilters, setSearchFilters] = useState({
     search_name: '',
     search_id: '',
-    search_phone: ''
+    search_phone: '',
+    branch_id: ''
   });
   
   // Refs to maintain focus on search inputs
@@ -85,8 +91,6 @@ const EmployeeFile = () => {
     'id_or_residency_number',
     'nationality',
   ]);
-  
-  const [fileTitle, setFileTitle] = useState('');
 
   // Redirect if not main manager
   useEffect(() => {
@@ -95,6 +99,21 @@ const EmployeeFile = () => {
     }
   }, [isMainManager]);
 
+  // Load branches
+  useEffect(() => {
+    const loadBranches = async () => {
+      try {
+        const response = await branchesAPI.getAll({ is_active: true });
+        if (response.data.success) {
+          setBranches(response.data.data || []);
+        }
+      } catch (error) {
+        console.error('Error loading branches:', error);
+      }
+    };
+    loadBranches();
+  }, []);
+
   // Load employees with search filters
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -102,7 +121,7 @@ const EmployeeFile = () => {
     }, 500); // Wait 500ms after user stops typing
 
     return () => clearTimeout(timeoutId);
-  }, [searchFilters.search_name, searchFilters.search_id, searchFilters.search_phone]);
+  }, [searchFilters.search_name, searchFilters.search_id, searchFilters.search_phone, searchFilters.branch_id]);
 
   const loadEmployees = async () => {
     try {
@@ -119,6 +138,9 @@ const EmployeeFile = () => {
       if (searchFilters.search_phone.trim()) {
         filters.search_phone = searchFilters.search_phone.trim();
       }
+      if (searchFilters.branch_id) {
+        filters.branch_id = parseInt(searchFilters.branch_id);
+      }
       
       const response = await employeesAPI.getAll(filters);
       if (response.data.success) {
@@ -126,7 +148,7 @@ const EmployeeFile = () => {
       }
     } catch (error) {
       console.error('Error loading employees:', error);
-      alert('فشل تحميل الموظفين');
+      showError('فشل تحميل الموظفين');
     } finally {
       setLoading(false);
     }
@@ -159,9 +181,12 @@ const EmployeeFile = () => {
 
   const handleEmployeeSelect = (employeeId) => {
     if (employeeId) {
+      const employee = employees.find(emp => emp.id === parseInt(employeeId));
       setSelectedEmployeeId(parseInt(employeeId));
+      setSelectedEmployee(employee);
     } else {
       setSelectedEmployeeId(null);
+      setSelectedEmployee(null);
       setDocuments([]);
       setSelectedDocumentIds([]);
     }
@@ -202,23 +227,22 @@ const EmployeeFile = () => {
   const handleGenerateFile = async (e) => {
     e.preventDefault();
     
-    if (!fileTitle.trim()) {
-      alert('الرجاء إدخال عنوان الملف');
-      return;
-    }
-    
     if (!selectedEmployeeId) {
-      alert('الرجاء اختيار موظف');
+      showWarning('الرجاء اختيار موظف');
       return;
     }
     
     if (selectedFields.length === 0) {
-      alert('الرجاء اختيار حقل واحد على الأقل للعرض');
+      showWarning('الرجاء اختيار حقل واحد على الأقل للعرض');
       return;
     }
     
     try {
       setGenerating(true);
+      
+      // Generate fixed title: "ملف الموظف" + employee name
+      const employeeName = selectedEmployee ? getFullName(selectedEmployee) : 'موظف';
+      const fileTitle = `ملف الموظف ${employeeName}`;
       
       // Prepare selected documents map for single employee
       const selectedDocumentsForRequest = {
@@ -247,12 +271,12 @@ const EmployeeFile = () => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
-      alert('تم إنشاء الملف بنجاح');
+      showSuccess('تم إنشاء الملف بنجاح');
       
     } catch (error) {
       console.error('Error generating file:', error);
       const errorMessage = error.response?.data?.message || error.message || 'فشل إنشاء الملف';
-      alert(errorMessage);
+      showError(errorMessage);
     } finally {
       setGenerating(false);
     }
@@ -309,6 +333,21 @@ const EmployeeFile = () => {
                 placeholder="ابحث برقم الهاتف..."
                 className="form-control"
               />
+            </div>
+            <div className="form-group">
+              <label>البحث بالفرع:</label>
+              <select
+                value={searchFilters.branch_id}
+                onChange={(e) => setSearchFilters(prev => ({ ...prev, branch_id: e.target.value }))}
+                className="form-control"
+              >
+                <option value="">جميع الفروع</option>
+                {branches.map(branch => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.branch_name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
@@ -371,7 +410,7 @@ const EmployeeFile = () => {
                       />
                       <div className="document-info">
                         <div className="document-name-row">
-                          <span className="document-name">{doc.document_type || 'مستند'}</span>
+                          <span className="document-name">{getDocumentTypeLabel(doc.document_type) || 'مستند'}</span>
                           <span className="document-filename">- {doc.filename || doc.file_name || 'بدون اسم'}</span>
                         </div>
                         {doc.description && (
@@ -387,23 +426,6 @@ const EmployeeFile = () => {
                   ))}
                 </div>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* File Title */}
-        {selectedEmployeeId && (
-          <div className="form-section">
-            <h2>عنوان الملف</h2>
-            <div className="form-group">
-              <input
-                type="text"
-                value={fileTitle}
-                onChange={(e) => setFileTitle(e.target.value)}
-                placeholder="أدخل عنوان الملف"
-                required
-                className="form-control"
-              />
             </div>
           </div>
         )}

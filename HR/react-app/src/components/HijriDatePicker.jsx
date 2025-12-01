@@ -129,7 +129,7 @@ const HijriDatePicker = ({
         </div>
       )}
       {forceCalendarType && (
-        <div style={{ padding: '8px', background: '#e3f2fd', borderRadius: '4px', marginBottom: '8px', fontSize: '14px', color: '#1976d2' }}>
+        <div style={{ padding: '8px', background: 'var(--primary-light)', borderRadius: '4px', marginBottom: '8px', fontSize: '14px', color: 'var(--primary-dark)' }}>
           {forceCalendarType === 'hijri' ? 'تقويم هجري (محدد تلقائياً)' : 'تقويم ميلادي (محدد تلقائياً)'}
         </div>
       )}

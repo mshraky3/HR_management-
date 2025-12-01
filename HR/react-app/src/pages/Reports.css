@@ -20,7 +20,7 @@
   color: var(--text);
   font-size: var(--font-size-xl);
   font-weight: 600;
-  border-bottom: 2px solid var(--primary-dark);
+  border-bottom: 2px solid var(--primary);
   padding-bottom: var(--spacing-sm);
 }
 
@@ -175,7 +175,7 @@
 .form-control:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(185, 210, 207, 0.15);
+  box-shadow: 0 0 0 3px rgba(185, 210, 207, 0.2);
 }
 
 .form-control::placeholder {
@@ -191,42 +191,7 @@
   border-top: 1px solid var(--border-light);
 }
 
-.form-actions .btn {
-  padding: 0.75rem 2rem;
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  transition: all var(--transition-base);
-  border: none;
-}
-
-.form-actions .btn-primary {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-  color: var(--text);
-}
-
-.form-actions .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
-.form-actions .btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.form-actions .btn-secondary {
-  background: var(--bg-secondary);
-  color: var(--text);
-  border: 2px solid var(--border);
-}
-
-.form-actions .btn-secondary:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-dark);
-}
+/* Buttons use unified system from buttons.css */
 
 /* Branch Selection Styles for Main Manager */
 .branch-type-filter {
@@ -304,7 +269,7 @@
 
 .select-all-branch-label:hover {
   background: var(--primary-light);
-  border-color: var(--primary-dark);
+  border-color: var(--primary-hover);
 }
 
 .select-all-branch-label input[type="checkbox"] {
@@ -317,7 +282,7 @@
 
 .select-all-branch-text {
   font-weight: 600;
-  color: var(--primary-dark);
+  color: var(--primary);
   font-size: var(--font-size-lg);
 }
 

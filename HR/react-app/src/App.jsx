@@ -4,6 +4,7 @@
 
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import BranchManagerLayout from './components/BranchManagerLayout';
@@ -16,6 +17,10 @@ import EmployeeDetails from './pages/EmployeeDetails';
 import BranchDocuments from './pages/BranchDocuments';
 import Reports from './pages/Reports';
 import EmployeeFile from './pages/EmployeeFile';
+import NotifyBranches from './pages/NotifyBranches';
+import Archive from './pages/Archive';
+import BranchStatistics from './pages/BranchStatistics';
+import TermManagement from './pages/TermManagement';
 import './App.css';
 
 // Wrapper component to choose layout based on role
@@ -27,8 +32,9 @@ const RoleBasedLayout = ({ children }) => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
+      <NotificationProvider>
+        <Router>
+          <Routes>
           <Route path="/login" element={<Login />} />
           <Route
             path="/dashboard"
@@ -110,9 +116,50 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/notify-branches"
+            element={
+              <ProtectedRoute requireMainManager>
+                <Layout>
+                  <NotifyBranches />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/archive"
+            element={
+              <ProtectedRoute requireMainManager>
+                <Layout>
+                  <Archive />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/branch-statistics"
+            element={
+              <ProtectedRoute requireMainManager>
+                <Layout>
+                  <BranchStatistics />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/term-management"
+            element={
+              <ProtectedRoute requireMainManager>
+                <Layout>
+                  <TermManagement />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </Router>
+      </NotificationProvider>
     </AuthProvider>
   );
 }

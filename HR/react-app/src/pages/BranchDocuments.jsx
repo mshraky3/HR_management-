@@ -8,11 +8,13 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { branchDocumentsAPI, branchesAPI, setBranchDocumentsPassword, setDocumentBranchMapping, clearAllBranchDocumentsPasswords } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
 import BankSelect from '../components/BankSelect';
 import './TablePage.css';
 
 const BranchDocuments = () => {
   const { isMainManager, user } = useAuth();
+  const { showError, showSuccess, showWarning, showInfo } = useNotification();
   const [searchParams, setSearchParams] = useSearchParams();
   const [documents, setDocuments] = useState([]);
   const [allDocuments, setAllDocuments] = useState([]); // Store all documents for filtering
@@ -173,7 +175,7 @@ const BranchDocuments = () => {
       // Only show alert if it's a real error (not just empty results)
       // Check if it's a network error or server error (status >= 400)
       if (error.response && error.response.status >= 400) {
-        alert('فشل تحميل مستندات الفرع: ' + (error.response?.data?.message || error.message));
+        showError('فشل تحميل مستندات الفرع: ' + (error.response?.data?.message || error.message));
       }
       // Otherwise, just set empty array (might be no documents yet)
       setAllDocuments([]);
@@ -228,27 +230,37 @@ const BranchDocuments = () => {
   }, [activeTab, allDocuments]);
 
   const handleFileChange = (e) => {
-    setUploadData({ ...uploadData, file: e.target.files[0] });
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file size (1MB max)
+      const maxSize = 1 * 1024 * 1024; // 1MB in bytes
+      if (file.size > maxSize) {
+        showWarning(`حجم الملف كبير جداً. الحد الأقصى لحجم الملف هو 1 ميجابايت.`);
+        e.target.value = ''; // Clear the file input
+        return;
+      }
+    }
+    setUploadData({ ...uploadData, file });
   };
 
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!uploadData.file) {
-      alert('الرجاء اختيار ملف');
+      showWarning('الرجاء اختيار ملف');
       return;
     }
 
     // Validate IBAN for IBAN file documents
     if (uploadData.document_type === 'iban_file') {
       if (!uploadData.iban_number || !uploadData.bank_name) {
-        alert('رقم الآيبان واسم البنك مطلوبان لمستندات الآيبان');
+        showWarning('رقم الآيبان واسم البنك مطلوبان لمستندات الآيبان');
         return;
       }
 
       // Validate IBAN format and bank match
       const cleanIban = uploadData.iban_number.replace(/\s/g, '').toUpperCase();
       if (cleanIban.length !== 24 || !cleanIban.startsWith('SA')) {
-        alert('صيغة IBAN غير صحيحة. يجب أن يكون بالشكل: SAXX XXXX XXXX XXXX XXXX XXXX');
+        showWarning('صيغة IBAN غير صحيحة. يجب أن يكون بالشكل: SAXX XXXX XXXX XXXX XXXX XXXX');
         return;
       }
 
@@ -281,12 +293,12 @@ const BranchDocuments = () => {
 
       const ibanBank = banks.find(b => bankCodeMatches(b, bankCode));
       if (!ibanBank) {
-        alert('كود البنك في IBAN غير معروف');
+        showWarning('كود البنك في IBAN غير معروف');
         return;
       }
 
       if (ibanBank.nameAr !== uploadData.bank_name) {
-        alert(`IBAN لا يطابق البنك المختار. IBAN يخص: ${ibanBank.nameAr}`);
+        showWarning(`IBAN لا يطابق البنك المختار. IBAN يخص: ${ibanBank.nameAr}`);
         return;
       }
     }
@@ -332,7 +344,7 @@ const BranchDocuments = () => {
       });
       loadDocuments();
     } catch (error) {
-      alert(error.response?.data?.message || 'فشل رفع المستند');
+      showError(error.response?.data?.message || 'فشل رفع المستند');
     } finally {
       setUploading(false);
     }
@@ -342,7 +354,7 @@ const BranchDocuments = () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        alert('يرجى تسجيل الدخول مرة أخرى');
+        showWarning('يرجى تسجيل الدخول مرة أخرى');
         return;
       }
 
@@ -361,7 +373,7 @@ const BranchDocuments = () => {
         } catch (error) {
           console.error('Error loading image:', error);
           const errorMsg = error.response?.data?.message || error.message || 'فشل تحميل الصورة';
-          alert(`فشل تحميل الصورة للمعاينة: ${errorMsg}`);
+          showError(`فشل تحميل الصورة للمعاينة: ${errorMsg}`);
           setPreviewDocument(null);
           setPreviewLoading(null);
         } finally {
@@ -374,7 +386,7 @@ const BranchDocuments = () => {
             const blobUrl = URL.createObjectURL(response.data);
             const newWindow = window.open(blobUrl, '_blank');
             if (!newWindow) {
-              alert('يرجى السماح للنافذة المنبثقة بفتح ملف PDF');
+              showWarning('يرجى السماح للنافذة المنبثقة بفتح ملف PDF');
             }
           } else {
             throw new Error('Invalid response format');
@@ -383,7 +395,7 @@ const BranchDocuments = () => {
         } catch (error) {
           console.error('Error opening PDF:', error);
           const errorMsg = error.response?.data?.message || error.message || 'فشل فتح ملف PDF';
-          alert(`فشل فتح ملف PDF: ${errorMsg}`);
+          showError(`فشل فتح ملف PDF: ${errorMsg}`);
           setPreviewDocument(null);
           setPreviewLoading(null);
         } finally {
@@ -396,7 +408,7 @@ const BranchDocuments = () => {
       }
     } catch (error) {
       console.error('Error previewing document:', error);
-      alert('فشل عرض المستند');
+      showError('فشل عرض المستند');
       setPreviewDocument(null);
       setPreviewLoading(null);
     }
@@ -441,7 +453,7 @@ const BranchDocuments = () => {
     } catch (error) {
       console.error('Error downloading document:', error);
       const errorMsg = error.response?.data?.message || error.message || 'فشل تحميل المستند';
-      alert(`فشل تحميل المستند: ${errorMsg}`);
+      showError(`فشل تحميل المستند: ${errorMsg}`);
     } finally {
       setDownloading(null);
     }
@@ -467,14 +479,14 @@ const BranchDocuments = () => {
     // Validate IBAN for IBAN file documents
     if (editingDocument && editingDocument.document_type === 'iban_file') {
       if (!editData.iban_number || !editData.bank_name) {
-        alert('رقم الآيبان واسم البنك مطلوبان لمستندات الآيبان');
+        showWarning('رقم الآيبان واسم البنك مطلوبان لمستندات الآيبان');
         return;
       }
 
       // Validate IBAN format and bank match
       const cleanIban = editData.iban_number.replace(/\s/g, '').toUpperCase();
       if (cleanIban.length !== 24 || !cleanIban.startsWith('SA')) {
-        alert('صيغة IBAN غير صحيحة. يجب أن يكون بالشكل: SAXX XXXX XXXX XXXX XXXX XXXX');
+        showWarning('صيغة IBAN غير صحيحة. يجب أن يكون بالشكل: SAXX XXXX XXXX XXXX XXXX XXXX');
         return;
       }
 
@@ -507,12 +519,12 @@ const BranchDocuments = () => {
 
       const ibanBank = banks.find(b => bankCodeMatches(b, bankCode));
       if (!ibanBank) {
-        alert('كود البنك في IBAN غير معروف');
+        showWarning('كود البنك في IBAN غير معروف');
         return;
       }
 
       if (ibanBank.nameAr !== editData.bank_name) {
-        alert(`IBAN لا يطابق البنك المختار. IBAN يخص: ${ibanBank.nameAr}`);
+        showWarning(`IBAN لا يطابق البنك المختار. IBAN يخص: ${ibanBank.nameAr}`);
         return;
       }
     }
@@ -573,14 +585,24 @@ const BranchDocuments = () => {
       setEditingDocument(null);
       setEditData({ description: '', document_number: '', issue_date: '', expiry_date: '', iban_number: '', bank_name: '', file: null });
       loadDocuments();
-      alert('تم تحديث المستند بنجاح');
+      showSuccess('تم تحديث المستند بنجاح');
     } catch (error) {
-      alert(error.response?.data?.message || 'فشل تحديث المستند');
+      showError(error.response?.data?.message || 'فشل تحديث المستند');
     }
   };
 
   const handleFileChangeEdit = (e) => {
-    setEditData({ ...editData, file: e.target.files[0] || null });
+    const file = e.target.files[0] || null;
+    if (file) {
+      // Validate file size (1MB max)
+      const maxSize = 1 * 1024 * 1024; // 1MB in bytes
+      if (file.size > maxSize) {
+        showWarning(`حجم الملف كبير جداً. الحد الأقصى لحجم الملف هو 1 ميجابايت.`);
+        e.target.value = ''; // Clear the file input
+        return;
+      }
+    }
+    setEditData({ ...editData, file });
   };
 
   const handleVerify = async (id) => {
@@ -588,7 +610,7 @@ const BranchDocuments = () => {
       await branchDocumentsAPI.verify(id);
       loadDocuments();
     } catch (error) {
-      alert('فشل التحقق من المستند');
+      showError('فشل التحقق من المستند');
     }
   };
 
@@ -598,7 +620,7 @@ const BranchDocuments = () => {
       await branchDocumentsAPI.delete(id);
       loadDocuments();
     } catch (error) {
-      alert('فشل حذف المستند');
+      showError('فشل حذف المستند');
     }
   };
 
@@ -898,7 +920,7 @@ const BranchDocuments = () => {
                     marginTop: '10px',
                     padding: '12px',
                     backgroundColor: '#e3f2fd',
-                    border: '1px solid #2196f3',
+                    border: '1px solid var(--primary)',
                     borderRadius: '4px',
                     color: '#1565c0',
                     fontSize: '14px',
@@ -1098,7 +1120,7 @@ const BranchDocuments = () => {
                         {/* Branch managers can edit/delete their own branch documents, main managers can edit/delete all */}
                         {(isMainManager() || (user?.branch_id === doc.branch_id)) && (
                           <>
-                            <button onClick={() => handleEdit(doc)} className="btn-sm" style={{ background: '#2196F3', color: 'white' }}>
+                            <button onClick={() => handleEdit(doc)} className="btn btn-primary btn-sm">
                               ✏️ تعديل
                             </button>
                             <button onClick={() => handleDelete(doc.id)} className="btn-sm btn-delete">🗑️ حذف</button>

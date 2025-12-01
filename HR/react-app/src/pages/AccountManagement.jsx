@@ -5,9 +5,11 @@
 
 import { useState, useEffect } from 'react';
 import { usersAPI } from '../utils/api';
+import { useNotification } from '../contexts/NotificationContext';
 import './TablePage.css';
 
 const AccountManagement = () => {
+  const { showError, showSuccess } = useNotification();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -32,7 +34,7 @@ const AccountManagement = () => {
       }
     } catch (error) {
       console.error('Error loading accounts:', error);
-      alert('فشل تحميل الحسابات');
+      showError('فشل تحميل الحسابات');
     } finally {
       setLoading(false);
     }
@@ -55,8 +57,9 @@ const AccountManagement = () => {
       setEditingAccount(null);
       resetForm();
       loadAccounts();
+      showSuccess(editingAccount ? 'تم تحديث الحساب بنجاح' : 'تم إنشاء الحساب بنجاح');
     } catch (error) {
-      alert(error.response?.data?.message || 'فشل حفظ الحساب');
+      showError(error.response?.data?.message || 'فشل حفظ الحساب');
     }
   };
 
@@ -76,8 +79,9 @@ const AccountManagement = () => {
     try {
       await usersAPI.delete(id);
       loadAccounts();
+      showSuccess('تم حذف الحساب بنجاح');
     } catch (error) {
-      alert('فشل حذف الحساب');
+      showError('فشل حذف الحساب');
     }
   };
 

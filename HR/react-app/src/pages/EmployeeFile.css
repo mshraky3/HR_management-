@@ -128,12 +128,12 @@
 }
 
 .form-actions .btn-primary {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-  color: var(--text);
+  background: var(--primary);
+  color: white;
 }
 
 .form-actions .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+  background: var(--primary-hover);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
@@ -181,14 +181,14 @@
   align-items: center;
   margin-bottom: var(--spacing-md);
   padding-bottom: var(--spacing-xs);
-  border-bottom: 2px solid var(--primary-dark);
+  border-bottom: 2px solid var(--primary);
 }
 
 .employee-documents-title {
   margin: 0;
   font-size: var(--font-size-lg);
   font-weight: 600;
-  color: var(--primary-dark);
+  color: var(--primary);
 }
 
 .btn-sm {
@@ -254,7 +254,7 @@
 
 .document-name {
   font-weight: 600;
-  color: var(--primary-dark);
+  color: var(--primary);
   font-size: var(--font-size-base);
 }
 

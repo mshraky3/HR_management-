@@ -5,9 +5,11 @@
 
 import { useState, useEffect } from 'react';
 import { usersAPI } from '../utils/api';
+import { useNotification } from '../contexts/NotificationContext';
 import './TablePage.css';
 
 const Users = () => {
+  const { showError, showSuccess } = useNotification();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -34,7 +36,7 @@ const Users = () => {
       }
     } catch (error) {
       console.error('Error loading users:', error);
-      alert('فشل تحميل المستخدمين');
+      showError('فشل تحميل المستخدمين');
     } finally {
       setLoading(false);
     }
@@ -52,8 +54,9 @@ const Users = () => {
       setEditingUser(null);
       resetForm();
       loadUsers();
+      showSuccess(editingUser ? 'تم تحديث المستخدم بنجاح' : 'تم إنشاء المستخدم بنجاح');
     } catch (error) {
-      alert(error.response?.data?.message || 'فشل حفظ المستخدم');
+      showError(error.response?.data?.message || 'فشل حفظ المستخدم');
     }
   };
 
@@ -75,8 +78,9 @@ const Users = () => {
     try {
       await usersAPI.delete(id);
       loadUsers();
+      showSuccess('تم حذف المستخدم بنجاح');
     } catch (error) {
-      alert('فشل حذف المستخدم');
+      showError('فشل حذف المستخدم');
     }
   };
 
