@@ -67,13 +67,13 @@ if (isSchool(branch.branch_type)) {
 
 ### `isHealthcareCenter(branchType)`
 
-التحقق من كون الفرع مركز صحي.
+التحقق من كون الفرع مركز رعاية نهارية.
 
 ```javascript
 import { isHealthcareCenter } from "../utils/employeeHelpers.js";
 
 if (isHealthcareCenter(branch.branch_type)) {
-  // الفرع مركز صحي
+  // الفرع مركز رعاية نهارية
 }
 ```
 

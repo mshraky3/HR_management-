@@ -56,7 +56,7 @@ export const BRANCH_TYPE_RULES = {
     }
   },
   healthcare_center: {
-    label: 'مركز صحي',
+    label: 'مركز رعاية نهارية',
     employeeDocumentRequirements: {
       professionalLicense: false
     }

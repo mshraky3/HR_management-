@@ -39086,3 +39086,1431 @@ SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_status ON employees(status)
 SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_academic_year ON employees(academic_year)
 ---
 
+[2025-12-02T20:10:01.539Z] - CREATE TABLE - Created table: branches
+SQL Query: CREATE TABLE IF NOT EXISTS branches (
+      id SERIAL PRIMARY KEY,
+      branch_name VARCHAR(255) NOT NULL,
+      branch_location VARCHAR(500) NOT NULL,
+      branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
+      username VARCHAR(255) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      branch_documents_password VARCHAR(255) DEFAULT 'test',
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+---
+
+[2025-12-02T20:10:01.819Z] - CUSTOM QUERY - Created index on branches.branch_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branches_type ON branches(branch_type)
+---
+
+[2025-12-02T20:10:01.930Z] - CUSTOM QUERY - Created index on branches.username
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branches_username ON branches(username)
+---
+
+[2025-12-02T20:10:02.039Z] - CREATE TABLE - Created table: users
+SQL Query: CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username VARCHAR(255) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      role VARCHAR(50) NOT NULL CHECK (role IN ('main_manager', 'branch_manager')),
+      branch_id INTEGER,
+      full_name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) UNIQUE,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_by INTEGER,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE SET NULL,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T20:10:02.144Z] - CUSTOM QUERY - Created index on users.username
+SQL Query: CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)
+---
+
+[2025-12-02T20:10:02.256Z] - CUSTOM QUERY - Created index on users.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_users_branch_id ON users(branch_id)
+---
+
+[2025-12-02T20:10:02.362Z] - CUSTOM QUERY - Created index on users.role
+SQL Query: CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)
+---
+
+[2025-12-02T20:10:02.601Z] - CREATE TABLE - Created table: schools
+SQL Query: CREATE TABLE IF NOT EXISTS schools (
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER UNIQUE NOT NULL,
+      school_code VARCHAR(50) UNIQUE,
+      education_level VARCHAR(100),
+      additional_info TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+    )
+---
+
+[2025-12-02T20:10:02.707Z] - CREATE TABLE - Created table: healthcare_centers
+SQL Query: CREATE TABLE IF NOT EXISTS healthcare_centers (
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER UNIQUE NOT NULL,
+      center_code VARCHAR(50) UNIQUE,
+      center_type VARCHAR(100),
+      license_number VARCHAR(100),
+      additional_info TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+    )
+---
+
+[2025-12-02T20:10:02.836Z] - CREATE TABLE - Created table: employees
+SQL Query: CREATE TABLE IF NOT EXISTS employees (
+      id SERIAL PRIMARY KEY,
+      employee_id_number VARCHAR(100) UNIQUE NOT NULL,
+      branch_id INTEGER NOT NULL,
+      first_name VARCHAR(100) NOT NULL,
+      second_name VARCHAR(100) NOT NULL,
+      third_name VARCHAR(100) NOT NULL,
+      fourth_name VARCHAR(100) NOT NULL,
+      occupation VARCHAR(100) NOT NULL,
+      nationality VARCHAR(100) NOT NULL,
+      date_of_birth_hijri VARCHAR(50),
+      date_of_birth_gregorian DATE,
+      id_or_residency_number VARCHAR(100) UNIQUE NOT NULL,
+      id_type VARCHAR(50) NOT NULL CHECK (id_type IN ('citizen', 'resident')),
+      gender VARCHAR(20) NOT NULL CHECK (gender IN ('male', 'female')),
+      id_expiry_date_hijri VARCHAR(50),
+      id_expiry_date_gregorian DATE,
+      religion VARCHAR(100),
+      marital_status VARCHAR(50),
+      educational_qualification VARCHAR(200),
+      specialization VARCHAR(200),
+      bank_iban VARCHAR(50),
+      bank_name VARCHAR(200),
+      email VARCHAR(255),
+      phone_number VARCHAR(50),
+      national_address VARCHAR(8),
+      contract_type VARCHAR(100),
+      years_of_experience_in_same_institution INTEGER DEFAULT 0,
+      years_of_experience_in_company INTEGER DEFAULT 0,
+      salary DECIMAL(10,2),
+      base_salary DECIMAL(10,2),
+      housing_allowance DECIMAL(10,2),
+      transportation_allowance DECIMAL(10,2),
+      end_of_service_allowance DECIMAL(10,2),
+      annual_leave_allowance DECIMAL(10,2),
+      other_allowances DECIMAL(10,2),
+      deductions DECIMAL(10,2),
+      data_completion_status VARCHAR(20) DEFAULT 'incomplete' CHECK (data_completion_status IN ('incomplete', 'complete')),
+      status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'pending', 'terminated', 'resigned', 'contract_ended', 'non_renewal', 'other')),
+      status_changed_at TIMESTAMP,
+      status_changed_by INTEGER,
+      status_change_reason TEXT,
+      academic_year VARCHAR(20),
+      registration_term_id INTEGER,
+      current_term_id INTEGER,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_by INTEGER NOT NULL,
+      updated_by INTEGER NOT NULL,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE RESTRICT,
+      FOREIGN KEY (created_by) REFERENCES branches(id) ON DELETE RESTRICT,
+      FOREIGN KEY (updated_by) REFERENCES branches(id) ON DELETE RESTRICT,
+      FOREIGN KEY (status_changed_by) REFERENCES branches(id) ON DELETE SET NULL,
+      FOREIGN KEY (registration_term_id) REFERENCES terms(id) ON DELETE SET NULL,
+      FOREIGN KEY (current_term_id) REFERENCES terms(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T20:10:02.942Z] - CUSTOM QUERY - Created index on employees.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_branch_id ON employees(branch_id)
+---
+
+[2025-12-02T20:10:03.051Z] - CUSTOM QUERY - Created index on employees.employee_id_number
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_employee_id ON employees(employee_id_number)
+---
+
+[2025-12-02T20:10:03.154Z] - CUSTOM QUERY - Created index on employees.id_or_residency_number
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_id_residency ON employees(id_or_residency_number)
+---
+
+[2025-12-02T20:10:03.259Z] - CUSTOM QUERY - Created index on employees.occupation
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_occupation ON employees(occupation)
+---
+
+[2025-12-02T20:10:03.365Z] - CUSTOM QUERY - Created index on employees.data_completion_status
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_data_completion_status ON employees(data_completion_status)
+---
+
+[2025-12-02T20:10:03.608Z] - CREATE TABLE - Created table: employee_documents
+SQL Query: CREATE TABLE IF NOT EXISTS employee_documents (
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER NOT NULL,
+      document_type VARCHAR(100) NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      file_path VARCHAR(500) NOT NULL,
+      file_size INTEGER,
+      mime_type VARCHAR(100) NOT NULL,
+      file_extension VARCHAR(10),
+      thumbnail_path VARCHAR(500),
+      description TEXT,
+      expiry_date DATE,
+      is_verified BOOLEAN DEFAULT false,
+      verified_at TIMESTAMP,
+      verified_by INTEGER,
+      version INTEGER DEFAULT 1,
+      is_active BOOLEAN DEFAULT true,
+      uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      uploaded_by INTEGER NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T20:10:03.854Z] - CUSTOM QUERY - Created index on employee_documents.employee_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_employee_id ON employee_documents(employee_id)
+---
+
+[2025-12-02T20:10:03.959Z] - CUSTOM QUERY - Created index on employee_documents.document_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_type ON employee_documents(document_type)
+---
+
+[2025-12-02T20:10:04.066Z] - CUSTOM QUERY - Created composite index on employee_documents(employee_id, document_type)
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_employee_type ON employee_documents(employee_id, document_type)
+---
+
+[2025-12-02T20:10:04.171Z] - CUSTOM QUERY - Created index on employee_documents.mime_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_mime_type ON employee_documents(mime_type)
+---
+
+[2025-12-02T20:10:04.275Z] - CUSTOM QUERY - Created index on employee_documents.uploaded_at
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_uploaded_at ON employee_documents(uploaded_at)
+---
+
+[2025-12-02T20:10:04.381Z] - CUSTOM QUERY - Created index on employee_documents.expiry_date
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_expiry_date ON employee_documents(expiry_date)
+---
+
+[2025-12-02T20:10:04.489Z] - CUSTOM QUERY - Created index on employee_documents.is_verified
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_is_verified ON employee_documents(is_verified)
+---
+
+[2025-12-02T20:10:04.596Z] - CUSTOM QUERY - Created index on employee_documents.file_name
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_file_name ON employee_documents(file_name)
+---
+
+[2025-12-02T20:10:04.703Z] - CREATE TABLE - Created table: branch_documents
+SQL Query: CREATE TABLE IF NOT EXISTS branch_documents (
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER NOT NULL,
+      document_type VARCHAR(100) NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      file_path VARCHAR(500) NOT NULL,
+      file_size INTEGER,
+      mime_type VARCHAR(100) NOT NULL,
+      file_extension VARCHAR(10),
+      thumbnail_path VARCHAR(500),
+      description TEXT,
+      expiry_date DATE,
+      is_verified BOOLEAN DEFAULT false,
+      verified_at TIMESTAMP,
+      verified_by INTEGER,
+      version INTEGER DEFAULT 1,
+      is_active BOOLEAN DEFAULT true,
+      uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      uploaded_by INTEGER NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T20:10:04.811Z] - CUSTOM QUERY - Created index on branch_documents.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_branch_id ON branch_documents(branch_id)
+---
+
+[2025-12-02T20:10:04.916Z] - CUSTOM QUERY - Created index on branch_documents.document_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_type ON branch_documents(document_type)
+---
+
+[2025-12-02T20:10:05.022Z] - CUSTOM QUERY - Created composite index on branch_documents(branch_id, document_type)
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_branch_type ON branch_documents(branch_id, document_type)
+---
+
+[2025-12-02T20:10:05.127Z] - CUSTOM QUERY - Created index on branch_documents.mime_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_mime_type ON branch_documents(mime_type)
+---
+
+[2025-12-02T20:10:05.369Z] - CUSTOM QUERY - Created index on branch_documents.uploaded_at
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_uploaded_at ON branch_documents(uploaded_at)
+---
+
+[2025-12-02T20:10:05.474Z] - CUSTOM QUERY - Created index on branch_documents.expiry_date
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_expiry_date ON branch_documents(expiry_date)
+---
+
+[2025-12-02T20:10:05.578Z] - CUSTOM QUERY - Created index on branch_documents.is_verified
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_is_verified ON branch_documents(is_verified)
+---
+
+[2025-12-02T20:10:05.687Z] - CUSTOM QUERY - Created index on branch_documents.file_name
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_file_name ON branch_documents(file_name)
+---
+
+[2025-12-02T20:10:05.793Z] - CREATE TABLE - Created table: employee_professional_classifications
+SQL Query: CREATE TABLE IF NOT EXISTS employee_professional_classifications (
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER NOT NULL,
+      profession VARCHAR(100) NOT NULL,
+      classification_level VARCHAR(100) NOT NULL,
+      classification_number VARCHAR(100),
+      issued_date DATE,
+      expiry_date DATE,
+      document_id INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      FOREIGN KEY (document_id) REFERENCES employee_documents(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T20:10:06.033Z] - CUSTOM QUERY - Created index on employee_professional_classifications.employee_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_classifications_employee_id ON employee_professional_classifications(employee_id)
+---
+
+[2025-12-02T20:10:06.268Z] - CUSTOM QUERY - Created index on employee_professional_classifications.profession
+SQL Query: CREATE INDEX IF NOT EXISTS idx_classifications_profession ON employee_professional_classifications(profession)
+---
+
+[2025-12-02T20:10:06.373Z] - CREATE TABLE - Created table: employee_course_certificates
+SQL Query: CREATE TABLE IF NOT EXISTS employee_course_certificates (
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER NOT NULL,
+      course_type VARCHAR(100) NOT NULL CHECK (course_type IN ('speech_therapy_70h', 'physical_therapy_40h')),
+      course_name VARCHAR(200) NOT NULL,
+      completion_date DATE NOT NULL,
+      hours_completed INTEGER NOT NULL,
+      certificate_number VARCHAR(100),
+      document_id INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      FOREIGN KEY (document_id) REFERENCES employee_documents(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T20:10:06.625Z] - CUSTOM QUERY - Created index on employee_course_certificates.employee_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_certificates_employee_id ON employee_course_certificates(employee_id)
+---
+
+[2025-12-02T20:10:06.731Z] - CUSTOM QUERY - Created index on employee_course_certificates.course_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_certificates_course_type ON employee_course_certificates(course_type)
+---
+
+[2025-12-02T20:10:06.838Z] - CREATE TABLE - Created table: notifications
+SQL Query: CREATE TABLE IF NOT EXISTS notifications (
+      id SERIAL PRIMARY KEY,
+      message TEXT NOT NULL,
+      importance_level INTEGER NOT NULL CHECK (importance_level IN (1, 2, 3)),
+      created_by INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      is_active BOOLEAN DEFAULT true,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+    )
+---
+
+[2025-12-02T20:10:06.942Z] - CUSTOM QUERY - Created index on notifications.created_by
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notifications_created_by ON notifications(created_by)
+---
+
+[2025-12-02T20:10:07.047Z] - CUSTOM QUERY - Created index on notifications.importance_level
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notifications_importance ON notifications(importance_level)
+---
+
+[2025-12-02T20:10:07.152Z] - CUSTOM QUERY - Created index on notifications.created_at
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at)
+---
+
+[2025-12-02T20:10:07.261Z] - CUSTOM QUERY - Created index on notifications.is_active
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notifications_is_active ON notifications(is_active)
+---
+
+[2025-12-02T20:10:07.494Z] - CREATE TABLE - Created table: notification_branches
+SQL Query: CREATE TABLE IF NOT EXISTS notification_branches (
+      id SERIAL PRIMARY KEY,
+      notification_id INTEGER NOT NULL,
+      branch_id INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      UNIQUE(notification_id, branch_id)
+    )
+---
+
+[2025-12-02T20:10:07.607Z] - CUSTOM QUERY - Created index on notification_branches.notification_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_branches_notification_id ON notification_branches(notification_id)
+---
+
+[2025-12-02T20:10:07.848Z] - CUSTOM QUERY - Created index on notification_branches.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_branches_branch_id ON notification_branches(branch_id)
+---
+
+[2025-12-02T20:10:07.952Z] - CREATE TABLE - Created table: notification_responses
+SQL Query: CREATE TABLE IF NOT EXISTS notification_responses (
+      id SERIAL PRIMARY KEY,
+      notification_id INTEGER NOT NULL,
+      branch_id INTEGER NOT NULL,
+      response_status VARCHAR(50) NOT NULL CHECK (response_status IN ('done', 'working_on_it', 'seen')),
+      response_message TEXT,
+      responded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      UNIQUE(notification_id, branch_id)
+    )
+---
+
+[2025-12-02T20:10:08.192Z] - CUSTOM QUERY - Created index on notification_responses.notification_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_responses_notification_id ON notification_responses(notification_id)
+---
+
+[2025-12-02T20:10:08.297Z] - CUSTOM QUERY - Created index on notification_responses.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_responses_branch_id ON notification_responses(branch_id)
+---
+
+[2025-12-02T20:10:08.401Z] - CUSTOM QUERY - Created index on notification_responses.response_status
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_responses_status ON notification_responses(response_status)
+---
+
+[2025-12-02T20:10:08.506Z] - CREATE TABLE - Created table: terms
+SQL Query: CREATE TABLE IF NOT EXISTS terms (
+      id SERIAL PRIMARY KEY,
+      branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
+      term_name VARCHAR(100) NOT NULL,
+      term_number INTEGER NOT NULL CHECK (term_number IN (1, 2)),
+      start_date DATE NOT NULL,
+      end_date DATE NOT NULL,
+      academic_year_start DATE NOT NULL,
+      academic_year_end DATE NOT NULL,
+      academic_year_label VARCHAR(20) NOT NULL,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_by INTEGER,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+      CHECK (start_date <= end_date),
+      CHECK (academic_year_start <= academic_year_end)
+    )
+---
+
+[2025-12-02T20:10:08.770Z] - CUSTOM QUERY - Created index on terms.branch_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_terms_branch_type ON terms(branch_type)
+---
+
+[2025-12-02T20:10:09.010Z] - CUSTOM QUERY - Created index on terms academic year dates
+SQL Query: CREATE INDEX IF NOT EXISTS idx_terms_academic_year ON terms(academic_year_start, academic_year_end)
+---
+
+[2025-12-02T20:10:09.170Z] - CUSTOM QUERY - Created index on terms dates
+SQL Query: CREATE INDEX IF NOT EXISTS idx_terms_dates ON terms(start_date, end_date)
+---
+
+[2025-12-02T20:10:09.277Z] - CREATE TABLE - Created table: academic_years
+SQL Query: CREATE TABLE IF NOT EXISTS academic_years (
+      id SERIAL PRIMARY KEY,
+      branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
+      year_label VARCHAR(20) NOT NULL,
+      year_start DATE NOT NULL,
+      year_end DATE NOT NULL,
+      term1_id INTEGER,
+      term2_id INTEGER,
+      is_current BOOLEAN DEFAULT false,
+      is_completed BOOLEAN DEFAULT false,
+      completed_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (term1_id) REFERENCES terms(id) ON DELETE SET NULL,
+      FOREIGN KEY (term2_id) REFERENCES terms(id) ON DELETE SET NULL,
+      UNIQUE(branch_type, year_label),
+      CHECK (year_start <= year_end)
+    )
+---
+
+[2025-12-02T20:10:09.382Z] - CUSTOM QUERY - Created index on academic_years.branch_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_academic_years_branch_type ON academic_years(branch_type)
+---
+
+[2025-12-02T20:10:09.485Z] - CUSTOM QUERY - Created index on academic_years dates
+SQL Query: CREATE INDEX IF NOT EXISTS idx_academic_years_dates ON academic_years(year_start, year_end)
+---
+
+[2025-12-02T20:10:09.592Z] - CUSTOM QUERY - Created index on academic_years is_current
+SQL Query: CREATE INDEX IF NOT EXISTS idx_academic_years_current ON academic_years(is_current, branch_type)
+---
+
+[2025-12-02T20:10:09.812Z] - CUSTOM QUERY - Created index on employees.status
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_status ON employees(status)
+---
+
+[2025-12-02T20:10:10.023Z] - CUSTOM QUERY - Created index on employees.academic_year
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_academic_year ON employees(academic_year)
+---
+
+[2025-12-02T21:55:02.164Z] - CREATE TABLE - Created table: branches
+SQL Query: CREATE TABLE IF NOT EXISTS branches (
+      id SERIAL PRIMARY KEY,
+      branch_name VARCHAR(255) NOT NULL,
+      branch_location VARCHAR(500) NOT NULL,
+      branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
+      username VARCHAR(255) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      branch_documents_password VARCHAR(255) DEFAULT 'test',
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+---
+
+[2025-12-02T21:55:02.272Z] - CUSTOM QUERY - Created index on branches.branch_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branches_type ON branches(branch_type)
+---
+
+[2025-12-02T21:55:02.380Z] - CUSTOM QUERY - Created index on branches.username
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branches_username ON branches(username)
+---
+
+[2025-12-02T21:55:02.612Z] - CREATE TABLE - Created table: users
+SQL Query: CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username VARCHAR(255) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      role VARCHAR(50) NOT NULL CHECK (role IN ('main_manager', 'branch_manager')),
+      branch_id INTEGER,
+      full_name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) UNIQUE,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_by INTEGER,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE SET NULL,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T21:55:02.850Z] - CUSTOM QUERY - Created index on users.username
+SQL Query: CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)
+---
+
+[2025-12-02T21:55:02.951Z] - CUSTOM QUERY - Created index on users.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_users_branch_id ON users(branch_id)
+---
+
+[2025-12-02T21:55:03.053Z] - CUSTOM QUERY - Created index on users.role
+SQL Query: CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)
+---
+
+[2025-12-02T21:55:03.290Z] - CREATE TABLE - Created table: schools
+SQL Query: CREATE TABLE IF NOT EXISTS schools (
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER UNIQUE NOT NULL,
+      school_code VARCHAR(50) UNIQUE,
+      education_level VARCHAR(100),
+      additional_info TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+    )
+---
+
+[2025-12-02T21:55:03.521Z] - CREATE TABLE - Created table: healthcare_centers
+SQL Query: CREATE TABLE IF NOT EXISTS healthcare_centers (
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER UNIQUE NOT NULL,
+      center_code VARCHAR(50) UNIQUE,
+      center_type VARCHAR(100),
+      license_number VARCHAR(100),
+      additional_info TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+    )
+---
+
+[2025-12-02T21:55:03.641Z] - CREATE TABLE - Created table: employees
+SQL Query: CREATE TABLE IF NOT EXISTS employees (
+      id SERIAL PRIMARY KEY,
+      employee_id_number VARCHAR(100) UNIQUE NOT NULL,
+      branch_id INTEGER NOT NULL,
+      first_name VARCHAR(100) NOT NULL,
+      second_name VARCHAR(100) NOT NULL,
+      third_name VARCHAR(100) NOT NULL,
+      fourth_name VARCHAR(100) NOT NULL,
+      occupation VARCHAR(100) NOT NULL,
+      nationality VARCHAR(100) NOT NULL,
+      date_of_birth_hijri VARCHAR(50),
+      date_of_birth_gregorian DATE,
+      id_or_residency_number VARCHAR(100) UNIQUE NOT NULL,
+      id_type VARCHAR(50) NOT NULL CHECK (id_type IN ('citizen', 'resident')),
+      gender VARCHAR(20) NOT NULL CHECK (gender IN ('male', 'female')),
+      id_expiry_date_hijri VARCHAR(50),
+      id_expiry_date_gregorian DATE,
+      religion VARCHAR(100),
+      marital_status VARCHAR(50),
+      educational_qualification VARCHAR(200),
+      specialization VARCHAR(200),
+      bank_iban VARCHAR(50),
+      bank_name VARCHAR(200),
+      email VARCHAR(255),
+      phone_number VARCHAR(50),
+      national_address VARCHAR(8),
+      contract_type VARCHAR(100),
+      years_of_experience_in_same_institution INTEGER DEFAULT 0,
+      years_of_experience_in_company INTEGER DEFAULT 0,
+      salary DECIMAL(10,2),
+      base_salary DECIMAL(10,2),
+      housing_allowance DECIMAL(10,2),
+      transportation_allowance DECIMAL(10,2),
+      end_of_service_allowance DECIMAL(10,2),
+      annual_leave_allowance DECIMAL(10,2),
+      other_allowances DECIMAL(10,2),
+      deductions DECIMAL(10,2),
+      data_completion_status VARCHAR(20) DEFAULT 'incomplete' CHECK (data_completion_status IN ('incomplete', 'complete')),
+      status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'pending', 'terminated', 'resigned', 'contract_ended', 'non_renewal', 'other')),
+      status_changed_at TIMESTAMP,
+      status_changed_by INTEGER,
+      status_change_reason TEXT,
+      academic_year VARCHAR(20),
+      registration_term_id INTEGER,
+      current_term_id INTEGER,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_by INTEGER NOT NULL,
+      updated_by INTEGER NOT NULL,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE RESTRICT,
+      FOREIGN KEY (created_by) REFERENCES branches(id) ON DELETE RESTRICT,
+      FOREIGN KEY (updated_by) REFERENCES branches(id) ON DELETE RESTRICT,
+      FOREIGN KEY (status_changed_by) REFERENCES branches(id) ON DELETE SET NULL,
+      FOREIGN KEY (registration_term_id) REFERENCES terms(id) ON DELETE SET NULL,
+      FOREIGN KEY (current_term_id) REFERENCES terms(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T21:55:03.743Z] - CUSTOM QUERY - Created index on employees.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_branch_id ON employees(branch_id)
+---
+
+[2025-12-02T21:55:03.844Z] - CUSTOM QUERY - Created index on employees.employee_id_number
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_employee_id ON employees(employee_id_number)
+---
+
+[2025-12-02T21:55:04.079Z] - CUSTOM QUERY - Created index on employees.id_or_residency_number
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_id_residency ON employees(id_or_residency_number)
+---
+
+[2025-12-02T21:55:04.308Z] - CUSTOM QUERY - Created index on employees.occupation
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_occupation ON employees(occupation)
+---
+
+[2025-12-02T21:55:04.540Z] - CUSTOM QUERY - Created index on employees.data_completion_status
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_data_completion_status ON employees(data_completion_status)
+---
+
+[2025-12-02T21:55:04.779Z] - CREATE TABLE - Created table: employee_documents
+SQL Query: CREATE TABLE IF NOT EXISTS employee_documents (
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER NOT NULL,
+      document_type VARCHAR(100) NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      file_path VARCHAR(500) NOT NULL,
+      file_size INTEGER,
+      mime_type VARCHAR(100) NOT NULL,
+      file_extension VARCHAR(10),
+      thumbnail_path VARCHAR(500),
+      description TEXT,
+      expiry_date DATE,
+      is_verified BOOLEAN DEFAULT false,
+      verified_at TIMESTAMP,
+      verified_by INTEGER,
+      version INTEGER DEFAULT 1,
+      is_active BOOLEAN DEFAULT true,
+      uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      uploaded_by INTEGER NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T21:55:05.010Z] - CUSTOM QUERY - Created index on employee_documents.employee_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_employee_id ON employee_documents(employee_id)
+---
+
+[2025-12-02T21:55:05.245Z] - CUSTOM QUERY - Created index on employee_documents.document_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_type ON employee_documents(document_type)
+---
+
+[2025-12-02T21:55:05.480Z] - CUSTOM QUERY - Created composite index on employee_documents(employee_id, document_type)
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_employee_type ON employee_documents(employee_id, document_type)
+---
+
+[2025-12-02T21:55:05.714Z] - CUSTOM QUERY - Created index on employee_documents.mime_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_mime_type ON employee_documents(mime_type)
+---
+
+[2025-12-02T21:55:05.823Z] - CUSTOM QUERY - Created index on employee_documents.uploaded_at
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_uploaded_at ON employee_documents(uploaded_at)
+---
+
+[2025-12-02T21:55:06.059Z] - CUSTOM QUERY - Created index on employee_documents.expiry_date
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_expiry_date ON employee_documents(expiry_date)
+---
+
+[2025-12-02T21:55:06.294Z] - CUSTOM QUERY - Created index on employee_documents.is_verified
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_is_verified ON employee_documents(is_verified)
+---
+
+[2025-12-02T21:55:06.401Z] - CUSTOM QUERY - Created index on employee_documents.file_name
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_file_name ON employee_documents(file_name)
+---
+
+[2025-12-02T21:55:06.509Z] - CREATE TABLE - Created table: branch_documents
+SQL Query: CREATE TABLE IF NOT EXISTS branch_documents (
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER NOT NULL,
+      document_type VARCHAR(100) NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      file_path VARCHAR(500) NOT NULL,
+      file_size INTEGER,
+      mime_type VARCHAR(100) NOT NULL,
+      file_extension VARCHAR(10),
+      thumbnail_path VARCHAR(500),
+      description TEXT,
+      expiry_date DATE,
+      is_verified BOOLEAN DEFAULT false,
+      verified_at TIMESTAMP,
+      verified_by INTEGER,
+      version INTEGER DEFAULT 1,
+      is_active BOOLEAN DEFAULT true,
+      uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      uploaded_by INTEGER NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T21:55:06.742Z] - CUSTOM QUERY - Created index on branch_documents.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_branch_id ON branch_documents(branch_id)
+---
+
+[2025-12-02T21:55:06.843Z] - CUSTOM QUERY - Created index on branch_documents.document_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_type ON branch_documents(document_type)
+---
+
+[2025-12-02T21:55:06.942Z] - CUSTOM QUERY - Created composite index on branch_documents(branch_id, document_type)
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_branch_type ON branch_documents(branch_id, document_type)
+---
+
+[2025-12-02T21:55:07.045Z] - CUSTOM QUERY - Created index on branch_documents.mime_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_mime_type ON branch_documents(mime_type)
+---
+
+[2025-12-02T21:55:07.274Z] - CUSTOM QUERY - Created index on branch_documents.uploaded_at
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_uploaded_at ON branch_documents(uploaded_at)
+---
+
+[2025-12-02T21:55:07.507Z] - CUSTOM QUERY - Created index on branch_documents.expiry_date
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_expiry_date ON branch_documents(expiry_date)
+---
+
+[2025-12-02T21:55:07.741Z] - CUSTOM QUERY - Created index on branch_documents.is_verified
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_is_verified ON branch_documents(is_verified)
+---
+
+[2025-12-02T21:55:07.843Z] - CUSTOM QUERY - Created index on branch_documents.file_name
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_file_name ON branch_documents(file_name)
+---
+
+[2025-12-02T21:55:07.948Z] - CREATE TABLE - Created table: employee_professional_classifications
+SQL Query: CREATE TABLE IF NOT EXISTS employee_professional_classifications (
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER NOT NULL,
+      profession VARCHAR(100) NOT NULL,
+      classification_level VARCHAR(100) NOT NULL,
+      classification_number VARCHAR(100),
+      issued_date DATE,
+      expiry_date DATE,
+      document_id INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      FOREIGN KEY (document_id) REFERENCES employee_documents(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T21:55:08.177Z] - CUSTOM QUERY - Created index on employee_professional_classifications.employee_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_classifications_employee_id ON employee_professional_classifications(employee_id)
+---
+
+[2025-12-02T21:55:08.410Z] - CUSTOM QUERY - Created index on employee_professional_classifications.profession
+SQL Query: CREATE INDEX IF NOT EXISTS idx_classifications_profession ON employee_professional_classifications(profession)
+---
+
+[2025-12-02T21:55:08.511Z] - CREATE TABLE - Created table: employee_course_certificates
+SQL Query: CREATE TABLE IF NOT EXISTS employee_course_certificates (
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER NOT NULL,
+      course_type VARCHAR(100) NOT NULL CHECK (course_type IN ('speech_therapy_70h', 'physical_therapy_40h')),
+      course_name VARCHAR(200) NOT NULL,
+      completion_date DATE NOT NULL,
+      hours_completed INTEGER NOT NULL,
+      certificate_number VARCHAR(100),
+      document_id INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      FOREIGN KEY (document_id) REFERENCES employee_documents(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T21:55:08.752Z] - CUSTOM QUERY - Created index on employee_course_certificates.employee_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_certificates_employee_id ON employee_course_certificates(employee_id)
+---
+
+[2025-12-02T21:55:08.987Z] - CUSTOM QUERY - Created index on employee_course_certificates.course_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_certificates_course_type ON employee_course_certificates(course_type)
+---
+
+[2025-12-02T21:55:09.225Z] - CREATE TABLE - Created table: notifications
+SQL Query: CREATE TABLE IF NOT EXISTS notifications (
+      id SERIAL PRIMARY KEY,
+      message TEXT NOT NULL,
+      importance_level INTEGER NOT NULL CHECK (importance_level IN (1, 2, 3)),
+      created_by INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      is_active BOOLEAN DEFAULT true,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+    )
+---
+
+[2025-12-02T21:55:09.457Z] - CUSTOM QUERY - Created index on notifications.created_by
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notifications_created_by ON notifications(created_by)
+---
+
+[2025-12-02T21:55:09.562Z] - CUSTOM QUERY - Created index on notifications.importance_level
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notifications_importance ON notifications(importance_level)
+---
+
+[2025-12-02T21:55:09.799Z] - CUSTOM QUERY - Created index on notifications.created_at
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at)
+---
+
+[2025-12-02T21:55:09.901Z] - CUSTOM QUERY - Created index on notifications.is_active
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notifications_is_active ON notifications(is_active)
+---
+
+[2025-12-02T21:55:10.140Z] - CREATE TABLE - Created table: notification_branches
+SQL Query: CREATE TABLE IF NOT EXISTS notification_branches (
+      id SERIAL PRIMARY KEY,
+      notification_id INTEGER NOT NULL,
+      branch_id INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      UNIQUE(notification_id, branch_id)
+    )
+---
+
+[2025-12-02T21:55:10.376Z] - CUSTOM QUERY - Created index on notification_branches.notification_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_branches_notification_id ON notification_branches(notification_id)
+---
+
+[2025-12-02T21:55:10.614Z] - CUSTOM QUERY - Created index on notification_branches.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_branches_branch_id ON notification_branches(branch_id)
+---
+
+[2025-12-02T21:55:10.718Z] - CREATE TABLE - Created table: notification_responses
+SQL Query: CREATE TABLE IF NOT EXISTS notification_responses (
+      id SERIAL PRIMARY KEY,
+      notification_id INTEGER NOT NULL,
+      branch_id INTEGER NOT NULL,
+      response_status VARCHAR(50) NOT NULL CHECK (response_status IN ('done', 'working_on_it', 'seen')),
+      response_message TEXT,
+      responded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      UNIQUE(notification_id, branch_id)
+    )
+---
+
+[2025-12-02T21:55:10.818Z] - CUSTOM QUERY - Created index on notification_responses.notification_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_responses_notification_id ON notification_responses(notification_id)
+---
+
+[2025-12-02T21:55:11.047Z] - CUSTOM QUERY - Created index on notification_responses.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_responses_branch_id ON notification_responses(branch_id)
+---
+
+[2025-12-02T21:55:11.150Z] - CUSTOM QUERY - Created index on notification_responses.response_status
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_responses_status ON notification_responses(response_status)
+---
+
+[2025-12-02T21:55:11.251Z] - CREATE TABLE - Created table: terms
+SQL Query: CREATE TABLE IF NOT EXISTS terms (
+      id SERIAL PRIMARY KEY,
+      branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
+      term_name VARCHAR(100) NOT NULL,
+      term_number INTEGER NOT NULL CHECK (term_number IN (1, 2)),
+      start_date DATE NOT NULL,
+      end_date DATE NOT NULL,
+      academic_year_start DATE NOT NULL,
+      academic_year_end DATE NOT NULL,
+      academic_year_label VARCHAR(20) NOT NULL,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_by INTEGER,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+      CHECK (start_date <= end_date),
+      CHECK (academic_year_start <= academic_year_end)
+    )
+---
+
+[2025-12-02T21:55:11.352Z] - CUSTOM QUERY - Created index on terms.branch_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_terms_branch_type ON terms(branch_type)
+---
+
+[2025-12-02T21:55:11.454Z] - CUSTOM QUERY - Created index on terms academic year dates
+SQL Query: CREATE INDEX IF NOT EXISTS idx_terms_academic_year ON terms(academic_year_start, academic_year_end)
+---
+
+[2025-12-02T21:55:11.680Z] - CUSTOM QUERY - Created index on terms dates
+SQL Query: CREATE INDEX IF NOT EXISTS idx_terms_dates ON terms(start_date, end_date)
+---
+
+[2025-12-02T21:55:11.912Z] - CREATE TABLE - Created table: academic_years
+SQL Query: CREATE TABLE IF NOT EXISTS academic_years (
+      id SERIAL PRIMARY KEY,
+      branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
+      year_label VARCHAR(20) NOT NULL,
+      year_start DATE NOT NULL,
+      year_end DATE NOT NULL,
+      term1_id INTEGER,
+      term2_id INTEGER,
+      is_current BOOLEAN DEFAULT false,
+      is_completed BOOLEAN DEFAULT false,
+      completed_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (term1_id) REFERENCES terms(id) ON DELETE SET NULL,
+      FOREIGN KEY (term2_id) REFERENCES terms(id) ON DELETE SET NULL,
+      UNIQUE(branch_type, year_label),
+      CHECK (year_start <= year_end)
+    )
+---
+
+[2025-12-02T21:55:12.011Z] - CUSTOM QUERY - Created index on academic_years.branch_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_academic_years_branch_type ON academic_years(branch_type)
+---
+
+[2025-12-02T21:55:12.239Z] - CUSTOM QUERY - Created index on academic_years dates
+SQL Query: CREATE INDEX IF NOT EXISTS idx_academic_years_dates ON academic_years(year_start, year_end)
+---
+
+[2025-12-02T21:55:12.339Z] - CUSTOM QUERY - Created index on academic_years is_current
+SQL Query: CREATE INDEX IF NOT EXISTS idx_academic_years_current ON academic_years(is_current, branch_type)
+---
+
+[2025-12-02T21:55:12.716Z] - CUSTOM QUERY - Created index on employees.status
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_status ON employees(status)
+---
+
+[2025-12-02T21:55:12.917Z] - CUSTOM QUERY - Created index on employees.academic_year
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_academic_year ON employees(academic_year)
+---
+
+[2025-12-02T22:08:00.027Z] - CREATE TABLE - Created table: branches
+SQL Query: CREATE TABLE IF NOT EXISTS branches (
+      id SERIAL PRIMARY KEY,
+      branch_name VARCHAR(255) NOT NULL,
+      branch_location VARCHAR(500) NOT NULL,
+      branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
+      username VARCHAR(255) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      branch_documents_password VARCHAR(255) DEFAULT 'test',
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+---
+
+[2025-12-02T22:08:00.270Z] - CUSTOM QUERY - Created index on branches.branch_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branches_type ON branches(branch_type)
+---
+
+[2025-12-02T22:08:00.380Z] - CUSTOM QUERY - Created index on branches.username
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branches_username ON branches(username)
+---
+
+[2025-12-02T22:08:00.627Z] - CREATE TABLE - Created table: users
+SQL Query: CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username VARCHAR(255) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      role VARCHAR(50) NOT NULL CHECK (role IN ('main_manager', 'branch_manager')),
+      branch_id INTEGER,
+      full_name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) UNIQUE,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_by INTEGER,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE SET NULL,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T22:08:00.736Z] - CUSTOM QUERY - Created index on users.username
+SQL Query: CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)
+---
+
+[2025-12-02T22:08:00.844Z] - CUSTOM QUERY - Created index on users.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_users_branch_id ON users(branch_id)
+---
+
+[2025-12-02T22:08:00.952Z] - CUSTOM QUERY - Created index on users.role
+SQL Query: CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)
+---
+
+[2025-12-02T22:08:01.191Z] - CREATE TABLE - Created table: schools
+SQL Query: CREATE TABLE IF NOT EXISTS schools (
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER UNIQUE NOT NULL,
+      school_code VARCHAR(50) UNIQUE,
+      education_level VARCHAR(100),
+      additional_info TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+    )
+---
+
+[2025-12-02T22:08:01.301Z] - CREATE TABLE - Created table: healthcare_centers
+SQL Query: CREATE TABLE IF NOT EXISTS healthcare_centers (
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER UNIQUE NOT NULL,
+      center_code VARCHAR(50) UNIQUE,
+      center_type VARCHAR(100),
+      license_number VARCHAR(100),
+      additional_info TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+    )
+---
+
+[2025-12-02T22:08:01.573Z] - CREATE TABLE - Created table: employees
+SQL Query: CREATE TABLE IF NOT EXISTS employees (
+      id SERIAL PRIMARY KEY,
+      employee_id_number VARCHAR(100) UNIQUE NOT NULL,
+      branch_id INTEGER NOT NULL,
+      first_name VARCHAR(100) NOT NULL,
+      second_name VARCHAR(100) NOT NULL,
+      third_name VARCHAR(100) NOT NULL,
+      fourth_name VARCHAR(100) NOT NULL,
+      occupation VARCHAR(100) NOT NULL,
+      nationality VARCHAR(100) NOT NULL,
+      date_of_birth_hijri VARCHAR(50),
+      date_of_birth_gregorian DATE,
+      id_or_residency_number VARCHAR(100) UNIQUE NOT NULL,
+      id_type VARCHAR(50) NOT NULL CHECK (id_type IN ('citizen', 'resident')),
+      gender VARCHAR(20) NOT NULL CHECK (gender IN ('male', 'female')),
+      id_expiry_date_hijri VARCHAR(50),
+      id_expiry_date_gregorian DATE,
+      religion VARCHAR(100),
+      marital_status VARCHAR(50),
+      educational_qualification VARCHAR(200),
+      specialization VARCHAR(200),
+      bank_iban VARCHAR(50),
+      bank_name VARCHAR(200),
+      email VARCHAR(255),
+      phone_number VARCHAR(50),
+      national_address VARCHAR(8),
+      contract_type VARCHAR(100),
+      years_of_experience_in_same_institution INTEGER DEFAULT 0,
+      years_of_experience_in_company INTEGER DEFAULT 0,
+      salary DECIMAL(10,2),
+      base_salary DECIMAL(10,2),
+      housing_allowance DECIMAL(10,2),
+      transportation_allowance DECIMAL(10,2),
+      end_of_service_allowance DECIMAL(10,2),
+      annual_leave_allowance DECIMAL(10,2),
+      other_allowances DECIMAL(10,2),
+      deductions DECIMAL(10,2),
+      data_completion_status VARCHAR(20) DEFAULT 'incomplete' CHECK (data_completion_status IN ('incomplete', 'complete')),
+      status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'pending', 'terminated', 'resigned', 'contract_ended', 'non_renewal', 'other')),
+      status_changed_at TIMESTAMP,
+      status_changed_by INTEGER,
+      status_change_reason TEXT,
+      academic_year VARCHAR(20),
+      registration_term_id INTEGER,
+      current_term_id INTEGER,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_by INTEGER NOT NULL,
+      updated_by INTEGER NOT NULL,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE RESTRICT,
+      FOREIGN KEY (created_by) REFERENCES branches(id) ON DELETE RESTRICT,
+      FOREIGN KEY (updated_by) REFERENCES branches(id) ON DELETE RESTRICT,
+      FOREIGN KEY (status_changed_by) REFERENCES branches(id) ON DELETE SET NULL,
+      FOREIGN KEY (registration_term_id) REFERENCES terms(id) ON DELETE SET NULL,
+      FOREIGN KEY (current_term_id) REFERENCES terms(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T22:08:01.818Z] - CUSTOM QUERY - Created index on employees.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_branch_id ON employees(branch_id)
+---
+
+[2025-12-02T22:08:01.927Z] - CUSTOM QUERY - Created index on employees.employee_id_number
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_employee_id ON employees(employee_id_number)
+---
+
+[2025-12-02T22:08:02.035Z] - CUSTOM QUERY - Created index on employees.id_or_residency_number
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_id_residency ON employees(id_or_residency_number)
+---
+
+[2025-12-02T22:08:02.282Z] - CUSTOM QUERY - Created index on employees.occupation
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_occupation ON employees(occupation)
+---
+
+[2025-12-02T22:08:02.394Z] - CUSTOM QUERY - Created index on employees.data_completion_status
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_data_completion_status ON employees(data_completion_status)
+---
+
+[2025-12-02T22:08:02.506Z] - CREATE TABLE - Created table: employee_documents
+SQL Query: CREATE TABLE IF NOT EXISTS employee_documents (
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER NOT NULL,
+      document_type VARCHAR(100) NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      file_path VARCHAR(500) NOT NULL,
+      file_size INTEGER,
+      mime_type VARCHAR(100) NOT NULL,
+      file_extension VARCHAR(10),
+      thumbnail_path VARCHAR(500),
+      description TEXT,
+      expiry_date DATE,
+      is_verified BOOLEAN DEFAULT false,
+      verified_at TIMESTAMP,
+      verified_by INTEGER,
+      version INTEGER DEFAULT 1,
+      is_active BOOLEAN DEFAULT true,
+      uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      uploaded_by INTEGER NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T22:08:02.749Z] - CUSTOM QUERY - Created index on employee_documents.employee_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_employee_id ON employee_documents(employee_id)
+---
+
+[2025-12-02T22:08:02.983Z] - CUSTOM QUERY - Created index on employee_documents.document_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_type ON employee_documents(document_type)
+---
+
+[2025-12-02T22:08:03.222Z] - CUSTOM QUERY - Created composite index on employee_documents(employee_id, document_type)
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_employee_type ON employee_documents(employee_id, document_type)
+---
+
+[2025-12-02T22:08:03.331Z] - CUSTOM QUERY - Created index on employee_documents.mime_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_mime_type ON employee_documents(mime_type)
+---
+
+[2025-12-02T22:08:03.440Z] - CUSTOM QUERY - Created index on employee_documents.uploaded_at
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_uploaded_at ON employee_documents(uploaded_at)
+---
+
+[2025-12-02T22:08:03.549Z] - CUSTOM QUERY - Created index on employee_documents.expiry_date
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_expiry_date ON employee_documents(expiry_date)
+---
+
+[2025-12-02T22:08:03.793Z] - CUSTOM QUERY - Created index on employee_documents.is_verified
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_is_verified ON employee_documents(is_verified)
+---
+
+[2025-12-02T22:08:04.030Z] - CUSTOM QUERY - Created index on employee_documents.file_name
+SQL Query: CREATE INDEX IF NOT EXISTS idx_documents_file_name ON employee_documents(file_name)
+---
+
+[2025-12-02T22:08:04.276Z] - CREATE TABLE - Created table: branch_documents
+SQL Query: CREATE TABLE IF NOT EXISTS branch_documents (
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER NOT NULL,
+      document_type VARCHAR(100) NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      file_path VARCHAR(500) NOT NULL,
+      file_size INTEGER,
+      mime_type VARCHAR(100) NOT NULL,
+      file_extension VARCHAR(10),
+      thumbnail_path VARCHAR(500),
+      description TEXT,
+      expiry_date DATE,
+      is_verified BOOLEAN DEFAULT false,
+      verified_at TIMESTAMP,
+      verified_by INTEGER,
+      version INTEGER DEFAULT 1,
+      is_active BOOLEAN DEFAULT true,
+      uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      uploaded_by INTEGER NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T22:08:04.387Z] - CUSTOM QUERY - Created index on branch_documents.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_branch_id ON branch_documents(branch_id)
+---
+
+[2025-12-02T22:08:04.624Z] - CUSTOM QUERY - Created index on branch_documents.document_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_type ON branch_documents(document_type)
+---
+
+[2025-12-02T22:08:04.864Z] - CUSTOM QUERY - Created composite index on branch_documents(branch_id, document_type)
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_branch_type ON branch_documents(branch_id, document_type)
+---
+
+[2025-12-02T22:08:04.974Z] - CUSTOM QUERY - Created index on branch_documents.mime_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_mime_type ON branch_documents(mime_type)
+---
+
+[2025-12-02T22:08:05.220Z] - CUSTOM QUERY - Created index on branch_documents.uploaded_at
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_uploaded_at ON branch_documents(uploaded_at)
+---
+
+[2025-12-02T22:08:05.330Z] - CUSTOM QUERY - Created index on branch_documents.expiry_date
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_expiry_date ON branch_documents(expiry_date)
+---
+
+[2025-12-02T22:08:05.438Z] - CUSTOM QUERY - Created index on branch_documents.is_verified
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_is_verified ON branch_documents(is_verified)
+---
+
+[2025-12-02T22:08:05.547Z] - CUSTOM QUERY - Created index on branch_documents.file_name
+SQL Query: CREATE INDEX IF NOT EXISTS idx_branch_documents_file_name ON branch_documents(file_name)
+---
+
+[2025-12-02T22:08:05.657Z] - CREATE TABLE - Created table: employee_professional_classifications
+SQL Query: CREATE TABLE IF NOT EXISTS employee_professional_classifications (
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER NOT NULL,
+      profession VARCHAR(100) NOT NULL,
+      classification_level VARCHAR(100) NOT NULL,
+      classification_number VARCHAR(100),
+      issued_date DATE,
+      expiry_date DATE,
+      document_id INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      FOREIGN KEY (document_id) REFERENCES employee_documents(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T22:08:05.766Z] - CUSTOM QUERY - Created index on employee_professional_classifications.employee_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_classifications_employee_id ON employee_professional_classifications(employee_id)
+---
+
+[2025-12-02T22:08:05.874Z] - CUSTOM QUERY - Created index on employee_professional_classifications.profession
+SQL Query: CREATE INDEX IF NOT EXISTS idx_classifications_profession ON employee_professional_classifications(profession)
+---
+
+[2025-12-02T22:08:06.113Z] - CREATE TABLE - Created table: employee_course_certificates
+SQL Query: CREATE TABLE IF NOT EXISTS employee_course_certificates (
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER NOT NULL,
+      course_type VARCHAR(100) NOT NULL CHECK (course_type IN ('speech_therapy_70h', 'physical_therapy_40h')),
+      course_name VARCHAR(200) NOT NULL,
+      completion_date DATE NOT NULL,
+      hours_completed INTEGER NOT NULL,
+      certificate_number VARCHAR(100),
+      document_id INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      FOREIGN KEY (document_id) REFERENCES employee_documents(id) ON DELETE SET NULL
+    )
+---
+
+[2025-12-02T22:08:06.363Z] - CUSTOM QUERY - Created index on employee_course_certificates.employee_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_certificates_employee_id ON employee_course_certificates(employee_id)
+---
+
+[2025-12-02T22:08:06.615Z] - CUSTOM QUERY - Created index on employee_course_certificates.course_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_certificates_course_type ON employee_course_certificates(course_type)
+---
+
+[2025-12-02T22:08:06.863Z] - CREATE TABLE - Created table: notifications
+SQL Query: CREATE TABLE IF NOT EXISTS notifications (
+      id SERIAL PRIMARY KEY,
+      message TEXT NOT NULL,
+      importance_level INTEGER NOT NULL CHECK (importance_level IN (1, 2, 3)),
+      created_by INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      is_active BOOLEAN DEFAULT true,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+    )
+---
+
+[2025-12-02T22:08:07.099Z] - CUSTOM QUERY - Created index on notifications.created_by
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notifications_created_by ON notifications(created_by)
+---
+
+[2025-12-02T22:08:07.210Z] - CUSTOM QUERY - Created index on notifications.importance_level
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notifications_importance ON notifications(importance_level)
+---
+
+[2025-12-02T22:08:07.333Z] - CUSTOM QUERY - Created index on notifications.created_at
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at)
+---
+
+[2025-12-02T22:08:07.442Z] - CUSTOM QUERY - Created index on notifications.is_active
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notifications_is_active ON notifications(is_active)
+---
+
+[2025-12-02T22:08:07.552Z] - CREATE TABLE - Created table: notification_branches
+SQL Query: CREATE TABLE IF NOT EXISTS notification_branches (
+      id SERIAL PRIMARY KEY,
+      notification_id INTEGER NOT NULL,
+      branch_id INTEGER NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      UNIQUE(notification_id, branch_id)
+    )
+---
+
+[2025-12-02T22:08:07.805Z] - CUSTOM QUERY - Created index on notification_branches.notification_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_branches_notification_id ON notification_branches(notification_id)
+---
+
+[2025-12-02T22:08:08.053Z] - CUSTOM QUERY - Created index on notification_branches.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_branches_branch_id ON notification_branches(branch_id)
+---
+
+[2025-12-02T22:08:08.299Z] - CREATE TABLE - Created table: notification_responses
+SQL Query: CREATE TABLE IF NOT EXISTS notification_responses (
+      id SERIAL PRIMARY KEY,
+      notification_id INTEGER NOT NULL,
+      branch_id INTEGER NOT NULL,
+      response_status VARCHAR(50) NOT NULL CHECK (response_status IN ('done', 'working_on_it', 'seen')),
+      response_message TEXT,
+      responded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      UNIQUE(notification_id, branch_id)
+    )
+---
+
+[2025-12-02T22:08:08.547Z] - CUSTOM QUERY - Created index on notification_responses.notification_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_responses_notification_id ON notification_responses(notification_id)
+---
+
+[2025-12-02T22:08:08.787Z] - CUSTOM QUERY - Created index on notification_responses.branch_id
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_responses_branch_id ON notification_responses(branch_id)
+---
+
+[2025-12-02T22:08:09.035Z] - CUSTOM QUERY - Created index on notification_responses.response_status
+SQL Query: CREATE INDEX IF NOT EXISTS idx_notification_responses_status ON notification_responses(response_status)
+---
+
+[2025-12-02T22:08:09.270Z] - CREATE TABLE - Created table: terms
+SQL Query: CREATE TABLE IF NOT EXISTS terms (
+      id SERIAL PRIMARY KEY,
+      branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
+      term_name VARCHAR(100) NOT NULL,
+      term_number INTEGER NOT NULL CHECK (term_number IN (1, 2)),
+      start_date DATE NOT NULL,
+      end_date DATE NOT NULL,
+      academic_year_start DATE NOT NULL,
+      academic_year_end DATE NOT NULL,
+      academic_year_label VARCHAR(20) NOT NULL,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_by INTEGER,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+      CHECK (start_date <= end_date),
+      CHECK (academic_year_start <= academic_year_end)
+    )
+---
+
+[2025-12-02T22:08:09.380Z] - CUSTOM QUERY - Created index on terms.branch_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_terms_branch_type ON terms(branch_type)
+---
+
+[2025-12-02T22:08:09.626Z] - CUSTOM QUERY - Created index on terms academic year dates
+SQL Query: CREATE INDEX IF NOT EXISTS idx_terms_academic_year ON terms(academic_year_start, academic_year_end)
+---
+
+[2025-12-02T22:08:09.740Z] - CUSTOM QUERY - Created index on terms dates
+SQL Query: CREATE INDEX IF NOT EXISTS idx_terms_dates ON terms(start_date, end_date)
+---
+
+[2025-12-02T22:08:09.851Z] - CREATE TABLE - Created table: academic_years
+SQL Query: CREATE TABLE IF NOT EXISTS academic_years (
+      id SERIAL PRIMARY KEY,
+      branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
+      year_label VARCHAR(20) NOT NULL,
+      year_start DATE NOT NULL,
+      year_end DATE NOT NULL,
+      term1_id INTEGER,
+      term2_id INTEGER,
+      is_current BOOLEAN DEFAULT false,
+      is_completed BOOLEAN DEFAULT false,
+      completed_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (term1_id) REFERENCES terms(id) ON DELETE SET NULL,
+      FOREIGN KEY (term2_id) REFERENCES terms(id) ON DELETE SET NULL,
+      UNIQUE(branch_type, year_label),
+      CHECK (year_start <= year_end)
+    )
+---
+
+[2025-12-02T22:08:10.092Z] - CUSTOM QUERY - Created index on academic_years.branch_type
+SQL Query: CREATE INDEX IF NOT EXISTS idx_academic_years_branch_type ON academic_years(branch_type)
+---
+
+[2025-12-02T22:08:10.327Z] - CUSTOM QUERY - Created index on academic_years dates
+SQL Query: CREATE INDEX IF NOT EXISTS idx_academic_years_dates ON academic_years(year_start, year_end)
+---
+
+[2025-12-02T22:08:10.561Z] - CUSTOM QUERY - Created index on academic_years is_current
+SQL Query: CREATE INDEX IF NOT EXISTS idx_academic_years_current ON academic_years(is_current, branch_type)
+---
+
+[2025-12-02T22:08:10.972Z] - CUSTOM QUERY - Created index on employees.status
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_status ON employees(status)
+---
+
+[2025-12-02T22:08:11.321Z] - CUSTOM QUERY - Created index on employees.academic_year
+SQL Query: CREATE INDEX IF NOT EXISTS idx_employees_academic_year ON employees(academic_year)
+---
+

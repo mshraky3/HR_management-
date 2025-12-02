@@ -363,7 +363,7 @@ router.post('/performance-report', async (req, res) => {
       detailedStats.forEach(stat => {
         worksheet.addRow({
           branch_name: stat.branch_name,
-          branch_type: stat.branch_type === 'school' ? 'مدرسة' : 'مركز صحي',
+          branch_type: stat.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية',
           login_days: stat.login_days,
           total_employees: stat.total_employees,
           complete_employees: stat.complete_employees,
