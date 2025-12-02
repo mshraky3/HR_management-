@@ -1,0 +1,134 @@
+/* Monthly Documents Page Styles */
+
+.monthly-documents-page {
+  direction: rtl;
+}
+
+/* Alerts Section */
+.monthly-alerts-section {
+  background: var(--bg);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl);
+  box-shadow: var(--shadow-md);
+  margin-bottom: var(--spacing-xl);
+  border: 1px solid var(--border-light);
+}
+
+.monthly-alerts-section h2 {
+  margin-top: 0;
+  margin-bottom: var(--spacing-lg);
+  color: var(--text);
+  font-size: var(--font-size-xl);
+}
+
+.alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.alert-item {
+  background: var(--bg);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-sm);
+  border: 2px solid var(--border-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-md);
+  transition: all var(--transition-base);
+}
+
+.alert-item:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.alert-item.alert-uploaded {
+  border-color: #4CAF50;
+  background: linear-gradient(135deg, #f1f8f4 0%, #ffffff 100%);
+}
+
+.alert-item.alert-pending {
+  border-color: #FF9800;
+  background: linear-gradient(135deg, #fff8f0 0%, #ffffff 100%);
+}
+
+.alert-item.alert-missing {
+  border-color: #F44336;
+  background: linear-gradient(135deg, #fef2f2 0%, #ffffff 100%);
+}
+
+.alert-content {
+  flex: 1;
+}
+
+.alert-content h3 {
+  margin: 0 0 var(--spacing-sm) 0;
+  color: var(--text);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.branch-name {
+  margin: 0 0 var(--spacing-xs) 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.alert-message {
+  margin: var(--spacing-xs) 0;
+  color: var(--text);
+  font-size: var(--font-size-base);
+}
+
+.last-upload {
+  margin: var(--spacing-xs) 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.deadline {
+  margin: var(--spacing-xs) 0;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.days-left {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.days-left.urgent {
+  color: #F44336;
+  font-weight: 700;
+}
+
+.alert-action {
+  flex-shrink: 0;
+}
+
+
+.btn-urgent {
+  background: linear-gradient(135deg, #F44336 0%, #d32f2f 100%) !important;
+  color: white !important;
+  animation: pulse 2s infinite;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .alert-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .alert-action {
+    width: 100%;
+  }
+  
+  .alert-action .btn-alert {
+    width: 100%;
+  }
+}
