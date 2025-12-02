@@ -307,7 +307,7 @@ export const Employee = {
    */
   async updateStatus(id, status, statusChangedBy, reason = null) {
     try {
-      const validStatuses = ['active', 'pending', 'terminated', 'resigned', 'contract_ended', 'non_renewal', 'other'];
+      const validStatuses = ['active', 'pending', 'terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
       if (!validStatuses.includes(status)) {
         throw new Error('Invalid status');
       }

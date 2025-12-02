@@ -34,8 +34,8 @@ export const AcademicYear = {
     try {
       let query = sql`
         SELECT ay.*, 
-               t1.term_name as term1_name, t1.start_date as term1_start, t1.end_date as term1_end,
-               t2.term_name as term2_name, t2.start_date as term2_start, t2.end_date as term2_end
+               t1.id as term1_id, t1.term_name as term1_name, t1.start_date as term1_start_date, t1.end_date as term1_end_date,
+               t2.id as term2_id, t2.term_name as term2_name, t2.start_date as term2_start_date, t2.end_date as term2_end_date
         FROM academic_years ay
         LEFT JOIN terms t1 ON ay.term1_id = t1.id
         LEFT JOIN terms t2 ON ay.term2_id = t2.id
@@ -56,7 +56,24 @@ export const AcademicYear = {
       
       query = sql`${query} ORDER BY ay.branch_type, ay.year_start DESC`;
       
-      return await query;
+      const years = await query;
+      
+      // Format the results to include term objects
+      return years.map(year => ({
+        ...year,
+        term1: year.term1_id ? {
+          id: year.term1_id,
+          term_name: year.term1_name,
+          start_date: year.term1_start_date,
+          end_date: year.term1_end_date
+        } : null,
+        term2: year.term2_id ? {
+          id: year.term2_id,
+          term_name: year.term2_name,
+          start_date: year.term2_start_date,
+          end_date: year.term2_end_date
+        } : null
+      }));
     } catch (error) {
       console.error('Error finding academic years:', error);
       throw error;

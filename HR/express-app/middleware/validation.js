@@ -7,6 +7,23 @@
  * Validate required fields in request body
  * @param {string[]} requiredFields - Array of required field names
  */
+// Field labels in Arabic for better error messages
+const FIELD_LABELS = {
+  'first_name': 'الاسم الأول',
+  'second_name': 'الاسم الثاني',
+  'third_name': 'الاسم الثالث',
+  'fourth_name': 'الاسم الرابع',
+  'id_or_residency_number': 'رقم الهوية/الإقامة',
+  'job_title': 'المسمى الوظيفي',
+  'phone_number': 'رقم الهاتف',
+  'email': 'البريد الإلكتروني',
+  'gender': 'الجنس',
+  'bank_iban': 'الآيبان',
+  'bank_name': 'اسم البنك',
+  'national_address': 'العنوان الوطني',
+  'nationality': 'الجنسية'
+};
+
 export const validateRequired = (requiredFields) => {
   return (req, res, next) => {
     const missingFields = requiredFields.filter(field => {
@@ -15,10 +32,12 @@ export const validateRequired = (requiredFields) => {
     });
 
     if (missingFields.length > 0) {
+      const missingFieldLabels = missingFields.map(field => FIELD_LABELS[field] || field);
       return res.status(400).json({
         success: false,
-        message: `الحقول المطلوبة التالية مفقودة: ${missingFields.join(', ')}`,
-        missingFields: missingFields
+        message: `الحقول المطلوبة التالية مفقودة: ${missingFieldLabels.join('، ')}`,
+        missingFields: missingFields,
+        missingFieldLabels: missingFieldLabels
       });
     }
 
