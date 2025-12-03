@@ -326,14 +326,6 @@ const generatePDF = async (title, employees, selectedFields, branches, branchIds
         day: '2-digit'
       });
       
-      // Get branch count and names
-      let branchInfoText = '';
-      if (branchIds && branchIds.length > 0) {
-        const selectedBranches = branches.filter(b => branchIds.includes(b.id));
-        const branchNames = selectedBranches.map(b => b.branch_name).join('، ');
-        branchInfoText = `عدد الفروع: ${branchIds.length}${branchIds.length > 1 ? ` (${branchNames})` : ''}`;
-      }
-      
       // Document definition with RTL support
       const docDefinition = {
         pageSize: 'A4',
@@ -387,18 +379,9 @@ const generatePDF = async (title, employees, selectedFields, branches, branchIds
           },
           {
             text: `تاريخ التقرير: ${reportDate}`,
-            style: 'info'
+            style: 'info',
+            margin: [0, 0, 0, 20]
           },
-          // Branch info (only if multiple branches or main manager)
-          ...(branchInfoText ? [{
-            text: branchInfoText,
-            style: 'info',
-            margin: [0, 0, 0, 20]
-          }] : [{
-            text: '',
-            style: 'info',
-            margin: [0, 0, 0, 20]
-          }]),
           // Table
           {
             table: {
@@ -642,10 +625,16 @@ router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
       });
     }
     
+    // Add branch_id field automatically if multiple branches and not already in selectedFields
+    let finalSelectedFields = [...selectedFields];
+    if (validBranchIds.length > 1 && !finalSelectedFields.includes('branch_id')) {
+      finalSelectedFields.push('branch_id');
+    }
+    
     // Generate file based on fileType
     if (fileType === 'excel') {
       // Generate Excel file
-      const excelBuffer = await generateExcel(title, employees, selectedFields, allBranches, validBranchIds);
+      const excelBuffer = await generateExcel(title, employees, finalSelectedFields, allBranches, validBranchIds);
       
       // Return Excel directly as response (no file system write in serverless environment)
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -653,7 +642,7 @@ router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
       res.send(excelBuffer);
     } else {
       // Generate PDF file (default)
-      const pdfBuffer = await generatePDF(title, employees, selectedFields, allBranches, validBranchIds);
+      const pdfBuffer = await generatePDF(title, employees, finalSelectedFields, allBranches, validBranchIds);
       
       // Return PDF directly as response (no file system write in serverless environment)
       res.setHeader('Content-Type', 'application/pdf');
