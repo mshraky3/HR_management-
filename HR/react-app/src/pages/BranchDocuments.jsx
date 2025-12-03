@@ -128,6 +128,12 @@ const BranchDocuments = () => {
       const response = await branchDocumentsAPI.verifyPassword(targetBranchId, password);
       if (response.data.success) {
         setBranchDocumentsPassword(targetBranchId, password);
+        // Store password in localStorage for monthly documents page to use automatically
+        try {
+          localStorage.setItem(`branch_documents_password_${targetBranchId}`, password);
+        } catch (e) {
+          // localStorage not available, continue without storing
+        }
         setIsPasswordVerified(true);
         setShowPasswordModal(false);
         setCurrentBranchId(targetBranchId);

@@ -271,7 +271,7 @@ const NotifyBranches = () => {
                     />
                     <span>{branch.branch_name}</span>
                     <span className="branch-type-badge">
-                      {branch.branch_type === "school" ? "مدرسة" : "مركز صحي"}
+                      {branch.branch_type === "school" ? "مدرسة" : "مركز رعاية نهارية"}
                     </span>
                   </label>
                 ))}
@@ -349,7 +349,7 @@ const NotifyBranches = () => {
                       </span>
                       <span className="notification-date">
                         {new Date(notification.created_at).toLocaleDateString(
-                          "ar-SA",
+                          "en-GB",
                           {
                             year: "numeric",
                             month: "long",
@@ -476,7 +476,7 @@ const NotifyBranches = () => {
                                           <div className="response-date">
                                             {new Date(
                                               response.responded_at
-                                            ).toLocaleDateString("ar-SA", {
+                                            ).toLocaleDateString("en-GB", {
                                               year: "numeric",
                                               month: "long",
                                               day: "numeric",
@@ -515,7 +515,7 @@ const NotifyBranches = () => {
                                       <span className="branch-type">
                                         {branch.branch_type === "school"
                                           ? "مدرسة"
-                                          : "مركز صحي"}
+                                          : "مركز رعاية نهارية"}
                                       </span>
                                     </div>
                                   ))}
@@ -523,64 +523,6 @@ const NotifyBranches = () => {
                             </div>
                           )}
 
-                          {/* All Branches Summary */}
-                          {notificationDetails.branches && (
-                            <div className="all-branches-section">
-                              <h4>
-                                جميع الفروع المستهدفة (
-                                {notificationDetails.branches.length})
-                              </h4>
-                              <div className="branches-list">
-                                {notificationDetails.branches.map((branch) => {
-                                  const response =
-                                    notificationDetails.responses?.find(
-                                      (r) => r.branch_id === branch.id
-                                    );
-                                  return (
-                                    <div
-                                      key={branch.id}
-                                      className={`branch-item ${
-                                        response
-                                          ? "has-response"
-                                          : "no-response"
-                                      }`}
-                                    >
-                                      <span className="branch-name">
-                                        {branch.branch_name}
-                                      </span>
-                                      <span className="branch-type">
-                                        {branch.branch_type === "school"
-                                          ? "مدرسة"
-                                          : "مركز صحي"}
-                                      </span>
-                                      {response ? (
-                                        <span
-                                          className="response-indicator"
-                                          style={{
-                                            color:
-                                              responseStatusLabels[
-                                                response.response_status
-                                              ]?.color,
-                                          }}
-                                        >
-                                          ✓{" "}
-                                          {
-                                            responseStatusLabels[
-                                              response.response_status
-                                            ]?.text
-                                          }
-                                        </span>
-                                      ) : (
-                                        <span className="response-indicator no-response-indicator">
-                                          ✗ لم يرد
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
                         </div>
                       ) : (
                         <div className="error">فشل تحميل التفاصيل</div>

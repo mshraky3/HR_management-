@@ -111,7 +111,20 @@ const extractBranchId = (config) => {
 // Helper function to get password for branch documents API calls
 const getPasswordForRequest = (branchId) => {
   if (branchId) {
-    return getBranchDocumentsPassword(branchId);
+    const password = getBranchDocumentsPassword(branchId);
+    if (password) return password;
+    
+    // Try to get from localStorage as fallback (for monthly documents page)
+    try {
+      const storedPassword = localStorage.getItem(`branch_documents_password_${branchId}`);
+      if (storedPassword) {
+        // Store in memory for future requests
+        setBranchDocumentsPassword(branchId, storedPassword);
+        return storedPassword;
+      }
+    } catch (e) {
+      // localStorage not available, continue
+    }
   }
   // Fallback: try to get password for any verified branch
   if (branchDocumentsPasswords.size > 0) {

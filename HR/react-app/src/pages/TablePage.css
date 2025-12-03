@@ -614,11 +614,11 @@ tbody tr:last-child td:last-child {
 }
 
 .employee-form-container .form-group label {
-  font-size: 11px;
-  margin-bottom: 3px;
+  font-size: 13px;
+  margin-bottom: 6px;
   font-weight: 600;
   display: block;
-  line-height: 1.3;
+  line-height: 1.4;
   color: var(--text);
   text-transform: none;
   letter-spacing: 0;
@@ -631,15 +631,17 @@ tbody tr:last-child td:last-child {
 .employee-form-container .form-group input[type="date"],
 .employee-form-container .form-group select,
 .employee-form-container .form-group textarea {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-sm);
-  min-height: 30px;
-  height: 30px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-base);
+  min-height: 42px;
+  height: auto;
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   transition: border-color var(--transition-base);
+  line-height: 1.5;
+  overflow: visible;
 }
 
 .employee-form-container .form-group input:focus,
@@ -648,6 +650,19 @@ tbody tr:last-child td:last-child {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+.employee-form-container .form-group select {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.employee-form-container .form-group select option {
+  padding: 8px;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow: visible;
 }
 
 .employee-form-container .form-group textarea {

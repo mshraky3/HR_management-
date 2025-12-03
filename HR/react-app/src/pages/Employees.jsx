@@ -64,7 +64,8 @@ const Employees = () => {
   const [searchFilters, setSearchFilters] = useState({
     search_name: '',
     search_id: '',
-    search_phone: ''
+    search_phone: '',
+    search_branch: ''
   });
   
   // Refs to maintain focus on search inputs
@@ -215,6 +216,13 @@ const Employees = () => {
     return () => clearTimeout(timeoutId);
   }, [searchFilters.search_name, searchFilters.search_id, searchFilters.search_phone]);
 
+  // Immediate effect for branch filter (no debounce needed for select dropdown)
+  useEffect(() => {
+    if (isMainManager()) {
+      loadEmployees();
+    }
+  }, [searchFilters.search_branch]);
+
   const loadBranches = async () => {
     try {
       const response = await branchesAPI.getAll({ is_active: true });
@@ -254,6 +262,9 @@ const Employees = () => {
         }
         if (searchFilters.search_phone.trim()) {
           filters.search_phone = searchFilters.search_phone.trim();
+        }
+        if (searchFilters.search_branch) {
+          filters.branch_id = parseInt(searchFilters.search_branch);
         }
       }
       
@@ -446,7 +457,7 @@ const Employees = () => {
       }
     }
     
-    // Validate only truly required fields (name, ID, nationality)
+    // Validate only truly required fields (name, ID, nationality, contact info, bank info, national address)
     // All other fields are optional and will be tracked for completion status
     const requiredFields = {
       'first_name': 'الاسم الأول',
@@ -454,7 +465,12 @@ const Employees = () => {
       'third_name': 'الاسم الثالث',
       'fourth_name': 'الاسم الرابع',
       'id_or_residency_number': 'رقم الهوية أو الإقامة',
-      'nationality': 'الجنسية'
+      'nationality': 'الجنسية',
+      'email': 'البريد الإلكتروني',
+      'phone_number': 'رقم الهاتف',
+      'bank_name': 'اسم البنك',
+      'bank_iban': 'رقم الآيبان البنكي',
+      'national_address': 'العنوان الوطني الموحد'
     };
     
     // Check required fields
@@ -1176,9 +1192,26 @@ const Employees = () => {
               style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
             />
           </div>
-          {(searchFilters.search_name || searchFilters.search_id || searchFilters.search_phone) && (
+          <div style={{ flex: '1', minWidth: '200px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>فلتر الفرع:</label>
+            <select
+              value={searchFilters.search_branch}
+              onChange={(e) => setSearchFilters({ ...searchFilters, search_branch: e.target.value })}
+              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd', backgroundColor: 'white' }}
+            >
+              <option value="">جميع الفروع</option>
+              {branches
+                .filter(b => b.is_active)
+                .map(branch => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.branch_name}
+                  </option>
+                ))}
+            </select>
+          </div>
+          {(searchFilters.search_name || searchFilters.search_id || searchFilters.search_phone || searchFilters.search_branch) && (
             <button
-              onClick={() => setSearchFilters({ search_name: '', search_id: '', search_phone: '' })}
+              onClick={() => setSearchFilters({ search_name: '', search_id: '', search_phone: '', search_branch: '' })}
               className="btn-secondary"
               style={{ padding: '8px 16px' }}
             >
@@ -1205,7 +1238,7 @@ const Employees = () => {
               <tbody>
                 {employees.length === 0 ? (
                   <tr>
-                    <td colSpan={isMainManager() ? "8" : "7"} style={{ textAlign: 'center' }}>لا يوجد موظفون</td>
+                    <td colSpan={isMainManager() ? "8" : "7"} style={{ textAlign: 'center' }}>لا يوجد موظفين</td>
                   </tr>
                 ) : (
                   employees.map((employee) => {
@@ -1330,10 +1363,13 @@ const Employees = () => {
                   </div>
                 )}
                 
-                <h3 className="col-12">المعلومات الأساسية</h3>
+                {/* ========== القسم الأول: المعلومات الأساسية المطلوبة ========== */}
+                <h3 className="col-12" style={{ marginTop: '20px', padding: '10px', background: '#e3f2fd', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
+                  القسم الأول: المعلومات الأساسية المطلوبة *
+                </h3>
                 
                 {/* الجنسية أولاً - مهم جداً */}
-                <div className="form-group col-12" style={{ padding: '6px', background: '#e8f5e9', borderRadius: '3px', border: '1px solid #4caf50' }}>
+                <div className="form-group col-12" style={{ padding: '8px', background: '#e8f5e9', borderRadius: '4px', border: '2px solid #4caf50', marginBottom: '8px' }}>
                   <NationalitySelect
                     label="الجنسية *"
                     value={formData.nationality}
@@ -1341,65 +1377,16 @@ const Employees = () => {
                     required
                   />
                   {formData.nationality && (
-                    <div style={{ marginTop: '2px', fontSize: '10px', color: '#2e7d32', fontWeight: '600' }}>
+                    <div style={{ marginTop: '4px', fontSize: '12px', color: '#2e7d32', fontWeight: '600' }}>
                       {isSaudi() ? '✓ هجري/مواطن' : '✓ ميلادي/مقيم'}
-                </div>
+                    </div>
                   )}
                 </div>
-                
-                {isMainManager() && (
-                  <div className="form-group col-3">
-                    <label>الفرع *</label>
-                  <select
-                    value={formData.branch_id}
-                    onChange={(e) => setFormData({ ...formData, branch_id: e.target.value })}
-                    required
-                    >
-                      <option value="">اختر الفرع</option>
-                      {branches
-                        .filter(b => !currentBranchType || b.branch_type === currentBranchType)
-                        .map(b => (
-                      <option key={b.id} value={b.id}>{b.branch_name}</option>
-                    ))}
-                  </select>
-                </div>
-                )}
-                
-                {/* Status field - Only for main manager when editing */}
-                {isMainManager() && editingEmployee && (
-                  <div className="form-group col-3">
-                    <label>حالة الموظف</label>
-                    <select
-                      value={formData.status}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    >
-                      <option value="active">نشط</option>
-                      <option value="pending">قيد الانتظار</option>
-                      <option value="terminated_article_80">فصل حسب المادة 80</option>
-                      <option value="terminated_article_77">فصل حسب المادة 77</option>
-                      <option value="resigned">استقال</option>
-                      <option value="contract_ended">انتهى العقد</option>
-                      <option value="non_renewal">عدم التجديد</option>
-                      <option value="other">أخرى</option>
-                    </select>
-                  </div>
-                )}
-                {!isMainManager() && user?.branch_id && (
-                  <div className="form-group col-3">
-                    <label>الفرع</label>
-                  <input
-                    type="text"
-                      value={branches.find(b => b.id === user.branch_id)?.branch_name || 'فرعك'}
-                      disabled
-                      style={{ background: '#f0f0f0', cursor: 'not-allowed' }}
-                  />
-                </div>
-                )}
               
-                <h3 className="col-12">الاسم</h3>
+                <h4 className="col-12" style={{ marginTop: '12px', marginBottom: '8px', fontSize: '14px', fontWeight: '600', color: '#555' }}>الاسم الكامل</h4>
                 <div className="form-group col-12">
                   <NameInput
-                    label="الاسم الكامل (4 أسماء)"
+                    label="الاسم الكامل (4 أسماء) *"
                     value={{
                       first: formData.first_name,
                       second: formData.second_name,
@@ -1409,18 +1396,88 @@ const Employees = () => {
                     onChange={handleNameChange}
                     required
                   />
-              </div>
+                </div>
 
-                <h3 className="col-12">المعلومات الشخصية</h3>
-                <div className="form-group col-3">
-                  <label>المهنة</label>
+                <div className="form-group col-4">
+                  <label>{isSaudi() ? "رقم الهوية *" : "رقم الإقامة *"}</label>
+                  <input
+                    type="text"
+                    value={formData.id_or_residency_number}
+                    onChange={(e) => setFormData({ ...formData, id_or_residency_number: e.target.value })}
+                    required
+                    placeholder={isSaudi() ? "رقم الهوية" : "رقم الإقامة"}
+                  />
+                </div>
+                
+                <div className="form-group col-2">
+                  <label>نوع الهوية *</label>
+                  <select
+                    value={formData.id_type || ''}
+                    onChange={(e) => setFormData({ ...formData, id_type: e.target.value })}
+                    disabled={!!formData.nationality}
+                    style={formData.nationality ? { background: '#f0f0f0', cursor: 'not-allowed' } : {}}
+                    required
+                  >
+                    <option value="">اختر النوع</option>
+                    <option value="citizen">مواطن</option>
+                    <option value="resident">مقيم</option>
+                  </select>
+                </div>
+                
+                <div className="form-group col-2">
+                  <label>الجنس *</label>
+                  <select
+                    value={formData.gender || ''}
+                    onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                    required
+                  >
+                    <option value="">اختر الجنس</option>
+                    <option value="male">ذكر</option>
+                    <option value="female">أنثى</option>
+                  </select>
+                </div>
+                
+                {isMainManager() && (
+                  <div className="form-group col-4">
+                    <label>الفرع *</label>
+                    <select
+                      value={formData.branch_id}
+                      onChange={(e) => setFormData({ ...formData, branch_id: e.target.value })}
+                      required
+                    >
+                      <option value="">اختر الفرع</option>
+                      {branches
+                        .filter(b => !currentBranchType || b.branch_type === currentBranchType)
+                        .map(b => (
+                          <option key={b.id} value={b.id}>{b.branch_name}</option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+                
+                {!isMainManager() && user?.branch_id && (
+                  <div className="form-group col-4">
+                    <label>الفرع</label>
+                    <input
+                      type="text"
+                      value={branches.find(b => b.id === user.branch_id)?.branch_name || 'فرعك'}
+                      disabled
+                      style={{ background: '#f0f0f0', cursor: 'not-allowed' }}
+                    />
+                  </div>
+                )}
+                
+                <div className="form-group col-4">
+                  <label>المهنة *</label>
                   <input
                     type="text"
                     value={formData.occupation}
                     onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
+                    placeholder="المهنة"
                   />
                 </div>
-                <div className="form-group col-3">
+                
+                <div className="form-group col-4">
                   <label>المسمى الوظيفي</label>
                   <select
                     value={formData.job_title}
@@ -1463,6 +1520,85 @@ const Employees = () => {
                     })()}
                   </select>
                 </div>
+                
+                {/* Status field - Only for main manager when editing */}
+                {isMainManager() && editingEmployee && (
+                  <div className="form-group col-4">
+                    <label>حالة الموظف</label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                    >
+                      <option value="active">نشط</option>
+                      <option value="pending">قيد الانتظار</option>
+                      <option value="terminated_article_80">فصل حسب المادة 80</option>
+                      <option value="terminated_article_77">فصل حسب المادة 77</option>
+                      <option value="resigned">استقال</option>
+                      <option value="contract_ended">انتهى العقد</option>
+                      <option value="non_renewal">عدم التجديد</option>
+                      <option value="other">أخرى</option>
+                    </select>
+                  </div>
+                )}
+                
+                <h4 className="col-12" style={{ marginTop: '16px', marginBottom: '8px', fontSize: '14px', fontWeight: '600', color: '#555' }}>معلومات الاتصال والبنك</h4>
+                
+                <div className="form-group col-4">
+                  <label>البريد الإلكتروني *</label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="example@email.com"
+                    required
+                  />
+                </div>
+                
+                <div className="form-group col-4">
+                  <label>رقم الهاتف *</label>
+                  <input
+                    type="text"
+                    value={formData.phone_number}
+                    onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                    placeholder="05xxxxxxxx"
+                    required
+                  />
+                </div>
+              
+                <div className="form-group col-12">
+                  <BankSelect
+                    label="معلومات البنك *"
+                    value={formData.bank_name}
+                    onChange={(value) => setFormData(prev => ({ ...prev, bank_name: value }))}
+                    ibanValue={formData.bank_iban}
+                    onIbanChange={(value) => setFormData(prev => ({ ...prev, bank_iban: value }))}
+                    required
+                  />
+                </div>
+                
+                <div className="form-group col-4">
+                  <label>العنوان الوطني الموحد (المختصر) *</label>
+                  <input
+                    type="text"
+                    value={formData.national_address}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\s/g, ''); // Remove spaces
+                      if (value.length <= 8) {
+                        setFormData({ ...formData, national_address: value });
+                      }
+                    }}
+                    placeholder="8 خانات"
+                    maxLength={8}
+                    style={{ textAlign: 'center', fontFamily: 'monospace', letterSpacing: '2px' }}
+                    required
+                  />
+                </div>
+
+                {/* ========== القسم الثاني: معلومات الإثبات الشخصي ========== */}
+                <h3 className="col-12" style={{ marginTop: '24px', padding: '10px', background: '#fff3e0', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
+                  القسم الثاني: معلومات الإثبات الشخصي
+                </h3>
+                
                 <div className="form-group col-3">
                   <HijriDatePicker
                     label="تاريخ الميلاد"
@@ -1472,16 +1608,7 @@ const Employees = () => {
                     forceCalendarType={formData.nationality ? (isSaudi() ? 'hijri' : 'gregorian') : null}
                   />
                 </div>
-                <div className="form-group col-3">
-                  <label>{isSaudi() ? "رقم الهوية *" : "رقم الإقامة *"}</label>
-                  <input
-                    type="text"
-                    value={formData.id_or_residency_number}
-                    onChange={(e) => setFormData({ ...formData, id_or_residency_number: e.target.value })}
-                    required
-                    placeholder={isSaudi() ? "رقم الهوية" : "رقم الإقامة"}
-                  />
-                </div>
+                
                 {/* ID expiry date - only for non-Saudis */}
                 {isNonSaudi(formData.nationality) && (
                   <div className="form-group col-3">
@@ -1494,88 +1621,27 @@ const Employees = () => {
                     />
                   </div>
                 )}
-                <div className="form-group col-2">
-                  <label>نوع الهوية *</label>
-                  <select
-                    value={formData.id_type || ''}
-                    onChange={(e) => setFormData({ ...formData, id_type: e.target.value })}
-                    disabled={!!formData.nationality}
-                    style={formData.nationality ? { background: '#f0f0f0', cursor: 'not-allowed' } : {}}
-                    required
-                  >
-                    <option value="">اختر النوع</option>
-                    <option value="citizen">مواطن</option>
-                    <option value="resident">مقيم</option>
-                  </select>
-                </div>
-                <div className="form-group col-2">
-                  <label>الجنس *</label>
-                  <select
-                    value={formData.gender || ''}
-                    onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                    required
-                  >
-                    <option value="">اختر الجنس</option>
-                    <option value="male">ذكر</option>
-                    <option value="female">أنثى</option>
-                  </select>
-                </div>
-                <div className="form-group col-2">
+                
+                <div className="form-group col-3">
                   <ReligionSelect
                     label="الدين"
                     value={formData.religion}
                     onChange={(value) => setFormData({ ...formData, religion: value })}
                   />
                 </div>
-                <div className="form-group col-2">
+                
+                <div className="form-group col-3">
                   <MaritalStatusSelect
                     label="الحالة الاجتماعية"
                     value={formData.marital_status}
                     onChange={(value) => setFormData({ ...formData, marital_status: value })}
                   />
                 </div>
-                <div className="form-group col-3">
-                  <label>المؤهل التعليمي</label>
-                  <input
-                    type="text"
-                    value={formData.educational_qualification}
-                    onChange={(e) => setFormData({ ...formData, educational_qualification: e.target.value })}
-                  />
-                </div>
-                <div className="form-group col-3">
-                  <label>التخصص</label>
-                  <input
-                    type="text"
-                    value={formData.specialization}
-                    onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
-                  />
-                </div>
-                <div className="form-group col-2">
-                  <label>سنة التخرج</label>
-                  <input
-                    type="number"
-                    min="1950"
-                    max={new Date().getFullYear() + 5}
-                    value={formData.graduation_year}
-                    onChange={(e) => setFormData({ ...formData, graduation_year: e.target.value })}
-                    placeholder="مثال: 2020"
-                  />
-                </div>
-                <div className="form-group col-2">
-                  <label>المعدل الجامعي</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="5"
-                    value={formData.university_gpa}
-                    onChange={(e) => setFormData({ ...formData, university_gpa: e.target.value })}
-                    placeholder="مثال: 4.5"
-                  />
-                </div>
+                
                 {/* Passport fields - only for non-Saudis */}
                 {isNonSaudi(formData.nationality) && (
                   <>
+                    <h4 className="col-12" style={{ marginTop: '16px', marginBottom: '8px', fontSize: '14px', fontWeight: '600', color: '#555' }}>معلومات جواز السفر</h4>
                     <div className="form-group col-3">
                       <label>رقم جواز السفر</label>
                       <input
@@ -1620,6 +1686,77 @@ const Employees = () => {
                     </div>
                   </>
                 )}
+                
+                <div className="form-group col-3">
+                  <label>نوع العقد</label>
+                  <select
+                    value={formData.contract_type}
+                    onChange={(e) => setFormData({ ...formData, contract_type: e.target.value })}
+                    className="form-select"
+                  >
+                    <option value="">اختر نوع العقد</option>
+                    <option value="ورقي">ورقي</option>
+                    <option value="قوى">قوى</option>
+                  </select>
+                </div>
+                
+                <div className="form-group col-3">
+                  <label>عدد سنين الخبرة داخل المؤسسة نفسها</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.years_of_experience_in_same_institution}
+                    onChange={(e) => setFormData({ ...formData, years_of_experience_in_same_institution: e.target.value })}
+                  />
+                </div>
+
+                {/* ========== القسم الثالث: المعلومات التعليمية ========== */}
+                <h3 className="col-12" style={{ marginTop: '24px', padding: '10px', background: '#f3e5f5', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
+                  القسم الثالث: المعلومات التعليمية
+                </h3>
+                
+                <div className="form-group col-4">
+                  <label>المؤهل التعليمي</label>
+                  <input
+                    type="text"
+                    value={formData.educational_qualification}
+                    onChange={(e) => setFormData({ ...formData, educational_qualification: e.target.value })}
+                  />
+                </div>
+                
+                <div className="form-group col-4">
+                  <label>التخصص</label>
+                  <input
+                    type="text"
+                    value={formData.specialization}
+                    onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                  />
+                </div>
+                
+                <div className="form-group col-2">
+                  <label>سنة التخرج</label>
+                  <input
+                    type="number"
+                    min="1950"
+                    max={new Date().getFullYear() + 5}
+                    value={formData.graduation_year}
+                    onChange={(e) => setFormData({ ...formData, graduation_year: e.target.value })}
+                    placeholder="مثال: 2020"
+                  />
+                </div>
+                
+                <div className="form-group col-2">
+                  <label>المعدل الجامعي</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="5"
+                    value={formData.university_gpa}
+                    onChange={(e) => setFormData({ ...formData, university_gpa: e.target.value })}
+                    placeholder="مثال: 4.5"
+                  />
+                </div>
                 <div className="form-group col-2">
                   <label>نوع العقد</label>
                   <select
@@ -1641,7 +1778,11 @@ const Employees = () => {
                     onChange={(e) => setFormData({ ...formData, years_of_experience_in_same_institution: e.target.value })}
                   />
                 </div>
-                <h3 className="col-12">الراتب والبدلات</h3>
+                {/* ========== القسم الرابع: الراتب والبدلات ========== */}
+                <h3 className="col-12" style={{ marginTop: '24px', padding: '10px', background: '#e8f5e9', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
+                  القسم الرابع: الراتب والبدلات
+                </h3>
+                
                 <div className="form-group col-3">
                   <label>الراتب الأساسي</label>
                   <input
@@ -1649,8 +1790,10 @@ const Employees = () => {
                     step="0.01"
                     value={formData.base_salary}
                     onChange={(e) => setFormData({ ...formData, base_salary: e.target.value })}
+                    placeholder="0.00"
                   />
                 </div>
+                
                 <div className="form-group col-3">
                   <label>بدل السكن</label>
                   <input
@@ -1658,8 +1801,10 @@ const Employees = () => {
                     step="0.01"
                     value={formData.housing_allowance}
                     onChange={(e) => setFormData({ ...formData, housing_allowance: e.target.value })}
+                    placeholder="0.00"
                   />
                 </div>
+                
                 <div className="form-group col-3">
                   <label>بدل النقل</label>
                   <input
@@ -1667,8 +1812,10 @@ const Employees = () => {
                     step="0.01"
                     value={formData.transportation_allowance}
                     onChange={(e) => setFormData({ ...formData, transportation_allowance: e.target.value })}
+                    placeholder="0.00"
                   />
                 </div>
+                
                 <div className="form-group col-3">
                   <label>بدل نهاية الخدمة</label>
                   <input
@@ -1676,8 +1823,10 @@ const Employees = () => {
                     step="0.01"
                     value={formData.end_of_service_allowance}
                     onChange={(e) => setFormData({ ...formData, end_of_service_allowance: e.target.value })}
+                    placeholder="0.00"
                   />
                 </div>
+                
                 <div className="form-group col-3">
                   <label>بدل الإجازة السنوية</label>
                   <input
@@ -1685,8 +1834,10 @@ const Employees = () => {
                     step="0.01"
                     value={formData.annual_leave_allowance}
                     onChange={(e) => setFormData({ ...formData, annual_leave_allowance: e.target.value })}
+                    placeholder="0.00"
                   />
                 </div>
+                
                 <div className="form-group col-3">
                   <label>بدلات أخرى</label>
                   <input
@@ -1694,8 +1845,10 @@ const Employees = () => {
                     step="0.01"
                     value={formData.other_allowances}
                     onChange={(e) => setFormData({ ...formData, other_allowances: e.target.value })}
+                    placeholder="0.00"
                   />
                 </div>
+                
                 <div className="form-group col-3">
                   <label>الاستقطاعات (خصومات، سلف، إلخ)</label>
                   <input
@@ -1706,6 +1859,7 @@ const Employees = () => {
                     placeholder="0.00"
                   />
                 </div>
+                
                 <div className="form-group col-3">
                   <label>الراتب الإجمالي (قديم - للتوافق)</label>
                   <input
@@ -1715,52 +1869,19 @@ const Employees = () => {
                     onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
                     style={{ background: '#f0f0f0', opacity: 0.7 }}
                     title="هذا الحقل للتوافق مع البيانات القديمة فقط"
+                    placeholder="0.00"
                   />
                 </div>
-                <div className="form-group col-3">
-                  <label>البريد الإلكتروني</label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  />
-                </div>
-                <div className="form-group col-3">
-                  <label>رقم الهاتف</label>
-                  <input
-                    type="text"
-                    value={formData.phone_number}
-                    onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                  />
-                </div>
-                <div className="form-group col-3">
-                  <label>العنوان الوطني الموحد (المختصر)</label>
-                  <input
-                    type="text"
-                    value={formData.national_address}
-                    onChange={(e) => {
-                      const value = e.target.value.replace(/\s/g, ''); // Remove spaces
-                      if (value.length <= 8) {
-                        setFormData({ ...formData, national_address: value });
-                      }
-                    }}
-                    placeholder="8 خانات"
-                    maxLength={8}
-                    style={{ textAlign: 'center', fontFamily: 'monospace', letterSpacing: '2px' }}
-                  />
-                </div>
+
+                {/* ========== القسم الخامس: معلومات إضافية ========== */}
+                {/* تم نقل العنوان الوطني إلى القسم الأول */}
+
+
+              {/* ========== القسم الخامس: المستندات ========== */}
+              <h3 className="col-12" style={{ marginTop: '24px', padding: '10px', background: '#fff9c4', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
+                القسم الخامس: المستندات
+              </h3>
               
-                <div className="form-group col-12">
-                  <BankSelect
-                    label="البنك"
-                  value={formData.bank_name}
-                    onChange={(value) => setFormData(prev => ({ ...prev, bank_name: value }))}
-                    ibanValue={formData.bank_iban}
-                    onIbanChange={(value) => setFormData(prev => ({ ...prev, bank_iban: value }))}
-                />
-              </div>
-
-
               <div className="documents-section col-12">
                     {/* Common documents for all types */}
                     <div className="form-group col-3">

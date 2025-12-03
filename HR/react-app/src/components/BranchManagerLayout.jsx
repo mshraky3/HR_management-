@@ -48,6 +48,9 @@ const BranchManagerLayout = ({ children }) => {
           <Link to="/employees" className={isActive('/employees')} onClick={() => setMobileMenuOpen(false)}>
             موظفي الفرع
           </Link>
+          <Link to="/monthly-documents" className={isActive('/monthly-documents')} onClick={() => setMobileMenuOpen(false)}>
+            المستندات الشهرية
+          </Link>
           <Link to="/branch-documents" className={isActive('/branch-documents')} onClick={() => setMobileMenuOpen(false)}>
             مستندات الفرع
           </Link>
@@ -59,7 +62,7 @@ const BranchManagerLayout = ({ children }) => {
           <span className="user-info">
             {user?.full_name || user?.username}
           </span>
-          <button onClick={handleLogout} className="logout-button">
+          <button onClick={handleLogout} className="btn btn-secondary logout-button">
             تسجيل الخروج
           </button>
         </div>

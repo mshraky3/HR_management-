@@ -15,6 +15,7 @@ import Branches from './pages/Branches';
 import Employees from './pages/Employees';
 import EmployeeDetails from './pages/EmployeeDetails';
 import BranchDocuments from './pages/BranchDocuments';
+import MonthlyDocuments from './pages/MonthlyDocuments';
 import Reports from './pages/Reports';
 import EmployeeFile from './pages/EmployeeFile';
 import NotifyBranches from './pages/NotifyBranches';
@@ -92,6 +93,16 @@ function App() {
               <ProtectedRoute>
                 <RoleBasedLayout>
                   <BranchDocuments />
+                </RoleBasedLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/monthly-documents"
+            element={
+              <ProtectedRoute>
+                <RoleBasedLayout>
+                  <MonthlyDocuments />
                 </RoleBasedLayout>
               </ProtectedRoute>
             }

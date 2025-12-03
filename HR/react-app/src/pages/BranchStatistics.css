@@ -251,25 +251,67 @@
   gap: 30px;
 }
 
-.chart-branch {
+.chart-branch-card {
+  background: #f9f9f9;
+  border-radius: 8px;
+  padding: 20px;
+  border: 1px solid #e0e0e0;
+}
+
+.chart-branch-header {
   display: flex;
-  gap: 20px;
-  align-items: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #e0e0e0;
 }
 
 .chart-branch-name {
-  min-width: 150px;
   font-weight: 600;
   color: #333;
-  padding-bottom: 5px;
+  font-size: 16px;
+}
+
+.chart-branch-total {
+  font-size: 14px;
+  color: #666;
+  font-weight: 500;
+}
+
+.chart-wrapper {
+  display: flex;
+  gap: 15px;
+  align-items: flex-end;
+}
+
+.chart-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 40px;
+  height: 200px;
+  padding-right: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.y-axis-label {
+  font-size: 11px;
+  color: #999;
+  text-align: right;
+}
+
+.chart-bars-container {
+  flex: 1;
+  position: relative;
 }
 
 .chart-bars {
   display: flex;
-  gap: 15px;
+  gap: 12px;
   align-items: flex-end;
-  flex: 1;
-  min-height: 200px;
+  height: 200px;
+  padding-bottom: 5px;
 }
 
 .chart-bar-container {
@@ -278,27 +320,80 @@
   align-items: center;
   gap: 8px;
   flex: 1;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.chart-bar-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  position: relative;
 }
 
 .chart-bar {
   width: 100%;
-  background: var(--primary);
+  max-width: 60px;
+  background: linear-gradient(to top, #2196F3, #42A5F5);
   border-radius: 4px 4px 0 0;
   min-height: 5px;
-  transition: all 0.3s;
+  transition: all 0.3s ease;
   cursor: pointer;
+  position: relative;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 5px;
 }
 
 .chart-bar:hover {
-  opacity: 0.8;
-  transform: scaleY(1.05);
+  background: linear-gradient(to top, #1976D2, #2196F3);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.chart-bar-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.chart-bar:hover .chart-bar-value {
+  opacity: 1;
 }
 
 .chart-bar-label {
   font-size: 11px;
   color: #666;
   text-align: center;
-  writing-mode: horizontal-tb;
+  width: 100%;
+}
+
+.month-name {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 2px;
+}
+
+.month-year {
+  font-size: 10px;
+  color: #999;
+}
+
+.no-chart-data {
+  color: #999;
+  font-size: 14px;
+  padding: 20px;
+  text-align: center;
+  background: #f5f5f5;
+  border-radius: 8px;
+  margin-top: 10px;
 }
 
 .no-data {
@@ -356,12 +451,34 @@
     flex-direction: column;
   }
 
-  .chart-branch {
-    flex-direction: column;
+  .chart-branch-card {
+    padding: 15px;
   }
 
-  .chart-branch-name {
-    min-width: auto;
+  .chart-branch-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .chart-wrapper {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .chart-y-axis {
+    flex-direction: row;
+    height: auto;
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+    padding-right: 0;
+    justify-content: space-around;
+  }
+
+  .chart-bars {
+    height: 180px;
   }
 }
 

@@ -30,6 +30,7 @@ const EmployeeFile = () => {
     search_phone: '',
     branch_id: ''
   });
+  const [hasSearched, setHasSearched] = useState(false); // Track if user has performed a search
   
   // Refs to maintain focus on search inputs
   const searchNameRef = useRef(null);
@@ -114,18 +115,25 @@ const EmployeeFile = () => {
     loadBranches();
   }, []);
 
-  // Load employees with search filters
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      loadEmployees();
-    }, 500); // Wait 500ms after user stops typing
-
-    return () => clearTimeout(timeoutId);
-  }, [searchFilters.search_name, searchFilters.search_id, searchFilters.search_phone, searchFilters.branch_id]);
+  // Don't auto-load employees - only load when user explicitly searches
 
   const loadEmployees = async () => {
+    // Check if at least one search filter is filled
+    const hasSearchCriteria = 
+      searchFilters.search_name.trim() ||
+      searchFilters.search_id.trim() ||
+      searchFilters.search_phone.trim() ||
+      searchFilters.branch_id;
+    
+    if (!hasSearchCriteria) {
+      setEmployees([]);
+      setHasSearched(false);
+      return;
+    }
+    
     try {
       setLoading(true);
+      setHasSearched(true);
       const filters = { is_active: true };
       
       // Add search filters
@@ -152,6 +160,28 @@ const EmployeeFile = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSearch = (e) => {
+    if (e) {
+      e.preventDefault();
+    }
+    loadEmployees();
+  };
+
+  const handleClearSearch = () => {
+    setSearchFilters({
+      search_name: '',
+      search_id: '',
+      search_phone: '',
+      branch_id: ''
+    });
+    setEmployees([]);
+    setHasSearched(false);
+    setSelectedEmployeeId(null);
+    setSelectedEmployee(null);
+    setDocuments([]);
+    setSelectedDocumentIds([]);
   };
 
   // Load documents for selected employee
@@ -190,6 +220,11 @@ const EmployeeFile = () => {
       setDocuments([]);
       setSelectedDocumentIds([]);
     }
+  };
+
+  const handleEmployeeClick = (employee) => {
+    setSelectedEmployeeId(employee.id);
+    setSelectedEmployee(employee);
   };
 
   const handleDocumentToggle = (documentId) => {
@@ -299,83 +334,128 @@ const EmployeeFile = () => {
       <form onSubmit={handleGenerateFile} className="employee-file-form">
         {/* Search Filters */}
         <div className="form-section">
-          <h2>البحث</h2>
-          <div className="search-filters">
-            <div className="form-group">
-              <label>البحث بالاسم:</label>
-              <input
-                ref={searchNameRef}
-                type="text"
-                value={searchFilters.search_name}
-                onChange={(e) => setSearchFilters(prev => ({ ...prev, search_name: e.target.value }))}
-                placeholder="ابحث بالاسم..."
-                className="form-control"
-              />
+          <h2>البحث عن الموظف</h2>
+          <div className="search-form">
+            <div className="search-filters">
+              <div className="form-group">
+                <label>البحث بالاسم:</label>
+                <input
+                  ref={searchNameRef}
+                  type="text"
+                  value={searchFilters.search_name}
+                  onChange={(e) => setSearchFilters(prev => ({ ...prev, search_name: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSearch(e);
+                    }
+                  }}
+                  placeholder="ابحث بالاسم..."
+                  className="form-control"
+                />
+              </div>
+              <div className="form-group">
+                <label>البحث برقم الهوية/الإقامة:</label>
+                <input
+                  ref={searchIdRef}
+                  type="text"
+                  value={searchFilters.search_id}
+                  onChange={(e) => setSearchFilters(prev => ({ ...prev, search_id: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSearch(e);
+                    }
+                  }}
+                  placeholder="ابحث برقم الهوية..."
+                  className="form-control"
+                />
+              </div>
+              <div className="form-group">
+                <label>البحث برقم الهاتف:</label>
+                <input
+                  ref={searchPhoneRef}
+                  type="text"
+                  value={searchFilters.search_phone}
+                  onChange={(e) => setSearchFilters(prev => ({ ...prev, search_phone: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSearch(e);
+                    }
+                  }}
+                  placeholder="ابحث برقم الهاتف..."
+                  className="form-control"
+                />
+              </div>
+              <div className="form-group">
+                <label>البحث بالفرع:</label>
+                <select
+                  value={searchFilters.branch_id}
+                  onChange={(e) => setSearchFilters(prev => ({ ...prev, branch_id: e.target.value }))}
+                  className="form-control"
+                >
+                  <option value="">جميع الفروع</option>
+                  {branches.map(branch => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.branch_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div className="form-group">
-              <label>البحث برقم الهوية/الإقامة:</label>
-              <input
-                ref={searchIdRef}
-                type="text"
-                value={searchFilters.search_id}
-                onChange={(e) => setSearchFilters(prev => ({ ...prev, search_id: e.target.value }))}
-                placeholder="ابحث برقم الهوية..."
-                className="form-control"
-              />
-            </div>
-            <div className="form-group">
-              <label>البحث برقم الهاتف:</label>
-              <input
-                ref={searchPhoneRef}
-                type="text"
-                value={searchFilters.search_phone}
-                onChange={(e) => setSearchFilters(prev => ({ ...prev, search_phone: e.target.value }))}
-                placeholder="ابحث برقم الهاتف..."
-                className="form-control"
-              />
-            </div>
-            <div className="form-group">
-              <label>البحث بالفرع:</label>
-              <select
-                value={searchFilters.branch_id}
-                onChange={(e) => setSearchFilters(prev => ({ ...prev, branch_id: e.target.value }))}
-                className="form-control"
-              >
-                <option value="">جميع الفروع</option>
-                {branches.map(branch => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.branch_name}
-                  </option>
-                ))}
-              </select>
+            <div className="search-actions">
+              <button type="button" onClick={handleSearch} className="btn btn-primary" disabled={loading}>
+                {loading ? 'جاري البحث...' : 'بحث'}
+              </button>
+              {(hasSearched || employees.length > 0) && (
+                <button type="button" onClick={handleClearSearch} className="btn btn-secondary">
+                  مسح البحث
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Employee Selection */}
-        <div className="form-section">
-          <h2>اختيار الموظف</h2>
-          <div className="form-group">
-            <select
-              value={selectedEmployeeId || ''}
-              onChange={(e) => handleEmployeeSelect(e.target.value)}
-              className="form-control"
-            >
-              <option value="">-- اختر موظف --</option>
-              {loading ? (
-                <option disabled>جاري التحميل...</option>
-              ) : employees.length === 0 ? (
-                <option disabled>لا توجد موظفين</option>
-              ) : (
-                employees.map(employee => (
-                  <option key={employee.id} value={employee.id}>
-                    {getFullName(employee)} - {employee.employee_id_number || employee.id_or_residency_number}
-                  </option>
-                ))
-              )}
-            </select>
+        {/* Employee Selection - Show results as list */}
+        {hasSearched && (
+          <div className="form-section">
+            <h2>نتائج البحث</h2>
+            {loading ? (
+              <div className="loading">جاري التحميل...</div>
+            ) : employees.length === 0 ? (
+              <div className="no-data">لا توجد موظفين ينطبق عليهم البحث</div>
+            ) : (
+              <div className="employees-list">
+                {employees.map(employee => (
+                  <div
+                    key={employee.id}
+                    className={`employee-item ${selectedEmployeeId === employee.id ? 'selected' : ''}`}
+                    onClick={() => handleEmployeeClick(employee)}
+                  >
+                    <div className="employee-info">
+                      <div className="employee-name">{getFullName(employee)}</div>
+                      <div className="employee-details">
+                        {employee.employee_id_number && (
+                          <span className="employee-detail">رقم الموظف: {employee.employee_id_number}</span>
+                        )}
+                        {employee.id_or_residency_number && (
+                          <span className="employee-detail">رقم الهوية: {employee.id_or_residency_number}</span>
+                        )}
+                        {employee.phone_number && (
+                          <span className="employee-detail">الهاتف: {employee.phone_number}</span>
+                        )}
+                      </div>
+                    </div>
+                    {selectedEmployeeId === employee.id && (
+                      <div className="selected-indicator">✓</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* Documents Selection for Selected Employee */}
         {selectedEmployeeId && (

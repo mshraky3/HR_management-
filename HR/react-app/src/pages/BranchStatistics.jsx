@@ -171,7 +171,10 @@ const BranchStatistics = () => {
           >
             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => (
               <option key={month} value={month}>
-                {new Date(selectedYear, month - 1).toLocaleDateString('ar-SA', { month: 'long' })}
+                {new Date(selectedYear, month - 1).toLocaleDateString('ar-SA', { 
+                  month: 'long',
+                  calendar: 'gregory'
+                })}
               </option>
             ))}
           </select>
@@ -259,7 +262,7 @@ const BranchStatistics = () => {
                 <th>حالة التشغيل</th>
                 <th>أيام تسجيل الدخول (هذا الشهر)</th>
                 <th>إجمالي الموظفين</th>
-                <th>الموظفون المكتملون</th>
+                <th>الموظفين المكتملين</th>
                 <th>نسبة الإكمال</th>
                 <th>النشاط (آخر 30 يوم)</th>
                 <th>آخر تسجيل دخول</th>
@@ -276,7 +279,7 @@ const BranchStatistics = () => {
                     <strong>{stat.branch_name}</strong>
                   </td>
                   <td>
-                    {stat.branch_type === 'school' ? 'مدرسة' : 'مركز صحي'}
+                    {stat.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية'}
                   </td>
                   <td>
                     <span
@@ -328,7 +331,12 @@ const BranchStatistics = () => {
                   </td>
                   <td>
                     {stat.last_login
-                      ? new Date(stat.last_login).toLocaleDateString('ar-SA')
+                      ? new Date(stat.last_login).toLocaleDateString('ar-SA', { 
+                          calendar: 'gregory',
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit'
+                        })
                       : 'لا يوجد'}
                     {stat.days_since_last_login !== null && (
                       <div className="days-ago">
@@ -338,7 +346,12 @@ const BranchStatistics = () => {
                   </td>
                   <td>
                     {stat.last_activity
-                      ? new Date(stat.last_activity).toLocaleDateString('ar-SA')
+                      ? new Date(stat.last_activity).toLocaleDateString('ar-SA', { 
+                          calendar: 'gregory',
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit'
+                        })
                       : 'لا يوجد'}
                   </td>
                 </tr>
@@ -353,35 +366,68 @@ const BranchStatistics = () => {
         <div className="chart-section">
           <h2>تاريخ تسجيلات الدخول (آخر 6 أشهر)</h2>
           <div className="login-history-chart">
-            {statistics.slice(0, 5).map(stat => (
-              <div key={stat.branch_id} className="chart-branch">
-                <div className="chart-branch-name">{stat.branch_name}</div>
-                <div className="chart-bars">
-                  {stat.monthly_login_history && stat.monthly_login_history.length > 0 ? (
-                    stat.monthly_login_history.map((month, idx) => {
-                      const maxDays = 31;
-                      const height = (month.login_days / maxDays) * 100;
-                      return (
-                        <div key={idx} className="chart-bar-container">
-                          <div
-                            className="chart-bar"
-                            style={{ height: `${height}%` }}
-                            title={`${month.login_days} يوم في ${new Date(month.month).toLocaleDateString('ar-SA', { month: 'short', year: 'numeric' })}`}
-                          />
-                          <div className="chart-bar-label">
-                            {new Date(month.month).toLocaleDateString('ar-SA', {
-                              month: 'short'
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="no-data">لا توجد بيانات</div>
-                  )}
+            {statistics.slice(0, 10).map(stat => {
+              if (!stat.monthly_login_history || stat.monthly_login_history.length === 0) {
+                return null;
+              }
+              
+              // Find max value for scaling
+              const maxDays = Math.max(31, ...stat.monthly_login_history.map(m => m.login_days));
+              
+              return (
+                <div key={stat.branch_id} className="chart-branch-card">
+                  <div className="chart-branch-header">
+                    <div className="chart-branch-name">{stat.branch_name}</div>
+                    <div className="chart-branch-total">
+                      إجمالي: {stat.monthly_login_history.reduce((sum, m) => sum + m.login_days, 0)} يوم
+                    </div>
+                  </div>
+                  <div className="chart-wrapper">
+                    <div className="chart-y-axis">
+                      {[0, 10, 20, 30].map(val => (
+                        <div key={val} className="y-axis-label">{val}</div>
+                      ))}
+                    </div>
+                    <div className="chart-bars-container">
+                      <div className="chart-bars">
+                        {stat.monthly_login_history.map((month, idx) => {
+                          const height = maxDays > 0 ? (month.login_days / maxDays) * 100 : 0;
+                          const monthDate = new Date(month.month);
+                          const monthName = monthDate.toLocaleDateString('ar-SA', { 
+                            month: 'short',
+                            calendar: 'gregory'
+                          });
+                          const year = monthDate.getFullYear();
+                          
+                          return (
+                            <div key={idx} className="chart-bar-container">
+                              <div className="chart-bar-wrapper">
+                                <div
+                                  className="chart-bar"
+                                  style={{ height: `${Math.max(height, 2)}%` }}
+                                  title={`${month.login_days} يوم في ${monthName} ${year}`}
+                                >
+                                  <span className="chart-bar-value">{month.login_days}</span>
+                                </div>
+                              </div>
+                              <div className="chart-bar-label">
+                                <div className="month-name">{monthName}</div>
+                                <div className="month-year">{year}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
                 </div>
+              );
+            })}
+            {statistics.filter(s => !s.monthly_login_history || s.monthly_login_history.length === 0).length > 0 && (
+              <div className="no-chart-data">
+                بعض الفروع لا تحتوي على بيانات تسجيل دخول
               </div>
-            ))}
+            )}
           </div>
         </div>
       )}

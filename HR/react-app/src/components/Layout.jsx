@@ -47,7 +47,7 @@ const Layout = ({ children }) => {
       ]
     },
     employees: {
-      label: 'الموظفون',
+      label: 'الموظفين',
       items: [
         { path: '/employees', label: 'قائمة الموظفين' },
         { path: '/employee-file', label: 'ملف موظف' },
@@ -57,6 +57,7 @@ const Layout = ({ children }) => {
     monitoring: {
       label: 'المتابعة والمراقبة',
       items: [
+        { path: '/monthly-documents', label: 'المستندات الشهرية' },
         { path: '/branch-statistics', label: 'إحصائيات الفروع' },
         { path: '/notify-branches', label: 'إشعار الفروع' },
         { path: '/archive', label: 'الأرشيف' },
@@ -116,7 +117,7 @@ const Layout = ({ children }) => {
           <span className="user-info">
             {user?.full_name || user?.username}
           </span>
-          <button onClick={handleLogout} className="btn btn-secondary btn-sm">
+          <button onClick={handleLogout} className="btn btn-secondary logout-button">
             تسجيل الخروج
           </button>
         </div>

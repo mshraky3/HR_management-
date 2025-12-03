@@ -373,7 +373,7 @@ const Archive = () => {
           className={`tab-button ${activeTab === 'employees' ? 'active' : ''}`}
           onClick={() => setActiveTab('employees')}
         >
-          الموظفون المؤرشفون ({archivedEmployees.length})
+          الموظفين المؤرشفين ({archivedEmployees.length})
         </button>
         <button
           className={`tab-button ${activeTab === 'documents' ? 'active' : ''}`}

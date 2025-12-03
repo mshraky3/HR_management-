@@ -148,9 +148,16 @@ const Dashboard = () => {
         // Check for missing required branch documents for branch managers
         checkMissingBranchDocuments(documentsRes.data.data || [], branchesList);
       } else {
-        // For main manager, clear these states since sections are removed
+        // For branch managers, check monthly documents
+        checkMonthlyDocuments(documentsRes.data.data || [], branchesList);
+        checkMissingBranchDocuments(documentsRes.data.data || [], branchesList);
+      }
+      
+      // For main manager, also check monthly documents for monitoring section
+      if (isMainManager()) {
+        checkMonthlyDocuments(documentsRes.data.data || [], branchesList);
+        // Clear branch manager specific alerts
         setIncompleteEmployees([]);
-        setMonthlyDocumentAlerts([]);
         setMissingBranchDocumentAlerts([]);
       }
 
@@ -223,7 +230,7 @@ const Dashboard = () => {
             status: status,
             lastUploadDate: null,
             message: isLastDayOfMonth 
-              ? `⚠️ تنبيه عاجل: لا يوجد ملف ${typeLabels[docType]} - يجب رفعه اليوم (آخر يوم في الشهر)`
+              ? `تنبيه عاجل: لا يوجد ملف ${typeLabels[docType]} - يجب رفعه اليوم (آخر يوم في الشهر)`
               : `لا يوجد ملف ${typeLabels[docType]} - يجب رفعه`
           });
         } else {
@@ -248,7 +255,7 @@ const Dashboard = () => {
                 documentLabel: typeLabels[docType],
                 status: 'critical',
                 lastUploadDate: uploadDate,
-                message: `⚠️ تنبيه عاجل: ملف ${typeLabels[docType]} لم يتم رفعه لهذا الشهر - يجب رفعه اليوم (آخر يوم في الشهر)`
+                message: `تنبيه عاجل: ملف ${typeLabels[docType]} لم يتم رفعه لهذا الشهر - يجب رفعه اليوم (آخر يوم في الشهر)`
               });
             } else if (isDay25) {
               // Reminder on day 25
@@ -378,6 +385,64 @@ const Dashboard = () => {
     setMissingBranchDocumentAlerts(alerts);
   };
 
+  // Get monthly documents status for display
+  const getMonthlyDocumentsSummary = () => {
+    const monthlyTypes = ['payroll_file', 'attendance_file'];
+    const typeLabels = {
+      payroll_file: 'ملف مسيرات الرواتب',
+      attendance_file: 'ملف الحضور و الانصراف'
+    };
+
+    if (isMainManager()) {
+      // For main manager, show summary of all branches
+      const branchesToCheck = branches;
+      let totalBranches = 0;
+      let uploadedCount = 0;
+      let pendingCount = 0;
+      let missingCount = 0;
+
+      branchesToCheck.forEach(branch => {
+        monthlyTypes.forEach(docType => {
+          totalBranches++;
+          const branchDocs = (stats.documents > 0 ? [] : []).filter(
+            doc => doc.branch_id === branch.id && doc.document_type === docType
+          );
+          // This is a simplified check - in real implementation, we'd check current month
+          if (branchDocs.length > 0) {
+            uploadedCount++;
+          } else {
+            missingCount++;
+          }
+        });
+      });
+
+      return { totalBranches, uploadedCount, pendingCount, missingCount };
+    } else {
+      // For branch manager, check their branch
+      const branchId = user?.branch_id;
+      if (!branchId) return null;
+
+      let uploaded = 0;
+      let pending = 0;
+      let missing = 0;
+
+      monthlyTypes.forEach(docType => {
+        const branchDocs = monthlyDocumentAlerts.filter(
+          alert => alert.branchId === branchId && alert.documentType === docType
+        );
+        if (branchDocs.length === 0) {
+          uploaded++;
+        } else if (branchDocs.some(a => a.status === 'critical' || a.status === 'must_do')) {
+          missing++;
+        } else {
+          pending++;
+        }
+      });
+
+      return { uploaded, pending, missing };
+    }
+  };
+
   return (
     <div className="dashboard">
       <h1>لوحة التحكم</h1>
@@ -401,7 +466,7 @@ const Dashboard = () => {
           )}
 
           <div className="stat-card">
-            <h3>الموظفون</h3>
+            <h3>الموظفين</h3>
             <div className="stat-number">{stats.employees}</div>
             <Link to="/employees" className="stat-link btn-stat-link">عرض الكل ←</Link>
           </div>
@@ -561,7 +626,7 @@ const Dashboard = () => {
       {/* Incomplete Employees Alert - Only for branch managers */}
       {!isMainManager() && incompleteEmployees.length > 0 && (
         <div className="incomplete-employees-alert">
-          <h2>الموظفون غير مكتملي البيانات</h2>
+          <h2>الموظفين غير مكتملي البيانات</h2>
           <p style={{ color: '#666', marginBottom: '20px' }}>
             يوجد {incompleteEmployees.length} موظف بحاجة إلى إكمال بياناته
           </p>
@@ -665,7 +730,7 @@ const Dashboard = () => {
               animation: 'pulse-critical 2s infinite'
             }}>
               <strong style={{ color: '#991b1b', fontSize: '18px' }}>
-                ⚠️ تنبيه عاجل: اليوم هو آخر يوم في الشهر - يجب رفع مسيرات الرواتب وملفات الحضور والانصراف فوراً
+                تنبيه عاجل: اليوم هو آخر يوم في الشهر - يجب رفع مسيرات الرواتب وملفات الحضور والانصراف فوراً
               </strong>
             </div>
           )}
@@ -690,7 +755,7 @@ const Dashboard = () => {
                       : 'badge-warning'
                   }`}>
                     {alert.status === 'critical' 
-                      ? '⚠️ عاجل جداً' 
+                      ? 'عاجل جداً' 
                       : alert.status === 'must_do' 
                       ? 'يجب التنفيذ' 
                       : 'تذكير'}
@@ -710,7 +775,7 @@ const Dashboard = () => {
                     to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
                     className={`btn-alert ${alert.status === 'critical' ? 'btn-critical' : ''}`}
                   >
-                    {alert.status === 'critical' ? '🚨 رفع الملف الآن' : 'رفع الملف الآن'}
+                    {alert.status === 'critical' ? 'رفع الملف الآن' : 'رفع الملف الآن'}
                   </Link>
                 </div>
               </div>
