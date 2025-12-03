@@ -432,6 +432,66 @@ const Reports = () => {
     return value === 'complete' ? 'مكتمل' : 'غير مكتمل';
   };
 
+  // Helper function to check if multiple branches are selected
+  const hasMultipleBranches = () => {
+    if (isMainManager()) {
+      return selectAllBranches || selectedBranchIds.length > 1;
+    }
+    return false;
+  };
+
+  // Report templates
+  const reportTemplates = {
+    contactInfo: {
+      title: 'تقرير بيانات التواصل',
+      fields: ['full_name', 'phone_number', 'email', 'id_or_residency_number']
+    },
+    bankAccounts: {
+      title: 'تقرير الحسابات البنكية',
+      fields: ['full_name', 'bank_iban', 'id_or_residency_number', 'bank_name']
+    },
+    jobs: {
+      title: 'تقرير الوظائف',
+      fields: ['full_name', 'occupation', 'job_title', 'nationality']
+    }
+  };
+
+  // Apply a template
+  const applyTemplate = (templateKey) => {
+    const template = reportTemplates[templateKey];
+    if (!template) return;
+
+    // Set the report title
+    setReportTitle(template.title);
+
+    // Get template fields
+    let fieldsToSelect = [...template.fields];
+
+    // Add branch field if multiple branches are selected
+    if (hasMultipleBranches() && !fieldsToSelect.includes('branch_id')) {
+      fieldsToSelect.push('branch_id');
+    }
+
+    // Set selected fields
+    setSelectedFields(fieldsToSelect);
+    
+    // Show success message
+    showSuccess(`تم تطبيق ${template.title} بنجاح`);
+  };
+
+  // Update selected fields when branch selection changes to add/remove branch_id automatically
+  useEffect(() => {
+    const needsBranchField = hasMultipleBranches();
+    const hasBranchField = selectedFields.includes('branch_id');
+
+    // If multiple branches are selected and branch_id is not in the fields, add it
+    if (needsBranchField && !hasBranchField) {
+      setSelectedFields(prev => [...prev, 'branch_id']);
+    }
+    // Note: We don't automatically remove branch_id when switching to single branch
+    // to avoid disrupting user's manual selections
+  }, [selectAllBranches, selectedBranchIds]);
+
   // Only show password modal for branch managers, not main manager
   if (!isMainManager() && !isPasswordVerified && getCurrentBranchId()) {
     return (
@@ -559,6 +619,46 @@ const Reports = () => {
           </div>
         </div>
       )}
+
+      <div className="form-section">
+        <h2>نماذج التقارير الجاهزة</h2>
+        <p className="template-description">اختر نموذج تقرير جاهز لملء الحقول تلقائياً:</p>
+        <div className="report-templates">
+          <button
+            type="button"
+            className="template-button"
+            onClick={() => applyTemplate('contactInfo')}
+          >
+            <div className="template-content">
+              <h3>تقرير بيانات التواصل</h3>
+              <p>الاسم، رقم الجوال، الإيميل، رقم الهوية/الإقامة</p>
+            </div>
+          </button>
+          
+          <button
+            type="button"
+            className="template-button"
+            onClick={() => applyTemplate('bankAccounts')}
+          >
+           
+            <div className="template-content">
+              <h3>تقرير الحسابات البنكية</h3>
+              <p>الاسم، رقم الآيبان، رقم الهوية، اسم البنك</p>
+            </div>
+          </button>
+          
+          <button
+            type="button"
+            className="template-button"
+            onClick={() => applyTemplate('jobs')}
+          >
+            <div className="template-content">
+              <h3>تقرير الوظائف</h3>
+              <p>الاسم، المهنة، المسمى الوظيفي، الفرع، الجنسية</p>
+            </div>
+          </button>
+        </div>
+      </div>
 
       <form onSubmit={handleGenerateReport} className="report-form">
         <div className="form-section">
