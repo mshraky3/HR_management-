@@ -33,6 +33,8 @@ const NotifyBranches = () => {
       return;
     }
     loadData();
+    // Update last visit time when viewing notifications page
+    localStorage.setItem('notifications_last_visit', new Date().toISOString());
   }, [isMainManager]);
 
   const loadData = async () => {

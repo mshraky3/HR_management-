@@ -26,6 +26,7 @@ const Dashboard = () => {
     employees: 0,
     users: 0,
     documents: 0,
+    notifications: 0,
     loading: true,
   });
   const [monthlyDocumentAlerts, setMonthlyDocumentAlerts] = useState([]);
@@ -41,6 +42,8 @@ const Dashboard = () => {
   const [nonRenewalData, setNonRenewalData] = useState({ status: '', reason: '' });
   const [branchStats, setBranchStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(false);
+  const [mainManagerNotifications, setMainManagerNotifications] = useState([]);
+  const [newResponsesCount, setNewResponsesCount] = useState(0);
 
   useEffect(() => {
     loadStats();
@@ -90,16 +93,29 @@ const Dashboard = () => {
         }
       }
 
-      // Load branch statistics for main manager
+      // Load branch statistics and notifications for main manager
+      let notificationsList = [];
       if (isMainManager()) {
         try {
           setLoadingStats(true);
-          const statsRes = await branchStatisticsAPI.getAll();
+          const [statsRes, notificationsRes] = await Promise.all([
+            branchStatisticsAPI.getAll(),
+            notificationsAPI.getAll()
+          ]);
+          
           if (statsRes.data.success) {
             setBranchStats(statsRes.data.data || []);
           }
+          
+          if (notificationsRes.data.success) {
+            notificationsList = notificationsRes.data.data || [];
+            setMainManagerNotifications(notificationsList);
+            
+            // Check for new responses since last visit (async, don't await)
+            checkNewResponses(notificationsList);
+          }
         } catch (error) {
-          console.error('Error loading branch statistics:', error);
+          console.error('Error loading data:', error);
         } finally {
           setLoadingStats(false);
         }
@@ -171,11 +187,56 @@ const Dashboard = () => {
         employees: employeesRes.data.data?.length || 0,
         users: usersRes.data.data?.length || 0,
         documents: documentsRes.data.data?.length || 0,
+        notifications: isMainManager() ? notificationsList.length : 0,
         loading: false,
       });
     } catch (error) {
       console.error('Error loading stats:', error);
       setStats((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  // Check for new responses since last visit
+  const checkNewResponses = async (notificationsList) => {
+    try {
+      const lastVisitTime = localStorage.getItem('notifications_last_visit');
+      if (!lastVisitTime || notificationsList.length === 0) {
+        // First time or no notifications, no new responses to show
+        setNewResponsesCount(0);
+        return;
+      }
+      
+      const lastVisit = new Date(lastVisitTime);
+      let newCount = 0;
+      
+      // Fetch details for all notifications to get actual responses with timestamps
+      const notificationDetailsPromises = notificationsList.map(notification => 
+        notificationsAPI.getById(notification.id).catch(() => null)
+      );
+      
+      const detailsResults = await Promise.all(notificationDetailsPromises);
+      
+      // Check each notification's responses for new ones
+      detailsResults.forEach((result) => {
+        if (result && result.data && result.data.success && result.data.data) {
+          const notification = result.data.data;
+          if (notification.responses && Array.isArray(notification.responses)) {
+            notification.responses.forEach(response => {
+              if (response.responded_at) {
+                const responseTime = new Date(response.responded_at);
+                if (responseTime > lastVisit) {
+                  newCount++;
+                }
+              }
+            });
+          }
+        }
+      });
+      
+      setNewResponsesCount(newCount);
+    } catch (error) {
+      console.error('Error checking new responses:', error);
+      setNewResponsesCount(0);
     }
   };
 
@@ -453,38 +514,81 @@ const Dashboard = () => {
         }
       </p>
 
-      {stats.loading ? (
-        <div className="loading">جاري تحميل الإحصائيات...</div>
-      ) : (
-        <div className="stats-grid">
-          {isMainManager() && (
+      {isMainManager() && (
+        stats.loading ? (
+          <div className="loading">جاري تحميل الإحصائيات...</div>
+        ) : (
+          <div className="stats-grid">
             <div className="stat-card">
               <h3>الفروع</h3>
               <div className="stat-number">{stats.branches}</div>
               <Link to="/branches" className="stat-link btn-stat-link">عرض الكل ←</Link>
             </div>
-          )}
 
-          <div className="stat-card">
-            <h3>الموظفين</h3>
-            <div className="stat-number">{stats.employees}</div>
-            <Link to="/employees" className="stat-link btn-stat-link">عرض الكل ←</Link>
-          </div>
-
-          {isMainManager() && (
             <div className="stat-card">
-              <h3>إدارة الحسابات</h3>
-              <div className="stat-number">{stats.users}</div>
-              <Link to="/account-management" className="stat-link btn-stat-link">عرض الكل ←</Link>
+              <h3>الموظفين</h3>
+              <div className="stat-number">{stats.employees}</div>
+              <Link to="/employees" className="stat-link btn-stat-link">عرض الكل ←</Link>
             </div>
-          )}
 
-          <div className="stat-card">
-            <h3>مستندات الفرع</h3>
-            <div className="stat-number">{stats.documents}</div>
-            <Link to="/branch-documents" className="stat-link btn-stat-link">عرض الكل ←</Link>
+            <div className="stat-card">
+              <h3>إنشاء تقارير</h3>
+              <div className="stat-number">📊</div>
+              <Link to="/reports" className="stat-link btn-stat-link">إنشاء تقرير ←</Link>
+            </div>
+
+            <div className="stat-card">
+              <h3>اشعارات الفروع</h3>
+              <div className="stat-number" style={{ position: 'relative' }}>
+                {stats.notifications}
+                {newResponsesCount > 0 && (
+                  <span 
+                    style={{
+                      position: 'absolute',
+                      top: '-8px',
+                      right: '-8px',
+                      backgroundColor: '#F44336',
+                      color: 'white',
+                      borderRadius: '50%',
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                    }}
+                    title={`${newResponsesCount} رد جديد منذ آخر زيارة`}
+                  >
+                    {newResponsesCount > 9 ? '9+' : newResponsesCount}
+                  </span>
+                )}
+              </div>
+              {newResponsesCount > 0 && (
+                <div style={{ 
+                  fontSize: '12px', 
+                  color: '#F44336', 
+                  marginBottom: '8px',
+                  fontWeight: '500'
+                }}>
+                  {newResponsesCount} رد جديد منذ آخر زيارة
+                </div>
+              )}
+              <Link 
+                to="/notify-branches" 
+                className="stat-link btn-stat-link"
+                onClick={() => {
+                  // Update last visit time when clicking the link
+                  localStorage.setItem('notifications_last_visit', new Date().toISOString());
+                  setNewResponsesCount(0);
+                }}
+              >
+                عرض الكل ←
+              </Link>
+            </div>
           </div>
-        </div>
+        )
       )}
 
       {/* Notifications Section - Only for branch managers */}
@@ -534,7 +638,7 @@ const Dashboard = () => {
                       )}
                     </div>
                     <span className="notification-date-dashboard">
-                      {new Date(notification.created_at).toLocaleDateString('ar-SA')}
+                      {new Date(notification.created_at).toLocaleDateString('ar-SA', { calendar: 'gregory' })}
                     </span>
                   </div>
                   <div className="notification-message-dashboard">
@@ -697,9 +801,6 @@ const Dashboard = () => {
                 </div>
                 <div className="alert-body">
                   <p className="alert-message">{alert.message}</p>
-                  <p className="alert-date" style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>
-                    {alert.branchName} - نوع الفرع: {getBranchTypeLabel(alert.branchType)}
-                  </p>
                 </div>
                 <div className="alert-actions">
                   <Link 
@@ -788,77 +889,47 @@ const Dashboard = () => {
       {isMainManager() && branchStats && branchStats.length > 0 && (
         <div className="branch-stats-summary">
           <h2>ملخص إحصائيات الفروع</h2>
-          <div className="stats-summary-grid">
-            <div className="stat-summary-card">
-              <div className="stat-summary-label">الفروع النشطة</div>
-              <div className="stat-summary-value operational">
-                {branchStats.filter(s => s.is_operational).length} / {branchStats.length}
+          <div className="compact-stats-graph">
+            <div className="graph-item">
+              <div className="graph-label">الفروع النشطة</div>
+              <div className="graph-bar-container">
+                <div 
+                  className="graph-bar operational-bar"
+                  style={{ 
+                    width: `${(branchStats.filter(s => s.is_operational).length / branchStats.length) * 100}%` 
+                  }}
+                >
+                  <span className="graph-bar-value">
+                    {branchStats.filter(s => s.is_operational).length} / {branchStats.length}
+                  </span>
+                </div>
               </div>
             </div>
-            <div className="stat-summary-card">
-              <div className="stat-summary-label">متوسط نسبة الإكمال</div>
-              <div className="stat-summary-value">
-                {Math.round(
-                  branchStats.reduce((sum, s) => sum + s.completion_percentage, 0) /
-                    branchStats.length
-                )}%
-              </div>
-            </div>
-            <div className="stat-summary-card">
-              <div className="stat-summary-label">متوسط أيام تسجيل الدخول (هذا الشهر)</div>
-              <div className="stat-summary-value">
-                {Math.round(
-                  branchStats.reduce((sum, s) => sum + s.login_days_this_month, 0) /
-                    branchStats.length
-                )}
-              </div>
-            </div>
-            <div className="stat-summary-card">
-              <div className="stat-summary-label">إجمالي الموظفين</div>
-              <div className="stat-summary-value">
-                {branchStats.reduce((sum, s) => sum + s.total_employees, 0)}
+            <div className="graph-item">
+              <div className="graph-label">متوسط نسبة الإكمال</div>
+              <div className="graph-bar-container">
+                <div 
+                  className="graph-bar completion-bar"
+                  style={{ 
+                    width: `${Math.round(
+                      branchStats.reduce((sum, s) => sum + s.completion_percentage, 0) /
+                        branchStats.length
+                    )}%` 
+                  }}
+                >
+                  <span className="graph-bar-value">
+                    {Math.round(
+                      branchStats.reduce((sum, s) => sum + s.completion_percentage, 0) /
+                        branchStats.length
+                    )}%
+                  </span>
+                </div>
               </div>
             </div>
           </div>
           <div style={{ marginTop: '15px' }}>
             <Link to="/branch-statistics" className="btn btn-primary">
               عرض التفاصيل الكاملة →
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {isMainManager() && (
-        <div className="quick-actions">
-          <h2>إجراءات سريعة</h2>
-          <div className="actions-grid">
-            <Link to="/branches" className="action-card">
-              <h3>إدارة الفروع</h3>
-              <p>عرض وإدارة جميع الفروع</p>
-            </Link>
-            <Link to="/employees" className="action-card">
-              <h3>إدارة الموظفين</h3>
-              <p>عرض وإدارة سجلات الموظفين</p>
-            </Link>
-            <Link to="/branch-documents" className="action-card">
-              <h3>مستندات الفرع</h3>
-              <p>رفع وإدارة مستندات الفروع</p>
-            </Link>
-            <Link to="/account-management" className="action-card">
-              <h3>إدارة الحسابات</h3>
-              <p>إنشاء وإدارة حسابات المدير الرئيسي</p>
-            </Link>
-            <Link to="/notify-branches" className="action-card">
-              <h3>إشعارات الفروع</h3>
-              <p>إرسال إشعارات ومتابعة الردود</p>
-            </Link>
-            <Link to="/archive" className="action-card">
-              <h3>الأرشيف</h3>
-              <p>عرض الموظفين والمستندات المؤرشفة</p>
-            </Link>
-            <Link to="/branch-statistics" className="action-card">
-              <h3>إحصائيات الفروع</h3>
-              <p>متابعة نشاط الفروع وتقارير الأداء</p>
             </Link>
           </div>
         </div>
