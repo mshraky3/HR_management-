@@ -402,6 +402,54 @@ router.put('/:id',
   }
 );
 
+// Delete employee (soft delete - archives employee)
+router.delete('/:id', async (req, res) => {
+  try {
+    const { Employee } = await import('../models/Employee.js');
+    
+    const employeeId = parseInt(req.params.id);
+    
+    // Only main manager can delete employees
+    if (req.user.role !== 'main_manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only main manager can delete employees'
+      });
+    }
+    
+    // Check if employee exists
+    const employee = await Employee.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found'
+      });
+    }
+    
+    // Archive employee by setting status to 'other' with deactivation reason
+    // Use employee's branch_id as statusChangedBy
+    const updatedEmployee = await Employee.updateStatus(
+      employeeId,
+      'other',
+      employee.branch_id,
+      'تم إلغاء التفعيل'
+    );
+    
+    res.json({
+      success: true,
+      message: 'تم إلغاء تفعيل الموظف بنجاح',
+      data: updatedEmployee
+    });
+  } catch (error) {
+    console.error('Error deleting employee:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل إلغاء تفعيل الموظف',
+      error: error.message
+    });
+  }
+});
+
 // Update employee status (instead of delete - employees are archived, not deleted)
 router.put('/:id/status', async (req, res) => {
   try {

@@ -76,6 +76,50 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * GET /api/archive/branch-documents/all
+ * Get archived branch documents (is_active = false)
+ * NOTE: This must come BEFORE /:id route to avoid conflicts
+ */
+router.get('/branch-documents/all', async (req, res) => {
+  try {
+    let query = sql`
+      SELECT bd.*, b.branch_name, b.branch_type
+      FROM branch_documents bd
+      INNER JOIN branches b ON bd.branch_id = b.id
+      WHERE bd.is_active = false
+    `;
+    
+    if (req.query.branch_id) {
+      const branchId = parseInt(req.query.branch_id);
+      if (!isNaN(branchId)) {
+        query = sql`${query} AND bd.branch_id = ${branchId}`;
+      }
+    }
+    
+    if (req.query.document_type) {
+      query = sql`${query} AND bd.document_type = ${req.query.document_type}`;
+    }
+    
+    query = sql`${query} ORDER BY bd.uploaded_at DESC`;
+    
+    const documents = await query;
+    
+    res.json({
+      success: true,
+      data: documents || [],
+      count: documents?.length || 0
+    });
+  } catch (error) {
+    console.error('Error fetching archived branch documents:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل جلب مستندات الفرع المؤرشفة',
+      error: error.message
+    });
+  }
+});
+
+/**
  * GET /api/archive/statistics
  * Get archive statistics grouped by branch, academic year, status, etc.
  */
@@ -174,10 +218,19 @@ router.get('/statistics', async (req, res) => {
 /**
  * GET /api/archive/:id
  * Get archived employee details with documents
+ * NOTE: This must come AFTER specific routes like /branch-documents/all
  */
 router.get('/:id', async (req, res) => {
   try {
-    const employee = await Employee.findById(parseInt(req.params.id));
+    const employeeId = parseInt(req.params.id);
+    if (isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'معرف الموظف غير صحيح'
+      });
+    }
+    
+    const employee = await Employee.findById(employeeId);
     
     if (!employee) {
       return res.status(404).json({
@@ -266,46 +319,6 @@ router.put('/:id/status', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'فشل تحديث حالة الموظف',
-      error: error.message
-    });
-  }
-});
-
-/**
- * GET /api/archive/branch-documents/all
- * Get archived branch documents (is_active = false)
- */
-router.get('/branch-documents/all', async (req, res) => {
-  try {
-    let query = sql`
-      SELECT bd.*, b.branch_name, b.branch_type
-      FROM branch_documents bd
-      INNER JOIN branches b ON bd.branch_id = b.id
-      WHERE bd.is_active = false
-    `;
-    
-    if (req.query.branch_id) {
-      query = sql`${query} AND bd.branch_id = ${parseInt(req.query.branch_id)}`;
-    }
-    
-    if (req.query.document_type) {
-      query = sql`${query} AND bd.document_type = ${req.query.document_type}`;
-    }
-    
-    query = sql`${query} ORDER BY bd.uploaded_at DESC`;
-    
-    const documents = await query;
-    
-    res.json({
-      success: true,
-      data: documents || [],
-      count: documents?.length || 0
-    });
-  } catch (error) {
-    console.error('Error fetching archived branch documents:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب مستندات الفرع المؤرشفة',
       error: error.message
     });
   }

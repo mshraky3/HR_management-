@@ -401,9 +401,17 @@ router.get('/:id/preview', async (req, res) => {
 
     // For images, return the file directly
     if (document.mime_type && document.mime_type.startsWith('image/')) {
-      // If file_path is a URL (Blob), redirect to it
+      // If file_path is a URL (Blob Storage), return it in JSON response for frontend to use
       if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
-        return res.redirect(document.file_path);
+        return res.json({
+          success: true,
+          data: {
+            id: document.id,
+            file_name: document.file_name,
+            mime_type: document.mime_type,
+            file_url: document.file_path
+          }
+        });
       }
 
       // Fallback for local files (backward compatibility)

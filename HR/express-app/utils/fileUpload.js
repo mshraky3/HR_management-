@@ -51,5 +51,31 @@ export function getExtensionFromMimeType(mimeType) {
   return mimeToExt[mimeType] || '';
 }
 
+/**
+ * Fix filename encoding for Arabic characters
+ * Handles cases where filename is incorrectly encoded (Latin-1 instead of UTF-8)
+ * @param {string} fileName - Original file name
+ * @returns {string} - Fixed file name with correct encoding
+ */
+export function fixFilenameEncoding(fileName) {
+  if (!fileName) return fileName;
+  
+  try {
+    // Check if filename appears to be incorrectly encoded (contains Latin-1 bytes that should be UTF-8)
+    // If filename contains bytes in range 0x80-0xFF but no Arabic characters, it's likely misencoded
+    if (/[\x80-\xFF]/.test(fileName) && !/[\u0600-\u06FF]/.test(fileName)) {
+      // Try to decode from Latin-1 to UTF-8
+      // Convert each byte to its UTF-8 equivalent
+      const buffer = Buffer.from(fileName, 'latin1');
+      return buffer.toString('utf8');
+    }
+    return fileName;
+  } catch (error) {
+    console.warn('Error fixing filename encoding:', error);
+    // If decoding fails, use original filename
+    return fileName;
+  }
+}
+
 // Directory initialization removed - no longer needed with Blob Storage
 

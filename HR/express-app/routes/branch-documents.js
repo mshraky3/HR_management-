@@ -12,7 +12,7 @@ import { uploadSingle, validateUploadedFile } from '../middleware/upload.js';
 import { verifyBranchDocumentsPassword } from '../middleware/branchDocumentsPassword.js';
 import { BranchDocument } from '../models/BranchDocument.js';
 import { Branch } from '../models/Branch.js';
-import { getExtensionFromMimeType } from '../utils/fileUpload.js';
+import { getExtensionFromMimeType, fixFilenameEncoding } from '../utils/fileUpload.js';
 import { uploadBranchDocumentToBlob, deleteFromBlob, fetchFromBlob } from '../utils/blobStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -254,10 +254,16 @@ router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFi
       });
     }
 
+    // Fix filename encoding for Arabic characters BEFORE upload
+    // This ensures correct encoding for both blob path and database record
+    const fixedFileName = fixFilenameEncoding(req.file.originalname);
+
     // Upload file to Vercel Blob Storage
+    // Note: uploadBranchDocumentToBlob uses generateFileName which sanitizes the filename
+    // This ensures blob paths are safe for Vercel Blob Storage (no special characters)
     const blobUrl = await uploadBranchDocumentToBlob(
       req.file.buffer,
-      req.file.originalname,
+      fixedFileName, // Use fixed filename for consistent encoding
       req.file.mimetype,
       parseInt(branch_id),
       document_type
@@ -272,8 +278,8 @@ router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFi
       });
     }
 
-    // Fix filename encoding for Arabic characters
-    const fileName = fixFilenameEncoding(req.file.originalname);
+    // Use the fixed filename for database record
+    const fileName = fixedFileName;
     
     // Create document record - store blob URL
     const document = await BranchDocument.create({
@@ -419,20 +425,17 @@ router.get('/:id/preview', verifyBranchDocumentsPassword, async (req, res) => {
 
     // For images, return the file directly
     if (document.mime_type && document.mime_type.startsWith('image/')) {
-      // If file_path is a URL (Blob), fetch and proxy it to maintain password protection
+      // If file_path is a URL (Blob Storage), return it in JSON response for frontend to use
       if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
-        try {
-          const { buffer, contentType } = await fetchFromBlob(document.file_path);
-          res.setHeader('Content-Type', contentType || document.mime_type);
-          return res.send(buffer);
-        } catch (error) {
-          console.error('Error fetching blob file:', error);
-          return res.status(500).json({
-            success: false,
-            message: 'Failed to fetch document preview',
-            error: error.message
-          });
-        }
+        return res.json({
+          success: true,
+          data: {
+            id: document.id,
+            file_name: document.file_name,
+            mime_type: document.mime_type,
+            file_url: document.file_path
+          }
+        });
       }
 
       // Fallback for local files
@@ -606,10 +609,15 @@ router.put('/:id', verifyBranchDocumentsPassword, uploadSingle, async (req, res)
         });
       }
 
+      // Fix filename encoding for Arabic characters BEFORE upload
+      const fixedFileName = fixFilenameEncoding(req.file.originalname);
+
       // Upload new file to Blob Storage
+      // Note: uploadBranchDocumentToBlob uses generateFileName which sanitizes the filename
+      // This ensures blob paths are safe for Vercel Blob Storage (no special characters)
       const blobUrl = await uploadBranchDocumentToBlob(
         req.file.buffer,
-        req.file.originalname,
+        fixedFileName, // Use fixed filename for consistent encoding
         req.file.mimetype,
         document.branch_id,
         document.document_type
@@ -629,8 +637,8 @@ router.put('/:id', verifyBranchDocumentsPassword, uploadSingle, async (req, res)
         await deleteFromBlob(document.file_path);
       }
 
-      // Fix filename encoding for Arabic characters
-      const fileName = fixFilenameEncoding(req.file.originalname);
+      // Use the fixed filename for database record
+      const fileName = fixedFileName;
       
       // Update document with new file
       updatedDocument = await BranchDocument.updateFile(
