@@ -1105,7 +1105,10 @@ const BranchDocuments = () => {
                                 جاري التحميل...
                               </>
                             ) : (
-                              '👁️ معاينة'
+                              <>
+                                <img src="https://img.icons8.com/?size=24&id=85028&format=png&color=000000" alt="معاينة" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} />
+                                معاينة
+                              </>
                             )}
                           </button>
                         )}
@@ -1120,16 +1123,20 @@ const BranchDocuments = () => {
                               جاري التحميل...
                             </>
                           ) : (
-                            '⬇️ تحميل'
+                            <><img src="https://img.icons8.com/material-rounded/24/download--v1.png" alt="تحميل" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} /> تحميل</>
                           )}
                         </button>
                         {/* Branch managers can edit/delete their own branch documents, main managers can edit/delete all */}
                         {(isMainManager() || (user?.branch_id === doc.branch_id)) && (
                           <>
                             <button onClick={() => handleEdit(doc)} className="btn btn-primary btn-sm">
-                              ✏️ تعديل
+                              <img src="https://img.icons8.com/material-rounded/24/edit.png" alt="تعديل" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} />
+                              تعديل
                             </button>
-                            <button onClick={() => handleDelete(doc.id)} className="btn-sm btn-delete">🗑️ حذف</button>
+                            <button onClick={() => handleDelete(doc.id)} className="btn-sm btn-delete">
+                              <img src="https://img.icons8.com/material-rounded/24/trash.png" alt="حذف" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} />
+                              حذف
+                            </button>
                           </>
                         )}
                         {/* Only main manager can verify */}

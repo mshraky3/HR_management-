@@ -22,6 +22,7 @@ import NotifyBranches from './pages/NotifyBranches';
 import Archive from './pages/Archive';
 import BranchStatistics from './pages/BranchStatistics';
 import TermManagement from './pages/TermManagement';
+import BranchesMonitoring from './pages/BranchesMonitoring';
 import './App.css';
 
 // Wrapper component to choose layout based on role
@@ -163,6 +164,16 @@ function App() {
               <ProtectedRoute requireMainManager>
                 <Layout>
                   <TermManagement />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/branches-monitoring"
+            element={
+              <ProtectedRoute requireMainManager>
+                <Layout>
+                  <BranchesMonitoring />
                 </Layout>
               </ProtectedRoute>
             }

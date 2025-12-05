@@ -108,6 +108,14 @@ const EmployeeDetails = () => {
       setPreviewDocument(document);
       // Check if it's an image
       if (document.mime_type && document.mime_type.startsWith('image/')) {
+        // If file_path is a URL (Blob Storage), use it directly
+        if (document.file_path && 
+            (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
+          setPreviewUrl(document.file_path);
+          setPreviewLoading(null);
+          return;
+        }
+        
         // For images, use download endpoint with blob URL
         try {
           const response = await documentsAPI.download(document.id);
@@ -251,7 +259,7 @@ const EmployeeDetails = () => {
         {employee.data_completion_status === 'incomplete' && (
           <div className="alert alert-warning">
             <h2>
-              <span className="icon-lg">⚠️</span>
+              <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" className="icon-lg" style={{ width: '24px', height: '24px' }} />
               البيانات الناقصة
             </h2>
             <p>
@@ -292,7 +300,11 @@ const EmployeeDetails = () => {
           <div className={`status-completion-box ${employee.data_completion_status === 'complete' ? 'complete' : 'incomplete'}`}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span className="icon-md">
-                {employee.data_completion_status === 'complete' ? '✅' : '⚠️'}
+                {employee.data_completion_status === 'complete' ? (
+                  <img src="https://img.icons8.com/material-rounded/24/check-mark.png" alt="نجاح" style={{ width: '24px', height: '24px' }} />
+                ) : (
+                  <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" style={{ width: '24px', height: '24px' }} />
+                )}
               </span>
               <strong>
                 حالة البيانات: {employee.data_completion_status === 'complete' ? 'مكتملة' : 'غير مكتملة'}
@@ -313,7 +325,7 @@ const EmployeeDetails = () => {
         {isBranchManager() && employee.status === 'pending' && (
             <div className="renewal-section">
               <h2>
-                <span className="icon-lg">⏳</span>
+                <img src="https://img.icons8.com/material-rounded/24/dots-loading.png" alt="تحميل" className="icon-lg" style={{ width: '24px', height: '24px' }} />
                 قرار التجديد - نهاية السنة الدراسية
               </h2>
               <p>
@@ -345,7 +357,12 @@ const EmployeeDetails = () => {
                     disabled={processingRenewal}
                     className="btn btn-success btn-md"
                   >
-                    {processingRenewal ? 'جاري المعالجة...' : '✅ تجديد العقد'}
+                    {processingRenewal ? 'جاري المعالجة...' : (
+                      <>
+                        <img src="https://img.icons8.com/material-rounded/24/check-mark.png" alt="نجاح" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} />
+                        تجديد العقد
+                      </>
+                    )}
                   </button>
                   <button
                     onClick={() => {
@@ -684,7 +701,7 @@ const EmployeeDetails = () => {
                   <strong>الحجم:</strong> {doc.file_size ? `${(doc.file_size / 1024).toFixed(2)} KB` : 'غير محدد'}
                 </div>
                 <div style={{ marginBottom: '10px', color: '#666' }}>
-                  <strong>تاريخ الرفع:</strong> {new Date(doc.uploaded_at).toLocaleDateString('ar-SA')}
+                  <strong>تاريخ الرفع:</strong> {new Date(doc.uploaded_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })}
                 </div>
                 <div style={{ marginBottom: '10px' }}>
                   <strong>الحالة:</strong> 
@@ -694,7 +711,7 @@ const EmployeeDetails = () => {
                 </div>
                 {doc.expiry_date && (
                   <div style={{ marginBottom: '15px', color: '#666' }}>
-                    <strong>تاريخ الانتهاء:</strong> {new Date(doc.expiry_date).toLocaleDateString('ar-SA')}
+                    <strong>تاريخ الانتهاء:</strong> {new Date(doc.expiry_date).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })}
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: '10px', marginTop: '15px', flexWrap: 'wrap' }}>
@@ -710,7 +727,10 @@ const EmployeeDetails = () => {
                           جاري التحميل...
                         </>
                       ) : (
-                        '👁️ عرض الصورة'
+                        <>
+                          <img src="https://img.icons8.com/?size=24&id=85028&format=png&color=000000" alt="معاينة" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} />
+                          عرض الصورة
+                        </>
                       )}
                     </button>
                   )}
@@ -741,7 +761,7 @@ const EmployeeDetails = () => {
                         جاري التحميل...
                       </>
                     ) : (
-                      '⬇️ تحميل'
+                      <><img src="https://img.icons8.com/material-rounded/24/download--v1.png" alt="تحميل" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} /> تحميل</>
                     )}
                   </button>
                 </div>

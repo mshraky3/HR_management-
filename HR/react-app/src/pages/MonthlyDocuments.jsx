@@ -1,11 +1,11 @@
 /**
  * Monthly Documents Page
  * Special page for managing payroll and attendance documents
- * Separate from other branch documents for easier management
+ * Beautiful card-based design showing branches with status indicators
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { branchDocumentsAPI, branchesAPI, setDocumentBranchMapping, setBranchDocumentsPassword } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
@@ -16,7 +16,6 @@ const MonthlyDocuments = () => {
   const { isMainManager, user } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [documents, setDocuments] = useState([]);
   const [allDocuments, setAllDocuments] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -24,6 +23,7 @@ const MonthlyDocuments = () => {
   const [downloading, setDownloading] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(null);
   const [showUploadForm, setShowUploadForm] = useState(false);
+  const [selectedBranch, setSelectedBranch] = useState(null);
   const [previewDocument, setPreviewDocument] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [uploadData, setUploadData] = useState({
@@ -34,8 +34,8 @@ const MonthlyDocuments = () => {
   });
 
   const monthlyDocumentTypes = [
-    { value: 'payroll_file', label: 'ملف مسيرات الرواتب' },
-    { value: 'attendance_file', label: 'ملف الحضور و الانصراف' }
+    { value: 'payroll_file', label: 'ملف مسيرات الرواتب', icon: 'https://img.icons8.com/?size=100&id=47743&format=png&color=000000' },
+    { value: 'attendance_file', label: 'ملف الحضور و الانصراف', icon: 'https://img.icons8.com/?size=100&id=47743&format=png&color=000000' }
   ];
 
   // Helper function to format date in Gregorian calendar only
@@ -56,13 +56,6 @@ const MonthlyDocuments = () => {
     const year = date.getFullYear();
     const month = date.getMonth();
     return new Date(year, month + 1, 0).getDate();
-  };
-
-  // Helper to get next upload date (last day of current month)
-  const getNextUploadDate = () => {
-    const now = new Date();
-    const lastDay = getLastDayOfMonth(now);
-    return new Date(now.getFullYear(), now.getMonth(), lastDay);
   };
 
   // Helper to check if document was uploaded for current month
@@ -89,7 +82,8 @@ const MonthlyDocuments = () => {
         message: 'لم يتم رفع المستند',
         lastUpload: null,
         daysUntilDeadline: daysUntilDeadline,
-        deadlineDate: new Date(now.getFullYear(), now.getMonth(), lastDay)
+        deadlineDate: new Date(now.getFullYear(), now.getMonth(), lastDay),
+        document: null
       };
     }
 
@@ -125,6 +119,33 @@ const MonthlyDocuments = () => {
       };
     }
   }, [allDocuments]);
+
+  // Get branch status summary
+  const getBranchStatus = useCallback((branchId) => {
+    const statuses = monthlyDocumentTypes.map(docType => ({
+      type: docType.value,
+      label: docType.label,
+      icon: docType.icon,
+      ...getDocumentStatus(branchId, docType.value)
+    }));
+
+    const allUploaded = statuses.every(s => s.status === 'uploaded');
+    const hasMissing = statuses.some(s => s.status === 'missing');
+    const hasPending = statuses.some(s => s.status === 'pending' && !hasMissing);
+
+    let overallStatus = 'uploaded';
+    if (hasMissing) {
+      overallStatus = 'missing';
+    } else if (hasPending) {
+      overallStatus = 'pending';
+    }
+
+    return {
+      overallStatus,
+      statuses,
+      allUploaded
+    };
+  }, [getDocumentStatus, monthlyDocumentTypes]);
 
   const loadBranches = async () => {
     try {
@@ -162,24 +183,18 @@ const MonthlyDocuments = () => {
       }
       
       // For monthly documents, automatically get password from localStorage if available
-      // This allows seamless access without prompting for password
       if (!isMainManager() && branchId) {
         try {
-          // Try to get stored password from localStorage (if user entered it before in BranchDocuments page)
           const storedPassword = localStorage.getItem(`branch_documents_password_${branchId}`);
           if (storedPassword) {
             setBranchDocumentsPassword(branchId, storedPassword);
-          } else {
-            // If no stored password, try to get it from the in-memory storage
-            // This happens if user already verified password in BranchDocuments page
-            // The password might be in memory from previous page visit
           }
         } catch (error) {
           console.error('Error setting password:', error);
         }
       }
       
-      // Filter only monthly documents
+      // Load all monthly documents for main managers
       const response = await branchDocumentsAPI.getAll(filters);
       if (response.data.success) {
         const docs = response.data.data || [];
@@ -198,12 +213,9 @@ const MonthlyDocuments = () => {
       }
     } catch (error) {
       console.error('Error loading monthly documents:', error);
-      // If 401 error and password is missing, don't show error - password will be handled by interceptor
       if (error.response && error.response.status === 401) {
         const errorMessage = error.response?.data?.message || '';
         if (errorMessage.includes('password') || errorMessage.includes('Password')) {
-          // Password required - this is expected, don't show error
-          // The password should be added automatically from BranchDocuments page
           setAllDocuments([]);
           return;
         }
@@ -226,27 +238,16 @@ const MonthlyDocuments = () => {
 
   useEffect(() => {
     const branchId = searchParams.get('branch_id');
-    const docType = searchParams.get('document_type');
-    
     if (branchId) {
-      setUploadData(prev => ({ ...prev, branch_id: branchId }));
-    }
-    
-    if (docType && (docType === 'payroll_file' || docType === 'attendance_file')) {
-      setUploadData(prev => ({ ...prev, document_type: docType }));
-    }
-  }, [searchParams]);
-
-  // Filter documents based on document type
-  useEffect(() => {
-    const docType = searchParams.get('document_type');
-    if (docType && (docType === 'payroll_file' || docType === 'attendance_file')) {
-      const filtered = allDocuments.filter(doc => doc.document_type === docType);
-      setDocuments(filtered);
+      const branch = branches.find(b => b.id === parseInt(branchId));
+      setSelectedBranch(branch || null);
+      if (branch) {
+        setUploadData(prev => ({ ...prev, branch_id: branchId }));
+      }
     } else {
-      setDocuments(allDocuments);
+      setSelectedBranch(null);
     }
-  }, [searchParams, allDocuments]);
+  }, [searchParams, branches]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -379,39 +380,31 @@ const MonthlyDocuments = () => {
     }
   };
 
-  const handleOpenUploadForm = () => {
-    const branchIdFromUrl = searchParams.get('branch_id');
-    let branchId = '';
-    if (branchIdFromUrl) {
-      branchId = branchIdFromUrl;
-    } else if (!isMainManager() && user?.branch_id) {
-      branchId = user.branch_id;
-    }
-    
-    const docType = searchParams.get('document_type') || 'payroll_file';
+  const handleBranchClick = (branch) => {
+    const newParams = new URLSearchParams();
+    newParams.set('branch_id', branch.id);
+    setSearchParams(newParams);
+    setSelectedBranch(branch);
+  };
+
+  const handleBackToBranches = () => {
+    const newParams = new URLSearchParams();
+    setSearchParams(newParams);
+    setSelectedBranch(null);
+  };
+
+  const handleOpenUploadForm = (branchId = null, docType = null) => {
+    const finalBranchId = branchId || searchParams.get('branch_id') || (!isMainManager() && user?.branch_id ? user.branch_id : '');
+    const finalDocType = docType || searchParams.get('document_type') || 'payroll_file';
     
     setUploadData({
-      branch_id: branchId,
-      document_type: docType,
+      branch_id: finalBranchId,
+      document_type: finalDocType,
       description: '',
       file: null,
     });
     setShowUploadForm(true);
   };
-
-  // For main managers: show message if no branch selected
-  if (isMainManager() && !searchParams.get('branch_id') && branches.length > 0) {
-    return (
-      <div className="table-page">
-        <div className="page-header">
-          <h1>المستندات الشهرية</h1>
-        </div>
-        <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
-          الرجاء اختيار فرع لعرض مستنداته الشهرية
-        </div>
-      </div>
-    );
-  }
 
   if (loading || (branches.length === 0 && user)) {
     return <div className="loading">جاري التحميل...</div>;
@@ -419,85 +412,302 @@ const MonthlyDocuments = () => {
 
   // Get branches to display
   const branchesToDisplay = isMainManager() 
-    ? branches.filter(b => b.id === parseInt(searchParams.get('branch_id') || '0'))
+    ? branches
     : branches.filter(b => b.id === user?.branch_id);
 
-  // Get alerts for current branch
-  const getAlerts = () => {
-    const alerts = [];
-    branchesToDisplay.forEach(branch => {
-      monthlyDocumentTypes.forEach(docType => {
-        const status = getDocumentStatus(branch.id, docType.value);
-        if (status.status !== 'uploaded') {
-          alerts.push({
-            branchId: branch.id,
-            branchName: branch.branch_name,
-            documentType: docType.value,
-            documentLabel: docType.label,
-            status: status
-          });
-        }
-      });
-    });
-    return alerts;
-  };
+  // Group branches by type
+  const schools = branchesToDisplay.filter(b => b.branch_type === 'school');
+  const healthcareCenters = branchesToDisplay.filter(b => b.branch_type === 'healthcare_center');
 
-  const alerts = getAlerts();
+  // If branch is selected, show branch details
+  if (selectedBranch) {
+    const branchStatus = getBranchStatus(selectedBranch.id);
+    const branchDocuments = allDocuments.filter(doc => doc.branch_id === selectedBranch.id);
 
+    return (
+      <div className="table-page monthly-documents-page">
+        <div className="page-header">
+          <button onClick={handleBackToBranches} className="btn-back">
+            ← العودة للفروع
+          </button>
+          <h1>{selectedBranch.branch_name}</h1>
+          <button onClick={() => handleOpenUploadForm(selectedBranch.id)} className="btn-primary">
+            رفع مستند شهري
+          </button>
+        </div>
+
+        <div className="branch-documents-view">
+          {monthlyDocumentTypes.map(docType => {
+            const status = branchStatus.statuses.find(s => s.type === docType.value);
+            const documents = branchDocuments.filter(doc => doc.document_type === docType.value);
+            
+            return (
+              <div key={docType.value} className={`document-type-card status-${status.status}`}>
+                <div className="document-type-header">
+                  <div className="document-type-info">
+                    <img src={docType.icon} alt={docType.label} className="document-icon" style={{ width: '24px', height: '24px' }} />
+                    <div>
+                      <h3>{docType.label}</h3>
+                      <div className={`status-badge status-${status.status}`}>
+                        {status.status === 'uploaded' && '✓ تم الرفع'}
+                        {status.status === 'pending' && (
+                          <>
+                            <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '4px' }} />
+                            لم يتم الرفع لهذا الشهر
+                          </>
+                        )}
+                        {status.status === 'missing' && '✗ لم يتم رفع المستند'}
+                      </div>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => handleOpenUploadForm(selectedBranch.id, docType.value)}
+                    className="btn-upload-small"
+                  >
+                    رفع مستند
+                  </button>
+                </div>
+
+                {status.lastUpload && (
+                  <p className="last-upload-info">
+                    آخر رفع: {formatGregorianDate(status.lastUpload)}
+                  </p>
+                )}
+
+                {status.deadlineDate && (
+                  <p className="deadline-info">
+                    الموعد النهائي: {formatGregorianDate(status.deadlineDate)}
+                    {status.daysUntilDeadline !== null && (
+                      <span className={status.daysUntilDeadline <= 3 ? 'urgent' : ''}>
+                        {status.daysUntilDeadline > 0 
+                          ? ` (متبقي ${status.daysUntilDeadline} يوم)` 
+                          : ' (اليوم هو الموعد النهائي)'}
+                      </span>
+                    )}
+                  </p>
+                )}
+
+                {documents.length > 0 ? (
+                  <div className="documents-list">
+                    {documents.map((doc) => {
+                      const isCurrentMonth = isUploadedForCurrentMonth(new Date(doc.uploaded_at));
+                      return (
+                        <div key={doc.id} className={`document-item ${isCurrentMonth ? 'current-month' : ''}`}>
+                          <div className="document-info">
+                            <span className="document-name">{doc.file_name}</span>
+                            <span className="document-date">{formatGregorianDate(doc.uploaded_at)}</span>
+                          </div>
+                          <div className="document-actions">
+                            {doc.mime_type && (doc.mime_type.startsWith('image/') || doc.mime_type === 'application/pdf') && (
+                              <button 
+                                onClick={() => handlePreview(doc)} 
+                                className="btn-icon"
+                                disabled={previewLoading === doc.id}
+                                title="معاينة"
+                              >
+                                {previewLoading === doc.id ? (
+                                  <img src="https://img.icons8.com/material-rounded/24/dots-loading.png" alt="تحميل" style={{ width: '20px', height: '20px' }} />
+                                ) : (
+                                  <img src="https://img.icons8.com/?size=24&id=85028&format=png&color=000000" alt="معاينة" style={{ width: '20px', height: '20px' }} />
+                                )}
+                              </button>
+                            )}
+                            <button 
+                              onClick={() => handleDownload(doc.id, doc.file_name)} 
+                              className="btn-icon"
+                              disabled={downloading === doc.id}
+                              title="تحميل"
+                            >
+                              {downloading === doc.id ? (
+                                <img src="https://img.icons8.com/material-rounded/24/dots-loading.png" alt="تحميل" style={{ width: '20px', height: '20px' }} />
+                              ) : (
+                                <img src="https://img.icons8.com/material-rounded/24/download--v1.png" alt="تحميل" style={{ width: '20px', height: '20px' }} />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="no-documents">
+                    <p>لا توجد مستندات مرفوعة</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Upload Form Modal */}
+        {showUploadForm && (
+          <div className="modal">
+            <div className="modal-content">
+              <h2>رفع مستند شهري</h2>
+              <form onSubmit={handleUpload}>
+                {isMainManager() && (
+                  <div className="form-group">
+                    <label>الفرع *</label>
+                    <select
+                      value={uploadData.branch_id}
+                      onChange={(e) => setUploadData({ ...uploadData, branch_id: e.target.value })}
+                      required
+                    >
+                      <option value="">اختر الفرع</option>
+                      {branches.map(branch => (
+                        <option key={branch.id} value={branch.id}>
+                          {branch.branch_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {!isMainManager() && user?.branch_id && (
+                  <div className="form-group">
+                    <label>الفرع</label>
+                    <input
+                      type="text"
+                      value={branches.find(b => b.id === user.branch_id)?.branch_name || 'فرعك'}
+                      disabled
+                      style={{ background: '#f0f0f0', cursor: 'not-allowed' }}
+                    />
+                  </div>
+                )}
+                <div className="form-group">
+                  <label>نوع المستند *</label>
+                  <select
+                    value={uploadData.document_type}
+                    onChange={(e) => setUploadData({ ...uploadData, document_type: e.target.value })}
+                    required
+                  >
+                    {monthlyDocumentTypes.map(type => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>الملف * (PDF, JPG, PNG - الحد الأقصى 10 ميجابايت)</label>
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={handleFileChange}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>الوصف (اختياري)</label>
+                  <textarea
+                    value={uploadData.description}
+                    onChange={(e) => setUploadData({ ...uploadData, description: e.target.value })}
+                    rows="3"
+                    placeholder="ملاحظات إضافية..."
+                  />
+                </div>
+                <div className="form-actions">
+                  <button 
+                    type="submit" 
+                    className="btn-primary"
+                    disabled={uploading}
+                  >
+                    {uploading ? 'جاري الرفع...' : 'رفع'}
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setShowUploadForm(false);
+                      setUploadData({
+                        branch_id: !isMainManager() && user?.branch_id ? user.branch_id : '',
+                        document_type: 'payroll_file',
+                        description: '',
+                        file: null,
+                      });
+                    }} 
+                    className="btn-secondary"
+                    disabled={uploading}
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Image Preview Modal */}
+        {previewDocument && previewUrl && previewDocument.mime_type && previewDocument.mime_type.startsWith('image/') && (
+          <div className="preview-modal" onClick={closePreview}>
+            <div className="preview-content" onClick={(e) => e.stopPropagation()}>
+              <button onClick={closePreview} className="preview-close">×</button>
+              <img src={previewUrl} alt={previewDocument.file_name} />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Main view: Show branches as cards grouped by type
   return (
     <div className="table-page monthly-documents-page">
       <div className="page-header">
         <h1>المستندات الشهرية</h1>
-        <button onClick={handleOpenUploadForm} className="btn-primary">
-          رفع مستند شهري
-        </button>
+        {!isMainManager() && (
+          <button onClick={() => handleOpenUploadForm()} className="btn-primary">
+            رفع مستند شهري
+          </button>
+        )}
       </div>
 
-      {/* Alerts Section */}
-      {alerts.length > 0 && (
-        <div className="monthly-alerts-section">
-          <h2>تنبيهات المستندات الشهرية</h2>
-          <div className="alerts-list">
-            {alerts.map((alert, index) => {
-              const status = alert.status;
-              const deadlineDate = status.deadlineDate;
+      {/* Schools Section */}
+      {schools.length > 0 && (
+        <div className="branches-section">
+          <h2 className="section-title">
+            <img src="https://img.icons8.com/material-rounded/24/school.png" alt="مدرسة" className="section-icon" style={{ width: '24px', height: '24px' }} />
+            المدارس
+          </h2>
+          <div className="branches-grid">
+            {schools.map(branch => {
+              const branchStatus = getBranchStatus(branch.id);
               return (
-                <div key={`${alert.branchId}-${alert.documentType}-${index}`} className={`alert-item alert-${status.status}`}>
-                  <div className="alert-content">
-                    <h3>{alert.documentLabel}</h3>
-                    {isMainManager() && <p className="branch-name">{alert.branchName}</p>}
-                    <p className="alert-message">{status.message}</p>
-                    {status.lastUpload && (
-                      <p className="last-upload">
-                        آخر رفع: {formatGregorianDate(status.lastUpload)}
-                      </p>
-                    )}
-                    {deadlineDate && (
-                      <p className="deadline">
-                        الموعد النهائي: {formatGregorianDate(deadlineDate)}
-                        {status.daysUntilDeadline !== null && (
-                          <span className={`days-left ${status.daysUntilDeadline <= 3 ? 'urgent' : ''}`}>
-                            {status.daysUntilDeadline > 0 
-                              ? ` (متبقي ${status.daysUntilDeadline} يوم)` 
-                              : ' (اليوم هو الموعد النهائي)'}
-                          </span>
-                        )}
-                      </p>
-                    )}
+                <div 
+                  key={branch.id} 
+                  className={`branch-card status-${branchStatus.overallStatus}`}
+                  onClick={() => handleBranchClick(branch)}
+                >
+                  <div className="branch-card-header">
+                    <h2>{branch.branch_name}</h2>
+                    <div className={`status-indicator status-${branchStatus.overallStatus}`}>
+                      {branchStatus.overallStatus === 'uploaded' && '✓'}
+                      {branchStatus.overallStatus === 'pending' && (
+                        <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" style={{ width: '16px', height: '16px' }} />
+                      )}
+                      {branchStatus.overallStatus === 'missing' && '✗'}
+                    </div>
                   </div>
-                  <div className="alert-action">
-                    <button 
-                      onClick={() => {
-                        const newParams = new URLSearchParams(searchParams);
-                        newParams.set('branch_id', alert.branchId);
-                        newParams.set('document_type', alert.documentType);
-                        setSearchParams(newParams);
-                        handleOpenUploadForm();
-                      }}
-                      className={`btn-alert ${status.status === 'missing' || (status.daysUntilDeadline !== null && status.daysUntilDeadline <= 3) ? 'btn-urgent' : ''}`}
-                    >
-                      رفع المستند
-                    </button>
+                  
+                  <div className="branch-card-body">
+                    {monthlyDocumentTypes.map(docType => {
+                      const status = branchStatus.statuses.find(s => s.type === docType.value);
+                      return (
+                        <div key={docType.value} className="document-status-item">
+                          <img src={docType.icon} alt={docType.label} className="doc-icon" style={{ width: '20px', height: '20px' }} />
+                          <span className="doc-label">{docType.label}</span>
+                          <span className={`doc-status status-${status.status}`}>
+                            {status.status === 'uploaded' && '✓'}
+                            {status.status === 'pending' && (
+                              <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" style={{ width: '16px', height: '16px' }} />
+                            )}
+                            {status.status === 'missing' && '✗'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="branch-card-footer">
+                    <span className="click-hint">اضغط لعرض التفاصيل</span>
                   </div>
                 </div>
               );
@@ -506,105 +716,68 @@ const MonthlyDocuments = () => {
         </div>
       )}
 
-      {/* Documents Table */}
-      <div className="table-container">
-        <table className="data-table">
-          <thead>
-            <tr>
-              {isMainManager() && <th>الفرع</th>}
-              <th>نوع المستند</th>
-              <th>اسم الملف</th>
-              <th>تاريخ الرفع</th>
-              <th>الحالة</th>
-              <th>الإجراءات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {documents.length === 0 ? (
-              <tr>
-                <td colSpan={isMainManager() ? "6" : "5"} style={{ textAlign: 'center' }}>
-                  لا توجد مستندات شهرية
-                </td>
-              </tr>
-            ) : (
-              documents.map((doc) => {
-                const docType = monthlyDocumentTypes.find(dt => dt.value === doc.document_type);
-                const branch = branches.find(b => b.id === doc.branch_id);
-                const status = getDocumentStatus(doc.branch_id, doc.document_type);
-                return (
-                  <tr key={doc.id}>
-                    {isMainManager() && <td>{branch ? branch.branch_name : doc.branch_id}</td>}
-                    <td>{docType?.label || doc.document_type}</td>
-                    <td>{doc.file_name}</td>
-                    <td>{formatGregorianDate(doc.uploaded_at)}</td>
-                    <td>
-                      <span className={`badge ${status.status === 'uploaded' ? 'badge-success' : 'badge-warning'}`}>
-                        {status.status === 'uploaded' ? 'تم الرفع' : 'قديم'}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                        {doc.mime_type && (doc.mime_type.startsWith('image/') || doc.mime_type === 'application/pdf') && (
-                          <button 
-                            onClick={() => handlePreview(doc)} 
-                            className="btn-sm" 
-                            style={{ background: '#4CAF50', color: 'white' }}
-                            disabled={previewLoading === doc.id}
-                          >
-                            {previewLoading === doc.id ? 'جاري...' : 'معاينة'}
-                          </button>
-                        )}
-                        <button 
-                          onClick={() => handleDownload(doc.id, doc.file_name)} 
-                          className="btn-sm btn-edit"
-                          disabled={downloading === doc.id}
-                        >
-                          {downloading === doc.id ? 'جاري...' : 'تحميل'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* Healthcare Centers Section */}
+      {healthcareCenters.length > 0 && (
+        <div className="branches-section">
+          <h2 className="section-title">
+            <img src="https://img.icons8.com/material-rounded/24/hospital.png" alt="مستشفى" className="section-icon" style={{ width: '24px', height: '24px' }} />
+            مراكز الرعاية النهارية
+          </h2>
+          <div className="branches-grid">
+            {healthcareCenters.map(branch => {
+              const branchStatus = getBranchStatus(branch.id);
+              return (
+                <div 
+                  key={branch.id} 
+                  className={`branch-card status-${branchStatus.overallStatus}`}
+                  onClick={() => handleBranchClick(branch)}
+                >
+                  <div className="branch-card-header">
+                    <h2>{branch.branch_name}</h2>
+                    <div className={`status-indicator status-${branchStatus.overallStatus}`}>
+                      {branchStatus.overallStatus === 'uploaded' && '✓'}
+                      {branchStatus.overallStatus === 'pending' && (
+                        <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" style={{ width: '16px', height: '16px' }} />
+                      )}
+                      {branchStatus.overallStatus === 'missing' && '✗'}
+                    </div>
+                  </div>
+                  
+                  <div className="branch-card-body">
+                    {monthlyDocumentTypes.map(docType => {
+                      const status = branchStatus.statuses.find(s => s.type === docType.value);
+                      return (
+                        <div key={docType.value} className="document-status-item">
+                          <img src={docType.icon} alt={docType.label} className="doc-icon" style={{ width: '20px', height: '20px' }} />
+                          <span className="doc-label">{docType.label}</span>
+                          <span className={`doc-status status-${status.status}`}>
+                            {status.status === 'uploaded' && '✓'}
+                            {status.status === 'pending' && (
+                              <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" style={{ width: '16px', height: '16px' }} />
+                            )}
+                            {status.status === 'missing' && '✗'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
 
-      {/* Upload Form Modal */}
-      {showUploadForm && (
+                  <div className="branch-card-footer">
+                    <span className="click-hint">اضغط لعرض التفاصيل</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Upload Form Modal for branch managers */}
+      {showUploadForm && !isMainManager() && (
         <div className="modal">
           <div className="modal-content">
             <h2>رفع مستند شهري</h2>
             <form onSubmit={handleUpload}>
-              {isMainManager() && (
-                <div className="form-group">
-                  <label>الفرع *</label>
-                  <select
-                    value={uploadData.branch_id}
-                    onChange={(e) => setUploadData({ ...uploadData, branch_id: e.target.value })}
-                    required
-                  >
-                    <option value="">اختر الفرع</option>
-                    {branches.map(branch => (
-                      <option key={branch.id} value={branch.id}>
-                        {branch.branch_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {!isMainManager() && user?.branch_id && (
-                <div className="form-group">
-                  <label>الفرع</label>
-                  <input
-                    type="text"
-                    value={branches.find(b => b.id === user.branch_id)?.branch_name || 'فرعك'}
-                    disabled
-                    style={{ background: '#f0f0f0', cursor: 'not-allowed' }}
-                  />
-                </div>
-              )}
               <div className="form-group">
                 <label>نوع المستند *</label>
                 <select
@@ -650,7 +823,7 @@ const MonthlyDocuments = () => {
                   onClick={() => {
                     setShowUploadForm(false);
                     setUploadData({
-                      branch_id: !isMainManager() && user?.branch_id ? user.branch_id : '',
+                      branch_id: user?.branch_id || '',
                       document_type: 'payroll_file',
                       description: '',
                       file: null,
@@ -669,48 +842,10 @@ const MonthlyDocuments = () => {
 
       {/* Image Preview Modal */}
       {previewDocument && previewUrl && previewDocument.mime_type && previewDocument.mime_type.startsWith('image/') && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.9)',
-          zIndex: 2000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px'
-        }}
-        onClick={closePreview}
-        >
-          <div style={{ position: 'relative', maxWidth: '90%', maxHeight: '90%' }}>
-            <button
-              onClick={closePreview}
-              style={{
-                position: 'absolute',
-                top: '-40px',
-                right: '0',
-                background: 'none',
-                border: 'none',
-                color: 'white',
-                fontSize: '32px',
-                cursor: 'pointer',
-                zIndex: 2001
-              }}
-            >
-              ×
-            </button>
-            <img
-              src={previewUrl}
-              alt={previewDocument.file_name}
-              style={{
-                maxWidth: '100%',
-                maxHeight: '90vh',
-                objectFit: 'contain'
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
+        <div className="preview-modal" onClick={closePreview}>
+          <div className="preview-content" onClick={(e) => e.stopPropagation()}>
+            <button onClick={closePreview} className="preview-close">×</button>
+            <img src={previewUrl} alt={previewDocument.file_name} />
           </div>
         </div>
       )}

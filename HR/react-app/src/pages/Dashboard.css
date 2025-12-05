@@ -141,6 +141,142 @@
   }
 }
 
+/* Mobile-specific styles (smartphones only) - max-width: 480px */
+@media (max-width: 480px) {
+  .dashboard h1 {
+    font-size: var(--font-size-xl);
+    margin-bottom: var(--spacing-sm);
+  }
+  
+  .welcome-message {
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--spacing-md);
+  }
+  
+  .stats-grid {
+    gap: var(--spacing-sm);
+  }
+  
+  .stat-card {
+    padding: var(--spacing-md);
+  }
+  
+  .stat-card h3 {
+    font-size: var(--font-size-sm);
+  }
+  
+  .stat-number {
+    font-size: var(--font-size-xl);
+  }
+  
+  .btn-stat-link {
+    width: 100%;
+    padding: var(--spacing-sm);
+    font-size: var(--font-size-xs);
+    min-height: 40px;
+  }
+  
+  .alerts-container {
+    gap: var(--spacing-sm);
+  }
+  
+  .alert-card {
+    padding: var(--spacing-sm);
+  }
+  
+  .alert-message {
+    font-size: var(--font-size-xs);
+  }
+  
+  .btn-alert {
+    width: 100%;
+    padding: var(--spacing-sm);
+    font-size: var(--font-size-xs);
+    min-height: 40px;
+  }
+  
+  .incomplete-employees-alert,
+  .missing-branch-documents-alerts,
+  .monthly-documents-alerts,
+  .notifications-section {
+    padding: var(--spacing-md);
+  }
+  
+  .incomplete-employees-alert h2,
+  .missing-branch-documents-alerts h2,
+  .monthly-documents-alerts h2,
+  .notifications-section h2 {
+    font-size: var(--font-size-lg);
+  }
+  
+  .incomplete-employees-table {
+    font-size: var(--font-size-xs);
+  }
+  
+  .incomplete-employees-table th,
+  .incomplete-employees-table td {
+    padding: var(--spacing-xs);
+    font-size: var(--font-size-xs);
+  }
+  
+  .notification-item {
+    padding: var(--spacing-sm);
+  }
+  
+  .notification-header-dashboard {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+  }
+  
+  .notification-message-dashboard {
+    font-size: var(--font-size-xs);
+  }
+  
+  .response-form-dashboard {
+    gap: var(--spacing-xs);
+  }
+  
+  .response-select,
+  .response-textarea {
+    font-size: 16px; /* Prevents zoom on iOS */
+    min-height: 44px; /* Touch-friendly */
+  }
+  
+  .response-form-actions {
+    flex-direction: column;
+  }
+  
+  .response-form-actions .btn {
+    width: 100%;
+  }
+  
+  .branch-stats-summary {
+    padding: var(--spacing-md);
+  }
+  
+  .branch-stats-summary h2 {
+    font-size: var(--font-size-lg);
+  }
+  
+  .graph-label {
+    font-size: var(--font-size-xs);
+  }
+  
+  .graph-bar-container {
+    height: 32px;
+  }
+  
+  .graph-bar-value {
+    font-size: var(--font-size-xs);
+  }
+  
+  .critical-notice {
+    padding: var(--spacing-sm);
+    font-size: var(--font-size-sm);
+  }
+}
+
 /* Missing Branch Documents Alerts */
 .missing-branch-documents-alerts {
   margin-top: var(--spacing-xl);
@@ -420,7 +556,13 @@
 }
 
 .incomplete-employees-alert h2::before {
-  content: '⚠️';
+  content: '';
+  background-image: url('https://img.icons8.com/material-rounded/24/brake-warning.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  display: inline-block;
+  width: 24px;
+  height: 24px;
   font-size: var(--font-size-2xl);
 }
 

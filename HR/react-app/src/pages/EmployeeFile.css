@@ -154,15 +154,10 @@
   margin-top: var(--spacing-sm);
 }
 
+/* Search actions buttons use unified system from buttons.css */
 .search-actions .btn {
-  padding: 0.75rem 1.5rem;
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--transition-base);
-  border: none;
   min-width: 120px;
+  /* Uses unified button system for padding, font-size, etc. */
 }
 
 .search-actions .btn-primary {
@@ -273,14 +268,9 @@
   border-top: 1px solid var(--border-light);
 }
 
+/* Form actions buttons use unified system from buttons.css */
 .form-actions .btn {
-  padding: 0.75rem 2rem;
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  transition: all var(--transition-base);
-  border: none;
+  /* Uses unified button system - no override needed */
 }
 
 .form-actions .btn-primary {

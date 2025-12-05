@@ -1,0 +1,433 @@
+/**
+ * Branches Monitoring Page
+ * Main manager view to monitor branches with employees, statistics, and documents
+ */
+
+import { useState, useEffect } from 'react';
+import { branchesAPI, employeesAPI, branchDocumentsAPI } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
+import { getRequiredBranchDocuments, getBranchTypeLabel, getMonthlyRequiredBranchDocuments } from '../utils/employeeHelpers';
+import './TablePage.css';
+import './BranchesMonitoring.css';
+
+const BranchesMonitoring = () => {
+  const { isMainManager } = useAuth();
+  const { showError } = useNotification();
+  const [branches, setBranches] = useState([]);
+  const [selectedBranch, setSelectedBranch] = useState(null);
+  const [branchEmployees, setBranchEmployees] = useState([]);
+  const [branchDocuments, setBranchDocuments] = useState([]);
+  const [completionStats, setCompletionStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
+  useEffect(() => {
+    if (isMainManager()) {
+      loadBranches();
+    }
+  }, [isMainManager]);
+
+  const loadBranches = async () => {
+    try {
+      setLoading(true);
+      const response = await branchesAPI.getAll({ is_active: true });
+      if (response.data.success) {
+        setBranches(response.data.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading branches:', error);
+      showError('فشل تحميل الفروع');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadBranchDetails = async (branch) => {
+    try {
+      setLoadingDetails(true);
+      setSelectedBranch(branch);
+
+      // Load employees for this branch
+      const employeesResponse = await employeesAPI.getAll({
+        branch_id: branch.id,
+        is_active: true
+      });
+
+      let employees = [];
+      if (employeesResponse.data.success) {
+        employees = employeesResponse.data.data || [];
+      }
+      setBranchEmployees(employees);
+
+      // Calculate completion statistics
+      const total = employees.length;
+      const complete = employees.filter(emp => emp.data_completion_status === 'complete').length;
+      const incomplete = employees.filter(emp => emp.data_completion_status === 'incomplete').length;
+      const completionPercentage = total > 0 ? Math.round((complete / total) * 100) : 0;
+
+      setCompletionStats({
+        total,
+        complete,
+        incomplete,
+        completionPercentage
+      });
+
+      // Load branch documents
+      try {
+        const documentsResponse = await branchDocumentsAPI.getAll({
+          branch_id: branch.id
+        });
+        if (documentsResponse.data.success) {
+          setBranchDocuments(documentsResponse.data.data || []);
+        } else {
+          setBranchDocuments([]);
+        }
+      } catch (error) {
+        console.error('Error loading branch documents:', error);
+        setBranchDocuments([]);
+      }
+    } catch (error) {
+      console.error('Error loading branch details:', error);
+      showError('فشل تحميل تفاصيل الفرع');
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const handleBackToBranches = () => {
+    setSelectedBranch(null);
+    setBranchEmployees([]);
+    setBranchDocuments([]);
+    setCompletionStats(null);
+  };
+
+  // Get required documents for branch type
+  const getRequiredDocuments = (branchType) => {
+    const required = getRequiredBranchDocuments(branchType);
+    const monthly = getMonthlyRequiredBranchDocuments();
+    // Filter out monthly documents as they are handled separately
+    return required.filter(doc => !monthly.includes(doc));
+  };
+
+  // Get document status (existing or missing)
+  const getDocumentStatus = (docType, branchType) => {
+    const branchDocs = branchDocuments.filter(
+      doc => doc.document_type === docType && doc.is_active !== false
+    );
+    return {
+      exists: branchDocs.length > 0,
+      documents: branchDocs
+    };
+  };
+
+  // Document type labels
+  const documentTypeLabels = {
+    license: 'الترخيص',
+    permit: 'التصريح',
+    insurance: 'التأمين',
+    insurance_print: 'برينت التأمينات',
+    contract: 'العقد',
+    rental_contract: 'عقد الايجار',
+    certification: 'الشهادة',
+    registration: 'السجل التجاري',
+    security_contract: 'عقد الامن و السالامة',
+    civil_defense_certificate: 'شهادة الدفاع المدني',
+    municipality_certificate: 'شهادة بلدي',
+    insurance_certificate: 'شهادة التامينات',
+    insurance_statement: 'كشف التأمينات',
+    operational_plan: 'الخطة التشغلية للمركز',
+    owner_civil_id_copy: 'نسخه من هوية الاحوال الشخصية لمالك المركز',
+    disclosure_commitment: 'افصاح و تعهد',
+    certification_commitment_form: 'نموذج تصديق و تعقد',
+    financial_platform_declaration: 'ملف اقرار المنصة المالية',
+    financial_claim_form: 'نموذج مطالبة مالية',
+    student_cadre_file: 'كادر الطلاب',
+    dropped_students: 'الطلاب المتسربين',
+    free_seats: 'المقاعد المتاحة',
+    acceptance_notifications: 'إشعارات القبول'
+  };
+
+  if (!isMainManager()) {
+    return <div className="error-message">هذه الصفحة متاحة فقط للمدير الرئيسي</div>;
+  }
+
+  if (loading) {
+    return <div className="loading">جاري التحميل...</div>;
+  }
+
+  // If branch is selected, show branch details
+  if (selectedBranch) {
+    const requiredDocs = getRequiredDocuments(selectedBranch.branch_type);
+    const existingDocs = [];
+    const missingDocs = [];
+
+    requiredDocs.forEach(docType => {
+      const status = getDocumentStatus(docType, selectedBranch.branch_type);
+      if (status.exists) {
+        existingDocs.push({
+          type: docType,
+          label: documentTypeLabels[docType] || docType,
+          documents: status.documents
+        });
+      } else {
+        missingDocs.push({
+          type: docType,
+          label: documentTypeLabels[docType] || docType
+        });
+      }
+    });
+
+    return (
+      <div className="table-page branches-monitoring-page">
+        <div className="page-header">
+          <button onClick={handleBackToBranches} className="btn-back">
+            ← العودة للفروع
+          </button>
+          <h1>{selectedBranch.branch_name}</h1>
+        </div>
+
+        {loadingDetails ? (
+          <div className="loading">جاري تحميل التفاصيل...</div>
+        ) : (
+          <>
+            {/* Completion Statistics */}
+            {completionStats && (
+              <div className="completion-stats-section">
+                <h2>إحصائيات إكمال البيانات</h2>
+                <div className="stats-cards">
+                  <div className="stat-card">
+                    <div className="stat-label">إجمالي الموظفين</div>
+                    <div className="stat-value">{completionStats.total}</div>
+                  </div>
+                  <div className="stat-card complete">
+                    <div className="stat-label">مكتملين</div>
+                    <div className="stat-value">{completionStats.complete}</div>
+                  </div>
+                  <div className="stat-card incomplete">
+                    <div className="stat-label">غير مكتملين</div>
+                    <div className="stat-value">{completionStats.incomplete}</div>
+                  </div>
+                  <div className="stat-card percentage">
+                    <div className="stat-label">نسبة الإكمال</div>
+                    <div className="stat-value">
+                      <div className="percentage-display">
+                        <div className="percentage-bar-container">
+                          <div 
+                            className="percentage-bar"
+                            style={{ 
+                              width: `${completionStats.completionPercentage}%`,
+                              backgroundColor: 
+                                completionStats.completionPercentage >= 80 
+                                  ? '#4CAF50' 
+                                  : completionStats.completionPercentage >= 50 
+                                  ? '#FF9800' 
+                                  : '#F44336'
+                            }}
+                          />
+                        </div>
+                        <span className="percentage-text">
+                          {completionStats.completionPercentage}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Employees List */}
+            <div className="employees-section">
+              <h2>قائمة الموظفين ({branchEmployees.length})</h2>
+              {branchEmployees.length > 0 ? (
+                <div className="employees-table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>رقم الموظف</th>
+                        <th>الاسم</th>
+                        <th>المهنة</th>
+                        <th>حالة البيانات</th>
+                        <th>الحالة</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {branchEmployees.map((employee) => (
+                        <tr key={employee.id}>
+                          <td>{employee.employee_id_number || '-'}</td>
+                          <td>
+                            {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
+                          </td>
+                          <td>{employee.occupation || '-'}</td>
+                          <td>
+                            <span className={`completion-badge ${
+                              employee.data_completion_status === 'complete' ? 'complete' : 'incomplete'
+                            }`}>
+                              {employee.data_completion_status === 'complete' ? 'مكتمل' : 'غير مكتمل'}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`status-badge ${
+                              employee.status === 'active' ? 'active' : 
+                              employee.status === 'pending' ? 'pending' : 'archived'
+                            }`}>
+                              {employee.status === 'active' ? 'نشط' : 
+                               employee.status === 'pending' ? 'قيد الانتظار' : 'مؤرشف'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="no-data">لا يوجد موظفين في هذا الفرع</div>
+              )}
+            </div>
+
+            {/* Branch Documents */}
+            <div className="documents-section">
+              <h2>مستندات الفرع</h2>
+              
+              {/* Existing Documents */}
+              {existingDocs.length > 0 && (
+                <div className="documents-group">
+                  <h3 className="documents-group-title existing">
+                    <span className="status-icon">✓</span>
+                    المستندات الموجودة ({existingDocs.length})
+                  </h3>
+                  <div className="documents-list">
+                    {existingDocs.map((doc, index) => (
+                      <div key={`existing-${doc.type}-${index}`} className="document-item existing">
+                        <div className="document-info">
+                          <span className="document-name">{doc.label}</span>
+                          <span className="document-count">
+                            {doc.documents.length} {doc.documents.length === 1 ? 'مستند' : 'مستندات'}
+                          </span>
+                        </div>
+                        <div className="document-dates">
+                          {doc.documents.map((d, idx) => (
+                            <span key={idx} className="document-date">
+                              {new Date(d.uploaded_at).toLocaleDateString('ar-SA', { calendar: 'gregory' })}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Missing Documents */}
+              {missingDocs.length > 0 && (
+                <div className="documents-group">
+                  <h3 className="documents-group-title missing">
+                    <span className="status-icon">✗</span>
+                    المستندات الناقصة ({missingDocs.length})
+                  </h3>
+                  <div className="documents-list">
+                    {missingDocs.map((doc, index) => (
+                      <div key={`missing-${doc.type}-${index}`} className="document-item missing">
+                        <div className="document-info">
+                          <span className="document-name">{doc.label}</span>
+                          <span className="document-status">غير موجود</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {existingDocs.length === 0 && missingDocs.length === 0 && (
+                <div className="no-data">لا توجد مستندات مطلوبة لهذا النوع من الفروع</div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // Main view: Show branches as cards grouped by type
+  const schools = branches.filter(b => b.branch_type === 'school');
+  const healthcareCenters = branches.filter(b => b.branch_type === 'healthcare_center');
+
+  return (
+    <div className="table-page branches-monitoring-page">
+      <div className="page-header">
+        <h1>الفروع</h1>
+      </div>
+
+      {/* Schools Section */}
+      {schools.length > 0 && (
+        <div className="branches-section">
+          <h2 className="section-title">
+            <img src="https://img.icons8.com/material-rounded/24/school.png" alt="مدرسة" className="section-icon" style={{ width: '24px', height: '24px' }} />
+            المدارس
+          </h2>
+          <div className="branches-grid">
+            {schools.map(branch => (
+              <div 
+                key={branch.id} 
+                className="branch-card"
+                onClick={() => loadBranchDetails(branch)}
+              >
+                <div className="branch-card-header">
+                  <h3>{branch.branch_name}</h3>
+                </div>
+                <div className="branch-card-body">
+                  <div className="branch-info-item">
+                    <span className="info-label">الموقع:</span>
+                    <span className="info-value">{branch.branch_location || 'غير محدد'}</span>
+                  </div>
+                </div>
+                <div className="branch-card-footer">
+                  <span className="click-hint">اضغط لعرض التفاصيل</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Healthcare Centers Section */}
+      {healthcareCenters.length > 0 && (
+        <div className="branches-section">
+          <h2 className="section-title">
+            <img src="https://img.icons8.com/material-rounded/24/hospital.png" alt="مستشفى" className="section-icon" style={{ width: '24px', height: '24px' }} />
+            مراكز الرعاية النهارية
+          </h2>
+          <div className="branches-grid">
+            {healthcareCenters.map(branch => (
+              <div 
+                key={branch.id} 
+                className="branch-card"
+                onClick={() => loadBranchDetails(branch)}
+              >
+                <div className="branch-card-header">
+                  <h3>{branch.branch_name}</h3>
+                </div>
+                <div className="branch-card-body">
+                  <div className="branch-info-item">
+                    <span className="info-label">الموقع:</span>
+                    <span className="info-value">{branch.branch_location || 'غير محدد'}</span>
+                  </div>
+                </div>
+                <div className="branch-card-footer">
+                  <span className="click-hint">اضغط لعرض التفاصيل</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {schools.length === 0 && healthcareCenters.length === 0 && (
+        <div className="no-data">لا توجد فروع متاحة</div>
+      )}
+    </div>
+  );
+};
+
+export default BranchesMonitoring;
+

@@ -295,3 +295,53 @@ label {
     width: 100%;
   }
 }
+
+/* Mobile-specific styles (smartphones only) - max-width: 480px */
+@media (max-width: 480px) {
+  h1 { 
+    font-size: var(--font-size-xl); 
+  }
+  
+  h2 { 
+    font-size: var(--font-size-lg); 
+  }
+  
+  h3 { 
+    font-size: var(--font-size-base); 
+  }
+  
+  h4 { 
+    font-size: var(--font-size-sm); 
+  }
+  
+  body {
+    font-size: var(--font-size-sm);
+  }
+  
+  input, textarea, select {
+    font-size: 16px; /* Prevents zoom on iOS */
+    min-height: 44px; /* Touch-friendly */
+    padding: var(--spacing-sm);
+  }
+  
+  label {
+    font-size: var(--font-size-xs);
+  }
+  
+  .notifications-container {
+    left: 5px;
+    right: 5px;
+    top: 10px;
+    max-width: calc(100% - 10px);
+  }
+  
+  .notification-toast {
+    padding: var(--spacing-sm);
+    font-size: var(--font-size-sm);
+    min-width: auto;
+  }
+  
+  .notification-message {
+    font-size: var(--font-size-xs);
+  }
+}

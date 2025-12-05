@@ -533,7 +533,9 @@ const Dashboard = () => {
 
             <div className="stat-card">
               <h3>إنشاء تقارير</h3>
-              <div className="stat-number">📊</div>
+              <div className="stat-number">
+                <img src="https://img.icons8.com/48/bar-chart.png" alt="رسم بياني" style={{ width: '48px', height: '48px' }} />
+              </div>
               <Link to="/reports" className="stat-link btn-stat-link">إنشاء تقرير ←</Link>
             </div>
 

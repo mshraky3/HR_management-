@@ -1,0 +1,402 @@
+/**
+ * Branches Monitoring Page Styles
+ */
+
+.branches-monitoring-page {
+  padding: 20px;
+}
+
+.branches-section {
+  margin-bottom: 40px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 20px;
+  color: var(--primary);
+}
+
+.section-icon {
+  font-size: 28px;
+}
+
+.branches-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.branch-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.branch-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  border-color: var(--primary);
+}
+
+.branch-card-header {
+  margin-bottom: 15px;
+}
+
+.branch-card-header h3 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.branch-card-body {
+  margin-bottom: 15px;
+}
+
+.branch-info-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.branch-info-item:last-child {
+  border-bottom: none;
+}
+
+.info-label {
+  font-weight: 500;
+  color: #666;
+}
+
+.info-value {
+  color: #333;
+}
+
+.branch-card-footer {
+  text-align: center;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.click-hint {
+  color: var(--primary);
+  font-size: 14px;
+  font-style: italic;
+}
+
+/* Completion Statistics Section */
+.completion-stats-section {
+  background: white;
+  border-radius: 12px;
+  padding: 25px;
+  margin-bottom: 30px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.completion-stats-section h2 {
+  margin: 0 0 20px 0;
+  font-size: 22px;
+  color: var(--primary);
+}
+
+.stats-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.stat-card {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  border: 2px solid transparent;
+}
+
+.stat-card.complete {
+  background: #e8f5e9;
+  border-color: #4CAF50;
+}
+
+.stat-card.incomplete {
+  background: #ffebee;
+  border-color: #F44336;
+}
+
+.stat-card.percentage {
+  background: #e3f2fd;
+  border-color: #2196F3;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 10px;
+  font-weight: 500;
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: bold;
+  color: #333;
+}
+
+.percentage-display {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.percentage-bar-container {
+  flex: 1;
+  height: 24px;
+  background: #e0e0e0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.percentage-bar {
+  height: 100%;
+  border-radius: 12px;
+  transition: width 0.3s ease;
+}
+
+.percentage-text {
+  font-size: 24px;
+  font-weight: bold;
+  min-width: 60px;
+  text-align: left;
+}
+
+/* Employees Section */
+.employees-section {
+  background: white;
+  border-radius: 12px;
+  padding: 25px;
+  margin-bottom: 30px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.employees-section h2 {
+  margin: 0 0 20px 0;
+  font-size: 22px;
+  color: var(--primary);
+}
+
+.employees-table-container {
+  overflow-x: auto;
+}
+
+.completion-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.completion-badge.complete {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.completion-badge.incomplete {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.active {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.status-badge.pending {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.status-badge.archived {
+  background: #f5f5f5;
+  color: #616161;
+}
+
+/* Documents Section */
+.documents-section {
+  background: white;
+  border-radius: 12px;
+  padding: 25px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.documents-section h2 {
+  margin: 0 0 20px 0;
+  font-size: 22px;
+  color: var(--primary);
+}
+
+.documents-group {
+  margin-bottom: 30px;
+}
+
+.documents-group:last-child {
+  margin-bottom: 0;
+}
+
+.documents-group-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid;
+}
+
+.documents-group-title.existing {
+  color: #2e7d32;
+  border-bottom-color: #4CAF50;
+}
+
+.documents-group-title.missing {
+  color: #c62828;
+  border-bottom-color: #F44336;
+}
+
+.status-icon {
+  font-size: 20px;
+}
+
+.documents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.document-item {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 15px;
+  border-right: 4px solid;
+  transition: all 0.2s ease;
+}
+
+.document-item.existing {
+  border-right-color: #4CAF50;
+}
+
+.document-item.existing:hover {
+  background: #e8f5e9;
+}
+
+.document-item.missing {
+  border-right-color: #F44336;
+  background: #ffebee;
+}
+
+.document-item.missing:hover {
+  background: #ffcdd2;
+}
+
+.document-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.document-name {
+  font-weight: 500;
+  color: #333;
+  font-size: 16px;
+}
+
+.document-count {
+  font-size: 12px;
+  color: #666;
+  background: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.document-status {
+  font-size: 14px;
+  color: #c62828;
+  font-weight: 500;
+}
+
+.document-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.document-date {
+  font-size: 12px;
+  color: #666;
+  background: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.no-data {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+  font-size: 16px;
+}
+
+.btn-back {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-bottom: 20px;
+  transition: background 0.3s ease;
+}
+
+.btn-back:hover {
+  background: var(--primary-dark, #0056b3);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .branches-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .percentage-display {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .percentage-text {
+    text-align: center;
+  }
+}
+

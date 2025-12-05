@@ -142,3 +142,47 @@
     font-size: var(--font-size-base);
   }
 }
+
+/* Mobile-specific styles (smartphones only) - max-width: 480px */
+@media (max-width: 480px) {
+  .login-container {
+    padding: var(--spacing-sm);
+  }
+  
+  .login-card {
+    padding: var(--spacing-md);
+    border-radius: var(--radius-lg);
+    max-width: 100%;
+  }
+  
+  .login-card h1 {
+    font-size: var(--font-size-lg);
+    margin-bottom: var(--spacing-xs);
+  }
+  
+  .login-card h2 {
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--spacing-md);
+  }
+  
+  .form-group {
+    margin-bottom: var(--spacing-md);
+  }
+  
+  .form-group input {
+    font-size: 16px; /* Prevents zoom on iOS */
+    min-height: 44px; /* Touch-friendly */
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+  
+  .login-button {
+    min-height: 44px; /* Touch-friendly */
+    font-size: var(--font-size-base);
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+  
+  .error-message {
+    padding: var(--spacing-sm);
+    font-size: var(--font-size-xs);
+  }
+}

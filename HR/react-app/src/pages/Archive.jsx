@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { archiveAPI, branchesAPI, documentsAPI, branchDocumentsAPI } from '../utils/api';
-import { getDocumentTypeLabel } from '../utils/employeeConstants';
+import { getDocumentTypeLabel, getBranchDocumentTypeLabel } from '../utils/employeeConstants';
 import './Archive.css';
 
 const Archive = () => {
@@ -261,13 +261,54 @@ const Archive = () => {
   const handlePreviewDocument = async (doc) => {
     try {
       setPreviewDocument(doc);
-      const response = await documentsAPI.preview(doc.id);
-      const blob = await response.data;
-      const url = window.URL.createObjectURL(blob);
-      setPreviewUrl(url);
+      
+      // If it's an image and file_path is a URL (Blob Storage), use it directly
+      if (doc.mime_type?.startsWith('image/') && doc.file_path && 
+          (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://'))) {
+        setPreviewUrl(doc.file_path);
+        return;
+      }
+      
+      // For other cases, try the preview endpoint
+      try {
+        const response = await documentsAPI.preview(doc.id);
+        
+        // If response is a redirect or URL, use it directly
+        if (response.data && typeof response.data === 'string' && 
+            (response.data.startsWith('http://') || response.data.startsWith('https://'))) {
+          setPreviewUrl(response.data);
+          return;
+        }
+        
+        // If response has file_url, use it
+        if (response.data?.file_url) {
+          setPreviewUrl(response.data.file_url);
+          return;
+        }
+        
+        // Otherwise, try to get blob from download endpoint
+        const downloadResponse = await documentsAPI.download(doc.id);
+        if (downloadResponse.data instanceof Blob) {
+          const url = window.URL.createObjectURL(downloadResponse.data);
+          setPreviewUrl(url);
+        } else {
+          throw new Error('Invalid response format');
+        }
+      } catch (previewError) {
+        // Fallback to download endpoint
+        const downloadResponse = await documentsAPI.download(doc.id);
+        if (downloadResponse.data instanceof Blob) {
+          const url = window.URL.createObjectURL(downloadResponse.data);
+          setPreviewUrl(url);
+        } else {
+          throw previewError;
+        }
+      }
     } catch (error) {
       console.error('Error previewing document:', error);
       showError('فشل عرض المستند');
+      setPreviewDocument(null);
+      setPreviewUrl(null);
     }
   };
 
@@ -293,13 +334,54 @@ const Archive = () => {
   const handlePreviewBranchDocument = async (doc) => {
     try {
       setPreviewDocument(doc);
-      const response = await branchDocumentsAPI.preview(doc.id);
-      const blob = await response.data;
-      const url = window.URL.createObjectURL(blob);
-      setPreviewUrl(url);
+      
+      // If it's an image and file_path is a URL (Blob Storage), use it directly
+      if (doc.mime_type?.startsWith('image/') && doc.file_path && 
+          (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://'))) {
+        setPreviewUrl(doc.file_path);
+        return;
+      }
+      
+      // For other cases, try the preview endpoint
+      try {
+        const response = await branchDocumentsAPI.preview(doc.id);
+        
+        // If response is a redirect or URL, use it directly
+        if (response.data && typeof response.data === 'string' && 
+            (response.data.startsWith('http://') || response.data.startsWith('https://'))) {
+          setPreviewUrl(response.data);
+          return;
+        }
+        
+        // If response has file_url, use it
+        if (response.data?.file_url) {
+          setPreviewUrl(response.data.file_url);
+          return;
+        }
+        
+        // Otherwise, try to get blob from download endpoint
+        const downloadResponse = await branchDocumentsAPI.download(doc.id);
+        if (downloadResponse.data instanceof Blob) {
+          const url = window.URL.createObjectURL(downloadResponse.data);
+          setPreviewUrl(url);
+        } else {
+          throw new Error('Invalid response format');
+        }
+      } catch (previewError) {
+        // Fallback to download endpoint
+        const downloadResponse = await branchDocumentsAPI.download(doc.id);
+        if (downloadResponse.data instanceof Blob) {
+          const url = window.URL.createObjectURL(downloadResponse.data);
+          setPreviewUrl(url);
+        } else {
+          throw previewError;
+        }
+      }
     } catch (error) {
       console.error('Error previewing document:', error);
       showError('فشل عرض المستند');
+      setPreviewDocument(null);
+      setPreviewUrl(null);
     }
   };
 
@@ -327,6 +409,8 @@ const Archive = () => {
   };
 
   const statusLabels = {
+    active: 'نشط',
+    pending: 'قيد الانتظار',
     terminated_article_80: 'إنهاء المادة 80',
     terminated_article_77: 'إنهاء المادة 77',
     resigned: 'استقالة',
@@ -336,6 +420,8 @@ const Archive = () => {
   };
 
   const statusColors = {
+    active: '#4caf50',
+    pending: '#ff9800',
     terminated_article_80: '#f44336',
     terminated_article_77: '#e91e63',
     resigned: '#ff9800',
@@ -535,12 +621,12 @@ const Archive = () => {
                       </td>
                       <td>
                         {employee.created_at
-                          ? new Date(employee.created_at).toLocaleDateString('ar-SA')
+                          ? new Date(employee.created_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })
                           : '-'}
                       </td>
                       <td>
                         {employee.status_changed_at
-                          ? new Date(employee.status_changed_at).toLocaleDateString('ar-SA')
+                          ? new Date(employee.status_changed_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })
                           : '-'}
                       </td>
                       <td>
@@ -588,7 +674,7 @@ const Archive = () => {
                     <div><strong>الفرع:</strong> {employeeDetails.branch_name || '-'}</div>
                     <div><strong>الحالة:</strong> {statusLabels[employeeDetails.status] || employeeDetails.status}</div>
                     <div><strong>سبب تغيير الحالة:</strong> {employeeDetails.status_change_reason || '-'}</div>
-                    <div><strong>تاريخ تغيير الحالة:</strong> {employeeDetails.status_changed_at ? new Date(employeeDetails.status_changed_at).toLocaleDateString('ar-SA') : '-'}</div>
+                    <div><strong>تاريخ تغيير الحالة:</strong> {employeeDetails.status_changed_at ? new Date(employeeDetails.status_changed_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '-'}</div>
                   </div>
 
                   {/* Documents */}
@@ -602,7 +688,7 @@ const Archive = () => {
                               <strong>{getDocumentTypeLabel(doc.document_type) || doc.document_type}</strong>
                               <span className="document-name">{doc.file_name}</span>
                               <span className="document-date">
-                                {new Date(doc.uploaded_at).toLocaleDateString('ar-SA')}
+                                {new Date(doc.uploaded_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })}
                               </span>
                             </div>
                             <div className="document-actions">
@@ -668,7 +754,7 @@ const Archive = () => {
                     }, [])
                     .map(type => (
                       <option key={type} value={type}>
-                        {getDocumentTypeLabel(type) || type}
+                        {getBranchDocumentTypeLabel(type) || type}
                       </option>
                     ))}
                 </select>
@@ -688,11 +774,11 @@ const Archive = () => {
               {archivedDocuments.map(doc => (
                 <div key={doc.id} className="document-card">
                   <div className="document-info">
-                    <strong>{getDocumentTypeLabel(doc.document_type) || doc.document_type}</strong>
+                    <strong>{getBranchDocumentTypeLabel(doc.document_type) || doc.document_type}</strong>
                     <span className="document-name">{doc.file_name}</span>
                     <span className="document-branch">{doc.branch_name}</span>
                     <span className="document-date">
-                      {new Date(doc.uploaded_at).toLocaleDateString('ar-SA')}
+                      {new Date(doc.uploaded_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })}
                     </span>
                     {doc.version && <span className="document-version">الإصدار: {doc.version}</span>}
                   </div>

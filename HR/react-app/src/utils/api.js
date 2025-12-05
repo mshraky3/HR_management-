@@ -483,7 +483,7 @@ export const archiveAPI = {
     api.put(`/api/archive/${id}/status`, data),
   
   getArchivedBranchDocuments: (filters = {}) => 
-    api.get('/api/archive/branch-documents', { params: filters }),
+    api.get('/api/archive/branch-documents/all', { params: filters }),
   
   getArchivedBranchDocumentById: (id) => 
     api.get(`/api/archive/branch-documents/${id}`),

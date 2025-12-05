@@ -398,7 +398,7 @@ const Employees = () => {
     // NOTE: All document validations removed - documents are now optional
     // The system will track incomplete employees and show them in Dashboard
     
-    // Validate IBAN and bank name match if provided
+    // Validate bank name and IBAN are both provided if one is provided
     if (formData.bank_iban || formData.bank_name) {
       if (formData.bank_iban && !formData.bank_name) {
         showWarning('الرجاء اختيار اسم البنك');
@@ -407,53 +407,6 @@ const Employees = () => {
       if (formData.bank_name && !formData.bank_iban) {
         showWarning('الرجاء إدخال رقم الآيبان البنكي');
         return;
-      }
-      
-      // Validate IBAN format and bank match
-      if (formData.bank_iban && formData.bank_name) {
-        const cleanIban = formData.bank_iban.replace(/\s/g, '').toUpperCase();
-        if (cleanIban.length !== 24 || !cleanIban.startsWith('SA')) {
-          showWarning('صيغة IBAN غير صحيحة. يجب أن يكون بالشكل: SAXX XXXX XXXX XXXX XXXX XXXX');
-          return;
-        }
-        
-        // Extract bank code from correct position (indices 4-5, not 2-3)
-        // Structure: SA(0-1) Check(2-3) BankCode(4-5) Account(6-23)
-        const bankCode = cleanIban.substring(4, 6);
-        const banks = [
-          { code: '10', nameAr: 'البنك الأهلي السعودي (SNB)', alternativeCodes: [] },
-          { code: '80', nameAr: 'مصرف الراجحي', alternativeCodes: ['82'] },
-          { code: '05', nameAr: 'مصرف الإنماء', alternativeCodes: [] },
-          { code: '20', nameAr: 'بنك الرياض', alternativeCodes: [] },
-          { code: '50', nameAr: 'البنك السعودي الأول (ساب)', alternativeCodes: [] },
-          { code: '15', nameAr: 'بنك البلاد', alternativeCodes: [] },
-          { code: '30', nameAr: 'البنك العربي الوطني', alternativeCodes: [] },
-          { code: '45', nameAr: 'البنك السعودي الفرنسي', alternativeCodes: [] },
-          { code: '60', nameAr: 'بنك الجزيرة', alternativeCodes: [] },
-          { code: '55', nameAr: 'البنك السعودي للاستثمار', alternativeCodes: [] },
-          { code: '90', nameAr: 'بنك الخليج الدولي (ميم)', alternativeCodes: [] },
-          { code: '95', nameAr: 'بنك الإمارات دبي الوطني', alternativeCodes: [] },
-          { code: '76', nameAr: 'بنك مسقط', alternativeCodes: [] },
-          { code: '31', nameAr: 'بنك الكويت الوطني', alternativeCodes: [] },
-        ];
-        
-        // Helper function to check if bank code matches (including alternative codes)
-        const bankCodeMatches = (bank, code) => {
-          if (bank.code === code) return true;
-          if (bank.alternativeCodes && bank.alternativeCodes.includes(code)) return true;
-          return false;
-        };
-        
-        const ibanBank = banks.find(b => bankCodeMatches(b, bankCode));
-        if (!ibanBank) {
-          showWarning('كود البنك في IBAN غير معروف');
-          return;
-        }
-
-        if (ibanBank.nameAr !== formData.bank_name) {
-          showWarning(`IBAN لا يطابق البنك المختار. IBAN يخص: ${ibanBank.nameAr}`);
-          return;
-        }
       }
     }
     

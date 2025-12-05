@@ -57,6 +57,7 @@ const Layout = ({ children }) => {
     monitoring: {
       label: 'المتابعة والمراقبة',
       items: [
+        { path: '/branches-monitoring', label: 'الفروع' },
         { path: '/monthly-documents', label: 'المستندات الشهرية' },
         { path: '/branch-statistics', label: 'إحصائيات الفروع' },
         { path: '/notify-branches', label: 'إشعار الفروع' },

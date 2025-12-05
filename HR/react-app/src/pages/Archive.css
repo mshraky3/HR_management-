@@ -421,3 +421,57 @@
   }
 }
 
+/* Mobile-specific styles (smartphones only) - max-width: 480px */
+@media (max-width: 480px) {
+  .page-header {
+    padding: var(--spacing-sm);
+    gap: var(--spacing-sm);
+  }
+  
+  .page-header h1 {
+    font-size: var(--font-size-lg);
+  }
+  
+  .archive-tabs {
+    gap: var(--spacing-xs);
+  }
+  
+  .filters-grid {
+    gap: var(--spacing-sm);
+  }
+  
+  .documents-grid {
+    gap: var(--spacing-sm);
+  }
+  
+  .employee-info-grid {
+    gap: var(--spacing-sm);
+  }
+  
+  .action-buttons {
+    gap: var(--spacing-sm);
+  }
+  
+  .action-buttons .btn {
+    width: 100%;
+    min-height: 44px; /* Touch-friendly */
+  }
+  
+  .preview-modal {
+    padding: var(--spacing-xs);
+  }
+  
+  .preview-header {
+    padding: var(--spacing-sm);
+  }
+  
+  .preview-content {
+    padding: var(--spacing-sm);
+    min-height: 300px;
+  }
+  
+  .preview-content iframe {
+    min-height: 400px;
+  }
+}
+

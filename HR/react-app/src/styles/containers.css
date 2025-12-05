@@ -173,3 +173,40 @@
   }
 }
 
+/* Mobile-specific styles (smartphones only) - max-width: 480px */
+@media (max-width: 480px) {
+  .container,
+  .page-container {
+    padding: var(--spacing-xs);
+  }
+  
+  .card-container {
+    padding: var(--spacing-sm);
+    border-radius: var(--radius-lg);
+  }
+  
+  .card-container-sm {
+    padding: var(--spacing-sm);
+  }
+  
+  .section-header {
+    gap: var(--spacing-sm);
+    padding-bottom: var(--spacing-sm);
+  }
+  
+  .section-header h2 {
+    font-size: var(--font-size-lg);
+  }
+  
+  .form-container {
+    padding: var(--spacing-md);
+    border-radius: var(--radius-lg);
+  }
+  
+  .modal-container {
+    padding: var(--spacing-md);
+    max-width: 95vw;
+    border-radius: var(--radius-lg);
+  }
+}
+

@@ -80,7 +80,9 @@ export const NotificationProvider = ({ children }) => {
               <span className="notification-icon">
                 {notification.type === 'success' && '✓'}
                 {notification.type === 'error' && '✗'}
-                {notification.type === 'warning' && '⚠'}
+                {notification.type === 'warning' && (
+                  <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" style={{ width: '20px', height: '20px' }} />
+                )}
                 {notification.type === 'info' && 'ℹ'}
               </span>
               <span className="notification-message">{notification.message}</span>

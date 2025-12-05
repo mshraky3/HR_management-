@@ -23,10 +23,7 @@ const API_CONFIG = {
   CURRENT: 'PRODUCTION'
 };
 
-/**
- * Get the API URL based on current environment
- * Priority: Environment variable > CURRENT setting > Default LOCAL
- */
+
 const getApiUrl = () => {
   // First check for environment variable (Vite .env file)
   // This takes highest priority

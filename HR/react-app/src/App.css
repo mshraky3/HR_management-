@@ -154,6 +154,29 @@ button:disabled::before {
   .grid-2 { grid-template-columns: 1fr; }
 }
 
+/* Mobile-specific styles (smartphones only) - max-width: 480px */
+@media (max-width: 480px) {
+  .container {
+    padding: 0 var(--spacing-xs);
+  }
+  
+  .card {
+    padding: var(--spacing-md);
+    border-radius: var(--radius-lg);
+  }
+  
+  .error-message,
+  .success-message {
+    padding: var(--spacing-sm);
+    font-size: var(--font-size-sm);
+  }
+  
+  .empty-state {
+    padding: var(--spacing-lg);
+    font-size: var(--font-size-sm);
+  }
+}
+
 /* Flex Utilities */
 .flex {
   display: flex;
