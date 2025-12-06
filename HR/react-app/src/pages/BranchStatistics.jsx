@@ -171,7 +171,7 @@ const BranchStatistics = () => {
           >
             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => (
               <option key={month} value={month}>
-                {new Date(selectedYear, month - 1).toLocaleDateString('ar-SA', { 
+                {new Date(selectedYear, month - 1).toLocaleDateString('en-US', { 
                   month: 'long',
                   calendar: 'gregory'
                 })}
@@ -331,7 +331,7 @@ const BranchStatistics = () => {
                   </td>
                   <td>
                     {stat.last_login
-                      ? new Date(stat.last_login).toLocaleDateString('ar-SA', { 
+                      ? new Date(stat.last_login).toLocaleDateString('en-US', { 
                           calendar: 'gregory',
                           year: 'numeric',
                           month: '2-digit',
@@ -346,7 +346,7 @@ const BranchStatistics = () => {
                   </td>
                   <td>
                     {stat.last_activity
-                      ? new Date(stat.last_activity).toLocaleDateString('ar-SA', { 
+                      ? new Date(stat.last_activity).toLocaleDateString('en-US', { 
                           calendar: 'gregory',
                           year: 'numeric',
                           month: '2-digit',
@@ -393,7 +393,7 @@ const BranchStatistics = () => {
                         {stat.monthly_login_history.map((month, idx) => {
                           const height = maxDays > 0 ? (month.login_days / maxDays) * 100 : 0;
                           const monthDate = new Date(month.month);
-                          const monthName = monthDate.toLocaleDateString('ar-SA', { 
+                          const monthName = monthDate.toLocaleDateString('en-US', { 
                             month: 'short',
                             calendar: 'gregory'
                           });

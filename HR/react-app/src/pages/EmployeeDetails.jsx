@@ -633,7 +633,7 @@ const EmployeeDetails = () => {
               {employee.date_of_birth_gregorian && (
                 <div className="info-item">
                   <span className="info-item-label">تاريخ الميلاد (ميلادي)</span>
-                  <span className="info-item-value">{new Date(employee.date_of_birth_gregorian).toLocaleDateString('ar-SA')}</span>
+                  <span className="info-item-value">{new Date(employee.date_of_birth_gregorian).toLocaleDateString('en-US')}</span>
                 </div>
               )}
               {employee.id_expiry_date_hijri && (
@@ -645,7 +645,7 @@ const EmployeeDetails = () => {
               {employee.id_expiry_date_gregorian && (
                 <div className="info-item">
                   <span className="info-item-label">انتهاء الهوية (ميلادي)</span>
-                  <span className="info-item-value">{new Date(employee.id_expiry_date_gregorian).toLocaleDateString('ar-SA')}</span>
+                  <span className="info-item-value">{new Date(employee.id_expiry_date_gregorian).toLocaleDateString('en-US')}</span>
                 </div>
               )}
               {employee.religion && (
@@ -781,25 +781,25 @@ const EmployeeDetails = () => {
             </div>
             <div className="salary-box">
               <div className="salary-item">
-                <strong>الراتب الأساسي:</strong> {(employee.base_salary || 0).toLocaleString('ar-SA')} ريال
+                <strong>الراتب الأساسي:</strong> {(employee.base_salary || 0).toLocaleString('en-US')} ريال
               </div>
               <div className="salary-item">
-                <strong>بدل السكن:</strong> {(employee.housing_allowance || 0).toLocaleString('ar-SA')} ريال
+                <strong>بدل السكن:</strong> {(employee.housing_allowance || 0).toLocaleString('en-US')} ريال
               </div>
               <div className="salary-item">
-                <strong>بدل النقل:</strong> {(employee.transportation_allowance || 0).toLocaleString('ar-SA')} ريال
+                <strong>بدل النقل:</strong> {(employee.transportation_allowance || 0).toLocaleString('en-US')} ريال
               </div>
               <div className="salary-item">
-                <strong>بدل نهاية الخدمة:</strong> {(employee.end_of_service_allowance || 0).toLocaleString('ar-SA')} ريال
+                <strong>بدل نهاية الخدمة:</strong> {(employee.end_of_service_allowance || 0).toLocaleString('en-US')} ريال
               </div>
               <div className="salary-item">
-                <strong>بدل الإجازة السنوية:</strong> {(employee.annual_leave_allowance || 0).toLocaleString('ar-SA')} ريال
+                <strong>بدل الإجازة السنوية:</strong> {(employee.annual_leave_allowance || 0).toLocaleString('en-US')} ريال
               </div>
               <div className="salary-item">
-                <strong>بدلات أخرى:</strong> {(employee.other_allowances || 0).toLocaleString('ar-SA')} ريال
+                <strong>بدلات أخرى:</strong> {(employee.other_allowances || 0).toLocaleString('en-US')} ريال
               </div>
               <div className="salary-item" style={{ color: employee.deductions > 0 ? 'var(--danger)' : 'inherit' }}>
-                <strong>الاستقطاعات (خصومات، سلف، إلخ):</strong> {(employee.deductions || 0) > 0 ? '-' : ''}{(employee.deductions || 0).toLocaleString('ar-SA')} ريال
+                <strong>الاستقطاعات (خصومات، سلف، إلخ):</strong> {(employee.deductions || 0) > 0 ? '-' : ''}{(employee.deductions || 0).toLocaleString('en-US')} ريال
               </div>
               <div className="salary-total">
                 <div style={{ fontWeight: 'bold', color: 'var(--primary)', marginBottom: '5px' }}>
@@ -809,12 +809,12 @@ const EmployeeDetails = () => {
                      parseFloat(employee.transportation_allowance || 0) +
                      parseFloat(employee.end_of_service_allowance || 0) +
                      parseFloat(employee.annual_leave_allowance || 0) +
-                     parseFloat(employee.other_allowances || 0)).toLocaleString('ar-SA')
+                     parseFloat(employee.other_allowances || 0)).toLocaleString('en-US')
                   } ريال
                 </div>
                 {(employee.deductions || 0) > 0 && (
                   <div style={{ fontWeight: 'bold', color: 'var(--danger)', marginBottom: '5px' }}>
-                    <strong>الاستقطاعات:</strong> -{parseFloat(employee.deductions || 0).toLocaleString('ar-SA')} ريال
+                    <strong>الاستقطاعات:</strong> -{parseFloat(employee.deductions || 0).toLocaleString('en-US')} ريال
                   </div>
                 )}
                 <div style={{ fontWeight: 'bold', color: 'var(--success)', fontSize: '1.1em', marginTop: '5px', paddingTop: '5px', borderTop: '1px solid var(--border)' }}>
@@ -825,7 +825,7 @@ const EmployeeDetails = () => {
                      parseFloat(employee.end_of_service_allowance || 0) +
                      parseFloat(employee.annual_leave_allowance || 0) +
                      parseFloat(employee.other_allowances || 0) -
-                     parseFloat(employee.deductions || 0)).toLocaleString('ar-SA')
+                     parseFloat(employee.deductions || 0)).toLocaleString('en-US')
                   } ريال
                 </div>
               </div>
@@ -834,7 +834,7 @@ const EmployeeDetails = () => {
         )}
         {employee.salary && !employee.base_salary && (
           <div style={{ marginTop: '10px', padding: '10px', background: '#fff3cd', borderRadius: '5px', fontSize: '0.9em' }}>
-            <strong>الراتب (قديم):</strong> {employee.salary.toLocaleString('ar-SA')} ريال
+            <strong>الراتب (قديم):</strong> {employee.salary.toLocaleString('en-US')} ريال
             <div style={{ fontSize: '0.85em', color: '#856404', marginTop: '5px' }}>
               ملاحظة: هذا الحقل للتوافق مع البيانات القديمة فقط
             </div>
@@ -870,7 +870,7 @@ const EmployeeDetails = () => {
                     </div>
                     <div className="document-info-item">
                       <span className="document-info-label">تاريخ الرفع</span>
-                      <span className="document-info-value">{new Date(doc.uploaded_at).toLocaleDateString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                      <span className="document-info-value">{new Date(doc.uploaded_at).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
                     </div>
                     <div className="document-info-item">
                       <span className="document-info-label">الحالة</span>
@@ -881,7 +881,7 @@ const EmployeeDetails = () => {
                     {doc.expiry_date && (
                       <div className="document-info-item">
                         <span className="document-info-label">تاريخ الانتهاء</span>
-                        <span className="document-info-value">{new Date(doc.expiry_date).toLocaleDateString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                        <span className="document-info-value">{new Date(doc.expiry_date).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
                       </div>
                     )}
                   </div>

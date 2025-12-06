@@ -655,7 +655,7 @@ const Dashboard = () => {
                       )}
                     </div>
                     <span className="notification-date-dashboard">
-                      {new Date(notification.created_at).toLocaleDateString('ar-SA', { calendar: 'gregory' })}
+                      {new Date(notification.created_at).toLocaleDateString('en-US', { calendar: 'gregory' })}
                     </span>
                   </div>
                   <div className="notification-message-dashboard">
@@ -973,7 +973,7 @@ const Dashboard = () => {
                   <p className="alert-date" style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>
                     {alert.branchName}
                     {alert.lastUploadDate && (
-                      <> - آخر تحديث: {new Date(alert.lastUploadDate).toLocaleDateString('ar-SA')}</>
+                      <> - آخر تحديث: {new Date(alert.lastUploadDate).toLocaleDateString('en-US')}</>
                     )}
                   </p>
                 </div>

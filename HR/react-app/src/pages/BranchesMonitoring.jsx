@@ -334,7 +334,7 @@ const BranchesMonitoring = () => {
                         <div className="document-dates">
                           {doc.documents.map((d, idx) => (
                             <span key={idx} className="document-date">
-                              {new Date(d.uploaded_at).toLocaleDateString('ar-SA', { calendar: 'gregory' })}
+                              {new Date(d.uploaded_at).toLocaleDateString('en-US', { calendar: 'gregory' })}
                             </span>
                           ))}
                         </div>

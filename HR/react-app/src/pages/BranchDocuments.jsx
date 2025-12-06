@@ -972,7 +972,7 @@ const BranchDocuments = () => {
                         <div className="document-info-item">
                           <span className="info-label">تاريخ الرفع:</span>
                           <span className="info-value">
-                            {new Date(card.document.uploaded_at).toLocaleDateString('ar-SA', { 
+                            {new Date(card.document.uploaded_at).toLocaleDateString('en-US', { 
                               calendar: 'gregory',
                               year: 'numeric',
                               month: 'long',
@@ -984,7 +984,7 @@ const BranchDocuments = () => {
                           <div className="document-info-item">
                             <span className="info-label">تاريخ الانتهاء:</span>
                             <span className="info-value">
-                              {new Date(card.document.expiry_date).toLocaleDateString('ar-SA', { 
+                              {new Date(card.document.expiry_date).toLocaleDateString('en-US', { 
                                 calendar: 'gregory',
                                 year: 'numeric',
                                 month: 'long',

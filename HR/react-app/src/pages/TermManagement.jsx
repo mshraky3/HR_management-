@@ -373,7 +373,7 @@ const TermManagement = () => {
 const AcademicYearCard = ({ year, onComplete }) => {
   const formatDate = (date) => {
     if (!date) return '-';
-    return new Date(date).toLocaleDateString('ar-SA');
+    return new Date(date).toLocaleDateString('en-US');
   };
 
   return (

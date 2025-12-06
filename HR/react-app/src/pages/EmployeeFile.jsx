@@ -498,7 +498,7 @@ const EmployeeFile = () => {
                         )}
                         {doc.expiry_date && (
                           <span className="document-expiry">
-                            {' '}- تاريخ الانتهاء: {new Date(doc.expiry_date).toLocaleDateString('ar-SA')}
+                            {' '}- تاريخ الانتهاء: {new Date(doc.expiry_date).toLocaleDateString('en-US')}
                           </span>
                         )}
                       </div>
