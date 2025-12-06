@@ -5,11 +5,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { reportsAPI, branchesAPI, employeesAPI, branchDocumentsAPI, setBranchDocumentsPassword } from '../utils/api';
+import { reportsAPI, branchesAPI, employeesAPI, branchDocumentsAPI, setBranchDocumentsPassword, documentsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import NationalitySelect from '../components/NationalitySelect';
 import BankSelect from '../components/BankSelect';
+import { getDocumentTypeLabel, DOCUMENT_TYPE_LABELS } from '../utils/employeeConstants';
 import './TablePage.css';
 import './Reports.css';
 
@@ -51,6 +52,11 @@ const Reports = () => {
     'id_or_residency_number',
     'nationality',
   ]);
+  
+  // Selected documents for report
+  const [selectedDocuments, setSelectedDocuments] = useState([]);
+  const [showDocumentWarning, setShowDocumentWarning] = useState(false);
+  const [missingDocumentsInfo, setMissingDocumentsInfo] = useState(null);
   
   // Available fields for selection
   const availableFields = [
@@ -320,6 +326,35 @@ const Reports = () => {
     });
   };
 
+  // Check for missing documents before generating report
+  const checkMissingDocuments = async (employees, selectedDocTypes) => {
+    if (!selectedDocTypes || selectedDocTypes.length === 0) {
+      return null;
+    }
+    
+    const missingInfo = {};
+    
+    for (const employee of employees) {
+      try {
+        const docsResponse = await documentsAPI.getByEmployeeId(employee.id);
+        const employeeDocs = docsResponse.data.success ? docsResponse.data.data : [];
+        const employeeDocTypes = employeeDocs.map(doc => doc.document_type);
+        
+        const missing = selectedDocTypes.filter(docType => !employeeDocTypes.includes(docType));
+        if (missing.length > 0) {
+          missingInfo[employee.id] = {
+            name: `${employee.first_name} ${employee.second_name} ${employee.third_name} ${employee.fourth_name}`,
+            missing: missing
+          };
+        }
+      } catch (error) {
+        console.error(`Error checking documents for employee ${employee.id}:`, error);
+      }
+    }
+    
+    return Object.keys(missingInfo).length > 0 ? missingInfo : null;
+  };
+
   const handleGenerateReport = async (e) => {
     e.preventDefault();
     
@@ -330,6 +365,12 @@ const Reports = () => {
     
     if (selectedFields.length === 0) {
       showWarning('الرجاء اختيار حقل واحد على الأقل للعرض');
+      return;
+    }
+    
+    // If documents are selected, only PDF is allowed
+    if (selectedDocuments.length > 0 && fileType === 'excel') {
+      showWarning('عند اختيار المستندات، يجب أن يكون التقرير بصيغة PDF فقط');
       return;
     }
     
@@ -387,13 +428,119 @@ const Reports = () => {
         branchIds = [getCurrentBranchId()];
       }
       
+      // Check for missing documents if documents are selected
+      // We'll check this on the backend, but we can also check here for warning
+      if (selectedDocuments.length > 0) {
+        // Get employees list for checking (simplified - backend will do full check)
+        try {
+          const employeesResponse = await employeesAPI.getAll({
+            ...cleanFilters,
+            branch_id: branchIds.length === 1 ? branchIds[0] : branchIds,
+            is_active: true
+          });
+          
+          if (employeesResponse.data.success) {
+            const employees = employeesResponse.data.data || [];
+            const missingInfo = await checkMissingDocuments(employees, selectedDocuments);
+            if (missingInfo) {
+              setMissingDocumentsInfo(missingInfo);
+              setShowDocumentWarning(true);
+              setGenerating(false);
+              return;
+            }
+          }
+        } catch (error) {
+          console.error('Error checking missing documents:', error);
+          // Continue anyway - backend will handle it
+        }
+      }
+      
       const response = await reportsAPI.generate({
         title: reportTitle,
         filters: cleanFilters,
         selectedFields: selectedFields,
+        selectedDocuments: selectedDocuments.length > 0 ? selectedDocuments : undefined,
         branch_ids: branchIds, // Send as array for main manager
         branch_id: !isMainManager() ? getCurrentBranchId() : undefined, // Keep for backward compatibility
-        fileType: fileType // Send file type (pdf or excel)
+        fileType: selectedDocuments.length > 0 ? 'pdf' : fileType // Force PDF if documents selected
+      }, {
+        responseType: 'blob'
+      });
+      
+      // Create blob and download based on file type
+      const mimeType = fileType === 'excel' 
+        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        : 'application/pdf';
+      const fileExtension = fileType === 'excel' ? 'xlsx' : 'pdf';
+      
+      const blob = new Blob([response.data], { type: mimeType });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${reportTitle}.${fileExtension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      showSuccess('تم إنشاء التقرير بنجاح');
+      
+    } catch (error) {
+      console.error('Error generating report:', error);
+      showError(error.response?.data?.message || 'فشل إنشاء التقرير');
+    } finally {
+      setGenerating(false);
+    }
+  };
+  
+  // Continue with missing documents
+  const handleContinueWithMissing = async () => {
+    setShowDocumentWarning(false);
+    setMissingDocumentsInfo(null);
+    
+    // Retry generation by calling handleGenerateReport directly
+    try {
+      setGenerating(true);
+      
+      // Clean filters - remove empty arrays and empty strings
+      const cleanFilters = {};
+      Object.keys(filters).forEach(key => {
+        const value = filters[key];
+        if (Array.isArray(value) && value.length > 0) {
+          cleanFilters[key] = value;
+        } else if (!Array.isArray(value) && value !== '' && value !== null && value !== undefined) {
+          cleanFilters[key] = value;
+        }
+      });
+      
+      // Convert age strings to numbers
+      if (cleanFilters.min_age) {
+        cleanFilters.min_age = parseInt(cleanFilters.min_age);
+      }
+      if (cleanFilters.max_age) {
+        cleanFilters.max_age = parseInt(cleanFilters.max_age);
+      }
+      
+      // Prepare branch IDs for main manager
+      let branchIds = null;
+      if (isMainManager()) {
+        if (selectAllBranches) {
+          branchIds = branches.map(b => b.id);
+        } else {
+          branchIds = selectedBranchIds;
+        }
+      } else {
+        branchIds = [getCurrentBranchId()];
+      }
+      
+      const response = await reportsAPI.generate({
+        title: reportTitle,
+        filters: cleanFilters,
+        selectedFields: selectedFields,
+        selectedDocuments: selectedDocuments.length > 0 ? selectedDocuments : undefined,
+        branch_ids: branchIds,
+        branch_id: !isMainManager() ? getCurrentBranchId() : undefined,
+        fileType: selectedDocuments.length > 0 ? 'pdf' : fileType
       }, {
         responseType: 'blob'
       });
@@ -868,6 +1015,35 @@ const Reports = () => {
         </div>
 
         <div className="form-section">
+          <h2>المستندات المرفقة (اختياري)</h2>
+          <p style={{ marginBottom: '15px', color: '#666', fontSize: '14px' }}>
+            يمكنك اختيار مستندات الموظفين لإدراجها في التقرير. عند اختيار المستندات، سيتم إنشاء تقرير لكل موظف على حدة مع بياناته ومستنداته.
+          </p>
+          <div className="fields-grid">
+            {Object.entries(DOCUMENT_TYPE_LABELS).map(([docType, label]) => (
+              <label key={docType} className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={selectedDocuments.includes(docType)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedDocuments([...selectedDocuments, docType]);
+                      // Force PDF when documents are selected
+                      if (fileType === 'excel') {
+                        setFileType('pdf');
+                      }
+                    } else {
+                      setSelectedDocuments(selectedDocuments.filter(d => d !== docType));
+                    }
+                  }}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="form-section">
           <h2>نوع الملف</h2>
           <div className="file-type-selection">
             <label className="file-type-radio-label">
@@ -880,15 +1056,23 @@ const Reports = () => {
               />
               <span>PDF</span>
             </label>
-            <label className="file-type-radio-label">
+            <label className="file-type-radio-label" style={{ 
+              opacity: selectedDocuments.length > 0 ? 0.5 : 1,
+              cursor: selectedDocuments.length > 0 ? 'not-allowed' : 'pointer'
+            }}>
               <input
                 type="radio"
                 name="fileType"
                 value="excel"
                 checked={fileType === 'excel'}
-                onChange={(e) => setFileType(e.target.value)}
+                onChange={(e) => {
+                  if (selectedDocuments.length === 0) {
+                    setFileType(e.target.value);
+                  }
+                }}
+                disabled={selectedDocuments.length > 0}
               />
-              <span>Excel</span>
+              <span>Excel {selectedDocuments.length > 0 && '(غير متاح عند اختيار المستندات)'}</span>
             </label>
           </div>
         </div>
@@ -924,6 +1108,52 @@ const Reports = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Missing Documents Warning Modal */}
+      {showDocumentWarning && missingDocumentsInfo && (
+        <div className="modal-overlay" onClick={() => setShowDocumentWarning(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <h2>تنبيه: مستندات مفقودة</h2>
+            <p style={{ marginBottom: '15px', color: '#666' }}>
+              بعض الموظفين لا يمتلكون المستندات المختارة. سيتم كتابة "مستند غير متواجد" في التقرير للمستندات المفقودة.
+            </p>
+            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '20px', border: '1px solid #ddd', padding: '10px', borderRadius: '4px' }}>
+              {Object.entries(missingDocumentsInfo).map(([employeeId, info]) => (
+                <div key={employeeId} style={{ marginBottom: '15px', paddingBottom: '15px', borderBottom: '1px solid #eee' }}>
+                  <strong style={{ display: 'block', marginBottom: '5px' }}>{info.name}</strong>
+                  <div style={{ fontSize: '14px', color: '#d32f2f' }}>
+                    المستندات المفقودة:
+                    <ul style={{ marginTop: '5px', paddingRight: '20px' }}>
+                      {info.missing.map(docType => (
+                        <li key={docType}>{getDocumentTypeLabel(docType)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="form-actions">
+              <button 
+                type="button" 
+                className="btn btn-primary" 
+                onClick={handleContinueWithMissing}
+              >
+                المتابعة مع المستندات المفقودة
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => {
+                  setShowDocumentWarning(false);
+                  setMissingDocumentsInfo(null);
+                }}
+              >
+                إلغاء
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { employeesAPI, documentsAPI, branchesAPI } from '../utils/api';
+import { employeesAPI, documentsAPI, branchesAPI, setBranchDocumentsPassword } from '../utils/api';
 import { getDocumentTypeLabel } from '../utils/employeeConstants';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
@@ -14,7 +14,7 @@ import './TablePage.css';
 const EmployeeDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isBranchManager } = useAuth();
+  const { isBranchManager, isMainManager, user } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const [employee, setEmployee] = useState(null);
   const [documents, setDocuments] = useState([]);
@@ -28,6 +28,10 @@ const EmployeeDetails = () => {
   const [processingRenewal, setProcessingRenewal] = useState(false);
   const [showNonRenewalForm, setShowNonRenewalForm] = useState(false);
   const [nonRenewalData, setNonRenewalData] = useState({ status: '', reason: '' });
+  const [generatingFile, setGeneratingFile] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
 
   useEffect(() => {
     loadEmployeeData();
@@ -227,6 +231,84 @@ const EmployeeDetails = () => {
     }
   };
 
+  const handleGenerateFile = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    // For branch managers, show password modal
+    if (isBranchManager() && !isMainManager()) {
+      setShowPasswordModal(true);
+      setPassword('');
+      setPasswordError('');
+      return;
+    }
+    
+    // For main managers, generate directly
+    await generateFilePDF();
+  };
+
+  const generateFilePDF = async (providedPassword = null) => {
+    try {
+      setGeneratingFile(true);
+      
+      // Set password if provided (for branch managers)
+      if (providedPassword && isBranchManager() && !isMainManager() && user?.branch_id) {
+        setBranchDocumentsPassword(user.branch_id, providedPassword);
+      }
+      
+      // Get branch_id from employee or user
+      const branchId = employee?.branch_id || user?.branch_id;
+      
+      const response = await employeesAPI.generateSingleEmployeeFile(id, {
+        responseType: 'blob',
+        branch_id: branchId
+      });
+      
+      // Create blob URL and download
+      const blob = response.data instanceof Blob 
+        ? response.data 
+        : new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const fileName = `ملف_موظف_${employee?.first_name}_${employee?.second_name}_${employee?.third_name}_${employee?.fourth_name}.pdf`;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      showSuccess('تم إنشاء ملف الموظف بنجاح');
+      setShowPasswordModal(false);
+      setPassword('');
+      
+    } catch (error) {
+      console.error('Error generating file:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'فشل إنشاء الملف';
+      
+      // If password error, show in modal
+      if (error.response?.status === 401 && isBranchManager() && !isMainManager()) {
+        setPasswordError('كلمة المرور غير صحيحة');
+      } else {
+        showError(errorMessage);
+        setShowPasswordModal(false);
+      }
+    } finally {
+      setGeneratingFile(false);
+    }
+  };
+
+  const handlePasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (!password.trim()) {
+      setPasswordError('الرجاء إدخال كلمة المرور');
+      return;
+    }
+    await generateFilePDF(password);
+  };
+
   if (loading) {
     return <div className="loading">جاري تحميل بيانات الموظف...</div>;
   }
@@ -259,7 +341,7 @@ const EmployeeDetails = () => {
         {employee.data_completion_status === 'incomplete' && (
           <div className="alert alert-warning">
             <h2>
-              <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" className="icon-lg" style={{ width: '24px', height: '24px' }} />
+              <span style={{ fontSize: '24px', marginLeft: '8px' }}>⚠️</span>
               البيانات الناقصة
             </h2>
             <p>
@@ -301,9 +383,9 @@ const EmployeeDetails = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span className="icon-md">
                 {employee.data_completion_status === 'complete' ? (
-                  <img src="https://img.icons8.com/material-rounded/24/check-mark.png" alt="نجاح" style={{ width: '24px', height: '24px' }} />
+                  <span style={{ fontSize: '24px' }}>✓</span>
                 ) : (
-                  <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" style={{ width: '24px', height: '24px' }} />
+                  <span style={{ fontSize: '24px' }}>⚠️</span>
                 )}
               </span>
               <strong>
@@ -769,7 +851,151 @@ const EmployeeDetails = () => {
             ))}
           </div>
         )}
+        
+        {/* Generate File Button */}
+        <div style={{ 
+          marginTop: '30px', 
+          padding: '20px', 
+          textAlign: 'center', 
+          borderTop: '2px solid #e0e0e0',
+          position: 'relative',
+          zIndex: 10,
+          pointerEvents: 'auto'
+        }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleGenerateFile(e);
+            }}
+            disabled={generatingFile || !employee}
+            className="btn btn-primary btn-lg"
+            style={{ 
+              padding: '12px 30px',
+              fontSize: '16px',
+              fontWeight: 'bold',
+              cursor: (generatingFile || !employee) ? 'not-allowed' : 'pointer',
+              position: 'relative',
+              zIndex: 11,
+              pointerEvents: (generatingFile || !employee) ? 'none' : 'auto',
+              opacity: (generatingFile || !employee) ? 0.6 : 1
+            }}
+          >
+            {generatingFile ? (
+              <>
+                <span className="spinner" style={{ display: 'inline-block', marginLeft: '8px', width: '16px', height: '16px' }}></span>
+                جاري إنشاء الملف...
+              </>
+            ) : (
+              <>
+                <img src="https://img.icons8.com/material-rounded/24/document.png" alt="ملف" style={{ width: '20px', height: '20px', verticalAlign: 'middle', marginLeft: '8px' }} />
+                إنشاء ملف الموظف (PDF)
+              </>
+            )}
+          </button>
+        </div>
       </div>
+
+      {/* Password Modal */}
+      {showPasswordModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          zIndex: 2000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}
+        onClick={() => {
+          if (!generatingFile) {
+            setShowPasswordModal(false);
+            setPassword('');
+            setPasswordError('');
+          }
+        }}
+        >
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            padding: '30px',
+            maxWidth: '400px',
+            width: '100%',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+          }}
+          onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ marginBottom: '20px', textAlign: 'center' }}>
+              إدخال كلمة المرور
+            </h2>
+            <p style={{ marginBottom: '20px', textAlign: 'center', color: '#666' }}>
+              يرجى إدخال كلمة مرور مستندات الفرع لإنشاء ملف الموظف
+            </p>
+            <form onSubmit={handlePasswordSubmit}>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                  كلمة المرور
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setPasswordError('');
+                  }}
+                  disabled={generatingFile}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: passwordError ? '2px solid #dc3545' : '1px solid #ddd',
+                    borderRadius: '4px',
+                    fontSize: '16px'
+                  }}
+                  autoFocus
+                />
+                {passwordError && (
+                  <div style={{ color: '#dc3545', marginTop: '5px', fontSize: '14px' }}>
+                    {passwordError}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasswordModal(false);
+                    setPassword('');
+                    setPasswordError('');
+                  }}
+                  disabled={generatingFile}
+                  className="btn btn-secondary"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={generatingFile || !password.trim()}
+                  className="btn btn-primary"
+                >
+                  {generatingFile ? (
+                    <>
+                      <span className="spinner" style={{ display: 'inline-block', marginLeft: '8px', width: '14px', height: '14px' }}></span>
+                      جاري المعالجة...
+                    </>
+                  ) : (
+                    'إنشاء الملف'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Image Preview Modal */}
       {previewDocument && previewUrl && previewDocument.mime_type && previewDocument.mime_type.startsWith('image/') && (

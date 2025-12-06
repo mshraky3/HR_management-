@@ -28,7 +28,6 @@ const BranchDocuments = () => {
   const [editingDocument, setEditingDocument] = useState(null);
   const [previewDocument, setPreviewDocument] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
-  const [activeTab, setActiveTab] = useState('all'); // Tab state: 'all', 'payroll_file', 'attendance_file', or other types
   const [documentAlert, setDocumentAlert] = useState(null); // Alert message for document type
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [password, setPassword] = useState('');
@@ -198,10 +197,7 @@ const BranchDocuments = () => {
 
   // Handle URL parameters for filtering (from Dashboard links)
   useEffect(() => {
-    const documentType = searchParams.get('document_type');
     const branchId = searchParams.get('branch_id');
-    
-    setActiveTab(documentType || 'all');
     
     if (branchId) {
       setUploadData(prev => ({ ...prev, branch_id: branchId }));
@@ -225,15 +221,10 @@ const BranchDocuments = () => {
     };
   }, []);
 
-  // Filter documents based on active tab
+  // Set all documents (no filtering needed since monthly documents are in separate page)
   useEffect(() => {
-    if (activeTab === 'all') {
       setDocuments(allDocuments);
-    } else {
-      const filtered = allDocuments.filter(doc => doc.document_type === activeTab);
-      setDocuments(filtered);
-    }
-  }, [activeTab, allDocuments]);
+  }, [allDocuments]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -630,11 +621,9 @@ const BranchDocuments = () => {
     }
   };
 
-  // All document types
+  // All document types (monthly documents are in separate page)
   const allBranchDocumentTypes = [
     // Common documents (all branches)
-    { value: 'payroll_file', label: 'ملف مسيرات الرواتب', requiresDefaultFields: false, branchType: null },
-    { value: 'attendance_file', label: 'ملف الحضور و الانصراف', requiresDefaultFields: false, branchType: null },
     { value: 'registration', label: 'السجل التجاري', requiresDefaultFields: true, branchType: null },
     { value: 'iban_file', label: 'ملف الآيبان', requiresDefaultFields: false, branchType: null },
     // Common documents with default fields (all branches)
@@ -657,19 +646,31 @@ const BranchDocuments = () => {
     { value: 'financial_claim_form', label: 'نموذج مطالبة مالية', requiresDefaultFields: true, branchType: 'healthcare_center' },
     // Student-related documents for healthcare centers only (should appear in alerts)
     { value: 'student_cadre_file', label: 'كادر الطلاب', requiresDefaultFields: false, branchType: 'healthcare_center' },
-    { value: 'dropped_students', label: 'الطلاب المتسربين', requiresDefaultFields: false, branchType: 'healthcare_center' },
+    { value: 'dropped_students', label: 'الطلاب المتغييبين', requiresDefaultFields: false, branchType: 'healthcare_center' },
     { value: 'free_seats', label: 'المقاعد المتاحة', requiresDefaultFields: false, branchType: 'healthcare_center' },
     { value: 'acceptance_notifications', label: 'إشعارات القبول', requiresDefaultFields: false, branchType: 'healthcare_center' },
     { value: 'other', label: 'أخرى', requiresDefaultFields: true, branchType: null },
   ];
 
   // Get current branch type (memoized)
+  // Use URL branch_id first, then currentBranchId, then user branch_id
   const currentBranchType = useMemo(() => {
-    const branchId = uploadData.branch_id || (!isMainManager() && user?.branch_id ? user.branch_id : null);
+    let branchId = null;
+    
+    // Priority: URL > currentBranchId (from password) > user branch_id
+    const branchIdFromUrl = searchParams.get('branch_id');
+    if (branchIdFromUrl) {
+      branchId = parseInt(branchIdFromUrl);
+    } else if (currentBranchId) {
+      branchId = currentBranchId;
+    } else if (!isMainManager() && user?.branch_id) {
+      branchId = user.branch_id;
+    }
+    
     if (!branchId) return null;
-    const branch = branches.find(b => b.id === parseInt(branchId));
+    const branch = branches.find(b => b.id === branchId);
     return branch?.branch_type || null;
-  }, [uploadData.branch_id, isMainManager, user?.branch_id, branches]);
+  }, [branches, currentBranchId, isMainManager, user, searchParams]);
 
   // Filter document types based on branch type (memoized)
   const branchDocumentTypes = useMemo(() => {
@@ -680,6 +681,84 @@ const BranchDocuments = () => {
       return true;
     });
   }, [currentBranchType]);
+
+  // Get current branch (must be before early returns)
+  const currentBranch = useMemo(() => {
+    const branchId = getCurrentBranchId();
+    if (!branchId) return null;
+    return branches.find(b => b.id === branchId);
+  }, [branches, currentBranchId, isMainManager, user, searchParams]);
+
+  // Get document status for each document type (must be before early returns)
+  const getDocumentStatus = useCallback((docType) => {
+    if (!allDocuments || allDocuments.length === 0) {
+      return { exists: false, document: null };
+    }
+    
+    // Get branch ID from URL first, then currentBranchId, then user branch_id
+    let branchId = null;
+    const branchIdFromUrl = searchParams.get('branch_id');
+    if (branchIdFromUrl) {
+      branchId = parseInt(branchIdFromUrl);
+    } else if (currentBranchId) {
+      branchId = currentBranchId;
+    } else if (!isMainManager() && user?.branch_id) {
+      branchId = user.branch_id;
+    }
+    
+    const doc = allDocuments.find(d => 
+      d.document_type === docType && 
+      d.is_active !== false &&
+      (!isMainManager() || d.branch_id === branchId)
+    );
+    return {
+      exists: !!doc,
+      document: doc || null
+    };
+  }, [allDocuments, isMainManager, currentBranchId, user, searchParams]);
+
+  // Sort documents by priority: 1) Monthly (highest), 2) Student/Cadre, 3) Others
+  const sortDocumentCardsByPriority = useCallback((cards) => {
+    const monthlyTypes = ['payroll_file', 'attendance_file'];
+    const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
+    
+    return [...cards].sort((a, b) => {
+      const aType = a.value;
+      const bType = b.value;
+      
+      // Monthly documents first (highest priority)
+      const aIsMonthly = monthlyTypes.includes(aType);
+      const bIsMonthly = monthlyTypes.includes(bType);
+      if (aIsMonthly && !bIsMonthly) return -1;
+      if (!aIsMonthly && bIsMonthly) return 1;
+      
+      // Student/Cadre documents second
+      const aIsStudentCadre = studentCadreTypes.includes(aType);
+      const bIsStudentCadre = studentCadreTypes.includes(bType);
+      if (aIsStudentCadre && !bIsStudentCadre) return -1;
+      if (!aIsStudentCadre && bIsStudentCadre) return 1;
+      
+      // Others last
+      return 0;
+    });
+  }, []);
+
+  // Prepare document cards data (must be before early returns)
+  const documentCards = useMemo(() => {
+    if (!currentBranchType) return [];
+    
+    const cards = branchDocumentTypes.map(docType => {
+      const status = getDocumentStatus(docType.value);
+      return {
+        ...docType,
+        exists: status.exists,
+        document: status.document
+      };
+    });
+    
+    // Sort by priority
+    return sortDocumentCardsByPriority(cards);
+  }, [branchDocumentTypes, currentBranchType, getDocumentStatus, sortDocumentCardsByPriority]);
 
   // Show password modal if not verified
   if (showPasswordModal && !isPasswordVerified) {
@@ -762,29 +841,10 @@ const BranchDocuments = () => {
     return <div className="loading">جاري التحميل...</div>;
   }
 
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    // Update URL params
-    const newParams = new URLSearchParams(searchParams);
-    if (tab === 'all') {
-      newParams.delete('document_type');
-    } else {
-      newParams.set('document_type', tab);
-    }
-    setSearchParams(newParams);
-  };
-
-  const handleOpenUploadForm = () => {
-    // Auto-select document type based on active tab or URL parameter
+  const handleOpenUploadForm = (documentType = '') => {
+    // Auto-select document type based on URL parameter
     const documentTypeFromUrl = searchParams.get('document_type');
-    let documentType = '';
-    
-    // Priority: URL parameter > active tab (for monthly documents)
-    if (documentTypeFromUrl) {
-      documentType = documentTypeFromUrl;
-    } else if (activeTab === 'payroll_file' || activeTab === 'attendance_file') {
-      documentType = activeTab;
-    }
+    let selectedDocumentType = documentType || documentTypeFromUrl || '';
     
     // Get branch_id from URL or user's branch
     const branchIdFromUrl = searchParams.get('branch_id');
@@ -795,10 +855,33 @@ const BranchDocuments = () => {
       branchId = user.branch_id;
     }
     
+    // Show alerts for specific document types
     setDocumentAlert(null);
+    if (selectedDocumentType) {
+      const selectedDocType = allBranchDocumentTypes.find(t => t.value === selectedDocumentType);
+      if (selectedDocType?.hasAlert) {
+        if (selectedDocumentType === 'student_cadre_file' || selectedDocumentType === 'dropped_students') {
+          setDocumentAlert({
+            type: 'info',
+            message: 'تنبيه: يجب أن يحتوي المستند على:\n- أرقام جوالات أولياء الأمور\n- المواصلات\n- الخدمات المقدمة لهم'
+          });
+        } else if (selectedDocumentType === 'free_seats') {
+          setDocumentAlert({
+            type: 'info',
+            message: 'تنبيه: يجب أن يحتوي المستند على:\n- عدد المقاعد\n- الفصل الدراسي\n- السنة الدراسية'
+          });
+        } else if (selectedDocumentType === 'acceptance_notifications') {
+          setDocumentAlert({
+            type: 'info',
+            message: 'تنبيه: يجب أن يكون ترتيب أسماء الطلاب في هذا الملف نفس ترتيب أسماء الطلاب في مستند الكادر الطلابي'
+          });
+        }
+      }
+    }
+    
     setUploadData({
       branch_id: branchId,
-      document_type: documentType,
+      document_type: selectedDocumentType,
       description: '',
       document_number: '',
       issue_date: '',
@@ -814,37 +897,227 @@ const BranchDocuments = () => {
     <div className="table-page">
       <div className="page-header">
         <h1>{isMainManager() ? 'مستندات الفروع' : 'مستندات الفرع'}</h1>
-        <button onClick={handleOpenUploadForm} className="btn-primary">
-          رفع مستند فرع
-        </button>
       </div>
 
-      {/* Tabs for filtering documents */}
-      <div className="document-tabs">
+      {/* Branch Info */}
+      {currentBranch && (
+        <div className="branch-info-card" style={{
+          background: 'var(--bg)',
+          padding: '1rem 1.5rem',
+          borderRadius: 'var(--radius-xl)',
+          marginBottom: '1.5rem',
+          boxShadow: 'var(--shadow-sm)',
+          border: '1px solid var(--border-light)'
+        }}>
+          <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text)' }}>
+            {currentBranch.branch_name}
+          </h2>
+          <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            نوع الفرع: {currentBranch.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية'}
+          </p>
+        </div>
+      )}
+
+      {/* Document Cards Grid */}
+      <div className="document-cards-container">
+        <h2 style={{ 
+          marginBottom: '1.5rem', 
+          fontSize: '1.5rem', 
+          color: 'var(--text)',
+          fontWeight: 600
+        }}>
+          مستندات الفرع
+        </h2>
+        {documentCards.length === 0 ? (
+          <div className="no-data" style={{ 
+            textAlign: 'center', 
+            padding: '3rem',
+            color: 'var(--text-secondary)'
+          }}>
+            لا توجد مستندات مطلوبة لهذا النوع من الفروع
+          </div>
+        ) : (() => {
+          const monthlyTypes = ['payroll_file', 'attendance_file'];
+          const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
+          
+          const monthlyCards = documentCards.filter(card => monthlyTypes.includes(card.value));
+          const studentCadreCards = documentCards.filter(card => studentCadreTypes.includes(card.value));
+          const otherCards = documentCards.filter(card => !monthlyTypes.includes(card.value) && !studentCadreTypes.includes(card.value));
+          
+          const renderCard = (card) => {
+            const docType = allBranchDocumentTypes.find(dt => dt.value === card.value);
+            return (
+              <div 
+                key={card.value} 
+                className={`document-card ${card.exists ? 'document-exists' : 'document-missing'}`}
+              >
+                  <div className="document-card-header">
+                    <div className="document-card-icon">
+                      {card.exists ? (
+                        <span className="status-icon exists">✓</span>
+                      ) : (
+                        <span className="status-icon missing">✗</span>
+                      )}
+                    </div>
+                    <h3 className="document-card-title">{card.label}</h3>
+                  </div>
+                  
+                  <div className="document-card-body">
+                    {card.exists && card.document ? (
+                      <div className="document-info">
+                        <div className="document-info-item">
+                          <span className="info-label">اسم الملف:</span>
+                          <span className="info-value">{card.document.file_name}</span>
+                        </div>
+                        <div className="document-info-item">
+                          <span className="info-label">تاريخ الرفع:</span>
+                          <span className="info-value">
+                            {new Date(card.document.uploaded_at).toLocaleDateString('ar-SA', { 
+                              calendar: 'gregory',
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
+                          </span>
+                        </div>
+                        {card.document.expiry_date && (
+                          <div className="document-info-item">
+                            <span className="info-label">تاريخ الانتهاء:</span>
+                            <span className="info-value">
+                              {new Date(card.document.expiry_date).toLocaleDateString('ar-SA', { 
+                                calendar: 'gregory',
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                              })}
+                            </span>
+                          </div>
+                        )}
+                        <div className="document-info-item">
+                          <span className="info-label">حالة التحقق:</span>
+                          <span className={`verification-badge ${card.document.is_verified ? 'verified' : 'not-verified'}`}>
+                            {card.document.is_verified ? '✓ تم التحقق' : '✗ غير محقق'}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="document-missing-message">
+                        <p>المستند غير موجود</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="document-card-actions">
+                    {card.exists && card.document ? (
+                      <>
         <button
-          className={`tab-button ${activeTab === 'all' ? 'active' : ''}`}
-          onClick={() => handleTabChange('all')}
+                          onClick={() => handleEdit(card.document)}
+                          className="btn-card btn-update"
         >
-          الكل
+                          <img src="https://img.icons8.com/material-rounded/24/edit.png" alt="تحديث" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
+                          تحديث
         </button>
+                        {card.document.mime_type && (card.document.mime_type.startsWith('image/') || card.document.mime_type === 'application/pdf') && (
         <button
-          className={`tab-button ${activeTab === 'payroll_file' ? 'active' : ''}`}
-          onClick={() => handleTabChange('payroll_file')}
-        >
-          ملف مسيرات الرواتب
+                            onClick={() => handlePreview(card.document)}
+                            className="btn-card btn-preview"
+                            disabled={previewLoading === card.document.id}
+                          >
+                            {previewLoading === card.document.id ? (
+                              <span className="spinner" style={{ display: 'inline-block', width: '12px', height: '12px', marginLeft: '5px' }}></span>
+                            ) : (
+                              <img src="https://img.icons8.com/?size=24&id=85028&format=png&color=000000" alt="معاينة" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
+                            )}
+                            معاينة
         </button>
+                        )}
         <button
-          className={`tab-button ${activeTab === 'attendance_file' ? 'active' : ''}`}
-          onClick={() => handleTabChange('attendance_file')}
-        >
-          ملف الحضور و الانصراف
+                          onClick={() => handleDownload(card.document.id, card.document.file_name)}
+                          className="btn-card btn-download"
+                          disabled={downloading === card.document.id}
+                        >
+                          {downloading === card.document.id ? (
+                            <span className="spinner" style={{ display: 'inline-block', width: '12px', height: '12px', marginLeft: '5px' }}></span>
+                          ) : (
+                            <img src="https://img.icons8.com/material-rounded/24/download--v1.png" alt="تحميل" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
+                          )}
+                          تحميل
         </button>
+                        {(isMainManager() || (user?.branch_id === card.document.branch_id)) && (
         <button
-          className={`tab-button ${activeTab === 'other' ? 'active' : ''}`}
-          onClick={() => handleTabChange('other')}
+                            onClick={() => handleDelete(card.document.id)}
+                            className="btn-card btn-delete"
         >
-          أخرى
+                            <img src="https://img.icons8.com/material-rounded/24/trash.png" alt="حذف" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
+                            حذف
         </button>
+                        )}
+                        {isMainManager() && !card.document.is_verified && (
+                          <button
+                            onClick={() => handleVerify(card.document.id)}
+                            className="btn-card btn-verify"
+                          >
+                            ✓ التحقق
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => handleOpenUploadForm(card.value)}
+                        className="btn-card btn-upload"
+                      >
+                        <img src="https://img.icons8.com/material-rounded/24/upload.png" alt="رفع" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
+                        رفع المستند
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+          };
+          
+          return (
+            <>
+              {/* Monthly Documents Section (Highest Priority) */}
+              {monthlyCards.length > 0 && (
+                <div className="documents-priority-section priority-high">
+                  <h3 className="priority-section-title">
+                    <span className="priority-icon">🔴</span>
+                    المستندات الشهرية (الأولوية القصوى)
+                  </h3>
+                  <div className="document-cards-grid">
+                    {monthlyCards.map(renderCard)}
+                  </div>
+                </div>
+              )}
+              
+              {/* Student/Cadre Documents Section */}
+              {studentCadreCards.length > 0 && (
+                <div className="documents-priority-section priority-medium">
+                  <h3 className="priority-section-title">
+                    <span className="priority-icon">🟡</span>
+                    مستندات الكوادر والطلاب
+                  </h3>
+                  <div className="document-cards-grid">
+                    {studentCadreCards.map(renderCard)}
+                  </div>
+                </div>
+              )}
+              
+              {/* Other Documents Section */}
+              {otherCards.length > 0 && (
+                <div className="documents-priority-section priority-low">
+                  <h3 className="priority-section-title">
+                    <span className="priority-icon">🟢</span>
+                    باقي المستندات
+                  </h3>
+                  <div className="document-cards-grid">
+                    {otherCards.map(renderCard)}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {showUploadForm && (
@@ -1056,104 +1329,6 @@ const BranchDocuments = () => {
         </div>
       )}
 
-      <div className="table-container">
-        <table className="data-table">
-          <thead>
-            <tr>
-              {isMainManager() && <th>الفرع</th>}
-              <th>نوع المستند</th>
-              <th>اسم الملف</th>
-              <th>تاريخ الرفع</th>
-              <th>تاريخ الانتهاء</th>
-              <th>تم التحقق</th>
-              <th>الإجراءات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {documents.length === 0 ? (
-              <tr>
-                <td colSpan={isMainManager() ? "7" : "6"} style={{ textAlign: 'center' }}>لا توجد مستندات فرع</td>
-              </tr>
-            ) : (
-              documents.map((doc) => {
-                const docType = allBranchDocumentTypes.find(dt => dt.value === doc.document_type);
-                const branch = branches.find(b => b.id === doc.branch_id);
-                return (
-                  <tr key={doc.id}>
-                    {isMainManager() && <td>{branch ? branch.branch_name : doc.branch_id}</td>}
-                    <td>{docType ? docType.label : doc.document_type}</td>
-                    <td>{doc.file_name}</td>
-                    <td>{new Date(doc.uploaded_at).toLocaleDateString('en-GB')}</td>
-                    <td>{doc.expiry_date ? new Date(doc.expiry_date).toLocaleDateString('en-GB') : '-'}</td>
-                    <td>
-                      <span className={`badge ${doc.is_verified ? 'badge-success' : 'badge-danger'}`}>
-                        {doc.is_verified ? 'نعم' : 'لا'}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                        {doc.mime_type && (doc.mime_type.startsWith('image/') || doc.mime_type === 'application/pdf') && (
-                          <button 
-                            onClick={() => handlePreview(doc)} 
-                            className="btn-sm" 
-                            style={{ background: '#4CAF50', color: 'white' }}
-                            disabled={previewLoading === doc.id}
-                          >
-                            {previewLoading === doc.id ? (
-                              <>
-                                <span className="spinner" style={{ display: 'inline-block', marginLeft: '5px', width: '12px', height: '12px' }}></span>
-                                جاري التحميل...
-                              </>
-                            ) : (
-                              <>
-                                <img src="https://img.icons8.com/?size=24&id=85028&format=png&color=000000" alt="معاينة" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} />
-                                معاينة
-                              </>
-                            )}
-                          </button>
-                        )}
-                        <button 
-                          onClick={() => handleDownload(doc.id, doc.file_name)} 
-                          className="btn-sm btn-edit"
-                          disabled={downloading === doc.id}
-                        >
-                          {downloading === doc.id ? (
-                            <>
-                              <span className="spinner" style={{ display: 'inline-block', marginLeft: '5px', width: '12px', height: '12px' }}></span>
-                              جاري التحميل...
-                            </>
-                          ) : (
-                            <><img src="https://img.icons8.com/material-rounded/24/download--v1.png" alt="تحميل" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} /> تحميل</>
-                          )}
-                        </button>
-                        {/* Branch managers can edit/delete their own branch documents, main managers can edit/delete all */}
-                        {(isMainManager() || (user?.branch_id === doc.branch_id)) && (
-                          <>
-                            <button onClick={() => handleEdit(doc)} className="btn btn-primary btn-sm">
-                              <img src="https://img.icons8.com/material-rounded/24/edit.png" alt="تعديل" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} />
-                              تعديل
-                            </button>
-                            <button onClick={() => handleDelete(doc.id)} className="btn-sm btn-delete">
-                              <img src="https://img.icons8.com/material-rounded/24/trash.png" alt="حذف" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} />
-                              حذف
-                            </button>
-                          </>
-                        )}
-                        {/* Only main manager can verify */}
-                        {isMainManager() && !doc.is_verified && (
-                          <button onClick={() => handleVerify(doc.id)} className="btn-sm" style={{ background: '#27ae60', color: 'white' }}>
-                            ✓ التحقق
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
 
       {/* Edit Document Modal */}
       {showEditForm && editingDocument && (

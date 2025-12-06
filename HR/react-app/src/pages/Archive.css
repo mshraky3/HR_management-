@@ -397,19 +397,23 @@
   .page-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 15px;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
   }
 
   .archive-tabs {
     flex-direction: column;
+    gap: var(--spacing-xs);
   }
 
   .filters-grid {
     grid-template-columns: 1fr;
+    gap: var(--spacing-md);
   }
 
   .documents-grid {
     grid-template-columns: 1fr;
+    gap: var(--spacing-md);
   }
 
   .employee-info-grid {
@@ -418,6 +422,12 @@
 
   .action-buttons {
     flex-direction: column;
+    width: 100%;
+  }
+  
+  .action-buttons .btn {
+    width: 100%;
+    min-height: 44px;
   }
 }
 

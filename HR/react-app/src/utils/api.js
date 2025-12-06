@@ -67,6 +67,19 @@ const extractBranchId = (config) => {
     }
   }
   
+  // Check URL path params for employee-file generate-single (e.g., /api/employee-file/generate-single/:employee_id)
+  const employeeFileMatch = config.url?.match(/\/api\/employee-file\/generate-single\/(\d+)/);
+  if (employeeFileMatch) {
+    // Try to get branch_id from query params if provided
+    if (config.params?.branch_id) {
+      return config.params.branch_id;
+    }
+    // Fallback: use first available password (assuming single branch access)
+    if (branchDocumentsPasswords.size > 0) {
+      return branchDocumentsPasswords.keys().next().value;
+    }
+  }
+  
   // Check request data (for POST/PUT)
   if (config.data) {
     if (config.data instanceof FormData) {
@@ -142,8 +155,10 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     
-    // Add branch documents password for branch documents and reports API calls
-    if (config.url?.includes('/api/branch-documents') || config.url?.includes('/api/reports')) {
+    // Add branch documents password for branch documents, reports, and employee-file API calls
+    if (config.url?.includes('/api/branch-documents') || 
+        config.url?.includes('/api/reports') || 
+        config.url?.includes('/api/employee-file/generate-single')) {
       const branchId = extractBranchId(config);
       const password = getPasswordForRequest(branchId);
       if (password) {
@@ -275,6 +290,16 @@ export const employeesAPI = {
       responseType: config.responseType || 'blob',
     }),
   
+  generateSingleEmployeeFile: (employeeId, config = {}) => {
+    const { branch_id, ...restConfig } = config;
+    const params = branch_id ? { branch_id } : {};
+    return api.post(`/api/employee-file/generate-single/${employeeId}`, {}, {
+      ...restConfig,
+      params,
+      responseType: config.responseType || 'blob',
+    });
+  },
+  
   updateStatus: (id, data) => 
     api.put(`/api/employees/${id}/status`, data),
   
@@ -333,6 +358,9 @@ export const documentsAPI = {
     api.get('/api/documents', { 
       params: { unverified: true, employee_id: employeeId } 
     }),
+  
+  getByEmployeeId: (employeeId) => 
+    api.get(`/api/employees/${employeeId}/documents`),
 };
 
 // Branch Documents API

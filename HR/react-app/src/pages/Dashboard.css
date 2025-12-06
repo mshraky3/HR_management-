@@ -123,13 +123,42 @@
 @media (max-width: 768px) {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
-}
-
+    gap: var(--spacing-sm);
+  }
+  
+  .stat-card {
+    padding: var(--spacing-md);
+  }
+  
+  .alerts-container {
+    grid-template-columns: 1fr;
+  }
+  
+  .notifications-section,
+  .incomplete-employees-alert,
+  .missing-branch-documents-alerts,
+  .monthly-documents-alerts {
+    padding: var(--spacing-md);
+  }
 }
 
 @media (max-width: 640px) {
+  .dashboard {
+    padding: var(--spacing-sm);
+  }
+  
+  .dashboard h1 {
+    font-size: var(--font-size-xl);
+    margin-bottom: var(--spacing-sm);
+  }
+  
   .stats-grid {
     grid-template-columns: 1fr;
+    gap: var(--spacing-sm);
+  }
+  
+  .stat-card {
+    padding: var(--spacing-md);
   }
   
   .stat-number {
@@ -138,6 +167,25 @@
 
   .welcome-message {
     font-size: var(--font-size-base);
+    margin-bottom: var(--spacing-md);
+  }
+  
+  .alerts-container {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-sm);
+  }
+  
+  .alert-card {
+    padding: var(--spacing-sm);
+  }
+  
+  .incomplete-employees-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .incomplete-employees-table table {
+    min-width: 500px;
   }
 }
 
@@ -217,6 +265,16 @@
   .incomplete-employees-table td {
     padding: var(--spacing-xs);
     font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+  
+  .incomplete-employees-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .incomplete-employees-table table {
+    min-width: 400px;
   }
   
   .notification-item {
@@ -556,14 +614,13 @@
 }
 
 .incomplete-employees-alert h2::before {
-  content: '';
-  background-image: url('https://img.icons8.com/material-rounded/24/brake-warning.png');
-  background-size: contain;
-  background-repeat: no-repeat;
+  content: '⚠️';
   display: inline-block;
   width: 24px;
   height: 24px;
-  font-size: var(--font-size-2xl);
+  font-size: 24px;
+  line-height: 24px;
+  margin-left: 8px;
 }
 
 .incomplete-employees-table {
@@ -980,4 +1037,84 @@
   color: var(--text);
   font-weight: 600;
   font-size: var(--font-size-base);
+}
+
+/* Priority Sections for Documents in Dashboard */
+.documents-priority-section {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  border-radius: var(--radius-xl);
+  background: var(--bg);
+  border: 2px solid var(--border-light);
+  margin-top: 1.5rem;
+}
+
+.documents-priority-section.priority-high {
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.1) 0%, rgba(244, 67, 54, 0.03) 100%);
+  border-color: #F44336;
+  border-width: 3px;
+}
+
+.documents-priority-section.priority-medium {
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.1) 0%, rgba(255, 152, 0, 0.03) 100%);
+  border-color: #FF9800;
+  border-width: 2px;
+}
+
+.documents-priority-section.priority-low {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.08) 0%, rgba(76, 175, 80, 0.02) 100%);
+  border-color: #4CAF50;
+  border-width: 2px;
+}
+
+.priority-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid;
+  color: var(--text);
+}
+
+.documents-priority-section.priority-high .priority-section-title {
+  color: #C62828;
+  border-bottom-color: #F44336;
+}
+
+.documents-priority-section.priority-medium .priority-section-title {
+  color: #E65100;
+  border-bottom-color: #FF9800;
+}
+
+.documents-priority-section.priority-low .priority-section-title {
+  color: #2E7D32;
+  border-bottom-color: #4CAF50;
+}
+
+.priority-icon {
+  font-size: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.alert-card.priority-high {
+  border-color: #F44336;
+  border-width: 3px;
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.15) 0%, rgba(244, 67, 54, 0.1) 100%);
+}
+
+.alert-card.priority-medium {
+  border-color: #FF9800;
+  border-width: 2px;
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.12) 0%, rgba(255, 152, 0, 0.08) 100%);
+}
+
+.alert-card.priority-low {
+  border-color: #4CAF50;
+  border-width: 2px;
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%);
 }

@@ -121,6 +121,32 @@ const BranchesMonitoring = () => {
     };
   };
 
+  // Sort documents by priority: 1) Monthly (highest), 2) Student/Cadre, 3) Others
+  const sortDocumentsByPriority = (docs) => {
+    const monthlyTypes = ['payroll_file', 'attendance_file'];
+    const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
+    
+    return [...docs].sort((a, b) => {
+      const aType = a.type;
+      const bType = b.type;
+      
+      // Monthly documents first (highest priority)
+      const aIsMonthly = monthlyTypes.includes(aType);
+      const bIsMonthly = monthlyTypes.includes(bType);
+      if (aIsMonthly && !bIsMonthly) return -1;
+      if (!aIsMonthly && bIsMonthly) return 1;
+      
+      // Student/Cadre documents second
+      const aIsStudentCadre = studentCadreTypes.includes(aType);
+      const bIsStudentCadre = studentCadreTypes.includes(bType);
+      if (aIsStudentCadre && !bIsStudentCadre) return -1;
+      if (!aIsStudentCadre && bIsStudentCadre) return 1;
+      
+      // Others last
+      return 0;
+    });
+  };
+
   // Document type labels
   const documentTypeLabels = {
     license: 'الترخيص',
@@ -143,7 +169,7 @@ const BranchesMonitoring = () => {
     financial_platform_declaration: 'ملف اقرار المنصة المالية',
     financial_claim_form: 'نموذج مطالبة مالية',
     student_cadre_file: 'كادر الطلاب',
-    dropped_students: 'الطلاب المتسربين',
+    dropped_students: 'الطلاب المتغييبين',
     free_seats: 'المقاعد المتاحة',
     acceptance_notifications: 'إشعارات القبول'
   };
@@ -318,25 +344,85 @@ const BranchesMonitoring = () => {
                 </div>
               )}
 
-              {/* Missing Documents */}
-              {missingDocs.length > 0 && (
-                <div className="documents-group">
-                  <h3 className="documents-group-title missing">
-                    <span className="status-icon">✗</span>
-                    المستندات الناقصة ({missingDocs.length})
-                  </h3>
-                  <div className="documents-list">
-                    {missingDocs.map((doc, index) => (
-                      <div key={`missing-${doc.type}-${index}`} className="document-item missing">
-                        <div className="document-info">
-                          <span className="document-name">{doc.label}</span>
-                          <span className="document-status">غير موجود</span>
+              {/* Missing Documents - Sorted by Priority */}
+              {missingDocs.length > 0 && (() => {
+                const sortedMissingDocs = sortDocumentsByPriority(missingDocs);
+                const monthlyTypes = ['payroll_file', 'attendance_file'];
+                const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
+                
+                const monthlyMissing = sortedMissingDocs.filter(doc => monthlyTypes.includes(doc.type));
+                const studentCadreMissing = sortedMissingDocs.filter(doc => studentCadreTypes.includes(doc.type));
+                const otherMissing = sortedMissingDocs.filter(doc => !monthlyTypes.includes(doc.type) && !studentCadreTypes.includes(doc.type));
+                
+                return (
+                  <div className="documents-group">
+                    <h3 className="documents-group-title missing">
+                      <span className="status-icon">✗</span>
+                      المستندات الناقصة ({missingDocs.length})
+                    </h3>
+                    
+                    {/* Monthly Documents Section (Highest Priority) */}
+                    {monthlyMissing.length > 0 && (
+                      <div className="documents-priority-section priority-high">
+                        <h4 className="priority-title">
+                          <span className="priority-icon">🔴</span>
+                          المستندات الشهرية (الأولوية القصوى)
+                        </h4>
+                        <div className="documents-list">
+                          {monthlyMissing.map((doc, index) => (
+                            <div key={`missing-monthly-${doc.type}-${index}`} className="document-item missing priority-high">
+                              <div className="document-info">
+                                <span className="document-name">{doc.label}</span>
+                                <span className="document-status">غير موجود</span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    ))}
+                    )}
+                    
+                    {/* Student/Cadre Documents Section */}
+                    {studentCadreMissing.length > 0 && (
+                      <div className="documents-priority-section priority-medium">
+                        <h4 className="priority-title">
+                          <span className="priority-icon">🟡</span>
+                          مستندات الكوادر والطلاب
+                        </h4>
+                        <div className="documents-list">
+                          {studentCadreMissing.map((doc, index) => (
+                            <div key={`missing-student-${doc.type}-${index}`} className="document-item missing priority-medium">
+                              <div className="document-info">
+                                <span className="document-name">{doc.label}</span>
+                                <span className="document-status">غير موجود</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Other Documents Section */}
+                    {otherMissing.length > 0 && (
+                      <div className="documents-priority-section priority-low">
+                        <h4 className="priority-title">
+                          <span className="priority-icon">🟢</span>
+                          باقي المستندات
+                        </h4>
+                        <div className="documents-list">
+                          {otherMissing.map((doc, index) => (
+                            <div key={`missing-other-${doc.type}-${index}`} className="document-item missing priority-low">
+                              <div className="document-info">
+                                <span className="document-name">{doc.label}</span>
+                                <span className="document-status">غير موجود</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {existingDocs.length === 0 && missingDocs.length === 0 && (
                 <div className="no-data">لا توجد مستندات مطلوبة لهذا النوع من الفروع</div>

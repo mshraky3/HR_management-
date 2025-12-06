@@ -353,24 +353,28 @@ const Employees = () => {
     // Only require branch type selection for main managers
     if (isMainManager() && !currentBranchType && !editingEmployee) {
       showWarning('الرجاء اختيار نوع الفرع أولاً');
+      setSaving(false);
       return;
     }
     
     // Validate that all 4 names are provided (REQUIRED)
     if (!formData.first_name || !formData.second_name || !formData.third_name || !formData.fourth_name) {
       showWarning('الرجاء إدخال جميع الأسماء الأربعة');
+      setSaving(false);
       return;
     }
     
     // Validate id_or_residency_number is provided (REQUIRED)
     if (!formData.id_or_residency_number || formData.id_or_residency_number.trim() === '') {
       showWarning('الرجاء إدخال رقم الهوية أو الإقامة');
+      setSaving(false);
       return;
     }
     
     // Validate nationality is provided (REQUIRED)
     if (!formData.nationality || formData.nationality.trim() === '') {
       showWarning('الرجاء إدخال الجنسية');
+      setSaving(false);
       return;
     }
     
@@ -379,10 +383,12 @@ const Employees = () => {
     if (dateOfBirthCalendarType) {
       if (isSaudiNationality && dateOfBirthCalendarType !== 'hijri') {
         showWarning('السعوديون يجب أن يستخدموا التقويم الهجري فقط');
+        setSaving(false);
         return;
       }
       if (!isSaudiNationality && dateOfBirthCalendarType !== 'gregorian') {
         showWarning('غير السعوديين يجب أن يستخدموا التقويم الميلادي فقط');
+        setSaving(false);
         return;
       }
     }
@@ -391,6 +397,7 @@ const Employees = () => {
     if (!isSaudiNationality && idExpiryCalendarType && (formData.id_expiry_date_hijri || formData.id_expiry_date_gregorian)) {
       if (idExpiryCalendarType !== 'gregorian') {
         showWarning('تاريخ انتهاء الإقامة لغير السعوديين يجب أن يكون ميلادياً');
+        setSaving(false);
         return;
       }
     }
@@ -402,10 +409,12 @@ const Employees = () => {
     if (formData.bank_iban || formData.bank_name) {
       if (formData.bank_iban && !formData.bank_name) {
         showWarning('الرجاء اختيار اسم البنك');
+        setSaving(false);
         return;
       }
       if (formData.bank_name && !formData.bank_iban) {
         showWarning('الرجاء إدخال رقم الآيبان البنكي');
+        setSaving(false);
         return;
       }
     }
@@ -430,6 +439,7 @@ const Employees = () => {
     for (const [field, label] of Object.entries(requiredFields)) {
       if (!formData[field] || formData[field].toString().trim() === '') {
         showWarning(`الحقل "${label}" مطلوب`);
+        setSaving(false);
         return;
       }
     }
@@ -437,12 +447,15 @@ const Employees = () => {
     // Validate database-required fields that have defaults but can be empty
     if (!formData.gender || formData.gender.trim() === '') {
       showWarning('الرجاء اختيار الجنس');
+      setSaving(false);
       return;
     }
     
+    // id_type يتم تعيينه تلقائياً حسب الجنسية - لا حاجة للتحقق منه
+    // لكن نضمن أنه محدد قبل الإرسال
     if (!formData.id_type || formData.id_type.trim() === '') {
-      showWarning('الرجاء اختيار نوع الهوية');
-      return;
+      // Auto-set based on nationality
+      formData.id_type = getIdTypeFromNationality(formData.nationality);
     }
     
     // Occupation is required by database - use job_title if available, otherwise require it
@@ -452,6 +465,7 @@ const Employees = () => {
         formData.occupation = formData.job_title;
       } else {
         showWarning('الرجاء إدخال المهنة أو اختيار المسمى الوظيفي');
+        setSaving(false);
         return;
       }
     }
@@ -461,10 +475,35 @@ const Employees = () => {
       formData.branch_id = user.branch_id;
     }
     
-    // Validate branch_id is set
+    // Validate branch_id is set - تعيينه تلقائياً إذا لم يكن محدداً
     if (!formData.branch_id) {
-      showWarning('الرجاء اختيار الفرع');
+      if (!isMainManager() && user?.branch_id) {
+        formData.branch_id = user.branch_id;
+      } else if (isMainManager() && selectedBranchType) {
+        // للمدير الرئيسي: اختيار أول فرع من النوع المختار
+        const firstBranch = branches.find(b => b.branch_type === selectedBranchType && b.is_active);
+        if (firstBranch) {
+          formData.branch_id = firstBranch.id;
+        } else {
+          showWarning('لا يوجد فروع متاحة من النوع المختار');
+          setSaving(false);
       return;
+        }
+      } else {
+        showWarning('الرجاء اختيار نوع الفرع أولاً');
+        setSaving(false);
+        return;
+      }
+    }
+    
+    // Ensure branch_id is a number
+    if (formData.branch_id) {
+      formData.branch_id = parseInt(formData.branch_id);
+      if (isNaN(formData.branch_id)) {
+        showWarning('خطأ في تحديد الفرع');
+        setSaving(false);
+        return;
+      }
     }
     
     // Validate field lengths
@@ -492,11 +531,13 @@ const Employees = () => {
         // Special validation for national_address - must be exactly 8 characters if provided
         if (field === 'national_address' && formData[field].trim() !== '' && formData[field].length !== 8) {
           showWarning(`الحقل "${label}" يجب أن يكون بالضبط 8 خانات`);
+          setSaving(false);
           return;
         }
         // General validation for other fields
         if (formData[field].length > max) {
           showWarning(`الحقل "${label}" أطول من المسموح (${max} حرف)`);
+          setSaving(false);
           return;
         }
       }
@@ -513,11 +554,19 @@ const Employees = () => {
         'date_of_birth_hijri', 'date_of_birth_gregorian',
         'id_expiry_date_hijri', 'id_expiry_date_gregorian',
         'religion', 'marital_status', 'educational_qualification', 'specialization',
-        'bank_iban', 'bank_name', 'email', 'phone_number', 'national_address', 'contract_type',
+        'contract_type',
         'graduation_year', 'university_gpa',
-        'passport_number', 'passport_issue_date', 'passport_expiry_date', 'passport_issue_place', 'residency_issue_date',
-        'job_title'
+        'passport_number', 'passport_issue_date', 'passport_expiry_date', 'passport_issue_place', 'residency_issue_date'
       ];
+      
+      // job_title is required by backend - use occupation if not provided
+      if (!data.job_title || data.job_title.trim() === '') {
+        if (data.occupation && data.occupation.trim() !== '') {
+          data.job_title = data.occupation;
+        } else {
+          data.job_title = 'غير محدد'; // Fallback default
+        }
+      }
       
       optionalFields.forEach(field => {
         if (data[field] === '' || data[field] === null || data[field] === undefined) {
@@ -559,13 +608,21 @@ const Employees = () => {
         data.years_of_experience_in_same_institution = isNaN(value) ? 0 : value;
       }
       
+      // Set years_of_experience_in_company to 0 (not used in form but required by database)
+      if (!data.years_of_experience_in_company) {
+        data.years_of_experience_in_company = 0;
+      } else {
+        const value = parseInt(data.years_of_experience_in_company);
+        data.years_of_experience_in_company = isNaN(value) ? 0 : value;
+      }
+      
       // Set employee_id_number automatically from id_or_residency_number (if not provided)
       if (!data.employee_id_number) {
         data.employee_id_number = data.id_or_residency_number;
       }
       
       // Ensure occupation is set (required by database)
-      // Use job_title if occupation is empty
+      // Use job_title if occupation is empty, or vice versa
       if (!data.occupation || data.occupation.trim() === '') {
         if (data.job_title && data.job_title.trim() !== '') {
           data.occupation = data.job_title;
@@ -574,22 +631,38 @@ const Employees = () => {
         }
       }
       
+      // Ensure job_title is set (required by backend validation)
+      // Use occupation if job_title is empty
+      if (!data.job_title || data.job_title.trim() === '') {
+        if (data.occupation && data.occupation.trim() !== '') {
+          data.job_title = data.occupation;
+        } else {
+          data.job_title = 'غير محدد'; // Fallback default
+        }
+      }
+      
       // Ensure gender and id_type are set (required by database, should have defaults but double-check)
       if (!data.gender || data.gender.trim() === '') {
         data.gender = 'male'; // Default fallback
       }
       if (!data.id_type || data.id_type.trim() === '') {
-        // Auto-set based on nationality if not set
-        const isSaudiNationality = data.nationality === 'Saudi Arabia' || 
-                                    data.nationality === 'المملكة العربية السعودية' ||
-                                    data.nationality?.toLowerCase().includes('saudi') ||
-                                    data.nationality?.toLowerCase().includes('سعودي');
-        data.id_type = isSaudiNationality ? 'citizen' : 'resident';
+        // Auto-set based on nationality using helper function
+        data.id_type = getIdTypeFromNationality(data.nationality);
       }
       
       // For branch managers, force branch_id to their branch (prevent manipulation)
       if (!isMainManager() && user?.branch_id) {
-        data.branch_id = user.branch_id;
+        data.branch_id = parseInt(user.branch_id);
+      }
+      
+      // Ensure branch_id is an integer
+      if (data.branch_id) {
+        data.branch_id = parseInt(data.branch_id);
+        if (isNaN(data.branch_id)) {
+          showError('خطأ في تحديد الفرع');
+          setSaving(false);
+          return;
+        }
       }
       
       // Ensure only one date type is sent based on selected calendar type
@@ -1267,6 +1340,11 @@ const Employees = () => {
                     type="button"
                     onClick={() => {
                       setSelectedBranchType('healthcare_center');
+                      // تعيين الفرع تلقائياً - أول فرع من النوع المختار
+                      const firstBranch = branches.find(b => b.branch_type === 'healthcare_center' && b.is_active);
+                      if (firstBranch) {
+                        setFormData(prev => ({ ...prev, branch_id: firstBranch.id }));
+                      }
                       setFormStep(2);
                     }}
                     className="btn-primary"
@@ -1278,6 +1356,11 @@ const Employees = () => {
                     type="button"
                     onClick={() => {
                       setSelectedBranchType('school');
+                      // تعيين الفرع تلقائياً - أول فرع من النوع المختار
+                      const firstBranch = branches.find(b => b.branch_type === 'school' && b.is_active);
+                      if (firstBranch) {
+                        setFormData(prev => ({ ...prev, branch_id: firstBranch.id }));
+                      }
                       setFormStep(2);
                     }}
                     className="btn-primary"
@@ -1317,12 +1400,15 @@ const Employees = () => {
                 )}
                 
                 {/* ========== القسم الأول: المعلومات الأساسية المطلوبة ========== */}
-                <h3 className="col-12" style={{ marginTop: '20px', padding: '10px', background: '#e3f2fd', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
-                  القسم الأول: المعلومات الأساسية المطلوبة *
-                </h3>
-                
-                {/* الجنسية أولاً - مهم جداً */}
-                <div className="form-group col-12" style={{ padding: '8px', background: '#e8f5e9', borderRadius: '4px', border: '2px solid #4caf50', marginBottom: '8px' }}>
+                {/* الجنسية أولاً - تظهر فقط في البداية */}
+                <div className="form-group col-12" style={{ 
+                  padding: '16px', 
+                  background: '#e8f5e9', 
+                  borderRadius: '8px', 
+                  border: '2px solid #4caf50', 
+                  marginBottom: '20px',
+                  textAlign: 'center'
+                }}>
                   <NationalitySelect
                     label="الجنسية *"
                     value={formData.nationality}
@@ -1330,11 +1416,18 @@ const Employees = () => {
                     required
                   />
                   {formData.nationality && (
-                    <div style={{ marginTop: '4px', fontSize: '12px', color: '#2e7d32', fontWeight: '600' }}>
-                      {isSaudi() ? '✓ هجري/مواطن' : '✓ ميلادي/مقيم'}
+                    <div style={{ marginTop: '8px', fontSize: '14px', color: '#2e7d32', fontWeight: '600' }}>
+                      {isSaudi() ? '✓ مواطن سعودي - سيتم إظهار الحقول المطلوبة' : '✓ مقيم - سيتم إظهار الحقول المطلوبة'}
                     </div>
                   )}
                 </div>
+
+                {/* باقي الحقول تظهر فقط بعد اختيار الجنسية */}
+                {formData.nationality && (
+                  <>
+                    <h3 className="col-12" style={{ marginTop: '20px', padding: '10px', background: '#e3f2fd', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
+                      القسم الأول: المعلومات الأساسية المطلوبة *
+                    </h3>
               
                 <h4 className="col-12" style={{ marginTop: '12px', marginBottom: '8px', fontSize: '14px', fontWeight: '600', color: '#555' }}>الاسم الكامل</h4>
                 <div className="form-group col-12">
@@ -1362,20 +1455,11 @@ const Employees = () => {
                   />
                 </div>
                 
-                <div className="form-group col-2">
-                  <label>نوع الهوية *</label>
-                  <select
-                    value={formData.id_type || ''}
-                    onChange={(e) => setFormData({ ...formData, id_type: e.target.value })}
-                    disabled={!!formData.nationality}
-                    style={formData.nationality ? { background: '#f0f0f0', cursor: 'not-allowed' } : {}}
-                    required
-                  >
-                    <option value="">اختر النوع</option>
-                    <option value="citizen">مواطن</option>
-                    <option value="resident">مقيم</option>
-                  </select>
-                </div>
+                {/* نوع الهوية - مخفي لأنه يتم تعيينه تلقائياً حسب الجنسية */}
+                <input
+                  type="hidden"
+                  value={formData.id_type || getIdTypeFromNationality(formData.nationality)}
+                />
                 
                 <div className="form-group col-2">
                   <label>الجنس *</label>
@@ -1390,35 +1474,11 @@ const Employees = () => {
                   </select>
                 </div>
                 
-                {isMainManager() && (
-                  <div className="form-group col-4">
-                    <label>الفرع *</label>
-                    <select
-                      value={formData.branch_id}
-                      onChange={(e) => setFormData({ ...formData, branch_id: e.target.value })}
-                      required
-                    >
-                      <option value="">اختر الفرع</option>
-                      {branches
-                        .filter(b => !currentBranchType || b.branch_type === currentBranchType)
-                        .map(b => (
-                          <option key={b.id} value={b.id}>{b.branch_name}</option>
-                        ))}
-                    </select>
-                  </div>
-                )}
-                
-                {!isMainManager() && user?.branch_id && (
-                  <div className="form-group col-4">
-                    <label>الفرع</label>
+                {/* حقل الفرع مخفي - يتم تعيينه تلقائياً */}
                     <input
-                      type="text"
-                      value={branches.find(b => b.id === user.branch_id)?.branch_name || 'فرعك'}
-                      disabled
-                      style={{ background: '#f0f0f0', cursor: 'not-allowed' }}
+                  type="hidden"
+                  value={formData.branch_id}
                     />
-                  </div>
-                )}
                 
                 <div className="form-group col-4">
                   <label>المهنة *</label>
@@ -1494,7 +1554,6 @@ const Employees = () => {
                   </div>
                 )}
                 
-                <h4 className="col-12" style={{ marginTop: '16px', marginBottom: '8px', fontSize: '14px', fontWeight: '600', color: '#555' }}>معلومات الاتصال والبنك</h4>
                 
                 <div className="form-group col-4">
                   <label>البريد الإلكتروني *</label>
@@ -1594,7 +1653,6 @@ const Employees = () => {
                 {/* Passport fields - only for non-Saudis */}
                 {isNonSaudi(formData.nationality) && (
                   <>
-                    <h4 className="col-12" style={{ marginTop: '16px', marginBottom: '8px', fontSize: '14px', fontWeight: '600', color: '#555' }}>معلومات جواز السفر</h4>
                     <div className="form-group col-3">
                       <label>رقم جواز السفر</label>
                       <input
@@ -1710,27 +1768,6 @@ const Employees = () => {
                     placeholder="مثال: 4.5"
                   />
                 </div>
-                <div className="form-group col-2">
-                  <label>نوع العقد</label>
-                  <select
-                    value={formData.contract_type}
-                    onChange={(e) => setFormData({ ...formData, contract_type: e.target.value })}
-                    className="form-select"
-                  >
-                    <option value="">اختر نوع العقد</option>
-                    <option value="ورقي">ورقي</option>
-                    <option value="قوى">قوى</option>
-                  </select>
-                </div>
-                <div className="form-group col-2">
-                  <label>عدد سنين الخبرة داخل المؤسسة نفسها</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={formData.years_of_experience_in_same_institution}
-                    onChange={(e) => setFormData({ ...formData, years_of_experience_in_same_institution: e.target.value })}
-                  />
-                </div>
                 {/* ========== القسم الرابع: الراتب والبدلات ========== */}
                 <h3 className="col-12" style={{ marginTop: '24px', padding: '10px', background: '#e8f5e9', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
                   القسم الرابع: الراتب والبدلات
@@ -1828,7 +1865,6 @@ const Employees = () => {
 
                 {/* ========== القسم الخامس: معلومات إضافية ========== */}
                 {/* تم نقل العنوان الوطني إلى القسم الأول */}
-
 
               {/* ========== القسم الخامس: المستندات ========== */}
               <h3 className="col-12" style={{ marginTop: '24px', padding: '10px', background: '#fff9c4', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
@@ -2031,7 +2067,7 @@ const Employees = () => {
                 <button 
                   type="submit" 
                   className="btn-primary" 
-                  disabled={saving || uploadingDocuments}
+                    disabled={saving || uploadingDocuments || !formData.nationality}
                 >
                   {saving ? (
                     <>
@@ -2054,6 +2090,8 @@ const Employees = () => {
                   إلغاء
                 </button>
               </div>
+                  </>
+                )}
               
               {/* Loading Overlay */}
               {(saving || uploadingDocuments) && (

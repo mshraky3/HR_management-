@@ -464,10 +464,12 @@
 @media (max-width: 768px) {
   .filters-grid {
     grid-template-columns: 1fr;
+    gap: var(--spacing-md);
   }
   
   .fields-grid {
     grid-template-columns: 1fr;
+    gap: var(--spacing-md);
   }
   
   .form-section {
@@ -476,14 +478,17 @@
 
   .branches-list {
     grid-template-columns: 1fr;
+    gap: var(--spacing-md);
   }
 
   .report-templates {
     grid-template-columns: 1fr;
+    gap: var(--spacing-md);
   }
 
   .template-button {
     padding: var(--spacing-md);
+    min-height: 44px;
   }
 
   .template-icon {

@@ -419,10 +419,19 @@ const MonthlyDocuments = () => {
   const schools = branchesToDisplay.filter(b => b.branch_type === 'school');
   const healthcareCenters = branchesToDisplay.filter(b => b.branch_type === 'healthcare_center');
 
-  // If branch is selected, show branch details
+  // If branch is selected, show branch details with card design
   if (selectedBranch) {
     const branchStatus = getBranchStatus(selectedBranch.id);
     const branchDocuments = allDocuments.filter(doc => doc.branch_id === selectedBranch.id);
+
+    // Get current month document for each type
+    const getCurrentMonthDocument = (docType) => {
+      const docs = branchDocuments.filter(doc => doc.document_type === docType.value);
+      const currentMonthDoc = docs.find(doc => 
+        isUploadedForCurrentMonth(new Date(doc.uploaded_at))
+      );
+      return currentMonthDoc || null;
+    };
 
     return (
       <div className="table-page monthly-documents-page">
@@ -431,51 +440,110 @@ const MonthlyDocuments = () => {
             ← العودة للفروع
           </button>
           <h1>{selectedBranch.branch_name}</h1>
-          <button onClick={() => handleOpenUploadForm(selectedBranch.id)} className="btn-primary">
-            رفع مستند شهري
-          </button>
         </div>
 
-        <div className="branch-documents-view">
-          {monthlyDocumentTypes.map(docType => {
+        {/* Branch Info */}
+        <div className="branch-info-card" style={{
+          background: 'var(--bg)',
+          padding: '1rem 1.5rem',
+          borderRadius: 'var(--radius-xl)',
+          marginBottom: '1.5rem',
+          boxShadow: 'var(--shadow-sm)',
+          border: '1px solid var(--border-light)'
+        }}>
+          <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text)' }}>
+            {selectedBranch.branch_name}
+          </h2>
+          <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            نوع الفرع: {selectedBranch.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية'}
+          </p>
+        </div>
+
+        {/* Document Cards Grid */}
+        <div className="document-cards-container">
+          <h2 style={{ 
+            marginBottom: '1.5rem', 
+            fontSize: '1.5rem', 
+            color: 'var(--text)',
+            fontWeight: 600
+          }}>
+            المستندات الشهرية
+          </h2>
+          <div className="document-cards-grid">
+            {monthlyDocumentTypes.map((docType) => {
             const status = branchStatus.statuses.find(s => s.type === docType.value);
-            const documents = branchDocuments.filter(doc => doc.document_type === docType.value);
+              const currentDoc = getCurrentMonthDocument(docType);
+              const exists = status.status === 'uploaded';
             
             return (
-              <div key={docType.value} className={`document-type-card status-${status.status}`}>
-                <div className="document-type-header">
-                  <div className="document-type-info">
-                    <img src={docType.icon} alt={docType.label} className="document-icon" style={{ width: '24px', height: '24px' }} />
-                    <div>
-                      <h3>{docType.label}</h3>
-                      <div className={`status-badge status-${status.status}`}>
-                        {status.status === 'uploaded' && '✓ تم الرفع'}
-                        {status.status === 'pending' && (
-                          <>
-                            <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '4px' }} />
-                            لم يتم الرفع لهذا الشهر
-                          </>
+                <div 
+                  key={docType.value} 
+                  className={`document-card ${exists ? 'document-exists' : 'document-missing'}`}
+                >
+                  <div className="document-card-header">
+                    <div className="document-card-icon">
+                      {exists ? (
+                        <span className="status-icon exists">✓</span>
+                      ) : (
+                        <span className="status-icon missing">✗</span>
                         )}
-                        {status.status === 'missing' && '✗ لم يتم رفع المستند'}
                       </div>
+                    <h3 className="document-card-title">{docType.label}</h3>
                     </div>
+                  
+                  <div className="document-card-body">
+                    {exists && currentDoc ? (
+                      <div className="document-info">
+                        <div className="document-info-item">
+                          <span className="info-label">اسم الملف:</span>
+                          <span className="info-value">{currentDoc.file_name}</span>
                   </div>
-                  <button 
-                    onClick={() => handleOpenUploadForm(selectedBranch.id, docType.value)}
-                    className="btn-upload-small"
-                  >
-                    رفع مستند
-                  </button>
+                        <div className="document-info-item">
+                          <span className="info-label">تاريخ الرفع:</span>
+                          <span className="info-value">
+                            {formatGregorianDate(currentDoc.uploaded_at)}
+                          </span>
                 </div>
-
-                {status.lastUpload && (
-                  <p className="last-upload-info">
-                    آخر رفع: {formatGregorianDate(status.lastUpload)}
-                  </p>
+                        <div className="document-info-item">
+                          <span className="info-label">الحالة:</span>
+                          <span className="verification-badge verified">
+                            ✓ تم الرفع لهذا الشهر
+                          </span>
+                        </div>
+                      </div>
+                    ) : status.status === 'pending' && status.lastUpload ? (
+                      <div className="document-info">
+                        <div className="document-info-item">
+                          <span className="info-label">آخر رفع:</span>
+                          <span className="info-value">{formatGregorianDate(status.lastUpload)}</span>
+                        </div>
+                        <div className="document-info-item">
+                          <span className="info-label">الحالة:</span>
+                          <span className="verification-badge not-verified">
+                            ⚠ لم يتم الرفع لهذا الشهر
+                          </span>
+                        </div>
+                        {status.deadlineDate && (
+                          <div className="document-info-item">
+                            <span className="info-label">الموعد النهائي:</span>
+                            <span className={`info-value ${status.daysUntilDeadline <= 3 ? 'urgent' : ''}`}>
+                              {formatGregorianDate(status.deadlineDate)}
+                              {status.daysUntilDeadline !== null && (
+                                <span style={{ marginRight: '5px' }}>
+                                  {status.daysUntilDeadline > 0 
+                                    ? ` (متبقي ${status.daysUntilDeadline} يوم)` 
+                                    : ' (اليوم هو الموعد النهائي)'}
+                                </span>
                 )}
-
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="document-missing-message">
+                        <p>المستند غير موجود</p>
                 {status.deadlineDate && (
-                  <p className="deadline-info">
+                          <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
                     الموعد النهائي: {formatGregorianDate(status.deadlineDate)}
                     {status.daysUntilDeadline !== null && (
                       <span className={status.daysUntilDeadline <= 3 ? 'urgent' : ''}>
@@ -486,57 +554,61 @@ const MonthlyDocuments = () => {
                     )}
                   </p>
                 )}
-
-                {documents.length > 0 ? (
-                  <div className="documents-list">
-                    {documents.map((doc) => {
-                      const isCurrentMonth = isUploadedForCurrentMonth(new Date(doc.uploaded_at));
-                      return (
-                        <div key={doc.id} className={`document-item ${isCurrentMonth ? 'current-month' : ''}`}>
-                          <div className="document-info">
-                            <span className="document-name">{doc.file_name}</span>
-                            <span className="document-date">{formatGregorianDate(doc.uploaded_at)}</span>
                           </div>
-                          <div className="document-actions">
-                            {doc.mime_type && (doc.mime_type.startsWith('image/') || doc.mime_type === 'application/pdf') && (
+                    )}
+                  </div>
+
+                  <div className="document-card-actions">
+                    {exists && currentDoc ? (
+                      <>
+                        {currentDoc.mime_type && (currentDoc.mime_type.startsWith('image/') || currentDoc.mime_type === 'application/pdf') && (
                               <button 
-                                onClick={() => handlePreview(doc)} 
-                                className="btn-icon"
-                                disabled={previewLoading === doc.id}
-                                title="معاينة"
+                            onClick={() => handlePreview(currentDoc)}
+                            className="btn-card btn-preview"
+                            disabled={previewLoading === currentDoc.id}
                               >
-                                {previewLoading === doc.id ? (
-                                  <img src="https://img.icons8.com/material-rounded/24/dots-loading.png" alt="تحميل" style={{ width: '20px', height: '20px' }} />
+                            {previewLoading === currentDoc.id ? (
+                              <span className="spinner" style={{ display: 'inline-block', width: '12px', height: '12px', marginLeft: '5px' }}></span>
                                 ) : (
-                                  <img src="https://img.icons8.com/?size=24&id=85028&format=png&color=000000" alt="معاينة" style={{ width: '20px', height: '20px' }} />
+                              <img src="https://img.icons8.com/?size=24&id=85028&format=png&color=000000" alt="معاينة" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
                                 )}
+                            معاينة
                               </button>
                             )}
                             <button 
-                              onClick={() => handleDownload(doc.id, doc.file_name)} 
-                              className="btn-icon"
-                              disabled={downloading === doc.id}
-                              title="تحميل"
+                          onClick={() => handleDownload(currentDoc.id, currentDoc.file_name)}
+                          className="btn-card btn-download"
+                          disabled={downloading === currentDoc.id}
                             >
-                              {downloading === doc.id ? (
-                                <img src="https://img.icons8.com/material-rounded/24/dots-loading.png" alt="تحميل" style={{ width: '20px', height: '20px' }} />
+                          {downloading === currentDoc.id ? (
+                            <span className="spinner" style={{ display: 'inline-block', width: '12px', height: '12px', marginLeft: '5px' }}></span>
                               ) : (
-                                <img src="https://img.icons8.com/material-rounded/24/download--v1.png" alt="تحميل" style={{ width: '20px', height: '20px' }} />
+                            <img src="https://img.icons8.com/material-rounded/24/download--v1.png" alt="تحميل" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
                               )}
+                          تحميل
                             </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        <button
+                          onClick={() => handleOpenUploadForm(selectedBranch.id, docType.value)}
+                          className="btn-card btn-update"
+                        >
+                          <img src="https://img.icons8.com/material-rounded/24/edit.png" alt="تحديث" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
+                          تحديث
+                        </button>
+                      </>
                 ) : (
-                  <div className="no-documents">
-                    <p>لا توجد مستندات مرفوعة</p>
+                      <button
+                        onClick={() => handleOpenUploadForm(selectedBranch.id, docType.value)}
+                        className="btn-card btn-upload"
+                      >
+                        <img src="https://img.icons8.com/material-rounded/24/upload.png" alt="رفع" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
+                        رفع المستند
+                      </button>
+                    )}
                   </div>
-                )}
               </div>
             );
           })}
+          </div>
         </div>
 
         {/* Upload Form Modal */}
@@ -681,7 +753,7 @@ const MonthlyDocuments = () => {
                     <div className={`status-indicator status-${branchStatus.overallStatus}`}>
                       {branchStatus.overallStatus === 'uploaded' && '✓'}
                       {branchStatus.overallStatus === 'pending' && (
-                        <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" style={{ width: '16px', height: '16px' }} />
+                        <span style={{ fontSize: '16px' }}>⚠️</span>
                       )}
                       {branchStatus.overallStatus === 'missing' && '✗'}
                     </div>
@@ -697,7 +769,7 @@ const MonthlyDocuments = () => {
                           <span className={`doc-status status-${status.status}`}>
                             {status.status === 'uploaded' && '✓'}
                             {status.status === 'pending' && (
-                              <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" style={{ width: '16px', height: '16px' }} />
+                              <span style={{ fontSize: '16px' }}>⚠️</span>
                             )}
                             {status.status === 'missing' && '✗'}
                           </span>
@@ -737,7 +809,7 @@ const MonthlyDocuments = () => {
                     <div className={`status-indicator status-${branchStatus.overallStatus}`}>
                       {branchStatus.overallStatus === 'uploaded' && '✓'}
                       {branchStatus.overallStatus === 'pending' && (
-                        <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" style={{ width: '16px', height: '16px' }} />
+                        <span style={{ fontSize: '16px' }}>⚠️</span>
                       )}
                       {branchStatus.overallStatus === 'missing' && '✗'}
                     </div>
@@ -753,7 +825,7 @@ const MonthlyDocuments = () => {
                           <span className={`doc-status status-${status.status}`}>
                             {status.status === 'uploaded' && '✓'}
                             {status.status === 'pending' && (
-                              <img src="https://img.icons8.com/material-rounded/24/brake-warning.png" alt="تحذير" style={{ width: '16px', height: '16px' }} />
+                              <span style={{ fontSize: '16px' }}>⚠️</span>
                             )}
                             {status.status === 'missing' && '✗'}
                           </span>

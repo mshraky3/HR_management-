@@ -396,7 +396,7 @@ const Dashboard = () => {
       financial_platform_declaration: 'ملف اقرار المنصة المالية',
       financial_claim_form: 'نموذج مطالبة مالية',
       student_cadre_file: 'كادر الطلاب',
-      dropped_students: 'الطلاب المتسربين',
+      dropped_students: 'الطلاب المتغييبين',
       free_seats: 'المقاعد المتاحة',
       acceptance_notifications: 'إشعارات القبول'
     };
@@ -436,8 +436,23 @@ const Dashboard = () => {
       }
     }
 
-    // Sort by branch name, then by document type
+    // Sort by priority first, then by branch name, then by document type
     alerts.sort((a, b) => {
+      // Priority order: 1) Monthly (highest), 2) Student/Cadre, 3) Others
+      const monthlyTypes = ['payroll_file', 'attendance_file'];
+      const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
+      
+      const aIsMonthly = monthlyTypes.includes(a.documentType);
+      const bIsMonthly = monthlyTypes.includes(b.documentType);
+      if (aIsMonthly && !bIsMonthly) return -1;
+      if (!aIsMonthly && bIsMonthly) return 1;
+      
+      const aIsStudentCadre = studentCadreTypes.includes(a.documentType);
+      const bIsStudentCadre = studentCadreTypes.includes(b.documentType);
+      if (aIsStudentCadre && !bIsStudentCadre) return -1;
+      if (!aIsStudentCadre && bIsStudentCadre) return 1;
+      
+      // Then sort by branch name, then by document type
       const branchCompare = a.branchName.localeCompare(b.branchName, 'ar');
       if (branchCompare !== 0) return branchCompare;
       return a.documentLabel.localeCompare(b.documentLabel, 'ar');
@@ -784,39 +799,128 @@ const Dashboard = () => {
       )}
 
       {/* Missing Branch Documents Alerts - Only for branch managers */}
-      {!isMainManager() && missingBranchDocumentAlerts.length > 0 && (
-        <div className="missing-branch-documents-alerts">
-          <h2>مستندات الفرع المفقودة</h2>
-          <p style={{ color: '#666', marginBottom: '20px' }}>
-            يوجد {missingBranchDocumentAlerts.length} مستند مفقود يحتاج إلى رفع
-          </p>
-          <div className="alerts-container">
-            {missingBranchDocumentAlerts.map((alert, index) => (
-              <div 
-                key={`missing-${alert.branchId}-${alert.documentType}-${index}`}
-                className="alert-card alert-must-do"
-              >
-                <div className="alert-header">
-                  <span className="alert-badge badge-danger">
-                    مستند مفقود
-                  </span>
-                </div>
-                <div className="alert-body">
-                  <p className="alert-message">{alert.message}</p>
-                </div>
-                <div className="alert-actions">
-                  <Link 
-                    to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
-                    className="btn-alert"
-                  >
-                    رفع المستند الآن
-                  </Link>
+      {!isMainManager() && missingBranchDocumentAlerts.length > 0 && (() => {
+        const monthlyTypes = ['payroll_file', 'attendance_file'];
+        const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
+        
+        const monthlyAlerts = missingBranchDocumentAlerts.filter(alert => monthlyTypes.includes(alert.documentType));
+        const studentCadreAlerts = missingBranchDocumentAlerts.filter(alert => studentCadreTypes.includes(alert.documentType));
+        const otherAlerts = missingBranchDocumentAlerts.filter(alert => !monthlyTypes.includes(alert.documentType) && !studentCadreTypes.includes(alert.documentType));
+        
+        return (
+          <div className="missing-branch-documents-alerts">
+            <h2>مستندات الفرع المفقودة</h2>
+            <p style={{ color: '#666', marginBottom: '20px' }}>
+              يوجد {missingBranchDocumentAlerts.length} مستند مفقود يحتاج إلى رفع
+            </p>
+            
+            {/* Monthly Documents Section (Highest Priority) */}
+            {monthlyAlerts.length > 0 && (
+              <div className="documents-priority-section priority-high">
+                <h3 className="priority-section-title">
+                  <span className="priority-icon">🔴</span>
+                  المستندات الشهرية (الأولوية القصوى)
+                </h3>
+                <div className="alerts-container">
+                  {monthlyAlerts.map((alert, index) => (
+                    <div 
+                      key={`missing-monthly-${alert.branchId}-${alert.documentType}-${index}`}
+                      className="alert-card alert-must-do priority-high"
+                    >
+                      <div className="alert-header">
+                        <span className="alert-badge badge-danger">
+                          مستند مفقود
+                        </span>
+                      </div>
+                      <div className="alert-body">
+                        <p className="alert-message">{alert.message}</p>
+                      </div>
+                      <div className="alert-actions">
+                        <Link 
+                          to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
+                          className="btn-alert"
+                        >
+                          رفع المستند الآن
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
+            )}
+            
+            {/* Student/Cadre Documents Section */}
+            {studentCadreAlerts.length > 0 && (
+              <div className="documents-priority-section priority-medium">
+                <h3 className="priority-section-title">
+                  <span className="priority-icon">🟡</span>
+                  مستندات الكوادر والطلاب
+                </h3>
+                <div className="alerts-container">
+                  {studentCadreAlerts.map((alert, index) => (
+                    <div 
+                      key={`missing-student-${alert.branchId}-${alert.documentType}-${index}`}
+                      className="alert-card alert-must-do priority-medium"
+                    >
+                      <div className="alert-header">
+                        <span className="alert-badge badge-danger">
+                          مستند مفقود
+                        </span>
+                      </div>
+                      <div className="alert-body">
+                        <p className="alert-message">{alert.message}</p>
+                      </div>
+                      <div className="alert-actions">
+                        <Link 
+                          to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
+                          className="btn-alert"
+                        >
+                          رفع المستند الآن
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Other Documents Section */}
+            {otherAlerts.length > 0 && (
+              <div className="documents-priority-section priority-low">
+                <h3 className="priority-section-title">
+                  <span className="priority-icon">🟢</span>
+                  باقي المستندات
+                </h3>
+                <div className="alerts-container">
+                  {otherAlerts.map((alert, index) => (
+                    <div 
+                      key={`missing-other-${alert.branchId}-${alert.documentType}-${index}`}
+                      className="alert-card alert-must-do priority-low"
+                    >
+                      <div className="alert-header">
+                        <span className="alert-badge badge-danger">
+                          مستند مفقود
+                        </span>
+                      </div>
+                      <div className="alert-body">
+                        <p className="alert-message">{alert.message}</p>
+                      </div>
+                      <div className="alert-actions">
+                        <Link 
+                          to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
+                          className="btn-alert"
+                        >
+                          رفع المستند الآن
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Monthly Document Alerts - Only for branch managers */}
       {!isMainManager() && monthlyDocumentAlerts.length > 0 && (
