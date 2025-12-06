@@ -6,6 +6,7 @@
 
 import { Branch } from '../models/Branch.js';
 import { BranchDocument } from '../models/BranchDocument.js';
+import { Employee } from '../models/Employee.js';
 
 /**
  * Extract branch ID from request
@@ -26,6 +27,21 @@ const extractBranchId = async (req) => {
       }
     } catch (error) {
       console.error('Error fetching document for branch_id:', error);
+    }
+  }
+  
+  // If not found and we have an employee_id (for /generate-single/:employee_id route), fetch from employee
+  if (!branchId && req.params?.employee_id) {
+    try {
+      const employeeId = parseInt(req.params.employee_id);
+      if (!isNaN(employeeId)) {
+        const employee = await Employee.findById(employeeId);
+        if (employee?.branch_id) {
+          branchId = employee.branch_id;
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching employee for branch_id:', error);
     }
   }
   

@@ -6,7 +6,7 @@
 import express from 'express';
 import PdfPrinter from '@digicole/pdfmake-rtl';
 import { authenticate } from '../middleware/auth.js';
-import { requireMainManager } from '../middleware/authorization.js';
+import { requireMainManager, requireManager } from '../middleware/authorization.js';
 import { verifyBranchDocumentsPassword } from '../middleware/branchDocumentsPassword.js';
 import fs from 'fs';
 import path from 'path';
@@ -94,9 +94,8 @@ const router = express.Router();
 // Note: In serverless environments (like Vercel), we don't save files to disk
 // Files are generated in memory and sent directly to the client
 
-// All routes require authentication and main manager
+// All routes require authentication
 router.use(authenticate);
-router.use(requireMainManager);
 
 /**
  * Helper function to calculate age from date of birth
@@ -719,8 +718,9 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
  * POST /api/employee-file/generate-single/:employee_id
  * Generate employee file PDF for a single employee
  * Requires password for branch managers, not for main managers
+ * Available for both main_manager and branch_manager
  */
-router.post('/generate-single/:employee_id', verifyBranchDocumentsPassword, async (req, res) => {
+router.post('/generate-single/:employee_id', requireManager, verifyBranchDocumentsPassword, async (req, res) => {
   try {
     const employeeId = parseInt(req.params.employee_id);
     
@@ -793,8 +793,9 @@ router.post('/generate-single/:employee_id', verifyBranchDocumentsPassword, asyn
 /**
  * POST /api/employee-file/generate
  * Generate employee file PDF
+ * Main manager only
  */
-router.post('/generate', async (req, res) => {
+router.post('/generate', requireMainManager, async (req, res) => {
   try {
     const { title, employee_ids, selectedFields, selected_documents } = req.body;
     
