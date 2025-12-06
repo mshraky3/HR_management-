@@ -9,7 +9,7 @@ import { employeesAPI, documentsAPI, branchesAPI, setBranchDocumentsPassword } f
 import { getDocumentTypeLabel } from '../utils/employeeConstants';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import './TablePage.css';
+import './EmployeeDetails.css';
 
 const EmployeeDetails = () => {
   const { id } = useParams();
@@ -326,20 +326,68 @@ const EmployeeDetails = () => {
     );
   }
 
+  const getInitials = (firstName, secondName) => {
+    const first = firstName?.charAt(0) || '';
+    const second = secondName?.charAt(0) || '';
+    return (first + second).toUpperCase() || '👤';
+  };
+
+  const getStatusBadgeClass = (status) => {
+    const statusMap = {
+      'active': 'badge-success',
+      'pending': 'badge-warning',
+      'terminated_article_80': 'badge-danger',
+      'terminated_article_77': 'badge-danger',
+      'resigned': 'badge-danger',
+      'contract_ended': 'badge-secondary',
+      'non_renewal': 'badge-secondary',
+      'other': 'badge-secondary'
+    };
+    return statusMap[status] || 'badge-secondary';
+  };
+
+  const getStatusLabel = (status) => {
+    const statusLabels = {
+      'active': 'نشط',
+      'pending': 'قيد الانتظار',
+      'terminated_article_80': 'فصل حسب المادة 80',
+      'terminated_article_77': 'فصل حسب المادة 77',
+      'resigned': 'استقال',
+      'contract_ended': 'انتهى العقد',
+      'non_renewal': 'عدم التجديد',
+      'other': 'أخرى'
+    };
+    return statusLabels[status] || status;
+  };
+
   return (
-    <div className="table-page">
-      <div className="page-header">
+    <div className="employee-details-page">
+      <div className="employee-details-header">
         <h1>تفاصيل الموظف</h1>
         <button onClick={() => navigate('/employees')} className="btn btn-secondary btn-md">
-          العودة للقائمة
+          ← العودة للقائمة
         </button>
       </div>
 
-      <div className="card">
+      {/* Employee Profile Card */}
+      <div className="employee-profile-card">
+        <div className="employee-profile-header">
+          <div className="employee-avatar">
+            {getInitials(employee.first_name, employee.second_name)}
+          </div>
+          <div className="employee-name-section">
+            <h2>
+              {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
+            </h2>
+            <div className="employee-id">رقم الموظف: {employee.employee_id_number}</div>
+            <span className={`employee-status-badge ${getStatusBadgeClass(employee.status || 'active')}`}>
+              {getStatusLabel(employee.status || 'active')}
+            </span>
+          </div>
+        </div>
         {/* Missing Data Alert */}
-        {/* Use data_completion_status from DB as source of truth, but show missing fields from calculation */}
         {employee.data_completion_status === 'incomplete' && (
-          <div className="alert alert-warning">
+          <div className="alert-card alert-warning">
             <h2>
               <span style={{ fontSize: '24px', marginLeft: '8px' }}>⚠️</span>
               البيانات الناقصة
@@ -377,16 +425,11 @@ const EmployeeDetails = () => {
         )}
 
         {/* Data Completion Status */}
-        {/* Use data_completion_status from DB as single source of truth */}
         {employee.data_completion_status && (
           <div className={`status-completion-box ${employee.data_completion_status === 'complete' ? 'complete' : 'incomplete'}`}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span className="icon-md">
-                {employee.data_completion_status === 'complete' ? (
-                  <span style={{ fontSize: '24px' }}>✓</span>
-                ) : (
-                  <span style={{ fontSize: '24px' }}>⚠️</span>
-                )}
+              <span style={{ fontSize: '24px' }}>
+                {employee.data_completion_status === 'complete' ? '✓' : '⚠️'}
               </span>
               <strong>
                 حالة البيانات: {employee.data_completion_status === 'complete' ? 'مكتملة' : 'غير مكتملة'}
@@ -540,156 +583,203 @@ const EmployeeDetails = () => {
           )}
 
         {/* Basic Information */}
-        <h2 className="section-header">
-          المعلومات الأساسية
-        </h2>
-        <div className="info-grid">
-          <div>
-            <strong>رقم الموظف:</strong> {employee.employee_id_number}
+        <div className="info-cards-grid">
+          <div className="info-card">
+            <div className="info-card-header">
+              <div className="info-card-icon">📋</div>
+              <h3 className="info-card-title">المعلومات الأساسية</h3>
+            </div>
+            <div className="info-grid">
+              <div className="info-item">
+                <span className="info-item-label">المهنة</span>
+                <span className="info-item-value">{employee.occupation || '-'}</span>
+              </div>
+              <div className="info-item">
+                <span className="info-item-label">الجنسية</span>
+                <span className="info-item-value">{employee.nationality || '-'}</span>
+              </div>
+              <div className="info-item">
+                <span className="info-item-label">الفرع</span>
+                <span className="info-item-value">{branches.find(b => b.id === employee.branch_id)?.branch_name || employee.branch_id || '-'}</span>
+              </div>
+              <div className="info-item">
+                <span className="info-item-label">الجنس</span>
+                <span className="info-item-value">{employee.gender === 'male' ? 'ذكر' : employee.gender === 'female' ? 'أنثى' : '-'}</span>
+              </div>
+              <div className="info-item">
+                <span className="info-item-label">نوع الهوية</span>
+                <span className="info-item-value">{employee.id_type === 'citizen' ? 'مواطن' : employee.id_type === 'resident' ? 'مقيم' : '-'}</span>
+              </div>
+              <div className="info-item">
+                <span className="info-item-label">رقم الهوية/الإقامة</span>
+                <span className="info-item-value">{employee.id_or_residency_number || '-'}</span>
+              </div>
+            </div>
           </div>
-          <div>
-            <strong>الاسم الكامل:</strong> {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
+
+          {/* Personal Information */}
+          <div className="info-card">
+            <div className="info-card-header">
+              <div className="info-card-icon">👤</div>
+              <h3 className="info-card-title">المعلومات الشخصية</h3>
+            </div>
+            <div className="info-grid">
+              {employee.date_of_birth_hijri && (
+                <div className="info-item">
+                  <span className="info-item-label">تاريخ الميلاد (هجري)</span>
+                  <span className="info-item-value">{employee.date_of_birth_hijri}</span>
+                </div>
+              )}
+              {employee.date_of_birth_gregorian && (
+                <div className="info-item">
+                  <span className="info-item-label">تاريخ الميلاد (ميلادي)</span>
+                  <span className="info-item-value">{new Date(employee.date_of_birth_gregorian).toLocaleDateString('ar-SA')}</span>
+                </div>
+              )}
+              {employee.id_expiry_date_hijri && (
+                <div className="info-item">
+                  <span className="info-item-label">انتهاء الهوية (هجري)</span>
+                  <span className="info-item-value">{employee.id_expiry_date_hijri}</span>
+                </div>
+              )}
+              {employee.id_expiry_date_gregorian && (
+                <div className="info-item">
+                  <span className="info-item-label">انتهاء الهوية (ميلادي)</span>
+                  <span className="info-item-value">{new Date(employee.id_expiry_date_gregorian).toLocaleDateString('ar-SA')}</span>
+                </div>
+              )}
+              {employee.religion && (
+                <div className="info-item">
+                  <span className="info-item-label">الدين</span>
+                  <span className="info-item-value">{employee.religion}</span>
+                </div>
+              )}
+              {employee.marital_status && (
+                <div className="info-item">
+                  <span className="info-item-label">الحالة الاجتماعية</span>
+                  <span className="info-item-value">{employee.marital_status}</span>
+                </div>
+              )}
+              {employee.educational_qualification && (
+                <div className="info-item">
+                  <span className="info-item-label">المؤهل التعليمي</span>
+                  <span className="info-item-value">{employee.educational_qualification}</span>
+                </div>
+              )}
+              {employee.specialization && (
+                <div className="info-item">
+                  <span className="info-item-label">التخصص</span>
+                  <span className="info-item-value">{employee.specialization}</span>
+                </div>
+              )}
+              {employee.national_address && (
+                <div className="info-item">
+                  <span className="info-item-label">العنوان الوطني</span>
+                  <span className="info-item-value">{employee.national_address}</span>
+                </div>
+              )}
+            </div>
           </div>
-          <div>
-            <strong>المهنة:</strong> {employee.occupation}
+
+          {/* Contact Information */}
+          <div className="info-card">
+            <div className="info-card-header">
+              <div className="info-card-icon">📞</div>
+              <h3 className="info-card-title">معلومات الاتصال</h3>
+            </div>
+            <div className="info-grid">
+              {employee.email && (
+                <div className="info-item">
+                  <span className="info-item-label">البريد الإلكتروني</span>
+                  <span className="info-item-value">{employee.email}</span>
+                </div>
+              )}
+              {employee.phone_number && (
+                <div className="info-item">
+                  <span className="info-item-label">رقم الهاتف</span>
+                  <span className="info-item-value">{employee.phone_number}</span>
+                </div>
+              )}
+            </div>
           </div>
-          <div>
-            <strong>الجنسية:</strong> {employee.nationality}
-          </div>
-          <div>
-            <strong>الفرع:</strong> {branches.find(b => b.id === employee.branch_id)?.branch_name || employee.branch_id}
-          </div>
-          <div>
-            <strong>الجنس:</strong> {employee.gender === 'male' ? 'ذكر' : 'أنثى'}
-          </div>
-          <div>
-            <strong>نوع الهوية:</strong> {employee.id_type === 'citizen' ? 'مواطن' : 'مقيم'}
-          </div>
-          <div>
-            <strong>رقم الهوية/الإقامة:</strong> {employee.id_or_residency_number}
-          </div>
-          <div className="info-item">
-            <strong>الحالة:</strong> 
-            {(() => {
-              const status = employee.status || 'active';
-              const statusLabels = {
-                'active': { text: 'نشط', class: 'badge-success' },
-                'pending': { text: 'قيد الانتظار', class: 'badge-warning' },
-                'terminated_article_80': { text: 'فصل حسب المادة 80', class: 'badge-danger' },
-                'terminated_article_77': { text: 'فصل حسب المادة 77', class: 'badge-danger' },
-                'resigned': { text: 'استقال', class: 'badge-danger' },
-                'contract_ended': { text: 'انتهى العقد', class: 'badge-secondary' },
-                'non_renewal': { text: 'عدم التجديد', class: 'badge-secondary' },
-                'other': { text: 'أخرى', class: 'badge-secondary' }
-              };
-              const statusInfo = statusLabels[status] || { text: status, class: 'badge-secondary' };
-              return (
-                <span className={`badge ${statusInfo.class}`} style={{ marginRight: '10px' }}>
-                  {statusInfo.text}
-                </span>
-              );
-            })()}
-          </div>
+
+          {/* Work Information */}
+          {(employee.contract_type || (employee.years_of_experience_in_same_institution !== undefined && employee.years_of_experience_in_same_institution !== null) || employee.job_title) && (
+            <div className="info-card">
+              <div className="info-card-header">
+                <div className="info-card-icon">💼</div>
+                <h3 className="info-card-title">معلومات العمل</h3>
+              </div>
+              <div className="info-grid">
+                {employee.job_title && (
+                  <div className="info-item">
+                    <span className="info-item-label">المسمى الوظيفي</span>
+                    <span className="info-item-value">{employee.job_title}</span>
+                  </div>
+                )}
+                {employee.contract_type && (
+                  <div className="info-item">
+                    <span className="info-item-label">نوع العقد</span>
+                    <span className="info-item-value">{employee.contract_type}</span>
+                  </div>
+                )}
+                {(employee.years_of_experience_in_same_institution !== undefined && employee.years_of_experience_in_same_institution !== null) && (
+                  <div className="info-item">
+                    <span className="info-item-label">سنوات الخبرة في نفس المؤسسة</span>
+                    <span className="info-item-value">{employee.years_of_experience_in_same_institution} سنة</span>
+                  </div>
+                )}
+                {(employee.years_of_experience_in_company !== undefined && employee.years_of_experience_in_company !== null) && (
+                  <div className="info-item">
+                    <span className="info-item-label">سنوات الخبرة في الشركة</span>
+                    <span className="info-item-value">{employee.years_of_experience_in_company} سنة</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Financial Information */}
+          {(employee.bank_name || employee.bank_iban) && (
+            <div className="info-card">
+              <div className="info-card-header">
+                <div className="info-card-icon">🏦</div>
+                <h3 className="info-card-title">المعلومات المالية</h3>
+              </div>
+              <div className="info-grid">
+                {employee.bank_name && (
+                  <div className="info-item">
+                    <span className="info-item-label">البنك</span>
+                    <span className="info-item-value">{employee.bank_name}</span>
+                  </div>
+                )}
+                {employee.bank_iban && (
+                  <div className="info-item">
+                    <span className="info-item-label">رقم الآيبان</span>
+                    <span className="info-item-value">{employee.bank_iban}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Personal Information */}
-        <h2 className="section-header">
-          المعلومات الشخصية
-        </h2>
-        <div className="info-grid">
-          {employee.date_of_birth_hijri && (
-            <div>
-              <strong>تاريخ الميلاد (هجري):</strong> {employee.date_of_birth_hijri}
+        {/* Salary Information */}
+        {(
+          (employee.base_salary || 0) !== 0 || 
+          (employee.housing_allowance || 0) !== 0 || 
+          (employee.transportation_allowance || 0) !== 0 || 
+          (employee.end_of_service_allowance || 0) !== 0 || 
+          (employee.annual_leave_allowance || 0) !== 0 || 
+          (employee.other_allowances || 0) !== 0 || 
+          (employee.deductions || 0) !== 0
+        ) && (
+          <div className="info-card">
+            <div className="info-card-header">
+              <div className="info-card-icon">💰</div>
+              <h3 className="info-card-title">الراتب والبدلات</h3>
             </div>
-          )}
-          {employee.date_of_birth_gregorian && (
-            <div>
-              <strong>تاريخ الميلاد (ميلادي):</strong> {employee.date_of_birth_gregorian}
-            </div>
-          )}
-          {employee.id_expiry_date_hijri && (
-            <div>
-              <strong>انتهاء الهوية (هجري):</strong> {employee.id_expiry_date_hijri}
-            </div>
-          )}
-          {employee.id_expiry_date_gregorian && (
-            <div>
-              <strong>انتهاء الهوية (ميلادي):</strong> {employee.id_expiry_date_gregorian}
-            </div>
-          )}
-          {employee.religion && (
-            <div>
-              <strong>الدين:</strong> {employee.religion}
-            </div>
-          )}
-          {employee.marital_status && (
-            <div>
-              <strong>الحالة الاجتماعية:</strong> {employee.marital_status}
-            </div>
-          )}
-          {employee.educational_qualification && (
-            <div>
-              <strong>المؤهل التعليمي:</strong> {employee.educational_qualification}
-            </div>
-          )}
-          {employee.specialization && (
-            <div>
-              <strong>التخصص:</strong> {employee.specialization}
-            </div>
-          )}
-        </div>
-
-        {/* Contact Information */}
-        <h2 className="section-header">
-          معلومات الاتصال
-        </h2>
-        <div className="info-grid">
-          {employee.email && (
-            <div>
-              <strong>البريد الإلكتروني:</strong> {employee.email}
-            </div>
-          )}
-          {employee.phone_number && (
-            <div>
-              <strong>رقم الهاتف:</strong> {employee.phone_number}
-            </div>
-          )}
-          {employee.national_address && (
-            <div>
-              <strong>العنوان الوطني الموحد (المختصر):</strong> {employee.national_address}
-            </div>
-          )}
-          {employee.bank_name && (
-            <div>
-              <strong>البنك:</strong> {employee.bank_name}
-            </div>
-          )}
-          {employee.bank_iban && (
-            <div>
-              <strong>رقم الآيبان:</strong> {employee.bank_iban}
-            </div>
-          )}
-          {employee.contract_type && (
-            <div>
-              <strong>نوع العقد:</strong> {employee.contract_type}
-            </div>
-          )}
-          {(employee.years_of_experience_in_same_institution !== undefined && employee.years_of_experience_in_same_institution !== null) && (
-            <div>
-              <strong>عدد سنين الخبرة داخل المؤسسة نفسها:</strong> {employee.years_of_experience_in_same_institution} سنة
-            </div>
-          )}
-          {(
-            (employee.base_salary || 0) !== 0 || 
-            (employee.housing_allowance || 0) !== 0 || 
-            (employee.transportation_allowance || 0) !== 0 || 
-            (employee.end_of_service_allowance || 0) !== 0 || 
-            (employee.annual_leave_allowance || 0) !== 0 || 
-            (employee.other_allowances || 0) !== 0 || 
-            (employee.deductions || 0) !== 0
-          ) && (
             <div className="salary-box">
-              <h3>الراتب والبدلات والاستقطاعات</h3>
               <div className="salary-item">
                 <strong>الراتب الأساسي:</strong> {(employee.base_salary || 0).toLocaleString('ar-SA')} ريال
               </div>
@@ -740,128 +830,117 @@ const EmployeeDetails = () => {
                 </div>
               </div>
             </div>
-          )}
-          {employee.salary && !employee.base_salary && (
-            <div style={{ marginTop: '10px', padding: '10px', background: '#fff3cd', borderRadius: '5px', fontSize: '0.9em' }}>
-              <strong>الراتب (قديم):</strong> {employee.salary.toLocaleString('ar-SA')} ريال
-              <div style={{ fontSize: '0.85em', color: '#856404', marginTop: '5px' }}>
-                ملاحظة: هذا الحقل للتوافق مع البيانات القديمة فقط
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Documents Section */}
-        <h2 className="section-header">
-          المستندات المرفوعة ({documents.length})
-        </h2>
-        {documents.length === 0 ? (
-          <div className="empty-state">
-            لا توجد مستندات مرفوعة
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-            {documents.map((doc) => (
-              <div key={doc.id} style={{
-                border: '1px solid #ddd',
-                borderRadius: '8px',
-                padding: '20px',
-                backgroundColor: '#f9f9f9',
-                transition: 'box-shadow 0.3s',
-                cursor: 'pointer'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)'}
-              onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}
-              >
-                <div style={{ marginBottom: '15px' }}>
-                  <strong style={{ fontSize: '16px', color: '#333' }}>{getDocumentTypeLabel(doc.document_type)}</strong>
-                </div>
-                <div style={{ marginBottom: '10px', color: '#666' }}>
-                  <strong>اسم الملف:</strong> {doc.file_name}
-                </div>
-                <div style={{ marginBottom: '10px', color: '#666' }}>
-                  <strong>الحجم:</strong> {doc.file_size ? `${(doc.file_size / 1024).toFixed(2)} KB` : 'غير محدد'}
-                </div>
-                <div style={{ marginBottom: '10px', color: '#666' }}>
-                  <strong>تاريخ الرفع:</strong> {new Date(doc.uploaded_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })}
-                </div>
-                <div style={{ marginBottom: '10px' }}>
-                  <strong>الحالة:</strong> 
-                  <span className={`badge ${doc.is_verified ? 'badge-success' : 'badge-warning'}`} style={{ marginRight: '10px' }}>
-                    {doc.is_verified ? 'متحقق منه' : 'غير متحقق'}
-                  </span>
-                </div>
-                {doc.expiry_date && (
-                  <div style={{ marginBottom: '15px', color: '#666' }}>
-                    <strong>تاريخ الانتهاء:</strong> {new Date(doc.expiry_date).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })}
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: '10px', marginTop: '15px', flexWrap: 'wrap' }}>
-                  {doc.mime_type && doc.mime_type.startsWith('image/') && (
-                    <button
-                      onClick={() => handlePreview(doc)}
-                      disabled={previewLoading === doc.id}
-                      className="btn btn-success btn-sm"
-                    >
-                      {previewLoading === doc.id ? (
-                        <>
-                          <span className="spinner" style={{ display: 'inline-block', marginLeft: '5px', width: '12px', height: '12px' }}></span>
-                          جاري التحميل...
-                        </>
-                      ) : (
-                        <>
-                          <img src="https://img.icons8.com/?size=24&id=85028&format=png&color=000000" alt="معاينة" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} />
-                          عرض الصورة
-                        </>
-                      )}
-                    </button>
-                  )}
-                  {doc.mime_type && doc.mime_type === 'application/pdf' && (
-                    <button
-                      onClick={() => handlePreview(doc)}
-                      disabled={previewLoading === doc.id}
-                      className="btn btn-warning btn-sm"
-                    >
-                      {previewLoading === doc.id ? (
-                        <>
-                          <span className="spinner" style={{ display: 'inline-block', marginLeft: '5px', width: '12px', height: '12px' }}></span>
-                          جاري التحميل...
-                        </>
-                      ) : (
-                        '📄 فتح PDF'
-                      )}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleDownload(doc.id)}
-                    disabled={downloading === doc.id}
-                    className="btn btn-primary btn-sm"
-                  >
-                    {downloading === doc.id ? (
-                      <>
-                        <span className="spinner" style={{ display: 'inline-block', marginLeft: '5px', width: '12px', height: '12px' }}></span>
-                        جاري التحميل...
-                      </>
-                    ) : (
-                      <><img src="https://img.icons8.com/material-rounded/24/download--v1.png" alt="تحميل" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} /> تحميل</>
-                    )}
-                  </button>
-                </div>
-              </div>
-            ))}
           </div>
         )}
+        {employee.salary && !employee.base_salary && (
+          <div style={{ marginTop: '10px', padding: '10px', background: '#fff3cd', borderRadius: '5px', fontSize: '0.9em' }}>
+            <strong>الراتب (قديم):</strong> {employee.salary.toLocaleString('ar-SA')} ريال
+            <div style={{ fontSize: '0.85em', color: '#856404', marginTop: '5px' }}>
+              ملاحظة: هذا الحقل للتوافق مع البيانات القديمة فقط
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Documents Section */}
+      <div className="documents-section">
+          <h2 className="section-header">
+            المستندات المرفوعة ({documents.length})
+          </h2>
+          {documents.length === 0 ? (
+            <div className="empty-state">
+              <p>لا توجد مستندات مرفوعة</p>
+            </div>
+          ) : (
+            <div className="documents-grid">
+              {documents.map((doc) => (
+                <div key={doc.id} className="document-card">
+                  <div className="document-card-header">
+                    <div className="document-type-icon">📄</div>
+                    <h3 className="document-card-title">{getDocumentTypeLabel(doc.document_type)}</h3>
+                  </div>
+                  <div className="document-card-body">
+                    <div className="document-info-item">
+                      <span className="document-info-label">اسم الملف</span>
+                      <span className="document-info-value">{doc.file_name || '-'}</span>
+                    </div>
+                    <div className="document-info-item">
+                      <span className="document-info-label">الحجم</span>
+                      <span className="document-info-value">{doc.file_size ? `${(doc.file_size / 1024).toFixed(2)} KB` : 'غير محدد'}</span>
+                    </div>
+                    <div className="document-info-item">
+                      <span className="document-info-label">تاريخ الرفع</span>
+                      <span className="document-info-value">{new Date(doc.uploaded_at).toLocaleDateString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                    </div>
+                    <div className="document-info-item">
+                      <span className="document-info-label">الحالة</span>
+                      <span className={`badge ${doc.is_verified ? 'badge-success' : 'badge-warning'}`}>
+                        {doc.is_verified ? 'متحقق منه' : 'غير متحقق'}
+                      </span>
+                    </div>
+                    {doc.expiry_date && (
+                      <div className="document-info-item">
+                        <span className="document-info-label">تاريخ الانتهاء</span>
+                        <span className="document-info-value">{new Date(doc.expiry_date).toLocaleDateString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="document-card-actions">
+                    {doc.mime_type && doc.mime_type.startsWith('image/') && (
+                      <button
+                        onClick={() => handlePreview(doc)}
+                        disabled={previewLoading === doc.id}
+                        className="btn btn-success btn-sm"
+                      >
+                        {previewLoading === doc.id ? (
+                          <>
+                            <span className="spinner"></span>
+                            جاري التحميل...
+                          </>
+                        ) : (
+                          <>👁️ معاينة</>
+                        )}
+                      </button>
+                    )}
+                    {doc.mime_type && doc.mime_type === 'application/pdf' && (
+                      <button
+                        onClick={() => handlePreview(doc)}
+                        disabled={previewLoading === doc.id}
+                        className="btn btn-warning btn-sm"
+                      >
+                        {previewLoading === doc.id ? (
+                          <>
+                            <span className="spinner"></span>
+                            جاري التحميل...
+                          </>
+                        ) : (
+                          <>📄 فتح PDF</>
+                        )}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDownload(doc.id)}
+                      disabled={downloading === doc.id}
+                      className="btn btn-primary btn-sm"
+                    >
+                      {downloading === doc.id ? (
+                        <>
+                          <span className="spinner"></span>
+                          جاري التحميل...
+                        </>
+                      ) : (
+                        <>⬇️ تحميل</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+      </div>
         
-        {/* Generate File Button */}
-        <div style={{ 
-          marginTop: '30px', 
-          padding: '20px', 
-          textAlign: 'center', 
-          borderTop: '2px solid #e0e0e0',
-          position: 'relative',
-          zIndex: 10,
-          pointerEvents: 'auto'
-        }}>
+      {/* Generate File Section */}
+      <div className="generate-file-section">
           <button
             type="button"
             onClick={(e) => {
@@ -870,77 +949,38 @@ const EmployeeDetails = () => {
               handleGenerateFile(e);
             }}
             disabled={generatingFile || !employee}
-            className="btn btn-primary btn-lg"
-            style={{ 
-              padding: '12px 30px',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              cursor: (generatingFile || !employee) ? 'not-allowed' : 'pointer',
-              position: 'relative',
-              zIndex: 11,
-              pointerEvents: (generatingFile || !employee) ? 'none' : 'auto',
-              opacity: (generatingFile || !employee) ? 0.6 : 1
-            }}
+            className="btn btn-primary btn-lg generate-file-button"
           >
             {generatingFile ? (
               <>
-                <span className="spinner" style={{ display: 'inline-block', marginLeft: '8px', width: '16px', height: '16px' }}></span>
+                <span className="spinner"></span>
                 جاري إنشاء الملف...
               </>
             ) : (
               <>
-                <img src="https://img.icons8.com/material-rounded/24/document.png" alt="ملف" style={{ width: '20px', height: '20px', verticalAlign: 'middle', marginLeft: '8px' }} />
-                إنشاء ملف الموظف (PDF)
+                📄 إنشاء ملف الموظف (PDF)
               </>
             )}
           </button>
         </div>
-      </div>
 
       {/* Password Modal */}
       {showPasswordModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          zIndex: 2000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px'
-        }}
-        onClick={() => {
-          if (!generatingFile) {
-            setShowPasswordModal(false);
-            setPassword('');
-            setPasswordError('');
-          }
-        }}
-        >
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            padding: '30px',
-            maxWidth: '400px',
-            width: '100%',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+        <div className="password-modal"
+          onClick={() => {
+            if (!generatingFile) {
+              setShowPasswordModal(false);
+              setPassword('');
+              setPasswordError('');
+            }
           }}
-          onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ marginBottom: '20px', textAlign: 'center' }}>
-              إدخال كلمة المرور
-            </h2>
-            <p style={{ marginBottom: '20px', textAlign: 'center', color: '#666' }}>
-              يرجى إدخال كلمة مرور مستندات الفرع لإنشاء ملف الموظف
-            </p>
+        >
+          <div className="password-modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>إدخال كلمة المرور</h2>
+            <p>يرجى إدخال كلمة مرور مستندات الفرع لإنشاء ملف الموظف</p>
             <form onSubmit={handlePasswordSubmit}>
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-                  كلمة المرور
-                </label>
+              <div className="password-input-group">
+                <label>كلمة المرور</label>
                 <input
                   type="password"
                   value={password}
@@ -950,21 +990,15 @@ const EmployeeDetails = () => {
                   }}
                   disabled={generatingFile}
                   style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: passwordError ? '2px solid #dc3545' : '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '16px'
+                    border: passwordError ? '2px solid var(--danger)' : '2px solid var(--border)'
                   }}
                   autoFocus
                 />
                 {passwordError && (
-                  <div style={{ color: '#dc3545', marginTop: '5px', fontSize: '14px' }}>
-                    {passwordError}
-                  </div>
+                  <div className="password-error">{passwordError}</div>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <div className="password-modal-actions">
                 <button
                   type="button"
                   onClick={() => {
@@ -984,7 +1018,7 @@ const EmployeeDetails = () => {
                 >
                   {generatingFile ? (
                     <>
-                      <span className="spinner" style={{ display: 'inline-block', marginLeft: '8px', width: '14px', height: '14px' }}></span>
+                      <span className="spinner"></span>
                       جاري المعالجة...
                     </>
                   ) : (
@@ -999,46 +1033,17 @@ const EmployeeDetails = () => {
 
       {/* Image Preview Modal */}
       {previewDocument && previewUrl && previewDocument.mime_type && previewDocument.mime_type.startsWith('image/') && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.9)',
-          zIndex: 2000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px'
-        }}
-        onClick={closePreview}
-        >
-          <div style={{ position: 'relative', maxWidth: '90%', maxHeight: '90%' }}>
+        <div className="image-preview-modal" onClick={closePreview}>
+          <div className="image-preview-content">
             <button
               onClick={closePreview}
-              style={{
-                position: 'absolute',
-                top: '-40px',
-                right: '0',
-                background: 'none',
-                border: 'none',
-                color: 'white',
-                fontSize: '32px',
-                cursor: 'pointer',
-                zIndex: 2001
-              }}
+              className="image-preview-close"
             >
               ×
             </button>
             <img
               src={previewUrl}
               alt={previewDocument.file_name}
-              style={{
-                maxWidth: '100%',
-                maxHeight: '90vh',
-                objectFit: 'contain'
-              }}
               onClick={(e) => e.stopPropagation()}
             />
           </div>
