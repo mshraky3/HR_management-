@@ -359,19 +359,35 @@ router.post('/performance-report', async (req, res) => {
         { header: 'حالة التشغيل', key: 'is_operational', width: 15 }
       ];
       
+      // Helper function to format date with English numbers
+      const formatDateEnglish = (date) => {
+        if (!date) return 'لا يوجد';
+        const d = new Date(date);
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
+      };
+      
+      // Helper function to format numbers (ensure English)
+      const formatNumber = (value) => {
+        if (value === null || value === undefined) return 'لا يوجد';
+        return String(value);
+      };
+      
       // Add data
       detailedStats.forEach(stat => {
         worksheet.addRow({
           branch_name: stat.branch_name,
           branch_type: stat.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية',
-          login_days: stat.login_days,
-          total_employees: stat.total_employees,
-          complete_employees: stat.complete_employees,
-          completion_percentage: stat.completion_percentage,
-          employee_updates: stat.activities_last_30_days.employee_updates,
-          document_uploads: stat.activities_last_30_days.document_uploads,
-          last_login: stat.last_login ? new Date(stat.last_login).toLocaleDateString('ar-SA') : 'لا يوجد',
-          days_since_last_login: stat.days_since_last_login !== null ? stat.days_since_last_login : 'لا يوجد',
+          login_days: formatNumber(stat.login_days),
+          total_employees: formatNumber(stat.total_employees),
+          complete_employees: formatNumber(stat.complete_employees),
+          completion_percentage: formatNumber(stat.completion_percentage),
+          employee_updates: formatNumber(stat.activities_last_30_days.employee_updates),
+          document_uploads: formatNumber(stat.activities_last_30_days.document_uploads),
+          last_login: formatDateEnglish(stat.last_login),
+          days_since_last_login: formatNumber(stat.days_since_last_login),
           is_operational: stat.is_operational ? 'نشط' : 'غير نشط'
         });
       });

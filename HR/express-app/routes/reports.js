@@ -116,24 +116,153 @@ const calculateAge = (dateOfBirth) => {
 };
 
 /**
- * Helper function to format date for display
+ * Helper function to ensure numbers are in English (LTR)
  */
-const formatDate = (date) => {
-  if (!date) return '-';
-  const d = new Date(date);
-  return d.toLocaleDateString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+const formatNumberForPDF = (value) => {
+  if (value === null || value === undefined || value === '') return '-';
+  // Convert to string and ensure it's in English numerals
+  const str = String(value);
+  // Replace Arabic-Indic numerals with English numerals
+  const arabicToEnglish = {
+    '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+    '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9'
+  };
+  return str.replace(/[٠-٩]/g, (d) => arabicToEnglish[d] || d);
 };
 
 /**
- * Helper function to format currency
+ * Helper function to convert Gregorian date to Hijri date (English numbers)
+ * Returns date in format: dd/mm/yyyy
+ * Uses accurate conversion algorithm
+ */
+const gregorianToHijri = (date) => {
+  if (!date) return '-';
+  
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  
+  // Convert Gregorian to Julian Day Number
+  let jd;
+  if (year > 1582 || (year === 1582 && month > 10) || (year === 1582 && month === 10 && day > 14)) {
+    // Gregorian calendar
+    const a = Math.floor((14 - month) / 12);
+    const y = year + 4800 - a;
+    const m = month + 12 * a - 3;
+    jd = day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) - 32045;
+  } else {
+    // Julian calendar
+    const a = Math.floor((14 - month) / 12);
+    const y = year + 4800 - a;
+    const m = month + 12 * a - 3;
+    jd = day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - 32083;
+  }
+  
+  // Convert Julian Day Number to Hijri
+  // Hijri epoch: July 16, 622 CE = Julian Day 1948439.5
+  const hijriEpoch = 1948439.5;
+  const daysSinceEpoch = jd - hijriEpoch;
+  
+  // Calculate Hijri year using accurate formula
+  // Average Hijri year = 354.36667 days
+  const hijriYear = Math.floor((daysSinceEpoch - 1) / 354.36667) + 1;
+  
+  // Calculate days from start of Hijri year
+  const yearStartDays = Math.floor((hijriYear - 1) * 354) + Math.floor((11 * (hijriYear - 1) + 3) / 30);
+  let daysFromYearStart = daysSinceEpoch - yearStartDays;
+  
+  // Ensure positive days
+  if (daysFromYearStart < 0) {
+    daysFromYearStart = 0;
+  }
+  
+  // Determine if it's a leap year (11 leap years in 30-year cycle)
+  const cycleYear = (hijriYear - 1) % 30;
+  const leapYears = [2, 5, 7, 10, 13, 16, 18, 21, 24, 26, 29];
+  const isLeapYear = leapYears.includes(cycleYear);
+  
+  // Hijri month lengths (standard pattern)
+  const monthLengths = [30, 29, 30, 29, 30, 29, 30, 29, 30, 29, 30, 29];
+  if (isLeapYear) {
+    monthLengths[11] = 30; // Last month is 30 days in leap year
+  }
+  
+  // Find the month
+  let hijriMonth = 1;
+  let daysRemaining = daysFromYearStart;
+  
+  for (let i = 0; i < 12; i++) {
+    if (daysRemaining < monthLengths[i]) {
+      hijriMonth = i + 1;
+      break;
+    }
+    daysRemaining -= monthLengths[i];
+  }
+  
+  // Calculate Hijri day
+  let hijriDay = Math.floor(daysRemaining) + 1;
+  
+  // Validate and adjust if needed
+  if (hijriDay < 1) hijriDay = 1;
+  if (hijriDay > monthLengths[hijriMonth - 1]) {
+    hijriDay = monthLengths[hijriMonth - 1];
+  }
+  if (hijriMonth < 1) hijriMonth = 1;
+  if (hijriMonth > 12) hijriMonth = 12;
+  if (hijriYear < 1 || hijriYear > 1500) {
+    // Fallback: return today's date in Gregorian format
+    const today = new Date();
+    const d = String(today.getDate()).padStart(2, '0');
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const y = today.getFullYear();
+    return `${d}/${m}/${y}`;
+  }
+  
+  // Format as dd/mm/yyyy (English numbers)
+  const formattedDay = String(hijriDay).padStart(2, '0');
+  const formattedMonth = String(hijriMonth).padStart(2, '0');
+  const formattedYear = String(hijriYear);
+  
+  return `${formattedDay}/${formattedMonth}/${formattedYear}`;
+};
+
+/**
+ * Helper function to format date for display (English numbers, DD/MM/YYYY)
+ */
+const formatDate = (date) => {
+  if (!date) return '-';
+  // Handle string dates (YYYY-MM-DD format)
+  let d;
+  if (typeof date === 'string') {
+    if (date.includes('T')) {
+      d = new Date(date.split('T')[0]);
+    } else {
+      d = new Date(date);
+    }
+  } else {
+    d = new Date(date);
+  }
+  
+  // Format as DD/MM/YYYY (English numbers)
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  
+  return `${day}/${month}/${year}`;
+};
+
+/**
+ * Helper function to format currency (English numbers)
  */
 const formatCurrency = (amount) => {
   if (amount === null || amount === undefined) return '-';
-  return new Intl.NumberFormat('ar-SA', { 
-    style: 'currency', 
-    currency: 'SAR',
-    minimumFractionDigits: 2 
+  // Format with English numbers
+  const formatted = new Intl.NumberFormat('en-US', { 
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
   }).format(amount);
+  return `${formatted} ريال`;
 };
 
 /**
@@ -261,16 +390,19 @@ const getFieldValue = (employee, field, branches) => {
       return `${employee.first_name || ''} ${employee.second_name || ''} ${employee.third_name || ''} ${employee.fourth_name || ''}`.trim();
     case 'branch_id':
       const branch = branches.find(b => b.id === employee.branch_id);
-      return branch ? branch.branch_name : employee.branch_id;
+      return branch ? branch.branch_name : formatNumberForPDF(employee.branch_id);
     case 'age':
-      return calculateAge(employee.date_of_birth_gregorian) || '-';
+      return formatNumberForPDF(calculateAge(employee.date_of_birth_gregorian)) || '-';
     case 'id_type':
       return employee.id_type === 'citizen' ? 'مواطن' : 'مقيم';
     case 'gender':
       return employee.gender === 'male' ? 'ذكر' : 'أنثى';
     case 'date_of_birth_hijri':
+      return employee.date_of_birth_hijri || '-';
     case 'date_of_birth_gregorian':
+      return formatDate(employee.date_of_birth_gregorian);
     case 'id_expiry_date_hijri':
+      return employee[field] || '-';
     case 'id_expiry_date_gregorian':
     case 'passport_issue_date':
     case 'passport_expiry_date':
@@ -287,8 +419,23 @@ const getFieldValue = (employee, field, branches) => {
       return formatCurrency(employee[field]);
     case 'data_completion_status':
       return employee.data_completion_status === 'complete' ? 'مكتمل' : 'غير مكتمل';
+    case 'employee_id_number':
+    case 'id_or_residency_number':
+    case 'phone_number':
+    case 'bank_iban':
+    case 'passport_number':
+    case 'years_of_experience_in_same_institution':
+    case 'years_of_experience_in_company':
+    case 'graduation_year':
+    case 'university_gpa':
+      return formatNumberForPDF(employee[field]);
     default:
-      return employee[field] || '-';
+      const value = employee[field];
+      // If it's a number, format it
+      if (typeof value === 'number') {
+        return formatNumberForPDF(value);
+      }
+      return value || '-';
   }
 };
 
@@ -311,20 +458,23 @@ const generatePDF = async (title, employees, selectedFields, branches, branchIds
       const tableBody = employees.map(employee => {
         return selectedFields.map(field => {
           const value = getFieldValue(employee, field, branches);
+          const valueStr = String(value || '-');
+          // Check if value contains numbers - if so, use LTR direction
+          const hasNumbers = /\d/.test(valueStr);
           return {
-            text: String(value || '-'),
+            text: valueStr,
             style: 'tableCell',
-            alignment: 'center'
+            alignment: 'center',
+            direction: hasNumbers ? 'ltr' : 'rtl',
+            preserveLeadingSpaces: false
           };
         });
       });
       
-      // Report date
-      const reportDate = new Date().toLocaleDateString('ar-SA', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      });
+      // Report date in Gregorian (English numbers)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const reportDate = formatDate(today);
       
       // Document definition with RTL support
       const docDefinition = {
@@ -363,7 +513,8 @@ const generatePDF = async (title, employees, selectedFields, branches, branchIds
             fontSize: 8,
             color: 'black',
             fillColor: 'white',
-            alignment: 'center'
+            alignment: 'center',
+            preserveLeadingSpaces: false
           }
         },
         content: [
@@ -374,11 +525,17 @@ const generatePDF = async (title, employees, selectedFields, branches, branchIds
           },
           // Report info
           {
-            text: `عدد الموظفين: ${employees.length}`,
+            text: [
+              { text: 'عدد الموظفين: ', direction: 'rtl' },
+              { text: String(employees.length), direction: 'ltr' }
+            ],
             style: 'info'
           },
           {
-            text: `تاريخ التقرير: ${reportDate}`,
+            text: [
+              { text: 'تاريخ التقرير: ', direction: 'rtl' },
+              { text: reportDate, direction: 'ltr' }
+            ],
             style: 'info',
             margin: [0, 0, 0, 20]
           },
