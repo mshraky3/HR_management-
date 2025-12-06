@@ -631,7 +631,40 @@ router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
       finalSelectedFields.push('branch_id');
     }
     
-    // Generate file based on fileType
+    // Check if documents are selected
+    const selectedDocuments = req.body.selectedDocuments || [];
+    const hasDocuments = selectedDocuments && selectedDocuments.length > 0;
+    
+    // If documents are selected, force PDF and use document-based generation
+    if (hasDocuments) {
+      // Fetch documents for all employees
+      const { Document } = await import('../models/Document.js');
+      const documentsMap = {};
+      
+      for (const employee of employees) {
+        const allDocuments = await Document.findByEmployeeId(employee.id);
+        // Filter by selected document types
+        const filteredDocuments = allDocuments.filter(doc => 
+          selectedDocuments.includes(doc.document_type)
+        );
+        // Store both found documents and selected document types for missing check
+        documentsMap[employee.id] = {
+          found: filteredDocuments || [],
+          selected: selectedDocuments
+        };
+      }
+      
+      // Import generateEmployeeFilePDF from employee-file
+      const { generateEmployeeFilePDF } = await import('./employee-file.js');
+      const pdfBuffer = await generateEmployeeFilePDF(title, employees, finalSelectedFields, allBranches, documentsMap, true); // true = isReport
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.pdf"`);
+      res.send(pdfBuffer);
+      return;
+    }
+    
+    // Generate file based on fileType (no documents selected)
     if (fileType === 'excel') {
       // Generate Excel file
       const excelBuffer = await generateExcel(title, employees, finalSelectedFields, allBranches, validBranchIds);

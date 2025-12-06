@@ -7,6 +7,7 @@ import express from 'express';
 import PdfPrinter from '@digicole/pdfmake-rtl';
 import { authenticate } from '../middleware/auth.js';
 import { requireMainManager } from '../middleware/authorization.js';
+import { verifyBranchDocumentsPassword } from '../middleware/branchDocumentsPassword.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -119,6 +120,30 @@ const formatDate = (date) => {
   if (!date) return '-';
   const d = new Date(date);
   return d.toLocaleDateString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+};
+
+/**
+ * Get document type label in Arabic
+ */
+const getDocumentTypeLabel = (documentType) => {
+  const labels = {
+    'id_or_residency': 'الهوية/الإقامة',
+    'direct_letter': 'خطاب مباشرة',
+    'bank_iban': 'مستند الآيبان',
+    'primary_qualification': 'المؤهل الأساسي',
+    'employment_contract': 'عقد العمل',
+    'additional_courses': 'الدورات الإضافية',
+    'passport': 'جواز السفر',
+    'professional_license': 'الترخيص المهني',
+    'experience_certificate': 'شهادة الخبرة',
+    'classification': 'شهادة التصنيف',
+    'speech_therapy_course': 'دورة علاج النطق',
+    'speech_therapy_70_hours_course': 'دورة 70 ساعة في التخاطب',
+    'physical_therapy_course': 'دورة العلاج الطبيعي',
+    'therapy_40_hours_course': 'دورة 40 ساعة',
+    'medical_disclosure_form': 'نموذج افصاح طبي'
+  };
+  return labels[documentType] || documentType;
 };
 
 /**
@@ -328,15 +353,34 @@ const loadDocumentFile = async (document) => {
 
 /**
  * Generate Employee File PDF
+ * Exported for use in reports
+ * @param {boolean} isReport - If true, show missing documents message for reports
  */
-const generateEmployeeFilePDF = async (title, employees, selectedFields, branches, documentsMap) => {
+export const generateEmployeeFilePDF = async (title, employees, selectedFields, branches, documentsMap, isReport = false) => {
   try {
     // Load all document files and convert to base64
     const documentFilesMap = {}; // Map of document_id -> {base64, mimeType, buffer}
     
-      // Load all document files and convert to base64
+    // Handle both old format (array) and new format (object with found/selected)
+    const normalizeDocumentsMap = (map) => {
+      const normalized = {};
+      for (const [employeeId, value] of Object.entries(map)) {
+        if (Array.isArray(value)) {
+          normalized[employeeId] = { found: value, selected: [] };
+        } else {
+          normalized[employeeId] = value;
+        }
+      }
+      return normalized;
+    };
+    
+    const normalizedMap = normalizeDocumentsMap(documentsMap);
+    
+    // Load all document files and convert to base64
     for (const employee of employees) {
-      const employeeDocuments = documentsMap[employee.id] || [];
+      const employeeData = normalizedMap[employee.id] || { found: [], selected: [] };
+      const employeeDocuments = employeeData.found || [];
+      
       for (const doc of employeeDocuments) {
         try {
           const fileData = await loadDocumentFile(doc);
@@ -431,20 +475,40 @@ const generateEmployeeFilePDF = async (title, employees, selectedFields, branche
         });
         
         // Employee documents
-        const employeeDocuments = documentsMap[employee.id] || [];
-        if (employeeDocuments.length > 0) {
-          content.push({
-            text: 'المستندات:',
-            style: 'sectionHeader',
-            margin: [0, 20, 0, 10]
-          });
+        const employeeData = normalizedMap[employee.id] || { found: [], selected: [] };
+        const employeeDocuments = employeeData.found || [];
+        const selectedDocTypes = employeeData.selected || [];
+        
+        content.push({
+          text: 'المستندات:',
+          style: 'sectionHeader',
+          margin: [0, 20, 0, 10]
+        });
+        
+        // If this is a report, show all selected document types (including missing ones)
+        if (isReport && selectedDocTypes.length > 0) {
+          const foundDocTypes = employeeDocuments.map(doc => doc.document_type);
           
-          for (const doc of employeeDocuments) {
+          for (const docType of selectedDocTypes) {
+            const doc = employeeDocuments.find(d => d.document_type === docType);
+            
+            if (!doc) {
+              // Document is missing - show message
+              content.push({
+                text: `${getDocumentTypeLabel(docType)}: غير متواجد لدى الموظف`,
+                style: 'documentItem',
+                color: '#d32f2f',
+                margin: [0, 0, 0, 10]
+              });
+              continue;
+            }
+            
+            // Document exists - show it
             const docFileData = documentFilesMap[doc.id];
             
             // Document header with type and name
             content.push({
-              text: `${doc.document_type || 'مستند'} - ${doc.filename || doc.file_name || 'بدون اسم'}`,
+              text: `${getDocumentTypeLabel(doc.document_type) || 'مستند'} - ${doc.filename || doc.file_name || 'بدون اسم'}`,
               style: 'documentItem',
               margin: [0, 0, 0, 5]
             });
@@ -650,6 +714,81 @@ const generateEmployeeFilePDF = async (title, employees, selectedFields, branche
     return Promise.reject(error);
   }
 };
+
+/**
+ * POST /api/employee-file/generate-single/:employee_id
+ * Generate employee file PDF for a single employee
+ * Requires password for branch managers, not for main managers
+ */
+router.post('/generate-single/:employee_id', verifyBranchDocumentsPassword, async (req, res) => {
+  try {
+    const employeeId = parseInt(req.params.employee_id);
+    
+    if (isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'معرف الموظف غير صحيح'
+      });
+    }
+    
+    // Fetch employee
+    const employee = await Employee.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'الموظف غير موجود'
+      });
+    }
+    
+    // Check access - branch managers can only access their own branch employees
+    if (req.user?.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'غير مصرح لك بالوصول إلى بيانات هذا الموظف'
+      });
+    }
+    
+    // Fetch all branches for display
+    const allBranches = await Branch.findAll({ is_active: true });
+    
+    // Fetch all documents for the employee
+    const documents = await Document.findByEmployeeId(employee.id);
+    const documentsMap = { [employee.id]: documents || [] };
+    
+    // Default selected fields - all available fields
+    const selectedFields = [
+      'employee_id_number', 'first_name', 'second_name', 'third_name', 'fourth_name',
+      'occupation', 'nationality', 'date_of_birth_hijri', 'date_of_birth_gregorian',
+      'id_or_residency_number', 'id_type', 'gender', 'id_expiry_date_hijri', 'id_expiry_date_gregorian',
+      'religion', 'marital_status', 'educational_qualification', 'specialization',
+      'bank_iban', 'bank_name', 'email', 'phone_number', 'national_address', 'contract_type',
+      'years_of_experience_in_same_institution', 'salary', 'base_salary', 'housing_allowance',
+      'transportation_allowance', 'end_of_service_allowance', 'annual_leave_allowance',
+      'other_allowances', 'deductions', 'graduation_year', 'university_gpa',
+      'passport_number', 'passport_issue_date', 'passport_expiry_date', 'passport_issue_place',
+      'residency_issue_date', 'job_title'
+    ];
+    
+    // Generate title
+    const title = `ملف موظف - ${employee.first_name} ${employee.second_name} ${employee.third_name} ${employee.fourth_name}`;
+    
+    // Generate PDF
+    const pdfBuffer = await generateEmployeeFilePDF(title, [employee], selectedFields, allBranches, documentsMap);
+    
+    // Return PDF directly as response
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.pdf"`);
+    res.send(pdfBuffer);
+    
+  } catch (error) {
+    console.error('Error generating employee file:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل إنشاء الملف',
+      error: error.message
+    });
+  }
+});
 
 /**
  * POST /api/employee-file/generate
