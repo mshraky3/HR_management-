@@ -98,6 +98,15 @@ const router = express.Router();
 router.use(authenticate);
 
 /**
+ * Helper function to remove parentheses from text
+ * Removes ( and ) characters from strings
+ */
+const removeParentheses = (text) => {
+  if (!text || typeof text !== 'string') return text;
+  return text.replace(/[()]/g, '');
+};
+
+/**
  * Helper function to calculate age from date of birth
  */
 const calculateAge = (dateOfBirth) => {
@@ -409,10 +418,29 @@ const mergePdfDocuments = async (mainPdfBuffer, documentFilesMap, documentsMap, 
     // Load main PDF
     const mainPdf = await PDFDocument.load(mainPdfBuffer);
     
-    // For each employee, merge their PDF documents
+    // Handle both old format (array) and new format (object with found/selected)
+    const normalizeDocumentsMap = (map) => {
+      const normalized = {};
+      for (const [employeeId, value] of Object.entries(map)) {
+        if (Array.isArray(value)) {
+          normalized[employeeId] = { found: value, selected: [] };
+        } else {
+          normalized[employeeId] = value;
+        }
+      }
+      return normalized;
+    };
+    
+    const normalizedMap = normalizeDocumentsMap(documentsMap);
+    
+    // For each employee, merge their PDF documents directly after their section
+    // Since we can't know exactly where each employee's section ends in the merged PDF,
+    // we'll merge all PDFs in order: employee 1 section, employee 1 PDFs, employee 2 section, employee 2 PDFs, etc.
     for (const employee of employees) {
-      const employeeDocuments = documentsMap[employee.id] || [];
+      const employeeData = normalizedMap[employee.id] || { found: [], selected: [] };
+      const employeeDocuments = employeeData.found || [];
       
+      // Merge PDF documents for this employee
       for (const doc of employeeDocuments) {
         const docFileData = documentFilesMap[doc.id];
         
@@ -541,322 +569,487 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
       }
     }
     
-    return new Promise((resolve, reject) => {
-      try {
-        // Report date in Gregorian (today's date)
-        const today = new Date();
-        // Set to start of day to ensure consistent date
-        today.setHours(0, 0, 0, 0);
-        const reportDate = formatDate(today);
-      
-      // Get first names of selected employees
-      const firstNames = employees.map(e => e.first_name || '-').join('، ');
-      
-      // Build content array
-      const content = [];
-      
-      // Add each employee's data and documents
-      employees.forEach((employee, index) => {
-        // Note: Using forEach here is fine since we're not using await inside
-        const employeeFullName = `${employee.first_name || ''} ${employee.second_name || ''} ${employee.third_name || ''} ${employee.fourth_name || ''}`.trim();
-        
-        // Employee header
-        if (index > 0) {
-          content.push({ text: '', pageBreak: 'before' });
-        }
-        
-        // Title and info at the top of each employee section
-        content.push({
-          text: title,
-          style: 'title',
-          margin: [0, 0, 0, 10]
-        });
-        
-        content.push({
-          text: [
-            { text: 'تاريخ الملف: ', direction: 'rtl' },
-            { text: reportDate, direction: 'ltr' }
-          ],
-          style: 'info'
-        });
-        
-        content.push({
-          text: `الموظف: ${employeeFullName}`,
-          style: 'employeeHeader',
-          margin: [0, 0, 0, 15]
-        });
-        
-        // Employee data table
-        const employeeDataRows = [];
-        selectedFields.forEach(field => {
-          const label = getFieldLabel(field);
-          const value = getFieldValue(employee, field, branches);
-          const valueStr = String(value || '-');
-          // Check if value contains numbers - if so, use LTR direction
-          const hasNumbers = /\d/.test(valueStr);
-          employeeDataRows.push([
-            { text: label, style: 'dataLabel', alignment: 'right' },
-            { 
-              text: valueStr, 
-              style: 'dataValue', 
-              alignment: 'right',
-              direction: hasNumbers ? 'ltr' : 'rtl',
-              preserveLeadingSpaces: false
-            }
-          ]);
-        });
-        
-        content.push({
-          table: {
-            widths: ['*', '*'],
-            body: employeeDataRows
-          },
-          layout: {
-            hLineWidth: (i, node) => 0.5,
-            vLineWidth: (i, node) => 0.5,
-            hLineColor: () => 'black',
-            vLineColor: () => 'black',
-            paddingLeft: () => 5,
-            paddingRight: () => 5,
-            paddingTop: () => 5,
-            paddingBottom: () => 5
-          },
-          margin: [0, 0, 0, 20]
-        });
-        
-        // Employee documents
-        const employeeData = normalizedMap[employee.id] || { found: [], selected: [] };
-        const employeeDocuments = employeeData.found || [];
-        const selectedDocTypes = employeeData.selected || [];
-        
-        content.push({
-          text: 'المستندات:',
-          style: 'sectionHeader',
-          margin: [0, 20, 0, 10]
-        });
-        
-        // If this is a report, show all selected document types (including missing ones)
-        if (isReport && selectedDocTypes.length > 0) {
-          const foundDocTypes = employeeDocuments.map(doc => doc.document_type);
+    // Helper function to create PDF for a single employee
+    const createEmployeePdf = async (employee, employeeIndex, isFirst) => {
+      return new Promise((resolve, reject) => {
+        try {
+          const employeeData = normalizedMap[employee.id] || { found: [], selected: [] };
+          const employeeDocuments = employeeData.found || [];
+          const selectedDocTypes = employeeData.selected || [];
           
-          for (const docType of selectedDocTypes) {
-            const doc = employeeDocuments.find(d => d.document_type === docType);
-            
-            if (!doc) {
-              // Document is missing - show message
-              content.push({
-                text: `${getDocumentTypeLabel(docType)}: غير متواجد لدى الموظف`,
-                style: 'documentItem',
-                color: '#d32f2f',
-                margin: [0, 0, 0, 10]
-              });
-              continue;
-            }
-            
-            // Document exists - show it
+          const employeeFullName = `${employee.first_name || ''} ${employee.second_name || ''} ${employee.third_name || ''} ${employee.fourth_name || ''}`.trim();
+          
+          // Report date in Gregorian (today's date)
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const reportDate = formatDate(today);
+          
+          // Register images for this employee
+          const employeeImages = {};
+          for (const doc of employeeDocuments) {
             const docFileData = documentFilesMap[doc.id];
+            if (docFileData && docFileData.mimeType.startsWith('image/')) {
+              const imageKey = `doc_${doc.id}`;
+              employeeImages[imageKey] = docFileData.base64DataUri;
+            }
+          }
+          
+          const employeeContent = [];
+          
+          // Title and info at the top of each employee section
+          if (!isFirst) {
+            employeeContent.push({ text: '', pageBreak: 'before' });
+          }
+          
+          employeeContent.push({
+            text: removeParentheses(title),
+            style: 'title',
+            margin: [0, 0, 0, 10]
+          });
+          
+          employeeContent.push({
+            text: [
+              { text: 'تاريخ الملف: ', direction: 'rtl' },
+              { text: reportDate, direction: 'ltr' }
+            ],
+            style: 'info'
+          });
+          
+          employeeContent.push({
+            text: `الموظف: ${removeParentheses(employeeFullName)}`,
+            style: 'employeeHeader',
+            margin: [0, 0, 0, 15]
+          });
+          
+          // Employee data table
+          const employeeDataRows = [];
+          selectedFields.forEach(field => {
+            const label = removeParentheses(getFieldLabel(field));
+            const value = getFieldValue(employee, field, branches);
+            const valueStr = removeParentheses(String(value || '-'));
+            const hasNumbers = /\d/.test(valueStr);
+            employeeDataRows.push([
+              { text: label, style: 'dataLabel', alignment: 'right' },
+              { 
+                text: valueStr, 
+                style: 'dataValue', 
+                alignment: 'right',
+                direction: hasNumbers ? 'ltr' : 'rtl',
+                preserveLeadingSpaces: false
+              }
+            ]);
+          });
+          
+          employeeContent.push({
+            table: {
+              widths: ['*', '*'],
+              body: employeeDataRows
+            },
+            layout: {
+              hLineWidth: (i, node) => 0.5,
+              vLineWidth: (i, node) => 0.5,
+              hLineColor: () => 'black',
+              vLineColor: () => 'black',
+              paddingLeft: () => 5,
+              paddingRight: () => 5,
+              paddingTop: () => 5,
+              paddingBottom: () => 5
+            },
+            margin: [0, 0, 0, 20]
+          });
+          
+          // Employee documents
+          employeeContent.push({
+            text: 'المستندات:',
+            style: 'sectionHeader',
+            margin: [0, 20, 0, 10]
+          });
+          
+          // If this is a report, show all selected document types (including missing ones)
+          if (isReport && selectedDocTypes.length > 0) {
+            const foundDocTypes = employeeDocuments.map(doc => doc.document_type);
             
-            // Document header with type and name
-            content.push({
-              text: `${getDocumentTypeLabel(doc.document_type) || 'مستند'} - ${doc.filename || doc.file_name || 'بدون اسم'}`,
-              style: 'documentItem',
-              margin: [0, 0, 0, 5]
-            });
-            
-            if (doc.description) {
-              content.push({
-                text: `الوصف: ${doc.description}`,
-                style: 'documentDescription',
+            for (const docType of selectedDocTypes) {
+              const doc = employeeDocuments.find(d => d.document_type === docType);
+              
+              if (!doc) {
+                employeeContent.push({
+                  text: removeParentheses(`${getDocumentTypeLabel(docType)}: غير متواجد لدى الموظف`),
+                  style: 'documentItem',
+                  color: '#d32f2f',
+                  margin: [0, 0, 0, 10]
+                });
+                continue;
+              }
+              
+              const docFileData = documentFilesMap[doc.id];
+              
+              employeeContent.push({
+                text: removeParentheses(`${getDocumentTypeLabel(doc.document_type) || 'مستند'} - ${doc.filename || doc.file_name || 'بدون اسم'}`),
+                style: 'documentItem',
                 margin: [0, 0, 0, 5]
               });
-            }
-            
-            if (doc.expiry_date) {
-              const expiryDate = formatDate(doc.expiry_date);
-              content.push({
-                text: `تاريخ الانتهاء: ${expiryDate}`,
-                style: 'documentDescription',
-                margin: [0, 0, 0, 10]
-              });
-            }
-            
-            // Embed document file
-            if (docFileData) {
-              const mimeType = docFileData.mimeType;
               
-              // Check if it's an image
-              if (mimeType.startsWith('image/')) {
-                try {
-                  // Use registered image name from images object
-                  const imageKey = `doc_${doc.id}`;
-                  content.push({
-                    image: imageKey, // Reference to registered image
-                    width: 500,
-                    alignment: 'center',
-                    margin: [0, 10, 0, 20],
-                    fit: [500, 700] // Max width 500, max height 700
-                  });
-                } catch (error) {
-                  console.error(`Error embedding image for document ${doc.id}:`, error);
-                  // Fallback: try using data URI directly
+              if (doc.description) {
+                employeeContent.push({
+                  text: removeParentheses(`الوصف: ${doc.description || ''}`),
+                  style: 'documentDescription',
+                  margin: [0, 0, 0, 5]
+                });
+              }
+              
+              if (doc.expiry_date) {
+                const expiryDate = formatDate(doc.expiry_date);
+                employeeContent.push({
+                  text: `تاريخ الانتهاء: ${expiryDate}`,
+                  style: 'documentDescription',
+                  margin: [0, 0, 0, 10]
+                });
+              }
+              
+              // Embed document file (only images, PDFs will be merged separately)
+              if (docFileData) {
+                const mimeType = docFileData.mimeType;
+                
+                if (mimeType.startsWith('image/')) {
                   try {
-                    content.push({
-                      image: docFileData.base64DataUri, // Use full data URI as fallback
-                      width: 500,
-                      alignment: 'center',
-                      margin: [0, 10, 0, 20],
-                      fit: [500, 700]
-                    });
-                  } catch (fallbackError) {
-                    console.error(`Fallback also failed for document ${doc.id}:`, fallbackError);
-                    content.push({
-                      text: `[خطأ في تحميل الصورة: ${doc.filename || doc.file_name}]`,
+                    const imageKey = `doc_${doc.id}`;
+                    if (imageKey in employeeImages) {
+                      employeeContent.push({
+                        image: imageKey,
+                        width: 500,
+                        alignment: 'center',
+                        margin: [0, 10, 0, 20],
+                        fit: [500, 700]
+                      });
+                    } else {
+                      employeeContent.push({
+                        image: docFileData.base64DataUri,
+                        width: 500,
+                        alignment: 'center',
+                        margin: [0, 10, 0, 20],
+                        fit: [500, 700]
+                      });
+                    }
+                  } catch (error) {
+                    console.error(`Error embedding image for document ${doc.id}:`, error);
+                    try {
+                      employeeContent.push({
+                        image: docFileData.base64DataUri,
+                        width: 500,
+                        alignment: 'center',
+                        margin: [0, 10, 0, 20],
+                        fit: [500, 700]
+                      });
+                    } catch (fallbackError) {
+                      employeeContent.push({
+                        text: removeParentheses(`[خطأ في تحميل الصورة: ${doc.filename || doc.file_name}]`),
+                        style: 'documentDescription',
+                        margin: [0, 10, 0, 20]
+                      });
+                    }
+                  }
+                } else if (mimeType !== 'application/pdf') {
+                  employeeContent.push({
+                    text: removeParentheses(`[نوع الملف: ${mimeType} - لا يمكن إدراج هذا النوع من الملفات مباشرة]`),
+                    style: 'documentDescription',
+                    margin: [0, 10, 0, 20],
+                    color: '#666'
+                  });
+                }
+              } else {
+                employeeContent.push({
+                  text: removeParentheses(`[تعذر تحميل الملف: ${doc.filename || doc.file_name}]`),
+                  style: 'documentDescription',
+                  margin: [0, 10, 0, 20],
+                  color: '#999'
+                });
+              }
+            }
+          } else {
+            // Not a report or no selected types - show all documents
+            if (employeeDocuments.length > 0) {
+              for (const doc of employeeDocuments) {
+                const docFileData = documentFilesMap[doc.id];
+                
+                employeeContent.push({
+                  text: removeParentheses(`${getDocumentTypeLabel(doc.document_type) || 'مستند'} - ${doc.filename || doc.file_name || 'بدون اسم'}`),
+                  style: 'documentItem',
+                  margin: [0, 0, 0, 5]
+                });
+                
+                if (doc.description) {
+                  employeeContent.push({
+                    text: removeParentheses(`الوصف: ${doc.description || ''}`),
+                    style: 'documentDescription',
+                    margin: [0, 0, 0, 5]
+                  });
+                }
+                
+                if (doc.expiry_date) {
+                  const expiryDate = formatDate(doc.expiry_date);
+                  employeeContent.push({
+                    text: `تاريخ الانتهاء: ${expiryDate}`,
+                    style: 'documentDescription',
+                    margin: [0, 0, 0, 10]
+                  });
+                }
+                
+                // Embed document file (only images, PDFs will be merged separately)
+                if (docFileData) {
+                  const mimeType = docFileData.mimeType;
+                  
+                  if (mimeType.startsWith('image/')) {
+                    try {
+                      const imageKey = `doc_${doc.id}`;
+                      if (imageKey in employeeImages) {
+                        employeeContent.push({
+                          image: imageKey,
+                          width: 500,
+                          alignment: 'center',
+                          margin: [0, 10, 0, 20],
+                          fit: [500, 700]
+                        });
+                      } else {
+                        employeeContent.push({
+                          image: docFileData.base64DataUri,
+                          width: 500,
+                          alignment: 'center',
+                          margin: [0, 10, 0, 20],
+                          fit: [500, 700]
+                        });
+                      }
+                    } catch (error) {
+                      console.error(`Error embedding image for document ${doc.id}:`, error);
+                      try {
+                        employeeContent.push({
+                          image: docFileData.base64DataUri,
+                          width: 500,
+                          alignment: 'center',
+                          margin: [0, 10, 0, 20],
+                          fit: [500, 700]
+                        });
+                      } catch (fallbackError) {
+                        employeeContent.push({
+                          text: removeParentheses(`[خطأ في تحميل الصورة: ${doc.filename || doc.file_name}]`),
+                          style: 'documentDescription',
+                          margin: [0, 10, 0, 20]
+                        });
+                      }
+                    }
+                  } else if (mimeType !== 'application/pdf') {
+                    employeeContent.push({
+                      text: removeParentheses(`[نوع الملف: ${mimeType} - لا يمكن إدراج هذا النوع من الملفات مباشرة]`),
                       style: 'documentDescription',
-                      margin: [0, 10, 0, 20]
+                      margin: [0, 10, 0, 20],
+                      color: '#666'
                     });
                   }
+                } else {
+                  employeeContent.push({
+                    text: removeParentheses(`[تعذر تحميل الملف: ${doc.filename || doc.file_name}]`),
+                    style: 'documentDescription',
+                    margin: [0, 10, 0, 20],
+                    color: '#999'
+                  });
                 }
-              } 
-              // Check if it's a PDF
-              else if (mimeType === 'application/pdf') {
-                // PDFs will be merged after PDF generation
-                // Add a note that PDF will be included
-                content.push({
-                  text: `[مستند PDF: ${doc.filename || doc.file_name} - سيتم إدراج المستند في نهاية التقرير]`,
-                  style: 'documentDescription',
-                  margin: [0, 10, 0, 20],
-                  color: '#666'
-                });
-              }
-              // Other file types
-              else {
-                content.push({
-                  text: `[نوع الملف: ${mimeType} - لا يمكن إدراج هذا النوع من الملفات مباشرة]`,
-                  style: 'documentDescription',
-                  margin: [0, 10, 0, 20],
-                  color: '#666'
-                });
               }
             } else {
-              content.push({
-                text: `[تعذر تحميل الملف: ${doc.filename || doc.file_name}]`,
-                style: 'documentDescription',
-                margin: [0, 10, 0, 20],
-                color: '#999'
+              employeeContent.push({
+                text: 'لا توجد مستندات',
+                style: 'documentItem',
+                margin: [0, 20, 0, 20]
               });
             }
           }
-        } else {
-          content.push({
-            text: 'لا توجد مستندات',
-            style: 'documentItem',
-            margin: [0, 20, 0, 20]
+          
+          const employeeDocDefinition = {
+            pageSize: 'A4',
+            pageMargins: [40, 60, 40, 60],
+            images: employeeImages,
+            defaultStyle: {
+              font: 'Roboto',
+              fontSize: 10,
+              color: 'black'
+            },
+            styles: {
+              title: {
+                font: 'Roboto',
+                fontSize: 18,
+                bold: true,
+                alignment: 'center',
+                margin: [0, 0, 0, 20]
+              },
+              info: {
+                font: 'Roboto',
+                fontSize: 10,
+                alignment: 'right',
+                margin: [0, 0, 0, 10]
+              },
+              employeeHeader: {
+                font: 'Roboto',
+                fontSize: 14,
+                bold: true,
+                alignment: 'right'
+              },
+              sectionHeader: {
+                font: 'Roboto',
+                fontSize: 12,
+                bold: true,
+                alignment: 'right'
+              },
+              dataLabel: {
+                font: 'Roboto',
+                fontSize: 9,
+                bold: true,
+                color: 'black',
+                fillColor: '#f0f0f0'
+              },
+              dataValue: {
+                font: 'Roboto',
+                fontSize: 9,
+                color: 'black',
+                preserveLeadingSpaces: false
+              },
+              documentItem: {
+                font: 'Roboto',
+                fontSize: 9,
+                alignment: 'right'
+              },
+              documentDescription: {
+                font: 'Roboto',
+                fontSize: 8,
+                alignment: 'right',
+                color: '#666'
+              }
+            },
+            content: employeeContent
+          };
+          
+          const employeePdfDoc = printer.createPdfKitDocument(employeeDocDefinition);
+          const chunks = [];
+          
+          employeePdfDoc.on('data', (chunk) => {
+            chunks.push(chunk);
           });
+          
+          employeePdfDoc.on('end', () => {
+            const buffer = Buffer.concat(chunks);
+            resolve(buffer);
+          });
+          
+          employeePdfDoc.on('error', (error) => {
+            reject(error);
+          });
+          
+          employeePdfDoc.end();
+        } catch (error) {
+          reject(error);
         }
       });
-      
-      // Register images in docDefinition.images
-      const images = {};
-      for (const [docId, fileData] of Object.entries(documentFilesMap)) {
-        if (fileData.mimeType.startsWith('image/')) {
-          images[`doc_${docId}`] = fileData.base64DataUri; // Use data URI for images
+    };
+    
+    // Helper function to merge PDF documents in order
+    const mergePdfDocuments = async (headerPdfBuffer) => {
+      try {
+        // Load header PDF (title and info only, if needed)
+        const finalPdf = await PDFDocument.load(headerPdfBuffer);
+        
+        // For each employee, create their PDF and merge it, then merge their PDF documents
+        for (let i = 0; i < employees.length; i++) {
+          const employee = employees[i];
+          const isFirst = i === 0;
+          
+          try {
+            // Create PDF for this employee
+            const employeePdfBuffer = await createEmployeePdf(employee, i, isFirst);
+            const employeePdf = await PDFDocument.load(employeePdfBuffer);
+            
+            // Copy all pages from employee PDF to final PDF
+            const pages = await finalPdf.copyPages(employeePdf, employeePdf.getPageIndices());
+            pages.forEach((page) => {
+              finalPdf.addPage(page);
+            });
+            
+            // Merge PDF documents for this employee
+            const employeeData = normalizedMap[employee.id] || { found: [], selected: [] };
+            const employeeDocuments = employeeData.found || [];
+            
+            for (const doc of employeeDocuments) {
+              const docFileData = documentFilesMap[doc.id];
+              if (docFileData && docFileData.mimeType === 'application/pdf') {
+                try {
+                  const pdfToMerge = await PDFDocument.load(docFileData.buffer);
+                  const pdfPages = await finalPdf.copyPages(pdfToMerge, pdfToMerge.getPageIndices());
+                  pdfPages.forEach((page) => {
+                    finalPdf.addPage(page);
+                  });
+                } catch (error) {
+                  console.error(`Error merging PDF document ${doc.id}:`, error);
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`Error creating PDF for employee ${employee.id}:`, error);
+            // Continue with other employees even if one fails
+          }
         }
+        
+        // Save the merged PDF
+        const mergedPdfBytes = await finalPdf.save();
+        return Buffer.from(mergedPdfBytes);
+      } catch (error) {
+        console.error('Error in mergePdfDocuments:', error);
+        throw error;
       }
-      
-      // Document definition
-      const docDefinition = {
-        pageSize: 'A4',
-        pageMargins: [40, 60, 40, 60],
-        images: images, // Register images
-        defaultStyle: {
-          font: 'Roboto',
-          fontSize: 10,
-          color: 'black'
-        },
-        styles: {
-          title: {
-            font: 'Roboto',
-            fontSize: 18,
-            bold: true,
-            alignment: 'center',
-            margin: [0, 0, 0, 20]
-          },
-          info: {
+    };
+    
+    return new Promise((resolve, reject) => {
+      try {
+        // Create a minimal header PDF (or use first employee's PDF as header)
+        // For simplicity, we'll create an empty PDF as header and merge employees
+        const headerContent = [];
+        
+        const headerDocDefinition = {
+          pageSize: 'A4',
+          pageMargins: [40, 60, 40, 60],
+          images: {},
+          defaultStyle: {
             font: 'Roboto',
             fontSize: 10,
-            alignment: 'right',
-            margin: [0, 0, 0, 10]
+            color: 'black'
           },
-          employeeHeader: {
-            font: 'Roboto',
-            fontSize: 14,
-            bold: true,
-            alignment: 'right'
-          },
-          sectionHeader: {
-            font: 'Roboto',
-            fontSize: 12,
-            bold: true,
-            alignment: 'right'
-          },
-          dataLabel: {
-            font: 'Roboto',
-            fontSize: 9,
-            bold: true,
-            color: 'black',
-            fillColor: '#f0f0f0'
-          },
-          dataValue: {
-            font: 'Roboto',
-            fontSize: 9,
-            color: 'black',
-            preserveLeadingSpaces: false
-          },
-          documentItem: {
-            font: 'Roboto',
-            fontSize: 9,
-            alignment: 'right'
-          },
-          documentDescription: {
-            font: 'Roboto',
-            fontSize: 8,
-            alignment: 'right',
-            color: '#666'
+          styles: {},
+          content: headerContent
+        };
+        
+        const headerPdfDoc = printer.createPdfKitDocument(headerDocDefinition);
+        const chunks = [];
+        
+        headerPdfDoc.on('data', (chunk) => {
+          chunks.push(chunk);
+        });
+        
+        headerPdfDoc.on('end', async () => {
+          try {
+            const headerPdfBuffer = Buffer.concat(chunks);
+            
+            // Merge all employee PDFs and their PDF documents
+            const finalPdfBuffer = await mergePdfDocuments(headerPdfBuffer);
+            
+            resolve(finalPdfBuffer);
+          } catch (mergeError) {
+            console.error('Error merging PDFs:', mergeError);
+            reject(mergeError);
           }
-        },
-        content: content
-      };
-      
-      // Generate PDF
-      const pdfDoc = printer.createPdfKitDocument(docDefinition);
-      
-      const chunks = [];
-      pdfDoc.on('data', (chunk) => {
-        chunks.push(chunk);
-      });
-      
-      pdfDoc.on('end', async () => {
-        try {
-          const mainPdfBuffer = Buffer.concat(chunks);
-          
-          // Merge PDF documents into main PDF
-          const finalPdfBuffer = await mergePdfDocuments(mainPdfBuffer, documentFilesMap, documentsMap, employees);
-          
-          resolve(finalPdfBuffer);
-        } catch (mergeError) {
-          console.error('Error merging PDFs, using main PDF only:', mergeError);
-          // If merging fails, return main PDF without merged documents
-          const buffer = Buffer.concat(chunks);
-          resolve(buffer);
-        }
-      });
-      
-      pdfDoc.on('error', (error) => {
-        reject(error);
-      });
-      
-      pdfDoc.end();
-      
+        });
+        
+        headerPdfDoc.on('error', (error) => {
+          reject(error);
+        });
+        
+        headerPdfDoc.end();
+        
       } catch (error) {
         reject(error);
       }
@@ -934,11 +1127,13 @@ router.post('/generate-single/:employee_id', requireManager, verifyBranchDocumen
     
   } catch (error) {
     console.error('Error generating employee file:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل إنشاء الملف',
-      error: error.message
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: 'فشل إنشاء الملف',
+        error: error.message
+      });
+    }
   }
 });
 
@@ -1023,11 +1218,13 @@ router.post('/generate', requireMainManager, async (req, res) => {
     
   } catch (error) {
     console.error('Error generating employee file:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل إنشاء الملف',
-      error: error.message
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: 'فشل إنشاء الملف',
+        error: error.message
+      });
+    }
   }
 });
 

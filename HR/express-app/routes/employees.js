@@ -217,10 +217,45 @@ router.post('/',
     try {
       const { Employee } = await import('../models/Employee.js');
       const { updateEmployeeCompletionStatus } = await import('../utils/employeeDataCompletion.js');
+      const { isSaudi } = await import('../utils/employeeHelpers.js');
       
-      // Only validate date of birth if provided (no longer required)
+      // Validate date of birth is provided and correct type based on nationality
       const hasHijriDate = req.body.date_of_birth_hijri && req.body.date_of_birth_hijri.trim() !== '';
       const hasGregorianDate = req.body.date_of_birth_gregorian && req.body.date_of_birth_gregorian.trim() !== '';
+      
+      // Date of birth is REQUIRED for all employees
+      if (req.body.nationality) {
+        const isSaudiNationality = isSaudi(req.body.nationality);
+        if (isSaudiNationality) {
+          // Saudi employees: Hijri date is required
+          if (!hasHijriDate) {
+            return res.status(400).json({
+              success: false,
+              message: 'تاريخ الميلاد مطلوب للموظف السعودي (يجب أن يكون هجري)'
+            });
+          }
+          // Clear Gregorian date for Saudi employees
+          req.body.date_of_birth_gregorian = null;
+        } else {
+          // Non-Saudi employees: Gregorian date is required
+          if (!hasGregorianDate) {
+            return res.status(400).json({
+              success: false,
+              message: 'تاريخ الميلاد مطلوب للموظف غير السعودي (يجب أن يكون ميلادي)'
+            });
+          }
+          // Clear Hijri date for non-Saudi employees
+          req.body.date_of_birth_hijri = null;
+        }
+      } else {
+        // Nationality not provided - require at least one date type (fallback)
+        if (!hasHijriDate && !hasGregorianDate) {
+          return res.status(400).json({
+            success: false,
+            message: 'تاريخ الميلاد مطلوب. الرجاء إدخال تاريخ الميلاد.'
+          });
+        }
+      }
       
       // For branch managers, force branch_id to their branch (prevent manipulation)
       if (req.user.role === 'branch_manager') {
@@ -234,13 +269,7 @@ router.post('/',
         req.body.branch_id = req.user.branch_id;
       }
       
-      // Ensure date fields are properly set (null if not provided)
-      if (!hasHijriDate) {
-        req.body.date_of_birth_hijri = null;
-      }
-      if (!hasGregorianDate) {
-        req.body.date_of_birth_gregorian = null;
-      }
+      // Ensure date fields are properly set (already handled above based on nationality)
       
       // Validate field lengths before insertion
       const fieldLengths = {

@@ -76,7 +76,8 @@ export const isValidDocumentType = (type) => {
     'speech_therapy_70_hours_course', // Alternative name
     'physical_therapy_course',
     'therapy_40_hours_course', // Alternative name
-    'medical_disclosure_form'
+    'medical_disclosure_form',
+    'medical_insurance'
   ];
   return validTypes.includes(type);
 };

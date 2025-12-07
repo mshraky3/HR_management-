@@ -1,10 +1,37 @@
 /**
  * Vercel Blob Storage Utilities
  * Handles file uploads to Vercel Blob Storage
+ * 
+ * Requires BLOB_READ_WRITE_TOKEN environment variable to be set
+ * This token is automatically provided by Vercel when using Blob Storage
+ * For local development, use: vercel env pull
  */
 
 import { put, del, head } from '@vercel/blob';
 import { generateFileName } from './fileUpload.js';
+
+/**
+ * Check if Blob Storage is properly configured
+ * @returns {boolean} - Whether BLOB_READ_WRITE_TOKEN is available
+ */
+export function isBlobStorageConfigured() {
+  // @vercel/blob automatically reads BLOB_READ_WRITE_TOKEN from process.env
+  // In Vercel, this is automatically set. For local dev, it should be in .env
+  return !!process.env.BLOB_READ_WRITE_TOKEN;
+}
+
+/**
+ * Validate Blob Storage configuration and throw if not configured
+ */
+function validateBlobConfig() {
+  if (!isBlobStorageConfigured()) {
+    throw new Error(
+      'BLOB_READ_WRITE_TOKEN is not configured. ' +
+      'Please set BLOB_READ_WRITE_TOKEN environment variable. ' +
+      'For local development, run: vercel env pull'
+    );
+  }
+}
 
 /**
  * Upload file to Vercel Blob Storage
@@ -17,6 +44,9 @@ import { generateFileName } from './fileUpload.js';
  */
 export async function uploadToBlob(fileBuffer, fileName, mimeType, employeeId, documentType) {
   try {
+    // Validate Blob Storage configuration
+    validateBlobConfig();
+    
     // Validate inputs
     if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
       throw new Error('Invalid file buffer provided');
@@ -32,10 +62,12 @@ export async function uploadToBlob(fileBuffer, fileName, mimeType, employeeId, d
     const blobPath = `employees/${employeeId}/${documentType}/${uniqueFileName}`;
     
     // Upload to Vercel Blob
+    // @vercel/blob automatically uses BLOB_READ_WRITE_TOKEN from process.env
     const blob = await put(blobPath, fileBuffer, {
       access: 'public', // Make files publicly accessible
       contentType: mimeType,
       addRandomSuffix: false, // We already have unique names
+      // token is automatically read from process.env.BLOB_READ_WRITE_TOKEN
     });
     
     // Validate URL length (database column is VARCHAR(500))
@@ -48,6 +80,12 @@ export async function uploadToBlob(fileBuffer, fileName, mimeType, employeeId, d
     return blob.url;
   } catch (error) {
     console.error('Error uploading to Blob:', error);
+    
+    // Provide helpful error messages
+    if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
+      throw error; // Re-throw configuration errors as-is
+    }
+    
     throw new Error(`Failed to upload file to Blob: ${error.message}`);
   }
 }
@@ -63,6 +101,9 @@ export async function uploadToBlob(fileBuffer, fileName, mimeType, employeeId, d
  */
 export async function uploadBranchDocumentToBlob(fileBuffer, fileName, mimeType, branchId, documentType) {
   try {
+    // Validate Blob Storage configuration
+    validateBlobConfig();
+    
     // Validate inputs
     if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
       throw new Error('Invalid file buffer provided');
@@ -78,6 +119,7 @@ export async function uploadBranchDocumentToBlob(fileBuffer, fileName, mimeType,
       access: 'public',
       contentType: mimeType,
       addRandomSuffix: false,
+      // token is automatically read from process.env.BLOB_READ_WRITE_TOKEN
     });
     
     // Validate URL length (database column is VARCHAR(500))
@@ -88,6 +130,12 @@ export async function uploadBranchDocumentToBlob(fileBuffer, fileName, mimeType,
     return blob.url;
   } catch (error) {
     console.error('Error uploading branch document to Blob:', error);
+    
+    // Provide helpful error messages
+    if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
+      throw error; // Re-throw configuration errors as-is
+    }
+    
     throw new Error(`Failed to upload file to Blob: ${error.message}`);
   }
 }
@@ -101,6 +149,10 @@ export async function deleteFromBlob(blobUrl) {
   try {
     // Only delete if it's a blob URL (starts with http/https)
     if (blobUrl && (blobUrl.startsWith('http://') || blobUrl.startsWith('https://'))) {
+      // Validate Blob Storage configuration
+      validateBlobConfig();
+      
+      // @vercel/blob automatically uses BLOB_READ_WRITE_TOKEN from process.env
       await del(blobUrl);
       return true;
     }
@@ -108,6 +160,7 @@ export async function deleteFromBlob(blobUrl) {
     return true;
   } catch (error) {
     console.error('Error deleting from Blob:', error);
+    // Don't throw - deletion failures shouldn't break the app
     return false;
   }
 }
@@ -120,11 +173,16 @@ export async function deleteFromBlob(blobUrl) {
 export async function blobFileExists(blobUrl) {
   try {
     if (blobUrl && (blobUrl.startsWith('http://') || blobUrl.startsWith('https://'))) {
+      // Validate Blob Storage configuration
+      validateBlobConfig();
+      
+      // @vercel/blob automatically uses BLOB_READ_WRITE_TOKEN from process.env
       await head(blobUrl);
       return true;
     }
     return false;
   } catch (error) {
+    // File doesn't exist or error occurred
     return false;
   }
 }
@@ -152,6 +210,55 @@ export async function fetchFromBlob(blobUrl) {
   } catch (error) {
     console.error('Error fetching from Blob:', error);
     throw new Error(`Failed to fetch file from Blob: ${error.message}`);
+  }
+}
+
+/**
+ * Upload notification attachment to Vercel Blob Storage
+ * @param {Buffer} fileBuffer - File buffer data
+ * @param {string} fileName - Original file name
+ * @param {string} mimeType - File MIME type
+ * @param {number} notificationId - Notification ID
+ * @returns {Promise<string>} - Blob URL
+ */
+export async function uploadNotificationAttachmentToBlob(fileBuffer, fileName, mimeType, notificationId) {
+  try {
+    // Validate Blob Storage configuration
+    validateBlobConfig();
+    
+    // Validate inputs
+    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+      throw new Error('Invalid file buffer provided');
+    }
+    if (!fileName || !mimeType || !notificationId) {
+      throw new Error('Missing required parameters for blob upload');
+    }
+
+    const uniqueFileName = generateFileName(fileName);
+    const blobPath = `notifications/${notificationId}/attachments/${uniqueFileName}`;
+    
+    const blob = await put(blobPath, fileBuffer, {
+      access: 'public',
+      contentType: mimeType,
+      addRandomSuffix: false,
+      // token is automatically read from process.env.BLOB_READ_WRITE_TOKEN
+    });
+    
+    // Validate URL length (database column is VARCHAR(500))
+    if (blob.url && blob.url.length > 500) {
+      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+    }
+    
+    return blob.url;
+  } catch (error) {
+    console.error('Error uploading notification attachment to Blob:', error);
+    
+    // Provide helpful error messages
+    if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
+      throw error; // Re-throw configuration errors as-is
+    }
+    
+    throw new Error(`Failed to upload file to Blob: ${error.message}`);
   }
 }
 

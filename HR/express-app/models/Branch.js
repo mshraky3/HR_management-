@@ -71,14 +71,14 @@ export const Branch = {
    */
   async create(branchData) {
     try {
-      const { branch_name, branch_location, branch_type, username, password, branch_documents_password } = branchData;
+      const { branch_name, branch_location, branch_type, username, password, branch_documents_password, phone_number, email } = branchData;
       
       // Set default password if not provided
       const documentsPassword = branch_documents_password || 'test';
       
       const [branch] = await sql`
-        INSERT INTO branches (branch_name, branch_location, branch_type, username, password, branch_documents_password)
-        VALUES (${branch_name}, ${branch_location}, ${branch_type}, ${username}, ${password}, ${documentsPassword})
+        INSERT INTO branches (branch_name, branch_location, branch_type, username, password, branch_documents_password, phone_number, email)
+        VALUES (${branch_name}, ${branch_location}, ${branch_type}, ${username}, ${password}, ${documentsPassword}, ${phone_number || null}, ${email || null})
         RETURNING *
       `;
       
@@ -94,7 +94,7 @@ export const Branch = {
    */
   async update(id, updates) {
     try {
-      const allowedFields = ['branch_name', 'branch_location', 'username', 'password', 'branch_documents_password', 'is_active'];
+      const allowedFields = ['branch_name', 'branch_location', 'username', 'password', 'branch_documents_password', 'is_active', 'phone_number', 'email'];
       const updateFields = Object.keys(updates).filter(key => allowedFields.includes(key));
       
       if (updateFields.length === 0) {

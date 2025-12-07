@@ -101,6 +101,15 @@ const router = express.Router();
 router.use(authenticate);
 
 /**
+ * Helper function to remove parentheses from text
+ * Removes ( and ) characters from strings
+ */
+const removeParentheses = (text) => {
+  if (!text || typeof text !== 'string') return text;
+  return text.replace(/[()]/g, '');
+};
+
+/**
  * Helper function to calculate age from date of birth
  */
 const calculateAge = (dateOfBirth) => {
@@ -449,7 +458,7 @@ const generatePDF = async (title, employees, selectedFields, branches, branchIds
     try {
       // Prepare table header
       const tableHeader = selectedFields.map(field => ({
-        text: getFieldLabel(field),
+        text: removeParentheses(getFieldLabel(field)),
         style: 'tableHeader',
         alignment: 'center'
       }));
@@ -458,7 +467,7 @@ const generatePDF = async (title, employees, selectedFields, branches, branchIds
       const tableBody = employees.map(employee => {
         return selectedFields.map(field => {
           const value = getFieldValue(employee, field, branches);
-          const valueStr = String(value || '-');
+          const valueStr = removeParentheses(String(value || '-'));
           // Check if value contains numbers - if so, use LTR direction
           const hasNumbers = /\d/.test(valueStr);
           return {
@@ -520,7 +529,7 @@ const generatePDF = async (title, employees, selectedFields, branches, branchIds
         content: [
           // Title
           {
-            text: title,
+            text: removeParentheses(title),
             style: 'title'
           },
           // Report info
@@ -842,11 +851,13 @@ router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
     
   } catch (error) {
     console.error('Error generating report:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل إنشاء التقرير',
-      error: error.message
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: 'فشل إنشاء التقرير',
+        error: error.message
+      });
+    }
   }
 });
 

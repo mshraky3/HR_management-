@@ -9,6 +9,11 @@ import { requireMainManager } from '../middleware/authorization.js';
 import { Notification } from '../models/Notification.js';
 import { NotificationResponse } from '../models/NotificationResponse.js';
 import { Branch } from '../models/Branch.js';
+import { uploadSingle, validateUploadedFile } from '../middleware/upload.js';
+import { uploadNotificationAttachmentToBlob } from '../utils/blobStorage.js';
+import { fixFilenameEncoding } from '../utils/fileUpload.js';
+import { getExtensionFromMimeType } from '../utils/fileUpload.js';
+import sql from '../config/database.js';
 
 const router = express.Router();
 
@@ -19,10 +24,49 @@ router.use(authenticate);
  * POST /api/notifications
  * Create a new notification (Main Manager only)
  * Body: { message, importance_level, branch_ids: [1, 2, 3] }
+ * Form data: file (optional attachment)
  */
-router.post('/', requireMainManager, async (req, res) => {
+router.post('/', requireMainManager, uploadSingle, async (req, res) => {
   try {
-    const { message, importance_level, branch_ids } = req.body;
+    const { message, importance_level } = req.body;
+    
+    // Handle branch_ids from FormData
+    // When using FormData with JSON.stringify, it comes as a string that needs parsing
+    let branch_ids = req.body.branch_ids;
+    
+    // Debug logging (remove in production if needed)
+    console.log('Received branch_ids:', branch_ids, 'Type:', typeof branch_ids);
+    console.log('All req.body keys:', Object.keys(req.body));
+    
+    // If branch_ids is a string (from JSON.stringify), parse it
+    if (typeof branch_ids === 'string') {
+      try {
+        branch_ids = JSON.parse(branch_ids);
+      } catch (parseError) {
+        console.error('Error parsing branch_ids JSON:', parseError);
+        return res.status(400).json({
+          success: false,
+          message: 'خطأ في معالجة قائمة الفروع. يرجى المحاولة مرة أخرى.'
+        });
+      }
+    }
+    
+    // Ensure it's an array
+    if (!Array.isArray(branch_ids)) {
+      if (branch_ids !== undefined && branch_ids !== null) {
+        branch_ids = [branch_ids];
+      } else {
+        branch_ids = [];
+      }
+    }
+    
+    // Ensure all values are valid numbers and convert to integers
+    branch_ids = branch_ids
+      .filter(id => id !== null && id !== undefined && id !== '')
+      .map(id => parseInt(id))
+      .filter(id => !isNaN(id));
+    
+    console.log('Processed branch_ids:', branch_ids);
     
     // Validation
     if (!message || !message.trim()) {
@@ -32,10 +76,10 @@ router.post('/', requireMainManager, async (req, res) => {
       });
     }
     
-    if (!importance_level || ![1, 2, 3].includes(parseInt(importance_level))) {
+    if (!importance_level || ![1, 2, 3, 4].includes(parseInt(importance_level))) {
       return res.status(400).json({
         success: false,
-        message: 'مستوى الأهمية يجب أن يكون 1، 2، أو 3'
+        message: 'مستوى الأهمية يجب أن يكون 1، 2، 3، أو 4'
       });
     }
     
@@ -57,26 +101,102 @@ router.post('/', requireMainManager, async (req, res) => {
         message: 'بعض الفروع المحددة غير صحيحة أو غير نشطة'
       });
     }
+
+    // Handle file upload if provided
+    let attachmentUrl = null;
+    let attachmentName = null;
+    let attachmentType = null;
+
+    if (req.file) {
+      // Validate file
+      const allowedMimes = [
+        'application/pdf',
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/gif'
+      ];
+
+      if (!allowedMimes.includes(req.file.mimetype)) {
+        return res.status(400).json({
+          success: false,
+          message: 'نوع الملف غير مدعوم. يُسمح فقط بملفات PDF والصور'
+        });
+      }
+
+      // Validate file size (10MB max for notifications)
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (req.file.size > maxSize) {
+        return res.status(400).json({
+          success: false,
+          message: 'حجم الملف يتجاوز الحد الأقصى المسموح به (10 ميجابايت)'
+        });
+      }
+
+      // Fix filename encoding
+      const fixedFileName = fixFilenameEncoding(req.file.originalname);
+
+      // Upload to blob storage (we'll get notification ID after creation, so use temp path)
+      // We'll need to update the notification after creation with the correct path
+      // For now, we'll create a temporary notification ID or use a different approach
+      // Actually, we can upload first with a temp ID, then update, or better: create notification first, then upload
+      // Let's create notification first, then upload file
+    }
     
-    // Create notification
+    // Create notification first (without attachment)
     const notification = await Notification.create({
       message: message.trim(),
       importance_level: parseInt(importance_level),
       created_by: req.user.id,
-      branch_ids: validBranchIds
+      branch_ids: validBranchIds,
+      attachment_url: null,
+      attachment_name: null,
+      attachment_type: null
     });
+
+    // Upload file if provided (now we have notification ID)
+    if (req.file) {
+      try {
+        const fixedFileName = fixFilenameEncoding(req.file.originalname);
+        attachmentUrl = await uploadNotificationAttachmentToBlob(
+          req.file.buffer,
+          fixedFileName,
+          req.file.mimetype,
+          notification.id
+        );
+        attachmentName = fixedFileName;
+        attachmentType = req.file.mimetype;
+
+        // Update notification with attachment info
+        await sql`
+          UPDATE notifications 
+          SET attachment_url = ${attachmentUrl},
+              attachment_name = ${attachmentName},
+              attachment_type = ${attachmentType}
+          WHERE id = ${notification.id}
+        `;
+      } catch (uploadError) {
+        console.error('Error uploading attachment:', uploadError);
+        // Don't fail the notification creation if upload fails
+        // Just log the error
+      }
+    }
+
+    // Fetch updated notification
+    const updatedNotification = await Notification.findById(notification.id);
     
     res.status(201).json({
       success: true,
       message: 'تم إرسال الإشعار بنجاح',
-      data: notification
+      data: updatedNotification
     });
   } catch (error) {
     console.error('Error creating notification:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'فشل إنشاء الإشعار',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : 'حدث خطأ أثناء إنشاء الإشعار'
     });
   }
 });
@@ -312,10 +432,10 @@ router.put('/:id', requireMainManager, async (req, res) => {
     const updates = {};
     if (message !== undefined) updates.message = message.trim();
     if (importance_level !== undefined) {
-      if (![1, 2, 3].includes(parseInt(importance_level))) {
+      if (![1, 2, 3, 4].includes(parseInt(importance_level))) {
         return res.status(400).json({
           success: false,
-          message: 'مستوى الأهمية يجب أن يكون 1، 2، أو 3'
+          message: 'مستوى الأهمية يجب أن يكون 1، 2، 3، أو 4'
         });
       }
       updates.importance_level = parseInt(importance_level);

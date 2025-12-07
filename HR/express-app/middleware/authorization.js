@@ -49,7 +49,8 @@ export const requireManager = requireRole(['main_manager', 'branch_manager']);
  */
 export const checkBranchAccess = (req, res, next) => {
   const user = req.user;
-  const requestedBranchId = req.params.branchId || req.body.branch_id || req.query.branch_id;
+  // Check for branch ID in various places: params.id, params.branchId, body, or query
+  const requestedBranchId = req.params.id || req.params.branchId || req.body.branch_id || req.query.branch_id;
 
   if (!user) {
     return res.status(401).json({
@@ -65,12 +66,19 @@ export const checkBranchAccess = (req, res, next) => {
 
   // Branch manager can only access their own branch
   if (user.role === 'branch_manager') {
-    if (user.branch_id && requestedBranchId && user.branch_id.toString() !== requestedBranchId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. You can only access your own branch data.'
-      });
+    // If a specific branch ID is requested, check if it matches the user's branch
+    if (requestedBranchId) {
+      const userBranchId = user.branch_id ? user.branch_id.toString() : null;
+      const requestedId = requestedBranchId.toString();
+      
+      if (userBranchId && userBranchId !== requestedId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. You can only access your own branch data.'
+        });
+      }
     }
+    // If no branch ID is specified, allow access (will be filtered by the route handler)
   }
 
   next();
