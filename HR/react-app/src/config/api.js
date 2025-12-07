@@ -20,7 +20,7 @@ const API_CONFIG = {
   // Current environment - Change this to switch between LOCAL and PRODUCTION
   // Options: 'LOCAL' or 'PRODUCTION'
   // For production deployment, set to 'PRODUCTION' or use VITE_API_URL env variable
-  CURRENT: 'LOCAL'
+  CURRENT: 'PRODUCTION'
 };
 
 
