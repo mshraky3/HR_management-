@@ -44,6 +44,7 @@ const Dashboard = () => {
   const [loadingStats, setLoadingStats] = useState(false);
   const [mainManagerNotifications, setMainManagerNotifications] = useState([]);
   const [newResponsesCount, setNewResponsesCount] = useState(0);
+  const [branchInfo, setBranchInfo] = useState(null);
 
   useEffect(() => {
     loadStats();
@@ -71,6 +72,19 @@ const Dashboard = () => {
       // Store branches for display
       const branchesList = branchesRes.data.success ? (branchesRes.data.data || []) : [];
       setBranches(branchesList);
+
+      // Load branch info for branch managers to check if contact info is missing
+      if (!isMainManager() && user?.branch_id) {
+        try {
+          const branchInfoRes = await branchesAPI.getById(user.branch_id);
+          if (branchInfoRes.data.success) {
+            setBranchInfo(branchInfoRes.data.data);
+          }
+        } catch (error) {
+          console.error('Error loading branch info:', error);
+          setBranchInfo(null);
+        }
+      }
 
       // For branch documents - only load if needed for stats
       let documentsRes = { data: { data: [] } };
@@ -158,7 +172,7 @@ const Dashboard = () => {
           setPendingEmployees([]);
         }
 
-        // Check monthly documents (payroll_file and attendance_file) for branch managers
+        // Check monthly documents (payroll_file, attendance_file, salary_deposit_file) for branch managers
         checkMonthlyDocuments(documentsRes.data.data || [], branchesList);
         
         // Check for missing required branch documents for branch managers
@@ -242,10 +256,11 @@ const Dashboard = () => {
 
   const checkMonthlyDocuments = (documents, branchesList) => {
     const alerts = [];
-    const monthlyTypes = ['payroll_file', 'attendance_file'];
+    const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
     const typeLabels = {
-      payroll_file: 'ملف مسيرات الرواتب',
-      attendance_file: 'ملف الحضور و الانصراف'
+      payroll_file: ' مسيرات الرواتب',
+      attendance_file: ' الحضور و الانصراف',
+      salary_deposit_file: ' ايداع الرواتب (التحويلات البنكية)'
     };
 
     // Helper function to get last day of current month
@@ -291,8 +306,8 @@ const Dashboard = () => {
             status: status,
             lastUploadDate: null,
             message: isLastDayOfMonth 
-              ? `تنبيه عاجل: لا يوجد ملف ${typeLabels[docType]} - يجب رفعه اليوم (آخر يوم في الشهر)`
-              : `لا يوجد ملف ${typeLabels[docType]} - يجب رفعه`
+              ? `تنبيه عاجل:  ${typeLabels[docType]} - يجب رفعه اليوم (آخر يوم في الشهر)`
+              : ` ${typeLabels[docType]} - يجب رفعه`
           });
         } else {
           // Find the most recent upload
@@ -316,7 +331,7 @@ const Dashboard = () => {
                 documentLabel: typeLabels[docType],
                 status: 'critical',
                 lastUploadDate: uploadDate,
-                message: `تنبيه عاجل: ملف ${typeLabels[docType]} لم يتم رفعه لهذا الشهر - يجب رفعه اليوم (آخر يوم في الشهر)`
+                message: `تنبيه عاجل:  ${typeLabels[docType]} لم يتم رفعه لهذا الشهر - يجب رفعه اليوم (آخر يوم في الشهر)`
               });
             } else if (isDay25) {
               // Reminder on day 25
@@ -327,7 +342,7 @@ const Dashboard = () => {
                 documentLabel: typeLabels[docType],
                 status: 'preferred',
                 lastUploadDate: uploadDate,
-                message: `تذكير: ملف ${typeLabels[docType]} يجب رفعه قبل نهاية الشهر (آخر يوم: ${lastDayOfMonth})`
+                message: `تذكير:  ${typeLabels[docType]} يجب رفعه قبل نهاية الشهر (آخر يوم: ${lastDayOfMonth})`
               });
             } else if (currentDay > 25) {
               // After day 25 but not last day - must do
@@ -338,7 +353,7 @@ const Dashboard = () => {
               documentLabel: typeLabels[docType],
               status: 'must_do',
               lastUploadDate: uploadDate,
-                message: `ملف ${typeLabels[docType]} لم يتم رفعه لهذا الشهر - يجب رفعه قبل نهاية الشهر (آخر يوم: ${lastDayOfMonth})`
+                message: ` ${typeLabels[docType]} لم يتم رفعه لهذا الشهر - يجب رفعه قبل نهاية الشهر (آخر يوم: ${lastDayOfMonth})`
             });
             } else {
               // Before day 25 - preferred
@@ -349,7 +364,7 @@ const Dashboard = () => {
               documentLabel: typeLabels[docType],
               status: 'preferred',
               lastUploadDate: uploadDate,
-                message: `ملف ${typeLabels[docType]} يجب رفعه قبل نهاية الشهر (آخر يوم: ${lastDayOfMonth})`
+                message: ` ${typeLabels[docType]} يجب رفعه قبل نهاية الشهر (آخر يوم: ${lastDayOfMonth})`
             });
             }
           }
@@ -379,7 +394,7 @@ const Dashboard = () => {
       license: 'الترخيص',
       permit: 'التصريح',
       insurance: 'التأمين',
-      insurance_print: 'برينت التأمينات',
+      insurance_print: 'كشف التأمينات',
       contract: 'العقد',
       rental_contract: 'عقد الايجار',
       certification: 'الشهادة',
@@ -392,13 +407,16 @@ const Dashboard = () => {
       operational_plan: 'الخطة التشغلية للمركز',
       owner_civil_id_copy: 'نسخه من هوية الاحوال الشخصية لمالك المركز',
       disclosure_commitment: 'افصاح و تعهد',
-      certification_commitment_form: 'نموذج تصديق و تعقد',
-      financial_platform_declaration: 'ملف اقرار المنصة المالية',
+      certification_commitment_form: 'نموذج تصديق و تعاقد',
+      financial_platform_declaration: ' اقرار المنصة المالية',
       financial_claim_form: 'نموذج مطالبة مالية',
-      student_cadre_file: 'كادر الطلاب',
-      dropped_students: 'الطلاب المتغييبين',
+      student_cadre_file: 'بيانات الطلاب',
+      dropped_students: 'الطلاب المنقطعين',
       free_seats: 'المقاعد المتاحة',
-      acceptance_notifications: 'إشعارات القبول'
+      acceptance_notifications: 'إشعارات القبول',
+      payroll_file: ' مسيرات الرواتب',
+      attendance_file: ' الحضور و الانصراف',
+      salary_deposit_file: ' ايداع الرواتب (التحويلات البنكية)'
     };
 
     // Get branches to check
@@ -439,7 +457,7 @@ const Dashboard = () => {
     // Sort by priority first, then by branch name, then by document type
     alerts.sort((a, b) => {
       // Priority order: 1) Monthly (highest), 2) Student/Cadre, 3) Others
-      const monthlyTypes = ['payroll_file', 'attendance_file'];
+      const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
       const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
       
       const aIsMonthly = monthlyTypes.includes(a.documentType);
@@ -463,10 +481,11 @@ const Dashboard = () => {
 
   // Get monthly documents status for display
   const getMonthlyDocumentsSummary = () => {
-    const monthlyTypes = ['payroll_file', 'attendance_file'];
+    const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
     const typeLabels = {
-      payroll_file: 'ملف مسيرات الرواتب',
-      attendance_file: 'ملف الحضور و الانصراف'
+      payroll_file: ' مسيرات الرواتب',
+      attendance_file: ' الحضور و الانصراف',
+      salary_deposit_file: ' ايداع الرواتب (التحويلات البنكية)'
     };
 
     if (isMainManager()) {
@@ -528,6 +547,24 @@ const Dashboard = () => {
           : `${branches.find(b => b.id === user?.branch_id)?.branch_name || 'غير محدد'}`
         }
       </p>
+
+      {/* Branch Info Alert - Only for branch managers */}
+      {!isMainManager() && branchInfo && (!branchInfo.phone_number || !branchInfo.email) && (
+        <div className="branch-info-alert">
+          <span className="branch-info-alert-icon">ℹ️</span>
+          <span className="branch-info-alert-text">
+            {!branchInfo.phone_number && !branchInfo.email 
+              ? 'يرجى إكمال معلومات الفرع (رقم الجوال والإيميل)'
+              : !branchInfo.phone_number 
+              ? 'يرجى إضافة رقم جوال الفرع'
+              : 'يرجى إضافة إيميل الفرع'
+            }
+          </span>
+          <Link to="/branch-info" className="branch-info-alert-link">
+            تحديث المعلومات
+          </Link>
+        </div>
+      )}
 
       {isMainManager() && (
         stats.loading ? (
@@ -617,12 +654,14 @@ const Dashboard = () => {
               const importanceColors = {
                 1: '#4CAF50',
                 2: '#FF9800',
-                3: '#F44336'
+                3: '#F44336',
+                4: '#2196F3'
               };
               const importanceLabels = {
-                1: 'منخفض',
-                2: 'متوسط',
-                3: 'عالي'
+                1: 'تنبيه',
+                2: 'هام و غير عاجل',
+                3: 'هام و عاجل',
+                4: 'تعميم'
               };
               const responseLabels = {
                 done: { text: 'تم', color: '#4CAF50' },
@@ -643,7 +682,7 @@ const Dashboard = () => {
                         className="importance-badge-dashboard"
                         style={{ backgroundColor: importanceColors[notification.importance_level] || '#FF9800' }}
                       >
-                        {importanceLabels[notification.importance_level] || 'متوسط'}
+                        {importanceLabels[notification.importance_level] || 'هام و غير عاجل'}
                       </span>
                       {currentResponse && (
                         <span 
@@ -661,6 +700,55 @@ const Dashboard = () => {
                   <div className="notification-message-dashboard">
                     {notification.message}
                   </div>
+
+                  {/* Attachment Display */}
+                  {notification.attachment_url && (
+                    <div className="notification-attachment-dashboard" style={{
+                      marginTop: '10px',
+                      padding: '10px',
+                      backgroundColor: '#f5f5f5',
+                      borderRadius: '6px',
+                      border: '1px solid #ddd'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '16px' }}>📎</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 'bold', marginBottom: '5px', fontSize: '14px' }}>
+                             مرفق: {notification.attachment_name || 'مرفق'}
+                          </div>
+                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <a
+                              href={notification.attachment_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                color: 'var(--primary)',
+                                textDecoration: 'none',
+                                fontSize: '13px'
+                              }}
+                            >
+                              📥 تحميل
+                            </a>
+                            {(notification.attachment_type?.startsWith('image/') || notification.attachment_type === 'application/pdf') && (
+                              <a
+                                href={notification.attachment_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  color: 'var(--primary)',
+                                  textDecoration: 'none',
+                                  fontSize: '13px'
+                                }}
+                              >
+                                👁️ معاينة
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {notification.response_message && (
                     <div className="notification-response-message-dashboard">
                       <strong>ردك:</strong> {notification.response_message}
@@ -748,36 +836,31 @@ const Dashboard = () => {
       {!isMainManager() && incompleteEmployees.length > 0 && (
         <div className="incomplete-employees-alert">
           <h2>الموظفين غير مكتملي البيانات</h2>
-          <p style={{ color: '#666', marginBottom: '20px' }}>
+          <p style={{ color: '#666', marginBottom: '10px', marginTop: '0', fontSize: '13px' }}>
             يوجد {incompleteEmployees.length} موظف بحاجة إلى إكمال بياناته
           </p>
           <div className="incomplete-employees-table">
             <table className="data-table" style={{ width: '100%' }}>
               <thead>
                 <tr>
-                  <th>رقم الموظف</th>
                   <th>الاسم</th>
-                  <th>الفرع</th>
                   <th>المهنة</th>
                   <th>الإجراء</th>
                 </tr>
               </thead>
               <tbody>
                 {incompleteEmployees.slice(0, 10).map((employee) => {
-                  const branch = branches.find(b => b.id === employee.branch_id);
                   return (
                     <tr key={employee.id}>
-                      <td>{employee.employee_id_number || '-'}</td>
                       <td>
                         {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
                       </td>
-                      <td>{branch ? branch.branch_name : employee.branch_id}</td>
                       <td>{employee.occupation || '-'}</td>
                       <td>
                         <Link 
                           to={`/employees/${employee.id}`}
                           className="btn-alert"
-                          style={{ padding: '6px 12px', fontSize: '12px' }}
+                          style={{ padding: '4px 10px', fontSize: '11px' }}
                         >
                           إكمال البيانات
                         </Link>
@@ -788,8 +871,8 @@ const Dashboard = () => {
               </tbody>
             </table>
             {incompleteEmployees.length > 10 && (
-              <div style={{ marginTop: '15px', textAlign: 'center' }}>
-                <Link to="/employees?data_completion_status=incomplete" className="btn-alert">
+              <div style={{ marginTop: '10px', textAlign: 'center' }}>
+                <Link to="/employees?data_completion_status=incomplete" className="btn-alert" style={{ padding: '6px 12px', fontSize: '12px' }}>
                   عرض جميع الموظفين غير مكتملي البيانات ({incompleteEmployees.length})
                 </Link>
               </div>
@@ -798,198 +881,112 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* Missing Branch Documents Alerts - Only for branch managers */}
-      {!isMainManager() && missingBranchDocumentAlerts.length > 0 && (() => {
-        const monthlyTypes = ['payroll_file', 'attendance_file'];
-        const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
-        
-        const monthlyAlerts = missingBranchDocumentAlerts.filter(alert => monthlyTypes.includes(alert.documentType));
-        const studentCadreAlerts = missingBranchDocumentAlerts.filter(alert => studentCadreTypes.includes(alert.documentType));
-        const otherAlerts = missingBranchDocumentAlerts.filter(alert => !monthlyTypes.includes(alert.documentType) && !studentCadreTypes.includes(alert.documentType));
-        
+      {/* All Unuploaded Documents - Only for branch managers */}
+      {!isMainManager() && (() => {
+        // Combine monthly and missing branch document alerts into one unified list
+        const allUnuploadedDocuments = [
+          ...monthlyDocumentAlerts.map(alert => ({
+            ...alert,
+            isMonthly: true
+          })),
+          ...missingBranchDocumentAlerts.map(alert => ({
+            ...alert,
+            isMonthly: false,
+            status: alert.status || 'must_do'
+          }))
+        ];
+
+        // Sort: critical first, then must_do, then preferred, then others
+        allUnuploadedDocuments.sort((a, b) => {
+          const statusOrder = { critical: 0, must_do: 1, preferred: 2 };
+          const aOrder = statusOrder[a.status] || 3;
+          const bOrder = statusOrder[b.status] || 3;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return (a.branchName || '').localeCompare((b.branchName || ''), 'ar');
+        });
+
+        if (allUnuploadedDocuments.length === 0) return null;
+
         return (
           <div className="missing-branch-documents-alerts">
-            <h2>مستندات الفرع المفقودة</h2>
+            <h2>مستندات مطلوب رفعها</h2>
             <p style={{ color: '#666', marginBottom: '20px' }}>
-              يوجد {missingBranchDocumentAlerts.length} مستند مفقود يحتاج إلى رفع
+              يوجد {allUnuploadedDocuments.length} مستند غير مرفوع يحتاج إلى رفع
             </p>
             
-            {/* Monthly Documents Section (Highest Priority) */}
-            {monthlyAlerts.length > 0 && (
-              <div className="documents-priority-section priority-high">
-                <h3 className="priority-section-title">
-                  <span className="priority-icon">🔴</span>
-                  المستندات الشهرية (الأولوية القصوى)
-                </h3>
-                <div className="alerts-container">
-                  {monthlyAlerts.map((alert, index) => (
-                    <div 
-                      key={`missing-monthly-${alert.branchId}-${alert.documentType}-${index}`}
-                      className="alert-card alert-must-do priority-high"
-                    >
-                      <div className="alert-header">
-                        <span className="alert-badge badge-danger">
-                          مستند مفقود
-                        </span>
-                      </div>
-                      <div className="alert-body">
-                        <p className="alert-message">{alert.message}</p>
-                      </div>
-                      <div className="alert-actions">
-                        <Link 
-                          to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
-                          className="btn-alert"
-                        >
-                          رفع المستند الآن
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            {/* Critical notice for monthly documents if any are critical */}
+            {allUnuploadedDocuments.some(a => a.status === 'critical') && (
+              <div className="critical-notice" style={{
+                background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
+                border: '2px solid #dc2626',
+                borderRadius: '12px',
+                padding: '16px',
+                marginBottom: '20px',
+                textAlign: 'center',
+                animation: 'pulse-critical 2s infinite'
+              }}>
+                <strong style={{ color: '#991b1b', fontSize: '18px' }}>
+                  تنبيه عاجل: اليوم هو آخر يوم في الشهر - يجب رفع مسيرات الرواتب وات الحضور والانصراف فوراً
+                </strong>
               </div>
             )}
-            
-            {/* Student/Cadre Documents Section */}
-            {studentCadreAlerts.length > 0 && (
-              <div className="documents-priority-section priority-medium">
-                <h3 className="priority-section-title">
-                  <span className="priority-icon">🟡</span>
-                  مستندات الكوادر والطلاب
-                </h3>
-                <div className="alerts-container">
-                  {studentCadreAlerts.map((alert, index) => (
-                    <div 
-                      key={`missing-student-${alert.branchId}-${alert.documentType}-${index}`}
-                      className="alert-card alert-must-do priority-medium"
+
+            {/* Unified documents container */}
+            <div className="alerts-container">
+              {allUnuploadedDocuments.map((alert, index) => (
+                <div 
+                  key={`unuploaded-${alert.branchId || 'unknown'}-${alert.documentType || index}-${index}`}
+                  className={`alert-card ${
+                    alert.status === 'critical' 
+                      ? 'alert-critical' 
+                      : alert.status === 'must_do' 
+                      ? 'alert-must-do' 
+                      : alert.status === 'preferred'
+                      ? 'alert-preferred'
+                      : 'alert-must-do'
+                  }`}
+                >
+                  <div className="alert-header">
+                    <span className={`alert-badge ${
+                      alert.status === 'critical' 
+                        ? 'badge-critical' 
+                        : alert.status === 'must_do' 
+                        ? 'badge-danger' 
+                        : alert.status === 'preferred'
+                        ? 'badge-warning'
+                        : 'badge-danger'
+                    }`}>
+                      {alert.status === 'critical' 
+                        ? 'عاجل جداً' 
+                        : alert.status === 'must_do' 
+                        ? 'يجب التنفيذ' 
+                        : alert.status === 'preferred'
+                        ? 'تذكير'
+                        : 'مستند مفقود'}
+                    </span>
+                  </div>
+                  <div className="alert-body">
+                    <p className="alert-message">{alert.message}</p>
+                    {alert.lastUploadDate && (
+                      <p className="alert-date" style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>
+                        آخر تحديث: {new Date(alert.lastUploadDate).toLocaleDateString('en-US')}
+                      </p>
+                    )}
+                  </div>
+                  <div className="alert-actions">
+                    <Link 
+                      to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
+                      className={`btn-alert ${alert.status === 'critical' ? 'btn-critical' : ''}`}
                     >
-                      <div className="alert-header">
-                        <span className="alert-badge badge-danger">
-                          مستند مفقود
-                        </span>
-                      </div>
-                      <div className="alert-body">
-                        <p className="alert-message">{alert.message}</p>
-                      </div>
-                      <div className="alert-actions">
-                        <Link 
-                          to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
-                          className="btn-alert"
-                        >
-                          رفع المستند الآن
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
+                      رفع المستند الآن
+                    </Link>
+                  </div>
                 </div>
-              </div>
-            )}
-            
-            {/* Other Documents Section */}
-            {otherAlerts.length > 0 && (
-              <div className="documents-priority-section priority-low">
-                <h3 className="priority-section-title">
-                  <span className="priority-icon">🟢</span>
-                  باقي المستندات
-                </h3>
-                <div className="alerts-container">
-                  {otherAlerts.map((alert, index) => (
-                    <div 
-                      key={`missing-other-${alert.branchId}-${alert.documentType}-${index}`}
-                      className="alert-card alert-must-do priority-low"
-                    >
-                      <div className="alert-header">
-                        <span className="alert-badge badge-danger">
-                          مستند مفقود
-                        </span>
-                      </div>
-                      <div className="alert-body">
-                        <p className="alert-message">{alert.message}</p>
-                      </div>
-                      <div className="alert-actions">
-                        <Link 
-                          to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
-                          className="btn-alert"
-                        >
-                          رفع المستند الآن
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
         );
       })()}
-
-      {/* Monthly Document Alerts - Only for branch managers */}
-      {!isMainManager() && monthlyDocumentAlerts.length > 0 && (
-        <div className="monthly-documents-alerts">
-          <h2>تنبيهات المستندات الشهرية</h2>
-          {monthlyDocumentAlerts.some(a => a.status === 'critical') && (
-            <div className="critical-notice" style={{
-              background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
-              border: '2px solid #dc2626',
-              borderRadius: '12px',
-              padding: '16px',
-              marginBottom: '20px',
-              textAlign: 'center',
-              animation: 'pulse-critical 2s infinite'
-            }}>
-              <strong style={{ color: '#991b1b', fontSize: '18px' }}>
-                تنبيه عاجل: اليوم هو آخر يوم في الشهر - يجب رفع مسيرات الرواتب وملفات الحضور والانصراف فوراً
-              </strong>
-            </div>
-          )}
-          <div className="alerts-container">
-            {monthlyDocumentAlerts.map((alert, index) => (
-              <div 
-                key={`${alert.branchId}-${alert.documentType}-${index}`}
-                className={`alert-card ${
-                  alert.status === 'critical' 
-                    ? 'alert-critical' 
-                    : alert.status === 'must_do' 
-                    ? 'alert-must-do' 
-                    : 'alert-preferred'
-                }`}
-              >
-                <div className="alert-header">
-                  <span className={`alert-badge ${
-                    alert.status === 'critical' 
-                      ? 'badge-critical' 
-                      : alert.status === 'must_do' 
-                      ? 'badge-danger' 
-                      : 'badge-warning'
-                  }`}>
-                    {alert.status === 'critical' 
-                      ? 'عاجل جداً' 
-                      : alert.status === 'must_do' 
-                      ? 'يجب التنفيذ' 
-                      : 'تذكير'}
-                  </span>
-                </div>
-                <div className="alert-body">
-                  <p className="alert-message">{alert.message}</p>
-                  <p className="alert-date" style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>
-                    {alert.branchName}
-                    {alert.lastUploadDate && (
-                      <> - آخر تحديث: {new Date(alert.lastUploadDate).toLocaleDateString('en-US')}</>
-                    )}
-                  </p>
-                </div>
-                <div className="alert-actions">
-                  <Link 
-                    to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
-                    className={`btn-alert ${alert.status === 'critical' ? 'btn-critical' : ''}`}
-                  >
-                    {alert.status === 'critical' ? 'رفع الملف الآن' : 'رفع الملف الآن'}
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Branch Statistics Summary - Main Manager Only */}
       {isMainManager() && branchStats && branchStats.length > 0 && (

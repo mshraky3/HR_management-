@@ -633,7 +633,7 @@ const BranchDocuments = () => {
     { value: 'insurance_statement', label: 'كشف التأمينات', requiresDefaultFields: true, branchType: 'school' },
     { value: 'rental_contract', label: 'عقد الايجار', requiresDefaultFields: true, branchType: 'school' },
     // Healthcare center specific documents
-    { value: 'insurance_print', label: 'برينت التأمينات', requiresDefaultFields: true, branchType: 'healthcare_center' },
+    { value: 'insurance_print', label: 'كشف التأمينات', requiresDefaultFields: true, branchType: 'healthcare_center' },
     { value: 'rental_contract', label: 'عقد الايجار', requiresDefaultFields: true, branchType: 'healthcare_center' },
     { value: 'operational_plan', label: 'الخطة التشغلية للمركز', requiresDefaultFields: true, branchType: 'healthcare_center' },
     { value: 'decision_obligation', label: 'قرار و الزام', requiresDefaultFields: false, branchType: 'healthcare_center' },
@@ -641,12 +641,12 @@ const BranchDocuments = () => {
     { value: 'staff_cadre', label: 'الكادر', requiresDefaultFields: false, branchType: 'healthcare_center' },
     { value: 'owner_civil_id_copy', label: 'نسخه من هوية الاحوال الشخصية لمالك المركز', requiresDefaultFields: true, branchType: 'healthcare_center' },
     { value: 'disclosure_commitment', label: 'افصاح و تعهد', requiresDefaultFields: true, branchType: 'healthcare_center' },
-    { value: 'certification_commitment_form', label: 'نموذج تصديق و تعقد', requiresDefaultFields: true, branchType: 'healthcare_center' },
+    { value: 'certification_commitment_form', label: 'نموذج تصديق و تعاقد', requiresDefaultFields: true, branchType: 'healthcare_center' },
     { value: 'financial_platform_declaration', label: 'ملف اقرار المنصة المالية', requiresDefaultFields: true, branchType: 'healthcare_center' },
     { value: 'financial_claim_form', label: 'نموذج مطالبة مالية', requiresDefaultFields: true, branchType: 'healthcare_center' },
     // Student-related documents for healthcare centers only (should appear in alerts)
-    { value: 'student_cadre_file', label: 'كادر الطلاب', requiresDefaultFields: false, branchType: 'healthcare_center' },
-    { value: 'dropped_students', label: 'الطلاب المتغييبين', requiresDefaultFields: false, branchType: 'healthcare_center' },
+    { value: 'student_cadre_file', label: 'بيانات الطلاب', requiresDefaultFields: false, branchType: 'healthcare_center' },
+    { value: 'dropped_students', label: 'الطلاب المنقطعين', requiresDefaultFields: false, branchType: 'healthcare_center' },
     { value: 'free_seats', label: 'المقاعد المتاحة', requiresDefaultFields: false, branchType: 'healthcare_center' },
     { value: 'acceptance_notifications', label: 'إشعارات القبول', requiresDefaultFields: false, branchType: 'healthcare_center' },
     { value: 'other', label: 'أخرى', requiresDefaultFields: true, branchType: null },
@@ -719,7 +719,7 @@ const BranchDocuments = () => {
 
   // Sort documents by priority: 1) Monthly (highest), 2) Student/Cadre, 3) Others
   const sortDocumentCardsByPriority = useCallback((cards) => {
-    const monthlyTypes = ['payroll_file', 'attendance_file'];
+    const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
     const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
     
     return [...cards].sort((a, b) => {
@@ -873,7 +873,7 @@ const BranchDocuments = () => {
         } else if (selectedDocumentType === 'acceptance_notifications') {
           setDocumentAlert({
             type: 'info',
-            message: 'تنبيه: يجب أن يكون ترتيب أسماء الطلاب في هذا الملف نفس ترتيب أسماء الطلاب في مستند الكادر الطلابي'
+            message: 'تنبيه: يجب أن يكون ترتيب أسماء الطلاب في هذا الملف نفس ترتيب أسماء الطلاب في مستند بيانات الطلاب'
           });
         }
       }
@@ -936,21 +936,15 @@ const BranchDocuments = () => {
           }}>
             لا توجد مستندات مطلوبة لهذا النوع من الفروع
           </div>
-        ) : (() => {
-          const monthlyTypes = ['payroll_file', 'attendance_file'];
-          const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
-          
-          const monthlyCards = documentCards.filter(card => monthlyTypes.includes(card.value));
-          const studentCadreCards = documentCards.filter(card => studentCadreTypes.includes(card.value));
-          const otherCards = documentCards.filter(card => !monthlyTypes.includes(card.value) && !studentCadreTypes.includes(card.value));
-          
-          const renderCard = (card) => {
-            const docType = allBranchDocumentTypes.find(dt => dt.value === card.value);
-            return (
-              <div 
-                key={card.value} 
-                className={`document-card ${card.exists ? 'document-exists' : 'document-missing'}`}
-              >
+        ) : (
+          <div className="document-cards-grid">
+            {documentCards.map((card) => {
+              const docType = allBranchDocumentTypes.find(dt => dt.value === card.value);
+              return (
+                <div 
+                  key={card.value} 
+                  className={`document-card ${card.exists ? 'document-exists' : 'document-missing'}`}
+                >
                   <div className="document-card-header">
                     <div className="document-card-icon">
                       {card.exists ? (
@@ -1010,15 +1004,15 @@ const BranchDocuments = () => {
                   <div className="document-card-actions">
                     {card.exists && card.document ? (
                       <>
-        <button
+                        <button
                           onClick={() => handleEdit(card.document)}
                           className="btn-card btn-update"
-        >
+                        >
                           <img src="https://img.icons8.com/material-rounded/24/edit.png" alt="تحديث" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
                           تحديث
-        </button>
+                        </button>
                         {card.document.mime_type && (card.document.mime_type.startsWith('image/') || card.document.mime_type === 'application/pdf') && (
-        <button
+                          <button
                             onClick={() => handlePreview(card.document)}
                             className="btn-card btn-preview"
                             disabled={previewLoading === card.document.id}
@@ -1029,9 +1023,9 @@ const BranchDocuments = () => {
                               <img src="https://img.icons8.com/?size=24&id=85028&format=png&color=000000" alt="معاينة" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
                             )}
                             معاينة
-        </button>
+                          </button>
                         )}
-        <button
+                        <button
                           onClick={() => handleDownload(card.document.id, card.document.file_name)}
                           className="btn-card btn-download"
                           disabled={downloading === card.document.id}
@@ -1042,15 +1036,15 @@ const BranchDocuments = () => {
                             <img src="https://img.icons8.com/material-rounded/24/download--v1.png" alt="تحميل" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
                           )}
                           تحميل
-        </button>
+                        </button>
                         {(isMainManager() || (user?.branch_id === card.document.branch_id)) && (
-        <button
+                          <button
                             onClick={() => handleDelete(card.document.id)}
                             className="btn-card btn-delete"
-        >
+                          >
                             <img src="https://img.icons8.com/material-rounded/24/trash.png" alt="حذف" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
                             حذف
-        </button>
+                          </button>
                         )}
                         {isMainManager() && !card.document.is_verified && (
                           <button
@@ -1073,51 +1067,9 @@ const BranchDocuments = () => {
                   </div>
                 </div>
               );
-          };
-          
-          return (
-            <>
-              {/* Monthly Documents Section (Highest Priority) */}
-              {monthlyCards.length > 0 && (
-                <div className="documents-priority-section priority-high">
-                  <h3 className="priority-section-title">
-                    <span className="priority-icon">🔴</span>
-                    المستندات الشهرية (الأولوية القصوى)
-                  </h3>
-                  <div className="document-cards-grid">
-                    {monthlyCards.map(renderCard)}
-                  </div>
-                </div>
-              )}
-              
-              {/* Student/Cadre Documents Section */}
-              {studentCadreCards.length > 0 && (
-                <div className="documents-priority-section priority-medium">
-                  <h3 className="priority-section-title">
-                    <span className="priority-icon">🟡</span>
-                    مستندات الكوادر والطلاب
-                  </h3>
-                  <div className="document-cards-grid">
-                    {studentCadreCards.map(renderCard)}
-                  </div>
-                </div>
-              )}
-              
-              {/* Other Documents Section */}
-              {otherCards.length > 0 && (
-                <div className="documents-priority-section priority-low">
-                  <h3 className="priority-section-title">
-                    <span className="priority-icon">🟢</span>
-                    باقي المستندات
-                  </h3>
-                  <div className="document-cards-grid">
-                    {otherCards.map(renderCard)}
-                  </div>
-                </div>
-              )}
-            </>
-          );
-        })()}
+            })}
+          </div>
+        )}
       </div>
 
       {showUploadForm && (
@@ -1177,7 +1129,7 @@ const BranchDocuments = () => {
                       } else if (selectedType === 'acceptance_notifications') {
                         setDocumentAlert({
                           type: 'info',
-                          message: 'تنبيه: يجب أن يكون ترتيب أسماء الطلاب في هذا الملف نفس ترتيب أسماء الطلاب في مستند الكادر الطلابي'
+                          message: 'تنبيه: يجب أن يكون ترتيب أسماء الطلاب في هذا الملف نفس ترتيب أسماء الطلاب في مستند بيانات الطلاب'
                         });
                       }
                     } else {

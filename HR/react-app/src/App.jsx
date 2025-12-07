@@ -23,6 +23,8 @@ import Archive from './pages/Archive';
 import BranchStatistics from './pages/BranchStatistics';
 import TermManagement from './pages/TermManagement';
 import BranchesMonitoring from './pages/BranchesMonitoring';
+import BranchInfo from './pages/BranchInfo';
+import DirectContact from './pages/DirectContact';
 import './App.css';
 
 // Wrapper component to choose layout based on role
@@ -175,6 +177,26 @@ function App() {
                 <Layout>
                   <BranchesMonitoring />
                 </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/direct-contact"
+            element={
+              <ProtectedRoute requireMainManager>
+                <Layout>
+                  <DirectContact />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/branch-info"
+            element={
+              <ProtectedRoute>
+                <RoleBasedLayout>
+                  <BranchInfo />
+                </RoleBasedLayout>
               </ProtectedRoute>
             }
           />

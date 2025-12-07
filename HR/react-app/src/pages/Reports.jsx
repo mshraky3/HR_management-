@@ -78,7 +78,7 @@ const Reports = () => {
     { value: 'gender', label: 'الجنس' },
     { value: 'id_expiry_date_hijri', label: 'تاريخ انتهاء الهوية (هجري)' },
     { value: 'id_expiry_date_gregorian', label: 'تاريخ انتهاء الهوية (ميلادي)' },
-    { value: 'religion', label: 'الدين' },
+    { value: 'religion', label: 'الديانة' },
     { value: 'marital_status', label: 'الحالة الاجتماعية' },
     { value: 'educational_qualification', label: 'المؤهل التعليمي' },
     { value: 'specialization', label: 'التخصص' },
@@ -355,6 +355,22 @@ const Reports = () => {
     return Object.keys(missingInfo).length > 0 ? missingInfo : null;
   };
 
+  // Check if report form is valid for generation
+  const isReportFormValid = () => {
+    // Check report title is provided
+    if (!reportTitle.trim()) return false;
+    
+    // Check at least one field is selected
+    if (selectedFields.length === 0) return false;
+    
+    // For main manager: check if branches are selected
+    if (isMainManager()) {
+      if (!selectAllBranches && selectedBranchIds.length === 0) return false;
+    }
+    
+    return true;
+  };
+
   const handleGenerateReport = async (e) => {
     e.preventDefault();
     
@@ -473,7 +489,10 @@ const Reports = () => {
         : 'application/pdf';
       const fileExtension = fileType === 'excel' ? 'xlsx' : 'pdf';
       
-      const blob = new Blob([response.data], { type: mimeType });
+      // response.data is already a blob when responseType is 'blob'
+      const blob = response.data instanceof Blob 
+        ? response.data 
+        : new Blob([response.data], { type: mimeType });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -551,7 +570,10 @@ const Reports = () => {
         : 'application/pdf';
       const fileExtension = fileType === 'excel' ? 'xlsx' : 'pdf';
       
-      const blob = new Blob([response.data], { type: mimeType });
+      // response.data is already a blob when responseType is 'blob'
+      const blob = response.data instanceof Blob 
+        ? response.data 
+        : new Blob([response.data], { type: mimeType });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -1078,7 +1100,7 @@ const Reports = () => {
         </div>
 
         <div className="form-actions">
-          <button type="submit" className="btn btn-primary" disabled={generating}>
+          <button type="submit" className={`btn btn-primary btn-lg ${isReportFormValid() ? 'btn-ready' : ''}`} disabled={generating}>
             {generating ? 'جاري الإنشاء...' : 'إنشاء التقرير'}
           </button>
         </div>

@@ -123,7 +123,7 @@ const BranchesMonitoring = () => {
 
   // Sort documents by priority: 1) Monthly (highest), 2) Student/Cadre, 3) Others
   const sortDocumentsByPriority = (docs) => {
-    const monthlyTypes = ['payroll_file', 'attendance_file'];
+    const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
     const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
     
     return [...docs].sort((a, b) => {
@@ -152,7 +152,7 @@ const BranchesMonitoring = () => {
     license: 'الترخيص',
     permit: 'التصريح',
     insurance: 'التأمين',
-    insurance_print: 'برينت التأمينات',
+    insurance_print: 'كشف التأمينات',
     contract: 'العقد',
     rental_contract: 'عقد الايجار',
     certification: 'الشهادة',
@@ -165,13 +165,16 @@ const BranchesMonitoring = () => {
     operational_plan: 'الخطة التشغلية للمركز',
     owner_civil_id_copy: 'نسخه من هوية الاحوال الشخصية لمالك المركز',
     disclosure_commitment: 'افصاح و تعهد',
-    certification_commitment_form: 'نموذج تصديق و تعقد',
+    certification_commitment_form: 'نموذج تصديق و تعاقد',
     financial_platform_declaration: 'ملف اقرار المنصة المالية',
     financial_claim_form: 'نموذج مطالبة مالية',
-    student_cadre_file: 'كادر الطلاب',
-    dropped_students: 'الطلاب المتغييبين',
+    student_cadre_file: 'بيانات الطلاب',
+    dropped_students: 'الطلاب المنقطعين',
     free_seats: 'المقاعد المتاحة',
-    acceptance_notifications: 'إشعارات القبول'
+    acceptance_notifications: 'إشعارات القبول',
+    payroll_file: 'ملف مسيرات الرواتب',
+    attendance_file: 'ملف الحضور و الانصراف',
+    salary_deposit_file: 'ملف ايداع الرواتب (التحويلات البنكية)'
   };
 
   if (!isMainManager()) {
@@ -347,7 +350,7 @@ const BranchesMonitoring = () => {
               {/* Missing Documents - Sorted by Priority */}
               {missingDocs.length > 0 && (() => {
                 const sortedMissingDocs = sortDocumentsByPriority(missingDocs);
-                const monthlyTypes = ['payroll_file', 'attendance_file'];
+                const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
                 const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
                 
                 const monthlyMissing = sortedMissingDocs.filter(doc => monthlyTypes.includes(doc.type));
@@ -456,19 +459,17 @@ const BranchesMonitoring = () => {
               <div 
                 key={branch.id} 
                 className="branch-card"
-                onClick={() => loadBranchDetails(branch)}
               >
                 <div className="branch-card-header">
                   <h3>{branch.branch_name}</h3>
                 </div>
-                <div className="branch-card-body">
-                  <div className="branch-info-item">
-                    <span className="info-label">الموقع:</span>
-                    <span className="info-value">{branch.branch_location || 'غير محدد'}</span>
-                  </div>
-                </div>
                 <div className="branch-card-footer">
-                  <span className="click-hint">اضغط لعرض التفاصيل</span>
+                  <button 
+                    className="btn-view-details"
+                    onClick={() => loadBranchDetails(branch)}
+                  >
+                    عرض التفاصيل
+                  </button>
                 </div>
               </div>
             ))}
@@ -488,19 +489,17 @@ const BranchesMonitoring = () => {
               <div 
                 key={branch.id} 
                 className="branch-card"
-                onClick={() => loadBranchDetails(branch)}
               >
                 <div className="branch-card-header">
                   <h3>{branch.branch_name}</h3>
                 </div>
-                <div className="branch-card-body">
-                  <div className="branch-info-item">
-                    <span className="info-label">الموقع:</span>
-                    <span className="info-value">{branch.branch_location || 'غير محدد'}</span>
-                  </div>
-                </div>
                 <div className="branch-card-footer">
-                  <span className="click-hint">اضغط لعرض التفاصيل</span>
+                  <button 
+                    className="btn-view-details"
+                    onClick={() => loadBranchDetails(branch)}
+                  >
+                    عرض التفاصيل
+                  </button>
                 </div>
               </div>
             ))}

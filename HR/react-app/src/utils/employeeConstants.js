@@ -60,7 +60,8 @@ export const HEALTHCARE_JOB_TITLES = [
   'مراقب اجتماعي',
   'الرعاية الشخصية',
   'معلم صف تربية خاصة',
-  'معلم صف توحد'
+  'معلم صف توحد',
+  'خدمة عملاء'
 ];
 
 /**
@@ -91,7 +92,8 @@ export const COMMON_DOCUMENT_TYPES = [
   'primary_qualification',
   'employment_contract',
   'additional_courses',
-  'medical_disclosure_form'
+  'medical_disclosure_form',
+  'medical_insurance'
 ];
 
 /**
@@ -167,7 +169,8 @@ export const DOCUMENT_TYPE_LABELS = {
   'speech_therapy_70_hours_course': 'دورة 70 ساعة في التخاطب',
   'physical_therapy_course': 'دورة العلاج الطبيعي',
   'therapy_40_hours_course': 'دورة 40 ساعة',
-  'medical_disclosure_form': 'نموذج افصاح طبي'
+  'medical_disclosure_form': 'نموذج افصاح طبي',
+  'medical_insurance': 'التأمين الطبي'
 };
 
 /**
@@ -191,6 +194,7 @@ export const BRANCH_DOCUMENT_TYPE_LABELS = {
   'permit': 'التصريح',
   'payroll_file': 'ملف مسيرات الرواتب',
   'attendance_file': 'ملف الحضور و الانصراف',
+  'salary_deposit_file': 'ملف ايداع الرواتب (التحويلات البنكية)',
   'insurance': 'التأمين',
   'contract': 'العقد',
   'certification': 'الشهادة',
@@ -206,10 +210,10 @@ export const BRANCH_DOCUMENT_TYPE_LABELS = {
   'staff_cadre': 'الكادر',
   'owner_civil_id_copy': 'نسخه من هوية الاحوال الشخصية لمالك المركز',
   'disclosure_commitment': 'افصاح و تعهد',
-  'certification_commitment_form': 'نموذج تصديق و تعقد',
+  'certification_commitment_form': 'نموذج تصديق و تعاقد',
   'financial_platform_declaration': 'ملف اقرار المنصة المالية',
   'financial_claim_form': 'نموذج مطالبة مالية',
-  'student_cadre_file': 'ملف الكادر الطلابي',
+  'student_cadre_file': 'بيانات الطلاب',
   'dropped_students': 'الطلاب المنقطعين',
   'free_seats': 'المقاعد المجانية',
   'acceptance_notifications': 'ملف اشعارات القبول',

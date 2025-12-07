@@ -187,7 +187,7 @@ const BranchStatistics = () => {
             max="2100"
           />
           <button
-            className="btn btn-primary"
+            className="btn btn-primary btn-lg btn-ready"
             onClick={() => handleGenerateReport('excel')}
             disabled={generatingReport}
           >

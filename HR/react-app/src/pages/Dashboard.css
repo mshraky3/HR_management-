@@ -14,6 +14,45 @@
   font-size: var(--font-size-lg);
 }
 
+/* Branch Info Alert */
+.branch-info-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background-color: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  margin-bottom: var(--spacing-lg);
+  font-size: 14px;
+  color: #856404;
+  max-width: 600px;
+}
+
+.branch-info-alert-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.branch-info-alert-text {
+  flex: 1;
+}
+
+.branch-info-alert-link {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.branch-info-alert-link:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  text-decoration: underline;
+}
+
 /* Stats Grid */
 .stats-grid {
   display: grid;
@@ -595,32 +634,33 @@
 
 /* Incomplete Employees Alert */
 .incomplete-employees-alert {
-  margin-top: var(--spacing-xl);
-  margin-bottom: var(--spacing-xl);
+  margin-top: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
   background: var(--bg);
   border: 2px solid var(--warning);
-  border-radius: var(--radius-xl);
-  padding: var(--spacing-xl);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
   box-shadow: var(--shadow-md);
 }
 
 .incomplete-employees-alert h2 {
-  margin-bottom: var(--spacing-md);
+  margin-bottom: 8px;
+  margin-top: 0;
   color: var(--text);
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-base);
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-xs);
 }
 
 .incomplete-employees-alert h2::before {
   content: '⚠️';
   display: inline-block;
-  width: 24px;
-  height: 24px;
-  font-size: 24px;
-  line-height: 24px;
-  margin-left: 8px;
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+  line-height: 18px;
+  margin-left: 6px;
 }
 
 .incomplete-employees-table {
@@ -635,16 +675,19 @@
 .incomplete-employees-table th {
   background: rgba(245, 158, 11, 0.1);
   color: var(--warning-hover);
-  padding: var(--spacing-md);
+  padding: 6px 10px;
   text-align: right;
   font-weight: 600;
+  font-size: var(--font-size-sm);
   border-bottom: 2px solid var(--warning);
 }
 
 .incomplete-employees-table td {
-  padding: var(--spacing-md);
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border-light);
   text-align: right;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
 }
 
 .incomplete-employees-table tr:hover {

@@ -597,8 +597,100 @@
   border-radius: var(--radius-full);
 }
 
+/* Employee Info Sections with Tables */
+.employee-info-section {
+  background: var(--bg);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl);
+  margin-bottom: var(--spacing-xl);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
+}
+
+.section-title {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 var(--spacing-lg) 0;
+  padding-bottom: var(--spacing-md);
+  border-bottom: 2px solid var(--primary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.employee-info-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--spacing-md);
+}
+
+.employee-info-table th {
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  padding: var(--spacing-md);
+  text-align: right;
+  font-weight: 600;
+  border: 1px solid var(--border-light);
+  width: 25%;
+  vertical-align: middle;
+}
+
+.employee-info-table td {
+  padding: var(--spacing-md);
+  text-align: right;
+  border: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.employee-info-table tr:hover td {
+  background: var(--bg-hover);
+}
+
+.employee-info-table tr:nth-child(even) td {
+  background: var(--bg);
+}
+
+.employee-info-table tr:nth-child(even):hover td {
+  background: var(--bg-hover);
+}
+
+.salary-total-row th,
+.salary-total-row td {
+  background: var(--primary-light) !important;
+  border-top: 2px solid var(--primary);
+  font-weight: bold;
+}
+
+.salary-deduction-row th,
+.salary-deduction-row td {
+  background: rgba(239, 68, 68, 0.1) !important;
+  border-top: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.salary-net-row th,
+.salary-net-row td {
+  background: rgba(16, 185, 129, 0.1) !important;
+  border-top: 2px solid var(--success);
+  border-bottom: 2px solid var(--success);
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
+  .employee-info-table {
+    font-size: var(--font-size-sm);
+  }
+
+  .employee-info-table th,
+  .employee-info-table td {
+    padding: var(--spacing-sm);
+  }
+
+  .section-title {
+    font-size: var(--font-size-lg);
+  }
   .employee-details-page {
     padding: var(--spacing-md);
   }

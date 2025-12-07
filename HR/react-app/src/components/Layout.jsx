@@ -61,6 +61,7 @@ const Layout = ({ children }) => {
         { path: '/monthly-documents', label: 'المستندات الشهرية' },
         { path: '/branch-statistics', label: 'إحصائيات الفروع' },
         { path: '/notify-branches', label: 'إشعار الفروع' },
+        { path: '/direct-contact', label: 'التواصل المباشر' },
         { path: '/archive', label: 'الأرشيف' },
       ]
     },

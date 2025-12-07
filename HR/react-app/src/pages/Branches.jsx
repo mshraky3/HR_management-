@@ -25,6 +25,8 @@ const Branches = () => {
     username: '',
     password: '',
     branch_documents_password: '',
+    phone_number: '',
+    email: '',
   });
 
   // Function to filter and sort branches based on search query
@@ -44,7 +46,9 @@ const Branches = () => {
         branch.branch_location || '',
         branch.username || '',
         branch.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية',
-        branch.password || ''
+        branch.password || '',
+        branch.phone_number || '',
+        branch.email || ''
       ].join(' ').toLowerCase();
 
       // Exact match gets highest score
@@ -162,6 +166,8 @@ const Branches = () => {
       username: branch.username,
       password: '',
       branch_documents_password: branch.branch_documents_password || '',
+      phone_number: branch.phone_number || '',
+      email: branch.email || '',
     });
     setShowForm(true);
   };
@@ -185,6 +191,8 @@ const Branches = () => {
       username: '',
       password: '',
       branch_documents_password: 'test',
+      phone_number: '',
+      email: '',
     });
   };
 
@@ -327,6 +335,32 @@ const Branches = () => {
                   هذه كلمة المرور المطلوبة للوصول إلى مستندات الفرع. القيمة الافتراضية: test
                 </small>
               </div>
+
+              {/* معلومات الفرع */}
+              <h3 style={{ marginTop: '20px', marginBottom: '15px', padding: '10px', background: '#e3f2fd', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
+                معلومات الفرع
+              </h3>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>رقم جوال الفرع</label>
+                  <input
+                    type="tel"
+                    value={formData.phone_number}
+                    onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                    placeholder="مثال: 0501234567"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>إيميل الفرع</label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="مثال: branch@example.com"
+                  />
+                </div>
+              </div>
+
               <div className="form-actions">
                 <button type="submit" className="btn-primary">حفظ</button>
                 <button type="button" onClick={() => { setShowForm(false); resetForm(); setEditingBranch(null); }} className="btn-secondary">
@@ -347,13 +381,14 @@ const Branches = () => {
               <th>الموقع</th>
               <th>اسم المستخدم</th>
               <th>كلمة المرور</th>
+              <th>معلومات الفرع</th>
               {isMainManager() && <th>الإجراءات</th>}
             </tr>
           </thead>
           <tbody>
             {branches.length === 0 ? (
               <tr>
-                <td colSpan={isMainManager() ? "6" : "5"} style={{ textAlign: 'center' }}>لم يتم العثور على فروع</td>
+                <td colSpan={isMainManager() ? "7" : "6"} style={{ textAlign: 'center' }}>لم يتم العثور على فروع</td>
               </tr>
             ) : (
               branches.map((branch) => (
@@ -363,6 +398,23 @@ const Branches = () => {
                   <td>{branch.branch_location}</td>
                   <td>{branch.username}</td>
                   <td>{branch.password || '-'}</td>
+                  <td>
+                    <div style={{ fontSize: '13px' }}>
+                      {branch.phone_number && (
+                        <div style={{ marginBottom: '4px' }}>
+                          <strong>جوال:</strong> {branch.phone_number}
+                        </div>
+                      )}
+                      {branch.email && (
+                        <div>
+                          <strong>إيميل:</strong> {branch.email}
+                        </div>
+                      )}
+                      {!branch.phone_number && !branch.email && (
+                        <span style={{ color: '#999' }}>-</span>
+                      )}
+                    </div>
+                  </td>
                   {isMainManager() && (
                     <td>
                       <button onClick={() => handleEdit(branch)} className="btn-sm btn-edit">تعديل</button>

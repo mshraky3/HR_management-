@@ -6,6 +6,9 @@
 import { useState, useEffect } from 'react';
 import './BankSelect.css';
 
+// Default placeholder value for bank selection
+export const DEFAULT_BANK_PLACEHOLDER = 'اختر البنك';
+
 // List of Saudi banks with Arabic names
 const BANKS = [
   { nameAr: 'البنك الأهلي السعودي (SNB)' },
@@ -71,6 +74,7 @@ const BankSelect = ({
             onChange={handleBankChange}
             required={required}
           >
+            <option value={DEFAULT_BANK_PLACEHOLDER}>{DEFAULT_BANK_PLACEHOLDER}</option>
             {BANKS.map((bank, index) => (
               <option key={index} value={bank.nameAr}>
                 {bank.nameAr}

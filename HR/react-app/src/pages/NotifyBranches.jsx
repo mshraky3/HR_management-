@@ -26,6 +26,7 @@ const NotifyBranches = () => {
     importance_level: 2,
     branch_ids: [],
   });
+  const [attachmentFile, setAttachmentFile] = useState(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -75,11 +76,22 @@ const NotifyBranches = () => {
 
     try {
       setSaving(true);
-      const response = await notificationsAPI.create({
-        message: formData.message.trim(),
-        importance_level: parseInt(formData.importance_level),
-        branch_ids: formData.branch_ids.map((id) => parseInt(id)),
-      });
+      
+      // Create FormData for file upload
+      const formDataToSend = new FormData();
+      formDataToSend.append('message', formData.message.trim());
+      formDataToSend.append('importance_level', parseInt(formData.importance_level));
+      
+      // Append branch_ids as JSON string to ensure proper parsing on server
+      // This is more reliable than multiple append() calls with same key
+      formDataToSend.append('branch_ids', JSON.stringify(formData.branch_ids.map(id => parseInt(id))));
+      
+      // Add file if selected
+      if (attachmentFile) {
+        formDataToSend.append('file', attachmentFile);
+      }
+
+      const response = await notificationsAPI.create(formDataToSend);
 
       if (response.data.success) {
         showSuccess("تم إرسال الإشعار بنجاح");
@@ -88,6 +100,7 @@ const NotifyBranches = () => {
           importance_level: 2,
           branch_ids: [],
         });
+        setAttachmentFile(null);
         setShowCreateForm(false);
         loadData();
       }
@@ -170,12 +183,14 @@ const NotifyBranches = () => {
     1: "#4CAF50", // Low - Green
     2: "#FF9800", // Medium - Orange
     3: "#F44336", // High - Red
+    4: "#2196F3", // Circular - Blue
   };
 
   const importanceLabels = {
-    1: "منخفض",
-    2: "متوسط",
-    3: "عالي",
+    1: "تنبيه",
+    2: "هام و غير عاجل",
+    3: "هام و عاجل",
+    4: "تعميم",
   };
 
   const responseStatusLabels = {
@@ -237,10 +252,32 @@ const NotifyBranches = () => {
                 }
                 required
               >
-                <option value={1}>منخفض</option>
-                <option value={2}>متوسط</option>
-                <option value={3}>عالي</option>
+                <option value={1}>تنبيه</option>
+                <option value={2}>هام و غير عاجل</option>
+                <option value={3}>هام و عاجل</option>
+                <option value={4}>تعميم</option>
               </select>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="attachment">إرفاق ملف أو صورة (اختياري)</label>
+              <input
+                id="attachment"
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.gif"
+                onChange={(e) => setAttachmentFile(e.target.files[0] || null)}
+              />
+              {attachmentFile && (
+                <div style={{ marginTop: '8px', fontSize: '14px', color: '#666' }}>
+                  <span>✓ الملف المحدد: {attachmentFile.name}</span>
+                  <span style={{ marginLeft: '10px', color: '#999' }}>
+                    ({(attachmentFile.size / 1024 / 1024).toFixed(2)} ميجابايت)
+                  </span>
+                </div>
+              )}
+              <p style={{ marginTop: '5px', fontSize: '12px', color: '#999' }}>
+                الحد الأقصى لحجم الملف: 10 ميجابايت. أنواع الملفات المدعومة: PDF, JPG, PNG, GIF
+              </p>
             </div>
 
             <div className="form-group">
@@ -294,14 +331,15 @@ const NotifyBranches = () => {
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => {
-                  setShowCreateForm(false);
-                  setFormData({
-                    message: "",
-                    importance_level: 2,
-                    branch_ids: [],
-                  });
-                }}
+                  onClick={() => {
+                    setShowCreateForm(false);
+                    setFormData({
+                      message: "",
+                      importance_level: 2,
+                      branch_ids: [],
+                    });
+                    setAttachmentFile(null);
+                  }}
               >
                 إلغاء
               </button>
@@ -390,6 +428,54 @@ const NotifyBranches = () => {
                   <div className="notification-message">
                     {notification.message}
                   </div>
+
+                  {/* Attachment Display */}
+                  {notification.attachment_url && (
+                    <div className="notification-attachment" style={{
+                      marginTop: '15px',
+                      padding: '12px',
+                      backgroundColor: '#f5f5f5',
+                      borderRadius: '6px',
+                      border: '1px solid #ddd'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '18px' }}>📎</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
+                            ملف مرفق: {notification.attachment_name || 'مرفق'}
+                          </div>
+                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <a
+                              href={notification.attachment_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                color: 'var(--primary)',
+                                textDecoration: 'none',
+                                fontSize: '14px'
+                              }}
+                            >
+                              📥 تحميل الملف
+                            </a>
+                            {(notification.attachment_type?.startsWith('image/') || notification.attachment_type === 'application/pdf') && (
+                              <a
+                                href={notification.attachment_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  color: 'var(--primary)',
+                                  textDecoration: 'none',
+                                  fontSize: '14px'
+                                }}
+                              >
+                                👁️ معاينة
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="notification-stats">
                     <div className="stat-item">

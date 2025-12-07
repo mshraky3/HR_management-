@@ -582,189 +582,199 @@ const EmployeeDetails = () => {
             </div>
           )}
 
-        {/* Basic Information */}
-        <div className="info-cards-grid">
-          <div className="info-card">
-            <div className="info-card-header">
-              <div className="info-card-icon">📋</div>
-              <h3 className="info-card-title">المعلومات الأساسية</h3>
-            </div>
-            <div className="info-grid">
-              <div className="info-item">
-                <span className="info-item-label">المهنة</span>
-                <span className="info-item-value">{employee.occupation || '-'}</span>
-              </div>
-              <div className="info-item">
-                <span className="info-item-label">الجنسية</span>
-                <span className="info-item-value">{employee.nationality || '-'}</span>
-              </div>
-              <div className="info-item">
-                <span className="info-item-label">الفرع</span>
-                <span className="info-item-value">{branches.find(b => b.id === employee.branch_id)?.branch_name || employee.branch_id || '-'}</span>
-              </div>
-              <div className="info-item">
-                <span className="info-item-label">الجنس</span>
-                <span className="info-item-value">{employee.gender === 'male' ? 'ذكر' : employee.gender === 'female' ? 'أنثى' : '-'}</span>
-              </div>
-              <div className="info-item">
-                <span className="info-item-label">نوع الهوية</span>
-                <span className="info-item-value">{employee.id_type === 'citizen' ? 'مواطن' : employee.id_type === 'resident' ? 'مقيم' : '-'}</span>
-              </div>
-              <div className="info-item">
-                <span className="info-item-label">رقم الهوية/الإقامة</span>
-                <span className="info-item-value">{employee.id_or_residency_number || '-'}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Personal Information */}
-          <div className="info-card">
-            <div className="info-card-header">
-              <div className="info-card-icon">👤</div>
-              <h3 className="info-card-title">المعلومات الشخصية</h3>
-            </div>
-            <div className="info-grid">
+        {/* Section 1: Basic Information */}
+        <div className="employee-info-section">
+          <h2 className="section-title">القسم الأول: المعلومات الأساسية</h2>
+          <table className="employee-info-table">
+            <tbody>
+              <tr>
+                <th>المهنة</th>
+                <td>{employee.occupation || '-'}</td>
+                <th>الجنسية</th>
+                <td>{employee.nationality || '-'}</td>
+              </tr>
+              <tr>
+                <th>الفرع</th>
+                <td>{branches.find(b => b.id === employee.branch_id)?.branch_name || employee.branch_id || '-'}</td>
+                <th>الجنس</th>
+                <td>{employee.gender === 'male' ? 'ذكر' : employee.gender === 'female' ? 'أنثى' : '-'}</td>
+              </tr>
+              <tr>
+                <th>نوع الهوية</th>
+                <td>{employee.id_type === 'citizen' ? 'مواطن' : employee.id_type === 'resident' ? 'مقيم' : '-'}</td>
+                <th>رقم الهوية/الإقامة</th>
+                <td>{employee.id_or_residency_number || '-'}</td>
+              </tr>
               {employee.date_of_birth_hijri && (
-                <div className="info-item">
-                  <span className="info-item-label">تاريخ الميلاد (هجري)</span>
-                  <span className="info-item-value">{employee.date_of_birth_hijri}</span>
-                </div>
+                <tr>
+                  <th>تاريخ الميلاد (هجري)</th>
+                  <td>{employee.date_of_birth_hijri}</td>
+                  {employee.date_of_birth_gregorian && (
+                    <>
+                      <th>تاريخ الميلاد (ميلادي)</th>
+                      <td>{new Date(employee.date_of_birth_gregorian).toLocaleDateString('en-US')}</td>
+                    </>
+                  )}
+                </tr>
               )}
-              {employee.date_of_birth_gregorian && (
-                <div className="info-item">
-                  <span className="info-item-label">تاريخ الميلاد (ميلادي)</span>
-                  <span className="info-item-value">{new Date(employee.date_of_birth_gregorian).toLocaleDateString('en-US')}</span>
-                </div>
+              {!employee.date_of_birth_hijri && employee.date_of_birth_gregorian && (
+                <tr>
+                  <th>تاريخ الميلاد (ميلادي)</th>
+                  <td colSpan="3">{new Date(employee.date_of_birth_gregorian).toLocaleDateString('en-US')}</td>
+                </tr>
               )}
-              {employee.id_expiry_date_hijri && (
-                <div className="info-item">
-                  <span className="info-item-label">انتهاء الهوية (هجري)</span>
-                  <span className="info-item-value">{employee.id_expiry_date_hijri}</span>
-                </div>
+              {(employee.id_expiry_date_hijri || employee.id_expiry_date_gregorian) && (
+                <tr>
+                  {employee.id_expiry_date_hijri && (
+                    <>
+                      <th>انتهاء الهوية (هجري)</th>
+                      <td>{employee.id_expiry_date_hijri}</td>
+                    </>
+                  )}
+                  {employee.id_expiry_date_gregorian && (
+                    <>
+                      <th>انتهاء الهوية (ميلادي)</th>
+                      <td>{new Date(employee.id_expiry_date_gregorian).toLocaleDateString('en-US')}</td>
+                    </>
+                  )}
+                </tr>
               )}
-              {employee.id_expiry_date_gregorian && (
-                <div className="info-item">
-                  <span className="info-item-label">انتهاء الهوية (ميلادي)</span>
-                  <span className="info-item-value">{new Date(employee.id_expiry_date_gregorian).toLocaleDateString('en-US')}</span>
-                </div>
+              {(employee.religion || employee.marital_status) && (
+                <tr>
+                  {employee.religion && (
+                    <>
+                      <th>الديانة</th>
+                      <td>{employee.religion}</td>
+                    </>
+                  )}
+                  {employee.marital_status && (
+                    <>
+                      <th>الحالة الاجتماعية</th>
+                      <td>{employee.marital_status}</td>
+                    </>
+                  )}
+                </tr>
               )}
-              {employee.religion && (
-                <div className="info-item">
-                  <span className="info-item-label">الدين</span>
-                  <span className="info-item-value">{employee.religion}</span>
-                </div>
-              )}
-              {employee.marital_status && (
-                <div className="info-item">
-                  <span className="info-item-label">الحالة الاجتماعية</span>
-                  <span className="info-item-value">{employee.marital_status}</span>
-                </div>
-              )}
-              {employee.educational_qualification && (
-                <div className="info-item">
-                  <span className="info-item-label">المؤهل التعليمي</span>
-                  <span className="info-item-value">{employee.educational_qualification}</span>
-                </div>
-              )}
-              {employee.specialization && (
-                <div className="info-item">
-                  <span className="info-item-label">التخصص</span>
-                  <span className="info-item-value">{employee.specialization}</span>
-                </div>
+              {(employee.educational_qualification || employee.specialization) && (
+                <tr>
+                  {employee.educational_qualification && (
+                    <>
+                      <th>المؤهل التعليمي</th>
+                      <td>{employee.educational_qualification}</td>
+                    </>
+                  )}
+                  {employee.specialization && (
+                    <>
+                      <th>التخصص</th>
+                      <td>{employee.specialization}</td>
+                    </>
+                  )}
+                </tr>
               )}
               {employee.national_address && (
-                <div className="info-item">
-                  <span className="info-item-label">العنوان الوطني</span>
-                  <span className="info-item-value">{employee.national_address}</span>
-                </div>
+                <tr>
+                  <th>العنوان الوطني</th>
+                  <td colSpan="3">{employee.national_address}</td>
+                </tr>
               )}
-            </div>
-          </div>
-
-          {/* Contact Information */}
-          <div className="info-card">
-            <div className="info-card-header">
-              <div className="info-card-icon">📞</div>
-              <h3 className="info-card-title">معلومات الاتصال</h3>
-            </div>
-            <div className="info-grid">
-              {employee.email && (
-                <div className="info-item">
-                  <span className="info-item-label">البريد الإلكتروني</span>
-                  <span className="info-item-value">{employee.email}</span>
-                </div>
-              )}
-              {employee.phone_number && (
-                <div className="info-item">
-                  <span className="info-item-label">رقم الهاتف</span>
-                  <span className="info-item-value">{employee.phone_number}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Work Information */}
-          {(employee.contract_type || (employee.years_of_experience_in_same_institution !== undefined && employee.years_of_experience_in_same_institution !== null) || employee.job_title) && (
-            <div className="info-card">
-              <div className="info-card-header">
-                <div className="info-card-icon">💼</div>
-                <h3 className="info-card-title">معلومات العمل</h3>
-              </div>
-              <div className="info-grid">
-                {employee.job_title && (
-                  <div className="info-item">
-                    <span className="info-item-label">المسمى الوظيفي</span>
-                    <span className="info-item-value">{employee.job_title}</span>
-                  </div>
-                )}
-                {employee.contract_type && (
-                  <div className="info-item">
-                    <span className="info-item-label">نوع العقد</span>
-                    <span className="info-item-value">{employee.contract_type}</span>
-                  </div>
-                )}
-                {(employee.years_of_experience_in_same_institution !== undefined && employee.years_of_experience_in_same_institution !== null) && (
-                  <div className="info-item">
-                    <span className="info-item-label">سنوات الخبرة في نفس المؤسسة</span>
-                    <span className="info-item-value">{employee.years_of_experience_in_same_institution} سنة</span>
-                  </div>
-                )}
-                {(employee.years_of_experience_in_company !== undefined && employee.years_of_experience_in_company !== null) && (
-                  <div className="info-item">
-                    <span className="info-item-label">سنوات الخبرة في الشركة</span>
-                    <span className="info-item-value">{employee.years_of_experience_in_company} سنة</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Financial Information */}
-          {(employee.bank_name || employee.bank_iban) && (
-            <div className="info-card">
-              <div className="info-card-header">
-                <div className="info-card-icon">🏦</div>
-                <h3 className="info-card-title">المعلومات المالية</h3>
-              </div>
-              <div className="info-grid">
-                {employee.bank_name && (
-                  <div className="info-item">
-                    <span className="info-item-label">البنك</span>
-                    <span className="info-item-value">{employee.bank_name}</span>
-                  </div>
-                )}
-                {employee.bank_iban && (
-                  <div className="info-item">
-                    <span className="info-item-label">رقم الآيبان</span>
-                    <span className="info-item-value">{employee.bank_iban}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+            </tbody>
+          </table>
         </div>
 
-        {/* Salary Information */}
+        {/* Section 2: Contact Information */}
+        {(employee.email || employee.phone_number) && (
+          <div className="employee-info-section">
+            <h2 className="section-title">القسم الثاني: معلومات الاتصال</h2>
+            <table className="employee-info-table">
+              <tbody>
+                {employee.email && (
+                  <tr>
+                    <th>البريد الإلكتروني</th>
+                    <td colSpan="3">{employee.email}</td>
+                  </tr>
+                )}
+                {employee.phone_number && (
+                  <tr>
+                    <th>رقم الهاتف</th>
+                    <td colSpan="3">{employee.phone_number}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Section 3: Work Information */}
+        {(employee.contract_type || (employee.years_of_experience_in_same_institution !== undefined && employee.years_of_experience_in_same_institution !== null) || employee.job_title) && (
+          <div className="employee-info-section">
+            <h2 className="section-title">القسم الثالث: معلومات العمل</h2>
+            <table className="employee-info-table">
+              <tbody>
+                {employee.job_title && (
+                  <tr>
+                    <th>المسمى الوظيفي</th>
+                    <td colSpan="3">{employee.job_title}</td>
+                  </tr>
+                )}
+                {employee.contract_type && (
+                  <tr>
+                    <th>نوع العقد</th>
+                    <td colSpan="3">{employee.contract_type}</td>
+                  </tr>
+                )}
+                {(employee.years_of_experience_in_same_institution !== undefined && employee.years_of_experience_in_same_institution !== null) && (
+                  <tr>
+                    <th>سنوات الخبرة في نفس المؤسسة</th>
+                    <td>{employee.years_of_experience_in_same_institution} سنة</td>
+                    {(employee.years_of_experience_in_company !== undefined && employee.years_of_experience_in_company !== null) && (
+                      <>
+                        <th>سنوات الخبرة في الشركة</th>
+                        <td>{employee.years_of_experience_in_company} سنة</td>
+                      </>
+                    )}
+                  </tr>
+                )}
+                {!(employee.years_of_experience_in_same_institution !== undefined && employee.years_of_experience_in_same_institution !== null) && (employee.years_of_experience_in_company !== undefined && employee.years_of_experience_in_company !== null) && (
+                  <tr>
+                    <th>سنوات الخبرة في الشركة</th>
+                    <td colSpan="3">{employee.years_of_experience_in_company} سنة</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Section 4: Financial Information */}
+        {(employee.bank_name || employee.bank_iban) && (
+          <div className="employee-info-section">
+            <h2 className="section-title">القسم الرابع: المعلومات المالية</h2>
+            <table className="employee-info-table">
+              <tbody>
+                {employee.bank_name && (
+                  <tr>
+                    <th>البنك</th>
+                    <td>{employee.bank_name}</td>
+                    {employee.bank_iban && (
+                      <>
+                        <th>رقم الآيبان</th>
+                        <td>{employee.bank_iban}</td>
+                      </>
+                    )}
+                  </tr>
+                )}
+                {!employee.bank_name && employee.bank_iban && (
+                  <tr>
+                    <th>رقم الآيبان</th>
+                    <td colSpan="3">{employee.bank_iban}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Section 5: Salary Information */}
         {(
           (employee.base_salary || 0) !== 0 || 
           (employee.housing_allowance || 0) !== 0 || 
@@ -774,62 +784,103 @@ const EmployeeDetails = () => {
           (employee.other_allowances || 0) !== 0 || 
           (employee.deductions || 0) !== 0
         ) && (
-          <div className="info-card">
-            <div className="info-card-header">
-              <div className="info-card-icon">💰</div>
-              <h3 className="info-card-title">الراتب والبدلات</h3>
-            </div>
-            <div className="salary-box">
-              <div className="salary-item">
-                <strong>الراتب الأساسي:</strong> {(employee.base_salary || 0).toLocaleString('en-US')} ريال
-              </div>
-              <div className="salary-item">
-                <strong>بدل السكن:</strong> {(employee.housing_allowance || 0).toLocaleString('en-US')} ريال
-              </div>
-              <div className="salary-item">
-                <strong>بدل النقل:</strong> {(employee.transportation_allowance || 0).toLocaleString('en-US')} ريال
-              </div>
-              <div className="salary-item">
-                <strong>بدل نهاية الخدمة:</strong> {(employee.end_of_service_allowance || 0).toLocaleString('en-US')} ريال
-              </div>
-              <div className="salary-item">
-                <strong>بدل الإجازة السنوية:</strong> {(employee.annual_leave_allowance || 0).toLocaleString('en-US')} ريال
-              </div>
-              <div className="salary-item">
-                <strong>بدلات أخرى:</strong> {(employee.other_allowances || 0).toLocaleString('en-US')} ريال
-              </div>
-              <div className="salary-item" style={{ color: employee.deductions > 0 ? 'var(--danger)' : 'inherit' }}>
-                <strong>الاستقطاعات (خصومات، سلف، إلخ):</strong> {(employee.deductions || 0) > 0 ? '-' : ''}{(employee.deductions || 0).toLocaleString('en-US')} ريال
-              </div>
-              <div className="salary-total">
-                <div style={{ fontWeight: 'bold', color: 'var(--primary)', marginBottom: '5px' }}>
-                  <strong>إجمالي الراتب والبدلات:</strong> {
-                    (parseFloat(employee.base_salary || 0) +
-                     parseFloat(employee.housing_allowance || 0) +
-                     parseFloat(employee.transportation_allowance || 0) +
-                     parseFloat(employee.end_of_service_allowance || 0) +
-                     parseFloat(employee.annual_leave_allowance || 0) +
-                     parseFloat(employee.other_allowances || 0)).toLocaleString('en-US')
-                  } ريال
-                </div>
-                {(employee.deductions || 0) > 0 && (
-                  <div style={{ fontWeight: 'bold', color: 'var(--danger)', marginBottom: '5px' }}>
-                    <strong>الاستقطاعات:</strong> -{parseFloat(employee.deductions || 0).toLocaleString('en-US')} ريال
-                  </div>
+          <div className="employee-info-section">
+            <h2 className="section-title">القسم الخامس: الراتب والبدلات</h2>
+            <table className="employee-info-table">
+              <tbody>
+                {(employee.base_salary || 0) !== 0 && (
+                  <tr>
+                    <th>الراتب الأساسي</th>
+                    <td>{(employee.base_salary || 0).toLocaleString('en-US')} ريال</td>
+                    {(employee.housing_allowance || 0) !== 0 && (
+                      <>
+                        <th>بدل السكن</th>
+                        <td>{(employee.housing_allowance || 0).toLocaleString('en-US')} ريال</td>
+                      </>
+                    )}
+                  </tr>
                 )}
-                <div style={{ fontWeight: 'bold', color: 'var(--success)', fontSize: '1.1em', marginTop: '5px', paddingTop: '5px', borderTop: '1px solid var(--border)' }}>
-                  <strong>صافي الراتب:</strong> {
-                    (parseFloat(employee.base_salary || 0) +
-                     parseFloat(employee.housing_allowance || 0) +
-                     parseFloat(employee.transportation_allowance || 0) +
-                     parseFloat(employee.end_of_service_allowance || 0) +
-                     parseFloat(employee.annual_leave_allowance || 0) +
-                     parseFloat(employee.other_allowances || 0) -
-                     parseFloat(employee.deductions || 0)).toLocaleString('en-US')
-                  } ريال
-                </div>
-              </div>
-            </div>
+                {((employee.base_salary || 0) === 0 && (employee.housing_allowance || 0) !== 0) && (
+                  <tr>
+                    <th>بدل السكن</th>
+                    <td colSpan="3">{(employee.housing_allowance || 0).toLocaleString('en-US')} ريال</td>
+                  </tr>
+                )}
+                {((employee.transportation_allowance || 0) !== 0 || (employee.end_of_service_allowance || 0) !== 0) && (
+                  <tr>
+                    {(employee.transportation_allowance || 0) !== 0 && (
+                      <>
+                        <th>بدل النقل</th>
+                        <td>{(employee.transportation_allowance || 0).toLocaleString('en-US')} ريال</td>
+                      </>
+                    )}
+                    {(employee.end_of_service_allowance || 0) !== 0 && (
+                      <>
+                        <th>بدل نهاية الخدمة</th>
+                        <td>{(employee.end_of_service_allowance || 0).toLocaleString('en-US')} ريال</td>
+                      </>
+                    )}
+                  </tr>
+                )}
+                {((employee.annual_leave_allowance || 0) !== 0 || (employee.other_allowances || 0) !== 0) && (
+                  <tr>
+                    {(employee.annual_leave_allowance || 0) !== 0 && (
+                      <>
+                        <th>بدل الإجازة السنوية</th>
+                        <td>{(employee.annual_leave_allowance || 0).toLocaleString('en-US')} ريال</td>
+                      </>
+                    )}
+                    {(employee.other_allowances || 0) !== 0 && (
+                      <>
+                        <th>بدلات أخرى</th>
+                        <td>{(employee.other_allowances || 0).toLocaleString('en-US')} ريال</td>
+                      </>
+                    )}
+                  </tr>
+                )}
+                {(employee.deductions || 0) !== 0 && (
+                  <tr style={{ color: 'var(--danger)' }}>
+                    <th>الاستقطاعات (خصومات، سلف، إلخ)</th>
+                    <td colSpan="3">-{(employee.deductions || 0).toLocaleString('en-US')} ريال</td>
+                  </tr>
+                )}
+                <tr className="salary-total-row">
+                  <th>إجمالي الراتب والبدلات</th>
+                  <td colSpan="3" style={{ fontWeight: 'bold', color: 'var(--primary)' }}>
+                    {
+                      (parseFloat(employee.base_salary || 0) +
+                       parseFloat(employee.housing_allowance || 0) +
+                       parseFloat(employee.transportation_allowance || 0) +
+                       parseFloat(employee.end_of_service_allowance || 0) +
+                       parseFloat(employee.annual_leave_allowance || 0) +
+                       parseFloat(employee.other_allowances || 0)).toLocaleString('en-US')
+                    } ريال
+                  </td>
+                </tr>
+                {(employee.deductions || 0) > 0 && (
+                  <tr className="salary-deduction-row">
+                    <th>الاستقطاعات</th>
+                    <td colSpan="3" style={{ fontWeight: 'bold', color: 'var(--danger)' }}>
+                      -{parseFloat(employee.deductions || 0).toLocaleString('en-US')} ريال
+                    </td>
+                  </tr>
+                )}
+                <tr className="salary-net-row">
+                  <th>صافي الراتب</th>
+                  <td colSpan="3" style={{ fontWeight: 'bold', color: 'var(--success)', fontSize: '1.1em' }}>
+                    {
+                      (parseFloat(employee.base_salary || 0) +
+                       parseFloat(employee.housing_allowance || 0) +
+                       parseFloat(employee.transportation_allowance || 0) +
+                       parseFloat(employee.end_of_service_allowance || 0) +
+                       parseFloat(employee.annual_leave_allowance || 0) +
+                       parseFloat(employee.other_allowances || 0) -
+                       parseFloat(employee.deductions || 0)).toLocaleString('en-US')
+                    } ريال
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         )}
         {employee.salary && !employee.base_salary && (

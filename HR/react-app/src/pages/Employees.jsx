@@ -13,7 +13,7 @@ import NameInput from '../components/NameInput';
 import NationalitySelect from '../components/NationalitySelect';
 import ReligionSelect from '../components/ReligionSelect';
 import MaritalStatusSelect from '../components/MaritalStatusSelect';
-import BankSelect from '../components/BankSelect';
+import BankSelect, { DEFAULT_BANK_PLACEHOLDER } from '../components/BankSelect';
 import {
   isSaudi as isSaudiHelper,
   isNonSaudi,
@@ -95,10 +95,10 @@ const Employees = () => {
     marital_status: '',
     status: 'active',
     educational_qualification: '',
-    specialization: '',
-    bank_iban: '',
-    bank_name: '',
-    email: '',
+      specialization: '',
+      bank_iban: '',
+      bank_name: DEFAULT_BANK_PLACEHOLDER,
+      email: '',
     phone_number: '',
     national_address: '',
     contract_type: '',
@@ -289,6 +289,63 @@ const Employees = () => {
     return isSaudiHelper(formData.nationality);
   };
 
+  // Check if form data is valid for saving
+  const isFormValid = () => {
+    // Check nationality is selected
+    if (!formData.nationality) return false;
+    
+    // Check branch type is selected (for main managers)
+    if (isMainManager() && !selectedBranchType && !editingEmployee) return false;
+    
+    // Check all 4 names are provided
+    if (!formData.first_name || !formData.second_name || !formData.third_name || !formData.fourth_name) return false;
+    
+    // Check id_or_residency_number is provided
+    if (!formData.id_or_residency_number || formData.id_or_residency_number.trim() === '') return false;
+    
+    // Check required fields
+    const requiredFields = {
+      'email': formData.email,
+      'phone_number': formData.phone_number,
+      'bank_name': formData.bank_name,
+      'bank_iban': formData.bank_iban,
+      'national_address': formData.national_address,
+      'religion': formData.religion,
+      'marital_status': formData.marital_status,
+      'contract_type': formData.contract_type,
+      'gender': formData.gender
+    };
+    
+    for (const [field, value] of Object.entries(requiredFields)) {
+      if (!value || value.toString().trim() === '') return false;
+      // Special check for bank_name: must not be default placeholder
+      if (field === 'bank_name' && value === DEFAULT_BANK_PLACEHOLDER) return false;
+    }
+    
+    // Check date of birth for all employees (required)
+    const isSaudiNationality = isSaudi();
+    if (isSaudiNationality) {
+      // Saudi employees: Hijri date required
+      if (!formData.date_of_birth_hijri || formData.date_of_birth_hijri.trim() === '') return false;
+    } else {
+      // Non-Saudi employees: Gregorian date required
+      if (!formData.date_of_birth_gregorian || formData.date_of_birth_gregorian.trim() === '') return false;
+      // Check passport fields for non-Saudis
+      if (!formData.passport_number || formData.passport_number.trim() === '') return false;
+      if (!formData.passport_issue_date || formData.passport_issue_date.trim() === '') return false;
+      if (!formData.passport_expiry_date || formData.passport_expiry_date.trim() === '') return false;
+      if (!formData.passport_issue_place || formData.passport_issue_place.trim() === '') return false;
+      if (!formData.residency_issue_date || formData.residency_issue_date.trim() === '') return false;
+    }
+    
+    // Check occupation or job_title
+    if (!formData.occupation || formData.occupation.trim() === '') {
+      if (!formData.job_title || formData.job_title.trim() === '') return false;
+    }
+    
+    return true;
+  };
+
   // Handle nationality change - auto-set ID type and calendar types
   const handleNationalityChange = (nationality) => {
     const isSaudiNationality = isSaudiHelper(nationality);
@@ -405,6 +462,13 @@ const Employees = () => {
     // NOTE: All document validations removed - documents are now optional
     // The system will track incomplete employees and show them in Dashboard
     
+    // Validate bank name is changed from default (for both new and editing)
+    if (formData.bank_name === DEFAULT_BANK_PLACEHOLDER) {
+      showWarning('الرجاء اختيار اسم البنك - يجب تغيير القيمة الافتراضية');
+      setSaving(false);
+      return;
+    }
+    
     // Validate bank name and IBAN are both provided if one is provided
     if (formData.bank_iban || formData.bank_name) {
       if (formData.bank_iban && !formData.bank_name) {
@@ -439,6 +503,78 @@ const Employees = () => {
     for (const [field, label] of Object.entries(requiredFields)) {
       if (!formData[field] || formData[field].toString().trim() === '') {
         showWarning(`الحقل "${label}" مطلوب`);
+        setSaving(false);
+        return;
+      }
+      // Additional check for bank_name: must not be default placeholder
+      if (field === 'bank_name' && formData[field] === DEFAULT_BANK_PLACEHOLDER) {
+        showWarning(`الحقل "${label}" مطلوب - يجب اختيار بنك من القائمة`);
+        setSaving(false);
+        return;
+      }
+    }
+    
+    // Validate date of birth for all employees (required)
+    // Note: isSaudiNationality is already defined above
+    if (isSaudiNationality) {
+      // For Saudis, Hijri date is required
+      if (!formData.date_of_birth_hijri || formData.date_of_birth_hijri.trim() === '') {
+        showWarning('تاريخ الميلاد مطلوب للموظف السعودي (يجب أن يكون هجري)');
+        setSaving(false);
+        return;
+      }
+    } else {
+      // For non-Saudis, Gregorian date is required
+      if (!formData.date_of_birth_gregorian || formData.date_of_birth_gregorian.trim() === '') {
+        showWarning('تاريخ الميلاد مطلوب للموظف غير السعودي (يجب أن يكون ميلادي)');
+        setSaving(false);
+        return;
+      }
+    }
+    
+    // Validate Section 2 fields (required)
+    if (!formData.religion || formData.religion.trim() === '') {
+      showWarning('الرجاء اختيار الديانة');
+      setSaving(false);
+      return;
+    }
+    
+    if (!formData.marital_status || formData.marital_status.trim() === '') {
+      showWarning('الرجاء اختيار الحالة الاجتماعية');
+      setSaving(false);
+      return;
+    }
+    
+    if (!formData.contract_type || formData.contract_type.trim() === '') {
+      showWarning('الرجاء اختيار نوع العقد');
+      setSaving(false);
+      return;
+    }
+    
+    // Validate passport fields for non-Saudis (required)
+    if (!isSaudiNationality) {
+      if (!formData.passport_number || formData.passport_number.trim() === '') {
+        showWarning('رقم جواز السفر مطلوب للموظف غير السعودي');
+        setSaving(false);
+        return;
+      }
+      if (!formData.passport_issue_date || formData.passport_issue_date.trim() === '') {
+        showWarning('تاريخ اصدار جواز السفر مطلوب للموظف غير السعودي');
+        setSaving(false);
+        return;
+      }
+      if (!formData.passport_expiry_date || formData.passport_expiry_date.trim() === '') {
+        showWarning('تاريخ انتهاء جواز السفر مطلوب للموظف غير السعودي');
+        setSaving(false);
+        return;
+      }
+      if (!formData.passport_issue_place || formData.passport_issue_place.trim() === '') {
+        showWarning('مكان إصدار جواز السفر مطلوب للموظف غير السعودي');
+        setSaving(false);
+        return;
+      }
+      if (!formData.residency_issue_date || formData.residency_issue_date.trim() === '') {
+        showWarning('تاريخ اصدار الإقامة مطلوب للموظف غير السعودي');
         setSaving(false);
         return;
       }
@@ -514,7 +650,7 @@ const Employees = () => {
       'fourth_name': { max: 100, label: 'الاسم الرابع' },
       'occupation': { max: 100, label: 'المهنة' },
       'nationality': { max: 100, label: 'الجنسية' },
-      'religion': { max: 100, label: 'الدين' },
+      'religion': { max: 100, label: 'الديانة' },
       'marital_status': { max: 50, label: 'الحالة الاجتماعية' },
       'educational_qualification': { max: 200, label: 'المؤهل التعليمي' },
       'specialization': { max: 200, label: 'التخصص' },
@@ -543,15 +679,16 @@ const Employees = () => {
       }
     }
     
-    // Date of birth is now optional - no validation needed
-    // If provided, it will be validated for format and calendar type above
+    // Date of birth is required for all employees (validated above)
+    // Saudi employees: Hijri date required
+    // Non-Saudi employees: Gregorian date required
     
     try {
       const data = { ...formData };
       
       // Remove empty strings and convert to null for optional fields (non-numeric)
+      // Note: date_of_birth fields are NOT in optionalFields - they are required
       const optionalFields = [
-        'date_of_birth_hijri', 'date_of_birth_gregorian',
         'id_expiry_date_hijri', 'id_expiry_date_gregorian',
         'religion', 'marital_status', 'educational_qualification', 'specialization',
         'contract_type',
@@ -970,7 +1107,7 @@ const Employees = () => {
       educational_qualification: employee.educational_qualification || '',
       specialization: employee.specialization || '',
       bank_iban: employee.bank_iban || '',
-      bank_name: employee.bank_name || '',
+      bank_name: employee.bank_name || DEFAULT_BANK_PLACEHOLDER,
       email: employee.email || '',
       phone_number: employee.phone_number || '',
       national_address: employee.national_address || '',
@@ -1056,7 +1193,7 @@ const Employees = () => {
       educational_qualification: '',
       specialization: '',
       bank_iban: '',
-      bank_name: '',
+      bank_name: DEFAULT_BANK_PLACEHOLDER,
       email: '',
       phone_number: '',
       contract_type: '',
@@ -1168,7 +1305,7 @@ const Employees = () => {
                 }
                 setShowForm(true); 
                 setEditingEmployee(null); 
-              }} className="btn-primary">
+              }} className="btn-primary btn-lg">
                 إضافة موظف جديد
               </button>
             </div>
@@ -1326,7 +1463,7 @@ const Employees = () => {
               setShowForm(false); 
               resetForm(); 
               setEditingEmployee(null); 
-            }} className="btn-secondary">
+            }} className="btn-secondary btn-lg">
               إلغاء والعودة للقائمة
             </button>
           </div>
@@ -1347,8 +1484,8 @@ const Employees = () => {
                       }
                       setFormStep(2);
                     }}
-                    className="btn-primary"
-                    style={{ padding: 'var(--spacing-md) var(--spacing-lg)', fontSize: 'var(--font-size-base)' }}
+                    className="btn-primary btn-lg"
+                    style={{ padding: 'var(--spacing-md) var(--spacing-lg)', fontSize: 'var(--font-size-lg)' }}
                   >
                     مركز رعاية صحية
                   </button>
@@ -1363,8 +1500,8 @@ const Employees = () => {
                       }
                       setFormStep(2);
                     }}
-                    className="btn-primary"
-                    style={{ padding: 'var(--spacing-md) var(--spacing-lg)', fontSize: 'var(--font-size-base)' }}
+                    className="btn-primary btn-lg"
+                    style={{ padding: 'var(--spacing-md) var(--spacing-lg)', fontSize: 'var(--font-size-lg)' }}
                   >
                     مدرسة
                   </button>
@@ -1373,7 +1510,7 @@ const Employees = () => {
                   <button
                     type="button"
                     onClick={() => { setShowForm(false); resetForm(); setEditingEmployee(null); }}
-                    className="btn-secondary"
+                    className="btn-secondary btn-lg"
                   >
                     إلغاء
                   </button>
@@ -1391,7 +1528,7 @@ const Employees = () => {
                       <button
                         type="button"
                         onClick={() => setFormStep(1)}
-                        className="btn-secondary"
+                        className="btn-secondary btn-lg"
                       >
                         تغيير النوع
                       </button>
@@ -1426,7 +1563,7 @@ const Employees = () => {
                 {formData.nationality && (
                   <>
                     <h3 className="col-12" style={{ marginTop: '20px', padding: '10px', background: '#e3f2fd', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
-                      القسم الأول: المعلومات الأساسية المطلوبة *
+                      القسم الأول: المعلومات الأساسية ومعلومات الإثبات الشخصي *
                     </h3>
               
                 <h4 className="col-12" style={{ marginTop: '12px', marginBottom: '8px', fontSize: '14px', fontWeight: '600', color: '#555' }}>الاسم الكامل</h4>
@@ -1455,11 +1592,38 @@ const Employees = () => {
                   />
                 </div>
                 
+                {/* تاريخ انتهاء الإقامة - فقط للموظف غير السعودي */}
+                {isNonSaudi(formData.nationality) && (
+                  <div className="form-group col-3">
+                    <HijriDatePicker
+                      label="تاريخ انتهاء الإقامة"
+                      value={idExpiryCalendarType === 'gregorian' ? formData.id_expiry_date_gregorian : ''}
+                      onChange={(value, type) => handleIdExpiryChange(value, type)}
+                      calendarType={idExpiryCalendarType}
+                      forceCalendarType={formData.nationality ? 'gregorian' : null}
+                    />
+                  </div>
+                )}
+                
                 {/* نوع الهوية - مخفي لأنه يتم تعيينه تلقائياً حسب الجنسية */}
                 <input
                   type="hidden"
                   value={formData.id_type || getIdTypeFromNationality(formData.nationality)}
                 />
+                
+                {/* تاريخ الميلاد - مطلوب للجميع: هجري للسعوديين، ميلادي لغير السعوديين */}
+                {formData.nationality && (
+                  <div className="form-group col-3">
+                    <HijriDatePicker
+                      label="تاريخ الميلاد *"
+                      value={dateOfBirthCalendarType === 'hijri' ? formData.date_of_birth_hijri : (dateOfBirthCalendarType === 'gregorian' ? formData.date_of_birth_gregorian : '')}
+                      onChange={(value, type) => handleDateOfBirthChange(value, type)}
+                      calendarType={dateOfBirthCalendarType}
+                      forceCalendarType={formData.nationality ? (isSaudi() ? 'hijri' : 'gregorian') : null}
+                      required
+                    />
+                  </div>
+                )}
                 
                 <div className="form-group col-2">
                   <label>الجنس *</label>
@@ -1605,48 +1769,23 @@ const Employees = () => {
                     required
                   />
                 </div>
-
-                {/* ========== القسم الثاني: معلومات الإثبات الشخصي ========== */}
-                <h3 className="col-12" style={{ marginTop: '24px', padding: '10px', background: '#fff3e0', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
-                  القسم الثاني: معلومات الإثبات الشخصي
-                </h3>
                 
-                <div className="form-group col-3">
-                  <HijriDatePicker
-                    label="تاريخ الميلاد"
-                    value={dateOfBirthCalendarType === 'hijri' ? formData.date_of_birth_hijri : (dateOfBirthCalendarType === 'gregorian' ? formData.date_of_birth_gregorian : '')}
-                    onChange={(value, type) => handleDateOfBirthChange(value, type)}
-                    calendarType={dateOfBirthCalendarType}
-                    forceCalendarType={formData.nationality ? (isSaudi() ? 'hijri' : 'gregorian') : null}
-                  />
-                </div>
-                
-                {/* ID expiry date - only for non-Saudis */}
-                {isNonSaudi(formData.nationality) && (
-                  <div className="form-group col-3">
-                    <HijriDatePicker
-                      label="انتهاء الإقامة"
-                      value={idExpiryCalendarType === 'gregorian' ? formData.id_expiry_date_gregorian : ''}
-                      onChange={(value, type) => handleIdExpiryChange(value, type)}
-                      calendarType={idExpiryCalendarType}
-                      forceCalendarType={formData.nationality ? 'gregorian' : null}
-                    />
-                  </div>
-                )}
-                
+                {/* معلومات الإثبات الشخصي - جزء من القسم الأول */}
                 <div className="form-group col-3">
                   <ReligionSelect
-                    label="الدين"
+                    label="الديانة *"
                     value={formData.religion}
                     onChange={(value) => setFormData({ ...formData, religion: value })}
+                    required
                   />
                 </div>
                 
                 <div className="form-group col-3">
                   <MaritalStatusSelect
-                    label="الحالة الاجتماعية"
+                    label="الحالة الاجتماعية *"
                     value={formData.marital_status}
                     onChange={(value) => setFormData({ ...formData, marital_status: value })}
+                    required
                   />
                 </div>
                 
@@ -1654,56 +1793,62 @@ const Employees = () => {
                 {isNonSaudi(formData.nationality) && (
                   <>
                     <div className="form-group col-3">
-                      <label>رقم جواز السفر</label>
+                      <label>رقم جواز السفر *</label>
                       <input
                         type="text"
                         value={formData.passport_number}
                         onChange={(e) => setFormData({ ...formData, passport_number: e.target.value })}
                         placeholder="رقم جواز السفر"
+                        required
                       />
                     </div>
                     <div className="form-group col-3">
-                      <label>تاريخ اصدار جواز السفر</label>
+                      <label>تاريخ اصدار جواز السفر *</label>
                       <input
                         type="date"
                         value={formData.passport_issue_date}
                         onChange={(e) => setFormData({ ...formData, passport_issue_date: e.target.value })}
+                        required
                       />
                     </div>
                     <div className="form-group col-3">
-                      <label>تاريخ انتهاء جواز السفر</label>
+                      <label>تاريخ انتهاء جواز السفر *</label>
                       <input
                         type="date"
                         value={formData.passport_expiry_date}
                         onChange={(e) => setFormData({ ...formData, passport_expiry_date: e.target.value })}
+                        required
                       />
                     </div>
                     <div className="form-group col-3">
-                      <label>مكان إصدار جواز السفر</label>
+                      <label>مكان إصدار جواز السفر *</label>
                       <input
                         type="text"
                         value={formData.passport_issue_place}
                         onChange={(e) => setFormData({ ...formData, passport_issue_place: e.target.value })}
                         placeholder="مكان الإصدار"
+                        required
                       />
                     </div>
                     <div className="form-group col-3">
-                      <label>تاريخ اصدار الإقامة</label>
+                      <label>تاريخ اصدار الإقامة *</label>
                       <input
                         type="date"
                         value={formData.residency_issue_date}
                         onChange={(e) => setFormData({ ...formData, residency_issue_date: e.target.value })}
+                        required
                       />
                     </div>
                   </>
                 )}
                 
                 <div className="form-group col-3">
-                  <label>نوع العقد</label>
+                  <label>نوع العقد *</label>
                   <select
                     value={formData.contract_type}
                     onChange={(e) => setFormData({ ...formData, contract_type: e.target.value })}
                     className="form-select"
+                    required
                   >
                     <option value="">اختر نوع العقد</option>
                     <option value="ورقي">ورقي</option>
@@ -1721,9 +1866,9 @@ const Employees = () => {
                   />
                 </div>
 
-                {/* ========== القسم الثالث: المعلومات التعليمية ========== */}
+                {/* ========== القسم الثاني: المعلومات التعليمية ========== */}
                 <h3 className="col-12" style={{ marginTop: '24px', padding: '10px', background: '#f3e5f5', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
-                  القسم الثالث: المعلومات التعليمية
+                  القسم الثاني: المعلومات التعليمية
                 </h3>
                 
                 <div className="form-group col-4">
@@ -1768,9 +1913,9 @@ const Employees = () => {
                     placeholder="مثال: 4.5"
                   />
                 </div>
-                {/* ========== القسم الرابع: الراتب والبدلات ========== */}
+                {/* ========== القسم الثالث: الراتب والبدلات ========== */}
                 <h3 className="col-12" style={{ marginTop: '24px', padding: '10px', background: '#e8f5e9', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
-                  القسم الرابع: الراتب والبدلات
+                  القسم الثالث: الراتب والبدلات
                 </h3>
                 
                 <div className="form-group col-3">
@@ -1863,12 +2008,9 @@ const Employees = () => {
                   />
                 </div>
 
-                {/* ========== القسم الخامس: معلومات إضافية ========== */}
-                {/* تم نقل العنوان الوطني إلى القسم الأول */}
-
-              {/* ========== القسم الخامس: المستندات ========== */}
+              {/* ========== القسم الرابع: المستندات ========== */}
               <h3 className="col-12" style={{ marginTop: '24px', padding: '10px', background: '#fff9c4', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
-                القسم الخامس: المستندات
+                القسم الرابع: المستندات
               </h3>
               
               <div className="documents-section col-12">
@@ -1927,6 +2069,16 @@ const Employees = () => {
                         onChange={(e) => handleDocumentChange('medical_disclosure_form', e.target.files[0] || null)}
                       />
                       {documents.medical_disclosure_form && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.medical_disclosure_form.name}</span>}
+                    </div>
+                    {/* Medical insurance - optional for all employees */}
+                    <div className="form-group col-3">
+                      <label>التأمين الطبي</label>
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onChange={(e) => handleDocumentChange('medical_insurance', e.target.files[0] || null)}
+                      />
+                      {documents.medical_insurance && <span className="file-name" style={{fontSize: '10px'}}>✓ {documents.medical_insurance.name}</span>}
                     </div>
                     {isNonSaudi(formData.nationality) && (
                       <div className="form-group col-3">
@@ -2066,8 +2218,8 @@ const Employees = () => {
               <div className="form-actions">
                 <button 
                   type="submit" 
-                  className="btn-primary" 
-                    disabled={saving || uploadingDocuments || !formData.nationality}
+                  className={`btn-primary btn-lg ${isFormValid() ? 'btn-ready' : ''}`}
+                  disabled={saving || uploadingDocuments || !formData.nationality}
                 >
                   {saving ? (
                     <>
@@ -2084,7 +2236,7 @@ const Employees = () => {
                 <button 
                   type="button" 
                   onClick={() => { setShowForm(false); resetForm(); setEditingEmployee(null); }} 
-                  className="btn-secondary"
+                  className="btn-secondary btn-lg"
                   disabled={saving || uploadingDocuments}
                 >
                   إلغاء

@@ -32,10 +32,17 @@ const MonthlyDocuments = () => {
     description: '',
     file: null,
   });
+  const [showPrintForm, setShowPrintForm] = useState(false);
+  const [printData, setPrintData] = useState({
+    document_type: 'payroll_file',
+    branch_ids: []
+  });
+  const [generatingReport, setGeneratingReport] = useState(false);
 
   const monthlyDocumentTypes = [
     { value: 'payroll_file', label: 'ملف مسيرات الرواتب', icon: 'https://img.icons8.com/?size=100&id=47743&format=png&color=000000' },
-    { value: 'attendance_file', label: 'ملف الحضور و الانصراف', icon: 'https://img.icons8.com/?size=100&id=47743&format=png&color=000000' }
+    { value: 'attendance_file', label: 'ملف الحضور و الانصراف', icon: 'https://img.icons8.com/?size=100&id=47743&format=png&color=000000' },
+    { value: 'salary_deposit_file', label: 'ملف ايداع الرواتب (التحويلات البنكية)', icon: 'https://img.icons8.com/?size=100&id=47743&format=png&color=000000' }
   ];
 
   // Helper function to format date in Gregorian calendar only
@@ -198,9 +205,11 @@ const MonthlyDocuments = () => {
       const response = await branchDocumentsAPI.getAll(filters);
       if (response.data.success) {
         const docs = response.data.data || [];
-        // Filter only payroll and attendance documents
+        // Filter only monthly documents
         const monthlyDocs = docs.filter(doc => 
-          doc.document_type === 'payroll_file' || doc.document_type === 'attendance_file'
+          doc.document_type === 'payroll_file' || 
+          doc.document_type === 'attendance_file' || 
+          doc.document_type === 'salary_deposit_file'
         );
         setAllDocuments(monthlyDocs);
         docs.forEach(doc => {
@@ -404,6 +413,104 @@ const MonthlyDocuments = () => {
       file: null,
     });
     setShowUploadForm(true);
+  };
+
+  const handlePrintPayrolls = () => {
+    setPrintData({
+      document_type: 'payroll_file',
+      branch_ids: []
+    });
+    setShowPrintForm(true);
+  };
+
+  const handlePrintFormChange = (field, value) => {
+    setPrintData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleToggleBranch = (branchId) => {
+    setPrintData(prev => {
+      const branchIds = prev.branch_ids || [];
+      if (branchIds.includes(branchId)) {
+        return {
+          ...prev,
+          branch_ids: branchIds.filter(id => id !== branchId)
+        };
+      } else {
+        return {
+          ...prev,
+          branch_ids: [...branchIds, branchId]
+        };
+      }
+    });
+  };
+
+  const handleSelectAllBranches = () => {
+    setPrintData(prev => ({
+      ...prev,
+      branch_ids: branches.map(b => b.id)
+    }));
+  };
+
+  const handleDeselectAllBranches = () => {
+    setPrintData(prev => ({
+      ...prev,
+      branch_ids: []
+    }));
+  };
+
+  const handleGenerateReport = async () => {
+    if (!printData.document_type) {
+      showWarning('الرجاء اختيار نوع المستند');
+      return;
+    }
+
+    if (!printData.branch_ids || printData.branch_ids.length === 0) {
+      showWarning('الرجاء اختيار فرع واحد على الأقل');
+      return;
+    }
+
+    try {
+      setGeneratingReport(true);
+      const response = await branchDocumentsAPI.generatePayrollReport({
+        document_type: printData.document_type,
+        branch_ids: printData.branch_ids
+      });
+
+      // Get filename from response headers
+      const contentDisposition = response.headers['content-disposition'];
+      let filename = 'تقرير_المسيرات.pdf';
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+        if (filenameMatch) {
+          filename = decodeURIComponent(filenameMatch[1].replace(/"/g, ''));
+        }
+      }
+
+      // Create blob and download
+      // response.data is already a blob when responseType is 'blob'
+      const blob = response.data instanceof Blob 
+        ? response.data 
+        : new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      showSuccess('تم إنشاء التقرير بنجاح');
+      setShowPrintForm(false);
+    } catch (error) {
+      console.error('Error generating report:', error);
+      showError('فشل إنشاء التقرير: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setGeneratingReport(false);
+    }
   };
 
   if (loading || (branches.length === 0 && user)) {
@@ -725,11 +832,18 @@ const MonthlyDocuments = () => {
     <div className="table-page monthly-documents-page">
       <div className="page-header">
         <h1>المستندات الشهرية</h1>
-        {!isMainManager() && (
-          <button onClick={() => handleOpenUploadForm()} className="btn-primary">
-            رفع مستند شهري
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {isMainManager() && (
+            <button onClick={handlePrintPayrolls} className="btn-primary">
+              طباعة المسيرات
+            </button>
+          )}
+          {!isMainManager() && (
+            <button onClick={() => handleOpenUploadForm()} className="btn-primary">
+              رفع مستند شهري
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Schools Section */}
@@ -903,6 +1017,126 @@ const MonthlyDocuments = () => {
                   }} 
                   className="btn-secondary"
                   disabled={uploading}
+                >
+                  إلغاء
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Print Payrolls Form Modal */}
+      {showPrintForm && isMainManager() && (
+        <div className="modal">
+          <div className="modal-content" style={{ maxWidth: '600px' }}>
+            <h2>طباعة المسيرات</h2>
+            <form onSubmit={(e) => { e.preventDefault(); handleGenerateReport(); }}>
+              <div className="form-group">
+                <label>نوع المستند *</label>
+                <select
+                  value={printData.document_type}
+                  onChange={(e) => handlePrintFormChange('document_type', e.target.value)}
+                  required
+                >
+                  {monthlyDocumentTypes.map(type => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <label>اختر الفروع *</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={handleSelectAllBranches}
+                      style={{
+                        padding: '4px 12px',
+                        fontSize: '0.85rem',
+                        backgroundColor: '#f0f0f0',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      تحديد الكل
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeselectAllBranches}
+                      style={{
+                        padding: '4px 12px',
+                        fontSize: '0.85rem',
+                        backgroundColor: '#f0f0f0',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      إلغاء الكل
+                    </button>
+                  </div>
+                </div>
+                <div style={{ 
+                  maxHeight: '300px', 
+                  overflowY: 'auto', 
+                  border: '1px solid #ddd', 
+                  borderRadius: '4px',
+                  padding: '10px'
+                }}>
+                  {branches.map(branch => (
+                    <label 
+                      key={branch.id} 
+                      style={{ 
+                        display: 'block', 
+                        padding: '6px',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        marginBottom: '3px',
+                        backgroundColor: printData.branch_ids?.includes(branch.id) ? '#e3f2fd' : 'transparent',
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={printData.branch_ids?.includes(branch.id) || false}
+                        onChange={() => handleToggleBranch(branch.id)}
+                        style={{ marginLeft: '8px' }}
+                      />
+                      {branch.branch_name}
+                    </label>
+                  ))}
+                </div>
+                {printData.branch_ids && printData.branch_ids.length > 0 && (
+                  <p style={{ marginTop: '8px', fontSize: '0.85rem', color: '#666' }}>
+                    تم اختيار {printData.branch_ids.length} فرع
+                  </p>
+                )}
+              </div>
+
+              <div className="form-actions">
+                <button 
+                  type="submit" 
+                  className="btn-primary"
+                  disabled={generatingReport || !printData.branch_ids || printData.branch_ids.length === 0}
+                >
+                  {generatingReport ? 'جاري إنشاء التقرير...' : 'إنشاء التقرير'}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setShowPrintForm(false);
+                    setPrintData({
+                      document_type: 'payroll_file',
+                      branch_ids: []
+                    });
+                  }} 
+                  className="btn-secondary"
+                  disabled={generatingReport}
                 >
                   إلغاء
                 </button>

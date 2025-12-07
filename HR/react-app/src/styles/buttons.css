@@ -69,6 +69,20 @@
   box-shadow: 0 2px 4px rgba(185, 210, 207, 0.3);
 }
 
+/* Ready Button - Darker when form is valid */
+.btn-primary.btn-ready {
+  background: var(--primary-dark);
+  color: #1a2e2a;
+  box-shadow: 0 3px 6px rgba(139, 168, 164, 0.4);
+  font-weight: 700;
+}
+
+.btn-primary.btn-ready:hover:not(:disabled) {
+  background: #7a9a96;
+  box-shadow: 0 5px 10px rgba(139, 168, 164, 0.5);
+  transform: translateY(-2px);
+}
+
 /* Secondary Button */
 .btn-secondary {
   background: var(--secondary);

@@ -254,6 +254,9 @@ export const branchesAPI = {
   update: (id, data) => 
     api.put(`/api/branches/${id}`, data),
   
+  updateMyBranch: (data) => 
+    api.put('/api/branches/my-branch', data),
+  
   delete: (id) => 
     api.delete(`/api/branches/${id}`),
 };
@@ -405,6 +408,11 @@ export const branchDocumentsAPI = {
   
   delete: (id) => 
     api.delete(`/api/branch-documents/${id}`),
+  
+  generatePayrollReport: (data) =>
+    api.post('/api/branch-documents/generate-payroll-report', data, {
+      responseType: 'blob'
+    }),
 };
 
 // Reports API
@@ -428,8 +436,17 @@ export const notificationsAPI = {
   getById: (id) => 
     api.get(`/api/notifications/${id}`),
   
-  create: (data) => 
-    api.post('/api/notifications', data),
+  create: (data) => {
+    // If data is FormData, set proper headers
+    if (data instanceof FormData) {
+      return api.post('/api/notifications', data, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+    }
+    return api.post('/api/notifications', data);
+  },
   
   update: (id, data) => 
     api.put(`/api/notifications/${id}`, data),

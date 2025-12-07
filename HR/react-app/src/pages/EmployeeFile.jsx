@@ -56,7 +56,7 @@ const EmployeeFile = () => {
     { value: 'gender', label: 'الجنس' },
     { value: 'id_expiry_date_hijri', label: 'تاريخ انتهاء الهوية (هجري)' },
     { value: 'id_expiry_date_gregorian', label: 'تاريخ انتهاء الهوية (ميلادي)' },
-    { value: 'religion', label: 'الدين' },
+    { value: 'religion', label: 'الديانة' },
     { value: 'marital_status', label: 'الحالة الاجتماعية' },
     { value: 'educational_qualification', label: 'المؤهل التعليمي' },
     { value: 'specialization', label: 'التخصص' },

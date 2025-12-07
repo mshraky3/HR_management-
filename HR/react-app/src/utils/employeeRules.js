@@ -175,7 +175,8 @@ export const DOCUMENT_TYPE_RULES = {
     'primary_qualification',
     'employment_contract',
     'additional_courses',
-    'medical_disclosure_form'
+    'medical_disclosure_form',
+    'medical_insurance'
   ],
   
   // Nationality-based documents
@@ -208,7 +209,8 @@ export const DOCUMENT_TYPE_RULES = {
  */
 export const MONTHLY_BRANCH_DOCUMENTS = [
   'payroll_file',
-  'attendance_file'
+  'attendance_file',
+  'salary_deposit_file'
 ];
 
 // ============================================================================

@@ -13,7 +13,7 @@ const RELIGIONS = [
 ];
 
 const ReligionSelect = ({ 
-  label = "الدين", 
+  label = "اختر الديانة", 
   value, 
   onChange, 
   required = false 
@@ -28,7 +28,7 @@ const ReligionSelect = ({
         onChange={(e) => onChange(e.target.value)}
         required={required}
       >
-        <option value="">اختر الدين</option>
+        <option value="">الدينة</option>
         {RELIGIONS.map((religion) => (
           <option key={religion.value} value={religion.value}>
             {religion.label}
