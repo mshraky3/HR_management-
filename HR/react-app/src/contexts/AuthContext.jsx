@@ -31,13 +31,26 @@ export const AuthProvider = ({ children }) => {
           if (response.data.success) {
             setUser(response.data.user);
             setToken(storedToken);
+          } else {
+            // Invalid token or user data
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            setToken(null);
           }
         } catch (error) {
-          console.error('Failed to load user:', error);
+          // API call failed - clear invalid token and continue
+          // Don't log network errors in production to avoid console spam
+          if (process.env.NODE_ENV === 'development') {
+            console.error('Failed to load user:', error);
+          }
           localStorage.removeItem('token');
           localStorage.removeItem('user');
+          setToken(null);
+          // Continue even if API call fails - user can still access login page
         }
       }
+      // Always set loading to false, even if there's an error
+      // This ensures the app doesn't get stuck in loading state
       setLoading(false);
     };
 

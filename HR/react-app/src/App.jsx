@@ -74,6 +74,21 @@ const RoleBasedLayout = ({ children }) => {
   return isMainManager() ? <Layout>{children}</Layout> : <BranchManagerLayout>{children}</BranchManagerLayout>;
 };
 
+// Root redirect component - handles authentication check before redirecting
+const RootRedirect = () => {
+  const { isAuthenticated, loading } = useAuth();
+  
+  if (loading) {
+    return <PageLoading />;
+  }
+  
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return <Navigate to="/login" replace />;
+};
+
 function App() {
   return (
     <AuthProvider>
@@ -242,7 +257,10 @@ function App() {
                   </ProtectedRoute>
                 }
               />
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route 
+                path="/" 
+                element={<RootRedirect />} 
+              />
             </Routes>
           </Suspense>
         </Router>
