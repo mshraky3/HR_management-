@@ -259,7 +259,7 @@ function App() {
               />
               <Route 
                 path="/" 
-                element={<RootRedirect />} 
+                element={<Navigate to="/login" replace />} 
               />
             </Routes>
           </Suspense>

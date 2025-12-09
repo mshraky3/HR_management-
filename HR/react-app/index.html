@@ -12,7 +12,27 @@
     <title>نظام إدارة الموارد البشرية</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="padding: 20px; text-align: center; font-family: Arial;">
+        <p>Loading application...</p>
+      </div>
+    </div>
+    <script>
+      // Debug: Check if JavaScript is running
+      console.log('HTML loaded, JavaScript is running');
+      window.appLoaded = true;
+    </script>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Fallback: If React doesn't load after 3 seconds, show error
+      setTimeout(function() {
+        if (!window.reactMounted) {
+          const root = document.getElementById('root');
+          if (root && root.children.length === 1 && root.children[0].textContent.includes('Loading')) {
+            root.innerHTML = '<div style="padding: 20px; text-align: center; font-family: Arial;"><h1 style="color: red;">Error: React app failed to load</h1><p>Please check the browser console for errors.</p><p>If you see this message, the JavaScript bundle may not be loading correctly.</p></div>';
+          }
+        }
+      }, 3000);
+    </script>
   </body>
 </html>

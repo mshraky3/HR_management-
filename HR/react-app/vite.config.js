@@ -46,9 +46,9 @@ export default defineConfig({
     cssCodeSplit: true,
     // Ensure CSS is loaded synchronously
     cssMinify: true,
-    // Performance Optimization: Remove console.log in production using esbuild
+    // Keep console logs for debugging (remove in production later)
     esbuild: {
-      drop: ['console', 'debugger'], // Remove console and debugger in production
+      // drop: ['console', 'debugger'], // Temporarily disabled for debugging
       legalComments: 'none', // Remove comments for smaller bundle
     },
     // Target modern browsers for better optimization
