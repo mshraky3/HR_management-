@@ -10,7 +10,7 @@ import { branchDocumentsAPI, branchesAPI, setBranchDocumentsPassword, setDocumen
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import BankSelect from '../components/BankSelect';
-import './TablePage.css';
+// TablePage.css is now loaded in App.jsx to prevent FOUC
 
 const BranchDocuments = () => {
   const { isMainManager, user } = useAuth();

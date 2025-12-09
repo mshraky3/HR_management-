@@ -3,7 +3,7 @@
  * Manage employees
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { employeesAPI, branchesAPI, documentsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -43,7 +43,8 @@ import {
   HEALTHCARE_JOB_TITLES,
   getJobTitlesByBranchType 
 } from '../utils/employeeConstants';
-import './TablePage.css';
+// TablePage.css is now loaded in App.jsx to prevent FOUC
+// import './TablePage.css';
 
 const Employees = () => {
   const navigate = useNavigate();
@@ -67,6 +68,9 @@ const Employees = () => {
     search_phone: '',
     search_branch: ''
   });
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25); // Default: 25 items per page
   
   // Refs to maintain focus on search inputs
   const searchNameRef = useRef(null);
@@ -174,8 +178,38 @@ const Employees = () => {
     loadEmployees();
   }, [filterIncomplete]);
 
+  // Performance Optimization: Improved debounced search with minimum length
+  // Only search if user has typed at least 2 characters or cleared the search
+  const shouldTriggerSearch = useMemo(() => {
+    const nameLen = searchFilters.search_name.trim().length;
+    const idLen = searchFilters.search_id.trim().length;
+    const phoneLen = searchFilters.search_phone.trim().length;
+    
+    // Trigger search if:
+    // 1. Any field has at least 2 characters, OR
+    // 2. All fields are empty (to show all results)
+    return (nameLen >= 2 || idLen >= 2 || phoneLen >= 2) || 
+           (nameLen === 0 && idLen === 0 && phoneLen === 0);
+  }, [searchFilters.search_name, searchFilters.search_id, searchFilters.search_phone]);
+
   // Debounced search effect - wait for user to stop typing
   useEffect(() => {
+    // Skip search if minimum length not met (unless all fields are empty)
+    const nameLen = searchFilters.search_name.trim().length;
+    const idLen = searchFilters.search_id.trim().length;
+    const phoneLen = searchFilters.search_phone.trim().length;
+    
+    // Don't search if user is still typing and hasn't reached minimum length
+    if (nameLen > 0 && nameLen < 2 && idLen === 0 && phoneLen === 0) {
+      return; // User is still typing name, wait
+    }
+    if (idLen > 0 && idLen < 2 && nameLen === 0 && phoneLen === 0) {
+      return; // User is still typing ID, wait
+    }
+    if (phoneLen > 0 && phoneLen < 2 && nameLen === 0 && idLen === 0) {
+      return; // User is still typing phone, wait
+    }
+    
     // Store which input had focus before the update
     const activeElement = document.activeElement;
     if (activeElement === searchNameRef.current) {
@@ -185,6 +219,9 @@ const Employees = () => {
     } else if (activeElement === searchPhoneRef.current) {
       focusedInputRef.current = 'phone';
     }
+    
+    // Optimized debounce: shorter delay if minimum length is met
+    const debounceDelay = shouldTriggerSearch ? 400 : 500;
     
     const timeoutId = setTimeout(async () => {
       await loadEmployees();
@@ -211,10 +248,10 @@ const Employees = () => {
           }
         });
       });
-    }, 500); // Wait 500ms after user stops typing
+    }, debounceDelay);
 
     return () => clearTimeout(timeoutId);
-  }, [searchFilters.search_name, searchFilters.search_id, searchFilters.search_phone]);
+  }, [searchFilters.search_name, searchFilters.search_id, searchFilters.search_phone, shouldTriggerSearch]);
 
   // Immediate effect for branch filter (no debounce needed for select dropdown)
   useEffect(() => {
@@ -253,15 +290,21 @@ const Employees = () => {
       }
       
       // Add search filters (only for main manager)
+      // Performance Optimization: Only add search filters if minimum length is met (2 characters)
       if (isMainManager()) {
-        if (searchFilters.search_name.trim()) {
-          filters.search_name = searchFilters.search_name.trim();
+        const nameTrimmed = searchFilters.search_name.trim();
+        const idTrimmed = searchFilters.search_id.trim();
+        const phoneTrimmed = searchFilters.search_phone.trim();
+        
+        // Only add search filter if it has at least 2 characters
+        if (nameTrimmed.length >= 2) {
+          filters.search_name = nameTrimmed;
         }
-        if (searchFilters.search_id.trim()) {
-          filters.search_id = searchFilters.search_id.trim();
+        if (idTrimmed.length >= 2) {
+          filters.search_id = idTrimmed;
         }
-        if (searchFilters.search_phone.trim()) {
-          filters.search_phone = searchFilters.search_phone.trim();
+        if (phoneTrimmed.length >= 2) {
+          filters.search_phone = phoneTrimmed;
         }
         if (searchFilters.search_branch) {
           filters.branch_id = parseInt(searchFilters.search_branch);
@@ -284,10 +327,19 @@ const Employees = () => {
     }
   };
 
+  // Memoize branches map for faster lookups (performance optimization)
+  const branchesMap = useMemo(() => {
+    const map = new Map();
+    branches.forEach(branch => {
+      map.set(branch.id, branch);
+    });
+    return map;
+  }, [branches]);
+
   // Check if nationality is Saudi (using centralized helper)
-  const isSaudi = () => {
+  const isSaudi = useCallback(() => {
     return isSaudiHelper(formData.nationality);
-  };
+  }, [formData.nationality]);
 
   // Check if form data is valid for saving
   const isFormValid = () => {
@@ -347,7 +399,7 @@ const Employees = () => {
   };
 
   // Handle nationality change - auto-set ID type and calendar types
-  const handleNationalityChange = (nationality) => {
+  const handleNationalityChange = useCallback((nationality) => {
     const isSaudiNationality = isSaudiHelper(nationality);
     
     setFormData(prev => {
@@ -382,7 +434,7 @@ const Employees = () => {
         id_expiry_date_hijri: ''
       }));
     }
-  };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -400,7 +452,7 @@ const Employees = () => {
     // For branch managers, auto-detect branch type from their branch
     let currentBranchType = selectedBranchType;
     if (!isMainManager() && user?.branch_id && !selectedBranchType) {
-      const userBranch = branches.find(b => b.id === user.branch_id);
+      const userBranch = branchesMap.get(user.branch_id);
       if (userBranch) {
         currentBranchType = userBranch.branch_type;
         setSelectedBranchType(userBranch.branch_type);
@@ -870,7 +922,7 @@ const Employees = () => {
         // Filter out documents that are not allowed for this employee
         let currentBranchTypeForValidation = selectedBranchType;
         if (!currentBranchTypeForValidation && editingEmployee?.branch_id) {
-          const employeeBranch = branches.find(b => b.id === editingEmployee.branch_id);
+          const employeeBranch = branchesMap.get(editingEmployee.branch_id);
           if (employeeBranch) {
             currentBranchTypeForValidation = employeeBranch.branch_type;
           }
@@ -929,7 +981,7 @@ const Employees = () => {
         // Filter out documents that are not allowed for this employee
         let currentBranchTypeForValidation = selectedBranchType;
         if (!currentBranchTypeForValidation && employee?.branch_id) {
-          const employeeBranch = branches.find(b => b.id === employee.branch_id);
+          const employeeBranch = branchesMap.get(employee.branch_id);
           if (employeeBranch) {
             currentBranchTypeForValidation = employeeBranch.branch_type;
           }
@@ -1041,13 +1093,13 @@ const Employees = () => {
       // Get current branch type
       let branchTypeForValidation = selectedBranchType;
       if (!branchTypeForValidation && formData.branch_id) {
-        const branch = branches.find(b => b.id === parseInt(formData.branch_id));
+        const branch = branchesMap.get(parseInt(formData.branch_id));
         if (branch) {
           branchTypeForValidation = branch.branch_type;
         }
       }
       if (!branchTypeForValidation && !isMainManager() && user?.branch_id) {
-        const userBranch = branches.find(b => b.id === user.branch_id);
+        const userBranch = branchesMap.get(user.branch_id);
         if (userBranch) {
           branchTypeForValidation = userBranch.branch_type;
         }
@@ -1073,9 +1125,9 @@ const Employees = () => {
     }));
   };
 
-  const handleEdit = (employee) => {
+  const handleEdit = useCallback((employee) => {
     setEditingEmployee(employee);
-    const branch = branches.find(b => b.id === employee.branch_id);
+    const branch = branchesMap.get(employee.branch_id);
     if (branch) {
       setSelectedBranchType(branch.branch_type);
     }
@@ -1142,9 +1194,9 @@ const Employees = () => {
     
     setFormStep(2); // Skip branch type selection when editing
     setShowForm(true);
-  };
+  }, [branchesMap]);
 
-  const handleDelete = async (id) => {
+  const handleDelete = useCallback(async (id) => {
     if (!confirm('هل أنت متأكد من رغبتك في إلغاء تفعيل هذا الموظف؟')) return;
     try {
       await employeesAPI.delete(id);
@@ -1152,19 +1204,19 @@ const Employees = () => {
     } catch (error) {
       showError('فشل حذف الموظف');
     }
-  };
+  }, [showError, loadEmployees]);
 
-  const handleViewDetails = (employee) => {
+  const handleViewDetails = useCallback((employee) => {
     navigate(`/employees/${employee.id}`);
-  };
+  }, [navigate]);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     // Auto-set branch_id and branch type for branch managers
     const defaultBranchId = (!isMainManager() && user?.branch_id) ? user.branch_id : '';
     let defaultBranchType = null;
     
     if (!isMainManager() && user?.branch_id) {
-      const userBranch = branches.find(b => b.id === user.branch_id);
+      const userBranch = branchesMap.get(user.branch_id);
       if (userBranch) {
         defaultBranchType = userBranch.branch_type;
       }
@@ -1219,19 +1271,19 @@ const Employees = () => {
     setDateOfBirthCalendarType(null);
     setIdExpiryCalendarType(null);
     resetDocuments();
-  };
+  }, [isMainManager, user?.branch_id, branchesMap]);
   
-  const handleNameChange = (names) => {
-    setFormData({
-      ...formData,
+  const handleNameChange = useCallback((names) => {
+    setFormData(prev => ({
+      ...prev,
       first_name: names.first,
       second_name: names.second,
       third_name: names.third,
       fourth_name: names.fourth,
-    });
-  };
+    }));
+  }, []);
   
-  const handleDateOfBirthChange = (value, calendarType) => {
+  const handleDateOfBirthChange = useCallback((value, calendarType) => {
     // Force calendar type based on nationality if set
     const forcedType = formData.nationality ? (isSaudi() ? 'hijri' : 'gregorian') : calendarType;
     
@@ -1245,9 +1297,9 @@ const Employees = () => {
       setFormData({ ...formData, date_of_birth_hijri: '', date_of_birth_gregorian: '' });
       setDateOfBirthCalendarType(null);
     }
-  };
-
-  const handleIdExpiryChange = (value, calendarType) => {
+  }, [formData.nationality]);
+  
+  const handleIdExpiryChange = useCallback((value, calendarType) => {
     // Force calendar type based on nationality if set
     const forcedType = formData.nationality ? (isSaudi() ? 'hijri' : 'gregorian') : calendarType;
     
@@ -1261,19 +1313,40 @@ const Employees = () => {
       setFormData({ ...formData, id_expiry_date_hijri: '', id_expiry_date_gregorian: '' });
       setIdExpiryCalendarType(null);
     }
-  };
+  }, [formData.nationality]);
+
+  // Determine current branch type: for branch managers, get from their branch; for main managers, use selectedBranchType
+  // Memoize this calculation to avoid re-computing on every render
+  // IMPORTANT: This must be before any conditional returns to follow React Hooks rules
+  const currentBranchType = useMemo(() => {
+    if (selectedBranchType) return selectedBranchType;
+    if (!isMainManager() && user?.branch_id) {
+      const userBranch = branchesMap.get(user.branch_id);
+      if (userBranch) {
+        return userBranch.branch_type;
+      }
+    }
+    return null;
+  }, [selectedBranchType, isMainManager, user?.branch_id, branchesMap]);
+
+  // Pagination calculations - memoized for performance
+  const paginatedEmployees = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return employees.slice(startIndex, endIndex);
+  }, [employees, currentPage, itemsPerPage]);
+
+  const totalPages = useMemo(() => {
+    return Math.ceil(employees.length / itemsPerPage);
+  }, [employees.length, itemsPerPage]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterIncomplete, searchFilters.search_name, searchFilters.search_id, searchFilters.search_phone, searchFilters.search_branch]);
 
   if (loading) {
     return <div className="loading">جاري تحميل الموظفين...</div>;
-  }
-
-  // Determine current branch type: for branch managers, get from their branch; for main managers, use selectedBranchType
-  let currentBranchType = selectedBranchType;
-  if (!isMainManager() && user?.branch_id && !selectedBranchType) {
-    const userBranch = branches.find(b => b.id === user.branch_id);
-    if (userBranch) {
-      currentBranchType = userBranch.branch_type;
-    }
   }
 
   return (
@@ -1323,13 +1396,20 @@ const Employees = () => {
           alignItems: 'flex-end'
         }}>
           <div style={{ flex: '1', minWidth: '200px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>البحث بالاسم:</label>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+              البحث بالاسم:
+              {searchFilters.search_name.length > 0 && searchFilters.search_name.length < 2 && (
+                <span style={{ fontSize: '12px', color: '#f59e0b', marginRight: '5px' }}>
+                  (أدخل حرفين على الأقل)
+                </span>
+              )}
+            </label>
             <input
               ref={searchNameRef}
               type="text"
               value={searchFilters.search_name}
               onChange={(e) => setSearchFilters({ ...searchFilters, search_name: e.target.value })}
-              placeholder="أدخل جزء من الاسم (مثال: مح)"
+              placeholder="أدخل حرفين على الأقل للبحث (مثال: محمد)"
               style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
             />
           </div>
@@ -1345,13 +1425,20 @@ const Employees = () => {
             />
           </div>
           <div style={{ flex: '1', minWidth: '200px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>البحث برقم الهاتف:</label>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+              البحث برقم الهاتف:
+              {searchFilters.search_phone.length > 0 && searchFilters.search_phone.length < 2 && (
+                <span style={{ fontSize: '12px', color: '#f59e0b', marginRight: '5px' }}>
+                  (أدخل حرفين على الأقل)
+                </span>
+              )}
+            </label>
             <input
               ref={searchPhoneRef}
               type="text"
               value={searchFilters.search_phone}
               onChange={(e) => setSearchFilters({ ...searchFilters, search_phone: e.target.value })}
-              placeholder="أدخل رقم الهاتف"
+              placeholder="أدخل حرفين على الأقل للبحث"
               style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
             />
           </div>
@@ -1404,8 +1491,8 @@ const Employees = () => {
                     <td colSpan={isMainManager() ? "8" : "7"} style={{ textAlign: 'center' }}>لا يوجد موظفين</td>
                   </tr>
                 ) : (
-                  employees.map((employee) => {
-                    const branch = branches.find(b => b.id === employee.branch_id);
+                  paginatedEmployees.map((employee) => {
+                    const branch = branchesMap.get(employee.branch_id);
                     const isComplete = employee.data_completion_status === 'complete';
                     return (
                     <tr key={employee.id}>
@@ -1454,6 +1541,97 @@ const Employees = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {employees.length > 0 && totalPages > 1 && (
+            <div className="pagination">
+              <div className="pagination-info">
+                عرض {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, employees.length)} من {employees.length}
+              </div>
+              
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="btn btn-secondary btn-sm"
+                >
+                  الأولى
+                </button>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="btn btn-secondary btn-sm"
+                >
+                  السابقة
+                </button>
+                
+                {/* Page numbers */}
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`btn btn-sm ${currentPage === pageNum ? 'btn-primary active' : 'btn-secondary'}`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="btn btn-secondary btn-sm"
+                >
+                  التالية
+                </button>
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="btn btn-secondary btn-sm"
+                >
+                  الأخيرة
+                </button>
+              </div>
+
+              {/* Items per page selector */}
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <label style={{ fontSize: '0.875rem', color: 'var(--text-light)' }}>عدد العناصر:</label>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  style={{
+                    padding: '0.5rem',
+                    border: '2px solid var(--border)',
+                    borderRadius: 'var(--radius-md)',
+                    fontSize: '0.875rem',
+                    background: 'var(--bg)',
+                    color: 'var(--text)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </div>
+            </div>
+          )}
         </>
       ) : (
         <div className="employee-form-page">
@@ -1662,29 +1840,20 @@ const Employees = () => {
                   >
                     <option value="">اختر المسمى الوظيفي</option>
                     {(() => {
-                      // Get current branch type
-                      let currentBranchType = selectedBranchType;
-                      if (!isMainManager() && user?.branch_id && !selectedBranchType) {
-                        const userBranch = branches.find(b => b.id === user.branch_id);
-                        if (userBranch) {
-                          currentBranchType = userBranch.branch_type;
-                        }
+                      // Get current branch type (use memoized currentBranchType from above)
+                      // This avoids recalculating on every render
+                      let branchTypeForJobTitles = currentBranchType || selectedBranchType;
+                      if (!branchTypeForJobTitles && editingEmployee) {
+                        const empBranch = branchesMap.get(editingEmployee.branch_id);
+                        if (empBranch) branchTypeForJobTitles = empBranch.branch_type;
                       }
-                      if (isMainManager() && !currentBranchType && formData.branch_id) {
-                        const selectedBranch = branches.find(b => b.id === parseInt(formData.branch_id));
-                        if (selectedBranch) {
-                          currentBranchType = selectedBranch.branch_type;
-                        }
-                      }
-                      if (editingEmployee && !currentBranchType) {
-                        const employeeBranch = branches.find(b => b.id === editingEmployee.branch_id);
-                        if (employeeBranch) {
-                          currentBranchType = employeeBranch.branch_type;
-                        }
+                      if (!branchTypeForJobTitles && formData.branch_id) {
+                        const formBranch = branchesMap.get(parseInt(formData.branch_id));
+                        if (formBranch) branchTypeForJobTitles = formBranch.branch_type;
                       }
 
                       // Get job titles from constants based on branch type
-                      const jobTitles = getJobTitlesByBranchType(currentBranchType);
+                      const jobTitles = getJobTitlesByBranchType(branchTypeForJobTitles);
                       return (
                         <>
                           {jobTitles.map((title) => (
@@ -2279,5 +2448,7 @@ const Employees = () => {
   );
 };
 
-export default Employees;
+// Memoize the component to prevent unnecessary re-renders
+// This significantly improves performance when parent components re-render
+export default memo(Employees);
 

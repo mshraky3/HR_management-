@@ -11,7 +11,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import NationalitySelect from '../components/NationalitySelect';
 import BankSelect from '../components/BankSelect';
 import { getDocumentTypeLabel, DOCUMENT_TYPE_LABELS } from '../utils/employeeConstants';
-import './TablePage.css';
+// TablePage.css is now loaded in App.jsx to prevent FOUC
 import './Reports.css';
 
 const Reports = () => {

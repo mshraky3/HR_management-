@@ -8,7 +8,7 @@ import { branchesAPI, employeesAPI, branchDocumentsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { getRequiredBranchDocuments, getBranchTypeLabel, getMonthlyRequiredBranchDocuments } from '../utils/employeeHelpers';
-import './TablePage.css';
+// TablePage.css is now loaded in App.jsx to prevent FOUC
 import './BranchesMonitoring.css';
 
 const BranchesMonitoring = () => {

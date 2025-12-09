@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import { usersAPI } from '../utils/api';
 import { useNotification } from '../contexts/NotificationContext';
-import './TablePage.css';
+// TablePage.css is now loaded in App.jsx to prevent FOUC
 
 const AccountManagement = () => {
   const { showError, showSuccess } = useNotification();

@@ -9,7 +9,7 @@ import { employeesAPI, documentsAPI, branchesAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { getDocumentTypeLabel } from '../utils/employeeConstants';
-import './TablePage.css';
+// TablePage.css is now loaded in App.jsx to prevent FOUC
 import './EmployeeFile.css';
 
 const EmployeeFile = () => {

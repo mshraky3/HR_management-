@@ -1,6 +1,8 @@
 /* App-level styles */
-@import './styles/buttons.css';
-@import './styles/containers.css';
+/* Note: buttons.css and containers.css are now loaded in main.jsx
+ * to prevent FOUC (Flash of Unstyled Content) when lazy-loading pages
+ * This ensures critical CSS is loaded immediately before any components render
+ */
 
 .app-container {
   min-height: 100vh;

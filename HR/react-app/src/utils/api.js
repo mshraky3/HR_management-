@@ -1,6 +1,7 @@
 /**
  * API Service
  * Centralized API calls with authentication
+ * Performance Optimization: Caching and Request Deduplication
  */
 
 import axios from 'axios';
@@ -9,6 +10,110 @@ import { API_URL } from '../config/api.js';
 // In-memory storage for branch documents passwords (not persistent, cleared on page reload)
 // Key: branchId, Value: password
 const branchDocumentsPasswords = new Map();
+
+// API Response Cache - stores successful GET requests
+// Key: cache key (URL + params), Value: { data, timestamp, expiry }
+const apiCache = new Map();
+
+// Request Deduplication - prevents duplicate concurrent requests
+// Key: request key, Value: Promise
+const pendingRequests = new Map();
+
+// Cache configuration
+const CACHE_TTL = {
+  // Short cache (30 seconds) - for frequently changing data
+  SHORT: 30 * 1000,
+  // Medium cache (2 minutes) - for moderately changing data
+  MEDIUM: 2 * 60 * 1000,
+  // Long cache (5 minutes) - for rarely changing data
+  LONG: 5 * 60 * 1000,
+  // Very long cache (15 minutes) - for static data
+  VERY_LONG: 15 * 60 * 1000,
+};
+
+// Generate cache key from request config
+const getCacheKey = (config) => {
+  const url = config.url || '';
+  const params = config.params ? JSON.stringify(config.params) : '';
+  const method = config.method || 'get';
+  return `${method.toUpperCase()}:${url}:${params}`;
+};
+
+// Generate request deduplication key
+const getRequestKey = (config) => {
+  return getCacheKey(config);
+};
+
+// Check if cache entry is still valid
+const isCacheValid = (cacheEntry) => {
+  if (!cacheEntry) return false;
+  return Date.now() < cacheEntry.timestamp + cacheEntry.expiry;
+};
+
+// Get cache TTL based on endpoint
+const getCacheTTL = (url) => {
+  // Static data - very long cache
+  if (url.includes('/api/branches') && !url.includes('/my-branch')) {
+    return CACHE_TTL.VERY_LONG;
+  }
+  // User data - long cache
+  if (url.includes('/api/users')) {
+    return CACHE_TTL.LONG;
+  }
+  // Employee data - medium cache (can change frequently)
+  if (url.includes('/api/employees')) {
+    return CACHE_TTL.MEDIUM;
+  }
+  // Documents - medium cache
+  if (url.includes('/api/documents') || url.includes('/api/branch-documents')) {
+    return CACHE_TTL.MEDIUM;
+  }
+  // Statistics - short cache (changes frequently)
+  if (url.includes('/api/branch-statistics')) {
+    return CACHE_TTL.SHORT;
+  }
+  // Notifications - short cache (real-time data)
+  if (url.includes('/api/notifications')) {
+    return CACHE_TTL.SHORT;
+  }
+  // Default - medium cache
+  return CACHE_TTL.MEDIUM;
+};
+
+// Clear cache for specific endpoint pattern
+export const clearCache = (pattern) => {
+  if (!pattern) {
+    // Clear all cache
+    apiCache.clear();
+    return;
+  }
+  // Clear cache entries matching pattern
+  for (const [key] of apiCache) {
+    if (key.includes(pattern)) {
+      apiCache.delete(key);
+    }
+  }
+};
+
+// Clear cache on mutations (POST, PUT, DELETE)
+const clearRelatedCache = (url) => {
+  // Clear related cache entries when data is modified
+  if (url.includes('/api/employees')) {
+    clearCache('/api/employees');
+    clearCache('/api/branch-statistics'); // Statistics depend on employees
+  } else if (url.includes('/api/branches')) {
+    clearCache('/api/branches');
+  } else if (url.includes('/api/documents')) {
+    clearCache('/api/documents');
+    clearCache('/api/employees'); // Employee completion status may change
+  } else if (url.includes('/api/branch-documents')) {
+    clearCache('/api/branch-documents');
+  } else if (url.includes('/api/notifications')) {
+    clearCache('/api/notifications');
+  } else if (url.includes('/api/users')) {
+    clearCache('/api/users');
+  }
+};
 
 // Document-to-branch mapping (metadata only, not sensitive)
 const documentBranchMapping = new Map();
@@ -149,7 +254,7 @@ const getPasswordForRequest = (branchId) => {
 
 // Add token to requests if available
 api.interceptors.request.use(
-  (config) => {
+  async (config) => {
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -166,15 +271,97 @@ api.interceptors.request.use(
       }
     }
     
+    // Request Deduplication and Caching for GET requests
+    const method = (config.method || 'get').toLowerCase();
+    if (method === 'get') {
+      const requestKey = getRequestKey(config);
+      
+      // Check for pending request (deduplication)
+      const pendingRequest = pendingRequests.get(requestKey);
+      if (pendingRequest) {
+        // Attach metadata to config to handle in response interceptor
+        config.__isDeduplicated = true;
+        config.__pendingRequest = pendingRequest;
+        return config;
+      }
+      
+      // Check cache
+      const cacheKey = getCacheKey(config);
+      const cacheEntry = apiCache.get(cacheKey);
+      if (cacheEntry && isCacheValid(cacheEntry)) {
+        // Attach cached response to config
+        config.__isCached = true;
+        config.__cachedResponse = cacheEntry.data;
+        return config;
+      }
+      
+      // Store request promise for deduplication
+      const requestPromise = axios(config);
+      pendingRequests.set(requestKey, requestPromise);
+      
+      // Clean up after request completes
+      requestPromise.finally(() => {
+        pendingRequests.delete(requestKey);
+      });
+    }
+    
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Handle 401 errors (unauthorized)
+// Handle 401 errors (unauthorized) and cache successful responses
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const config = response.config;
+    
+    // Handle cached response
+    if (config?.__isCached) {
+      return config.__cachedResponse;
+    }
+    
+    // Handle deduplicated request
+    if (config?.__isDeduplicated) {
+      return config.__pendingRequest;
+    }
+    
+    // Cache successful GET requests
+    const method = (config?.method || 'get').toLowerCase();
+    
+    if (method === 'get' && response.status === 200) {
+      const cacheKey = getCacheKey(config);
+      const cacheTTL = getCacheTTL(config.url || '');
+      
+      apiCache.set(cacheKey, {
+        data: response,
+        timestamp: Date.now(),
+        expiry: cacheTTL,
+      });
+      
+      // Clean up old cache entries periodically (keep cache size manageable)
+      if (apiCache.size > 100) {
+        // Remove expired entries
+        for (const [key, entry] of apiCache.entries()) {
+          if (!isCacheValid(entry)) {
+            apiCache.delete(key);
+          }
+        }
+      }
+    }
+    
+    // Clear related cache on successful mutations
+    if (config && ['post', 'put', 'delete', 'patch'].includes(method)) {
+      clearRelatedCache(config.url || '');
+    }
+    
+    return response;
+  },
   (error) => {
+    // Remove from pending requests on error
+    if (error.config) {
+      const requestKey = getRequestKey(error.config);
+      pendingRequests.delete(requestKey);
+    }
     // Only redirect to login for authentication-related 401 errors
     // Don't redirect for business logic 401 errors (e.g., invalid branch documents password)
     if (error.response?.status === 401) {

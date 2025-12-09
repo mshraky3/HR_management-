@@ -3,7 +3,7 @@
  * Overview of all tables and statistics
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
@@ -64,146 +64,136 @@ const Dashboard = () => {
         documentFilters.branch_id = user.branch_id;
       }
 
-      const [branchesRes, employeesRes] = await Promise.all([
+      // Performance Optimization: Batch all parallel API calls together
+      // This reduces total loading time by making all requests simultaneously
+      const apiPromises = [
         branchesAPI.getAll(branchFilters),
         employeesAPI.getAll(employeeFilters),
-      ]);
+        branchDocumentsAPI.getAll(documentFilters).catch(() => ({ data: { data: [] } })),
+      ];
+
+      // Add role-specific API calls to batch
+      if (!isMainManager() && user?.branch_id) {
+        // Branch manager specific calls
+        apiPromises.push(
+          branchesAPI.getById(user.branch_id).catch(() => ({ data: { success: false } })),
+          notificationsAPI.getMyBranchNotifications().catch(() => ({ data: { success: false, data: [] } }))
+        );
+      } else if (isMainManager()) {
+        // Main manager specific calls
+        apiPromises.push(
+          branchStatisticsAPI.getAll().catch(() => ({ data: { success: false } })),
+          notificationsAPI.getAll().catch(() => ({ data: { success: false, data: [] } })),
+          usersAPI.getAll({ is_active: true }).catch(() => ({ data: { success: false, data: [] } }))
+        );
+      }
+
+      // Execute all API calls in parallel
+      const results = await Promise.all(apiPromises);
+
+      // Extract results
+      const branchesRes = results[0];
+      const employeesRes = results[1];
+      const documentsRes = results[2];
 
       // Store branches for display
       const branchesList = branchesRes.data.success ? (branchesRes.data.data || []) : [];
       setBranches(branchesList);
 
-      // Load branch info for branch managers to check if contact info is missing
+      // Process role-specific results
       if (!isMainManager() && user?.branch_id) {
-        try {
-          const branchInfoRes = await branchesAPI.getById(user.branch_id);
-          if (branchInfoRes.data.success) {
-            setBranchInfo(branchInfoRes.data.data);
-          }
-        } catch (error) {
-          console.error('Error loading branch info:', error);
+        // Branch manager results
+        const branchInfoRes = results[3];
+        const notificationsRes = results[4];
+
+        if (branchInfoRes?.data?.success) {
+          setBranchInfo(branchInfoRes.data.data);
+        } else {
           setBranchInfo(null);
         }
-      }
 
-      // For branch documents - only load if needed for stats
-      let documentsRes = { data: { data: [] } };
-      try {
-        documentsRes = await branchDocumentsAPI.getAll(documentFilters);
-      } catch (error) {
-        // If no documents or error, just use empty array
-      }
-
-      // Load notifications for branch managers
-      if (!isMainManager() && user?.branch_id) {
-        try {
-          const notificationsRes = await notificationsAPI.getMyBranchNotifications();
-          if (notificationsRes.data.success) {
-            setNotifications(notificationsRes.data.data || []);
-          }
-        } catch (error) {
-          console.error('Error loading notifications:', error);
+        if (notificationsRes?.data?.success) {
+          setNotifications(notificationsRes.data.data || []);
+        } else {
           setNotifications([]);
         }
-      }
 
-      // Load branch statistics and notifications for main manager
-      let notificationsList = [];
-      if (isMainManager()) {
-        try {
-          setLoadingStats(true);
-          const [statsRes, notificationsRes] = await Promise.all([
-            branchStatisticsAPI.getAll(),
-            notificationsAPI.getAll()
-          ]);
-          
-          if (statsRes.data.success) {
-            setBranchStats(statsRes.data.data || []);
-          }
-          
-          if (notificationsRes.data.success) {
-            notificationsList = notificationsRes.data.data || [];
-            setMainManagerNotifications(notificationsList);
-            
-            // Check for new responses since last visit (async, don't await)
-            checkNewResponses(notificationsList);
-          }
-        } catch (error) {
-          console.error('Error loading data:', error);
-        } finally {
-          setLoadingStats(false);
-        }
-      }
-
-      // Only load incomplete employees, monthly documents, and missing branch documents for branch managers
-      // These sections have been removed from main manager dashboard
-      if (!isMainManager()) {
-        // Load incomplete employees for branch managers (only active or pending)
+        // Load incomplete and pending employees in parallel (batch for branch managers)
         const incompleteFilters = { 
           ...employeeFilters, 
           data_completion_status: 'incomplete'
-          // Note: status filter is not set, so backend will default to active/pending only
         };
-        try {
-          const incompleteRes = await employeesAPI.getAll(incompleteFilters);
-          if (incompleteRes.data.success) {
-            // Double-check: filter out any archived employees that might have slipped through
-            const filtered = (incompleteRes.data.data || []).filter(emp => 
-              !emp.status || emp.status === 'active' || emp.status === 'pending'
-            );
-            setIncompleteEmployees(filtered);
-          }
-        } catch (error) {
-          console.error('Error loading incomplete employees:', error);
+        
+        const [incompleteRes, pendingRes] = await Promise.all([
+          employeesAPI.getAll(incompleteFilters).catch(() => ({ data: { success: false, data: [] } })),
+          employeesAPI.getAll({ 
+            ...employeeFilters,
+            status: 'pending'
+          }).catch(() => ({ data: { success: false, data: [] } }))
+        ]);
+
+        if (incompleteRes.data.success) {
+          const filtered = (incompleteRes.data.data || []).filter(emp => 
+            !emp.status || emp.status === 'active' || emp.status === 'pending'
+          );
+          setIncompleteEmployees(filtered);
+        } else {
           setIncompleteEmployees([]);
         }
 
-        // Load pending employees (end of year, awaiting renewal)
-        try {
-          const pendingRes = await employeesAPI.getAll({ 
-            ...employeeFilters,
-            status: 'pending'
-          });
-          if (pendingRes.data.success) {
-            setPendingEmployees(pendingRes.data.data || []);
-          }
-        } catch (error) {
-          console.error('Error loading pending employees:', error);
+        if (pendingRes.data.success) {
+          setPendingEmployees(pendingRes.data.data || []);
+        } else {
           setPendingEmployees([]);
         }
 
-        // Check monthly documents (payroll_file, attendance_file, salary_deposit_file) for branch managers
-        checkMonthlyDocuments(documentsRes.data.data || [], branchesList);
-        
-        // Check for missing required branch documents for branch managers
-        checkMissingBranchDocuments(documentsRes.data.data || [], branchesList);
-      } else {
-        // For branch managers, check monthly documents
+        // Check monthly documents and missing branch documents
         checkMonthlyDocuments(documentsRes.data.data || [], branchesList);
         checkMissingBranchDocuments(documentsRes.data.data || [], branchesList);
-      }
-      
-      // For main manager, also check monthly documents for monitoring section
-      if (isMainManager()) {
+      } else if (isMainManager()) {
+        // Main manager results
+        setLoadingStats(true);
+        const statsRes = results[3];
+        const notificationsRes = results[4];
+        const usersRes = results[5];
+
+        if (statsRes?.data?.success) {
+          setBranchStats(statsRes.data.data || []);
+        }
+
+        if (notificationsRes?.data?.success) {
+          const notificationsList = notificationsRes.data.data || [];
+          setMainManagerNotifications(notificationsList);
+          // Check for new responses since last visit (async, don't await)
+          checkNewResponses(notificationsList);
+        }
+
+        setStats({
+          branches: branchesRes.data.data?.length || 0,
+          employees: employeesRes.data.data?.length || 0,
+          users: usersRes?.data?.data?.length || 0,
+          documents: documentsRes.data.data?.length || 0,
+          notifications: notificationsRes?.data?.data?.length || 0,
+          loading: false,
+        });
+
+        // Check monthly documents for monitoring section
         checkMonthlyDocuments(documentsRes.data.data || [], branchesList);
         // Clear branch manager specific alerts
         setIncompleteEmployees([]);
         setMissingBranchDocumentAlerts([]);
+        setLoadingStats(false);
+      } else {
+        // Set stats for branch managers (main manager stats set above)
+        setStats({
+          branches: branchesRes.data.data?.length || 0,
+          employees: employeesRes.data.data?.length || 0,
+          users: 0, // Branch managers don't see users count
+          documents: documentsRes.data.data?.length || 0,
+          notifications: results[4]?.data?.data?.length || 0,
+          loading: false,
+        });
       }
-
-      let usersRes = { data: { data: [] } };
-      if (isMainManager()) {
-        usersRes = await usersAPI.getAll({ is_active: true });
-      }
-
-      setStats({
-        branches: branchesRes.data.data?.length || 0,
-        employees: employeesRes.data.data?.length || 0,
-        users: usersRes.data.data?.length || 0,
-        documents: documentsRes.data.data?.length || 0,
-        notifications: isMainManager() ? notificationsList.length : 0,
-        loading: false,
-      });
     } catch (error) {
       console.error('Error loading stats:', error);
       setStats((prev) => ({ ...prev, loading: false }));
@@ -211,7 +201,8 @@ const Dashboard = () => {
   };
 
   // Check for new responses since last visit
-  const checkNewResponses = async (notificationsList) => {
+  // Performance Optimization: Limit to first 20 notifications to prevent N+1 query problem
+  const checkNewResponses = useCallback(async (notificationsList) => {
     try {
       const lastVisitTime = localStorage.getItem('notifications_last_visit');
       if (!lastVisitTime || notificationsList.length === 0) {
@@ -223,21 +214,35 @@ const Dashboard = () => {
       const lastVisit = new Date(lastVisitTime);
       let newCount = 0;
       
-      // Fetch details for all notifications to get actual responses with timestamps
-      const notificationDetailsPromises = notificationsList.map(notification => 
+      // Performance Optimization: Limit to first 20 notifications to prevent excessive API calls
+      // Most recent notifications are more likely to have new responses
+      const MAX_NOTIFICATIONS_TO_CHECK = 20;
+      const notificationsToCheck = notificationsList.slice(0, MAX_NOTIFICATIONS_TO_CHECK);
+      
+      // Early return if no notifications to check
+      if (notificationsToCheck.length === 0) {
+        setNewResponsesCount(0);
+        return;
+      }
+      
+      // Fetch details for limited notifications to get actual responses with timestamps
+      // Use Promise.allSettled to handle individual failures gracefully
+      const notificationDetailsPromises = notificationsToCheck.map(notification => 
         notificationsAPI.getById(notification.id).catch(() => null)
       );
       
-      const detailsResults = await Promise.all(notificationDetailsPromises);
+      const detailsResults = await Promise.allSettled(notificationDetailsPromises);
       
       // Check each notification's responses for new ones
       detailsResults.forEach((result) => {
-        if (result && result.data && result.data.success && result.data.data) {
-          const notification = result.data.data;
+        // Handle Promise.allSettled result structure
+        const response = result.status === 'fulfilled' ? result.value : null;
+        if (response && response.data && response.data.success && response.data.data) {
+          const notification = response.data.data;
           if (notification.responses && Array.isArray(notification.responses)) {
-            notification.responses.forEach(response => {
-              if (response.responded_at) {
-                const responseTime = new Date(response.responded_at);
+            notification.responses.forEach(responseItem => {
+              if (responseItem.responded_at) {
+                const responseTime = new Date(responseItem.responded_at);
                 if (responseTime > lastVisit) {
                   newCount++;
                 }
@@ -249,10 +254,13 @@ const Dashboard = () => {
       
       setNewResponsesCount(newCount);
     } catch (error) {
-      console.error('Error checking new responses:', error);
+      // Error handling - don't log in production (will be removed by esbuild)
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Error checking new responses:', error);
+      }
       setNewResponsesCount(0);
     }
-  };
+  }, []);
 
   const checkMonthlyDocuments = (documents, branchesList) => {
     const alerts = [];
@@ -1041,5 +1049,6 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+// Memoize the component to prevent unnecessary re-renders
+export default memo(Dashboard);
 

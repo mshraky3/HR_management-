@@ -9,7 +9,7 @@ import { useSearchParams } from 'react-router-dom';
 import { branchDocumentsAPI, branchesAPI, setDocumentBranchMapping, setBranchDocumentsPassword } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import './TablePage.css';
+// TablePage.css is now loaded in App.jsx to prevent FOUC
 import './MonthlyDocuments.css';
 
 const MonthlyDocuments = () => {
