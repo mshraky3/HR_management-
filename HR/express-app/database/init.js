@@ -504,8 +504,10 @@ export async function initializeDatabase() {
       'Created index on academic_years is_current'
     );
 
-    // Create index for employees status (only if column exists)
-    // Note: If employees table already exists without status column, run migration script first
+    // ========== PERFORMANCE OPTIMIZATION: Additional Indexes for Employees ==========
+    // These indexes significantly improve query performance for common operations
+    
+    // Index for status (used in filtering employees by status)
     try {
       const statusColumnExists = await sql`
         SELECT column_name 
@@ -525,6 +527,91 @@ export async function initializeDatabase() {
       console.log('Note: If employees table exists without status column, run: node express-app/scripts/migrate-add-employee-status-and-terms.js');
     }
     
+    // Index for is_active (used frequently in queries)
+    try {
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_employees_is_active ON employees(is_active)',
+        'Created index on employees.is_active'
+      );
+    } catch (error) {
+      console.log('Could not create index on employees.is_active:', error.message);
+    }
+    
+    // Index for phone_number (used in search operations)
+    try {
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_employees_phone_number ON employees(phone_number)',
+        'Created index on employees.phone_number'
+      );
+    } catch (error) {
+      console.log('Could not create index on employees.phone_number:', error.message);
+    }
+    
+    // Index for created_at (used in ORDER BY clauses)
+    try {
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_employees_created_at ON employees(created_at DESC)',
+        'Created index on employees.created_at'
+      );
+    } catch (error) {
+      console.log('Could not create index on employees.created_at:', error.message);
+    }
+    
+    // Index for updated_at (used in update tracking)
+    try {
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_employees_updated_at ON employees(updated_at DESC)',
+        'Created index on employees.updated_at'
+      );
+    } catch (error) {
+      console.log('Could not create index on employees.updated_at:', error.message);
+    }
+    
+    // Composite index: branch_id + status (very common query pattern)
+    try {
+      const statusColumnExists = await sql`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'employees' AND column_name = 'status'
+      `;
+      if (statusColumnExists && statusColumnExists.length > 0) {
+        await executeQuery(
+          'CREATE INDEX IF NOT EXISTS idx_employees_branch_status ON employees(branch_id, status)',
+          'Created composite index on employees(branch_id, status)'
+        );
+      }
+    } catch (error) {
+      console.log('Could not create composite index on employees(branch_id, status):', error.message);
+    }
+    
+    // Composite index: branch_id + data_completion_status (used in dashboard)
+    try {
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_employees_branch_completion ON employees(branch_id, data_completion_status)',
+        'Created composite index on employees(branch_id, data_completion_status)'
+      );
+    } catch (error) {
+      console.log('Could not create composite index on employees(branch_id, data_completion_status):', error.message);
+    }
+    
+    // Composite index: status + data_completion_status (used in filtering)
+    try {
+      const statusColumnExists = await sql`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'employees' AND column_name = 'status'
+      `;
+      if (statusColumnExists && statusColumnExists.length > 0) {
+        await executeQuery(
+          'CREATE INDEX IF NOT EXISTS idx_employees_status_completion ON employees(status, data_completion_status)',
+          'Created composite index on employees(status, data_completion_status)'
+        );
+      }
+    } catch (error) {
+      console.log('Could not create composite index on employees(status, data_completion_status):', error.message);
+    }
+    
+    // Index for academic_year (if column exists)
     try {
       const academicYearColumnExists = await sql`
         SELECT column_name 

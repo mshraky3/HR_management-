@@ -337,6 +337,18 @@ router.get('/:id/download', async (req, res) => {
     }
 
     // Fallback for local files (backward compatibility during migration)
+    // Note: On Vercel serverless, local file system is read-only and files may not be accessible
+    // All files should be migrated to Blob Storage
+    if (process.env.VERCEL === '1') {
+      // On Vercel, local files are not accessible
+      return res.status(404).json({
+        success: false,
+        message: 'File not found. This file may need to be re-uploaded to Blob Storage.',
+        error: 'Local file access not available on serverless platform'
+      });
+    }
+
+    // Local development fallback
     let filePath;
     if (path.isAbsolute(document.file_path)) {
       filePath = document.file_path;
@@ -415,7 +427,17 @@ router.get('/:id/preview', async (req, res) => {
       }
 
       // Fallback for local files (backward compatibility)
+      // Note: On Vercel serverless, local file system is read-only
       if (document.file_path) {
+        if (process.env.VERCEL === '1') {
+          // On Vercel, local files are not accessible
+          return res.status(404).json({
+            success: false,
+            message: 'File preview not available. This file may need to be re-uploaded to Blob Storage.',
+            error: 'Local file access not available on serverless platform'
+          });
+        }
+
         let filePath;
         if (path.isAbsolute(document.file_path)) {
           filePath = document.file_path;

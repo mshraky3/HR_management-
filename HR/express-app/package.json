@@ -8,7 +8,8 @@
     "start": "node server.js",
     "init-db": "node scripts/init-db.js",
     "create-admin": "node scripts/create-admin.js",
-    "add-branches": "node scripts/add-branches.js"
+    "add-branches": "node scripts/add-branches.js",
+    "migrate:performance-indexes": "node scripts/migrate-add-performance-indexes.js"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +18,7 @@
   "dependencies": {
     "@digicole/pdfmake-rtl": "^1.2.0",
     "@vercel/blob": "^2.0.0",
+    "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "exceljs": "^4.4.0",

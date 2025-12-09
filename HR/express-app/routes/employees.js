@@ -46,7 +46,10 @@ router.get('/', async (req, res) => {
       // Search filters (only for main manager)
       search_name: req.query.search_name,
       search_id: req.query.search_id,
-      search_phone: req.query.search_phone
+      search_phone: req.query.search_phone,
+      // Pagination support (optional, for future use)
+      limit: req.query.limit,
+      offset: req.query.offset
     };
     
     const employees = await Employee.findAll(filters);

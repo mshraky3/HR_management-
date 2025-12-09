@@ -141,7 +141,21 @@ export const Employee = {
       }
       
       const whereClause = conditions.join(' AND ');
-      const queryString = `SELECT * FROM employees WHERE ${whereClause} ORDER BY created_at DESC`;
+      
+      // Performance Optimization: Use LIMIT for large result sets
+      // This prevents loading too much data at once
+      const limit = filters.limit ? parseInt(filters.limit, 10) : null;
+      const offset = filters.offset ? parseInt(filters.offset, 10) : null;
+      
+      let queryString = `SELECT * FROM employees WHERE ${whereClause} ORDER BY created_at DESC`;
+      
+      // Add LIMIT and OFFSET if provided (for pagination support)
+      if (limit && limit > 0 && limit <= 10000) {
+        queryString += ` LIMIT ${limit}`;
+        if (offset && offset > 0) {
+          queryString += ` OFFSET ${offset}`;
+        }
+      }
       
       return await sql.unsafe(queryString, params);
     } catch (error) {

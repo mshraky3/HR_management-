@@ -25,22 +25,35 @@ const notoSansArabicStatic = path.join(notoSansArabicDir, 'static');
 let arabicFontPath = null;
 
 // Check for variable font first
-if (fs.existsSync(notoSansArabicVariable)) {
-  arabicFontPath = notoSansArabicVariable;
-} else if (fs.existsSync(notoSansArabicStatic)) {
-  // Try to find a regular weight font in static folder
-  try {
-    const staticFiles = fs.readdirSync(notoSansArabicStatic);
-    const regularFont = staticFiles.find(f => f.includes('Regular') && f.endsWith('.ttf'));
-    if (regularFont) {
-      arabicFontPath = path.join(notoSansArabicStatic, regularFont);
+// Note: Font files are included in Vercel deployment, but paths may differ
+// This code handles both local development and Vercel serverless environments
+try {
+  if (fs.existsSync(notoSansArabicVariable)) {
+    arabicFontPath = notoSansArabicVariable;
+  } else if (fs.existsSync(notoSansArabicStatic)) {
+    // Try to find a regular weight font in static folder
+    try {
+      const staticFiles = fs.readdirSync(notoSansArabicStatic);
+      const regularFont = staticFiles.find(f => f.includes('Regular') && f.endsWith('.ttf'));
+      if (regularFont) {
+        arabicFontPath = path.join(notoSansArabicStatic, regularFont);
+      }
+    } catch (e) {
+      console.warn('Error reading static fonts directory:', e.message);
     }
-  } catch (e) {
-    console.error('Error reading static fonts directory:', e);
   }
+} catch (error) {
+  // On Vercel or if fonts are not accessible, will use fallback fonts
+  console.warn('Font files not accessible, will use fallback fonts:', error.message);
 }
 
-const hasArabicFont = arabicFontPath !== null && fs.existsSync(arabicFontPath);
+const hasArabicFont = arabicFontPath !== null && (() => {
+  try {
+    return fs.existsSync(arabicFontPath);
+  } catch {
+    return false;
+  }
+})();
 
 let fonts;
 if (hasArabicFont) {
@@ -51,18 +64,27 @@ if (hasArabicFont) {
   const mediumFont = path.join(notoSansStatic, 'NotoSansArabic-Medium.ttf');
   
   // Use available fonts, fallback to regular if others don't exist
+  // Wrap fs.existsSync in try-catch for Vercel compatibility
+  const fontExists = (fontPath) => {
+    try {
+      return fs.existsSync(fontPath);
+    } catch {
+      return false;
+    }
+  };
+  
   fonts = {
     Roboto: {
-      normal: fs.existsSync(regularFont) ? regularFont : arabicFontPath,
-      bold: fs.existsSync(boldFont) ? boldFont : (fs.existsSync(mediumFont) ? mediumFont : arabicFontPath),
-      italics: fs.existsSync(regularFont) ? regularFont : arabicFontPath,
-      bolditalics: fs.existsSync(boldFont) ? boldFont : (fs.existsSync(mediumFont) ? mediumFont : arabicFontPath)
+      normal: fontExists(regularFont) ? regularFont : arabicFontPath,
+      bold: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath),
+      italics: fontExists(regularFont) ? regularFont : arabicFontPath,
+      bolditalics: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath)
     },
     Nillima: {
-      normal: fs.existsSync(regularFont) ? regularFont : arabicFontPath,
-      bold: fs.existsSync(boldFont) ? boldFont : (fs.existsSync(mediumFont) ? mediumFont : arabicFontPath),
-      italics: fs.existsSync(regularFont) ? regularFont : arabicFontPath,
-      bolditalics: fs.existsSync(boldFont) ? boldFont : (fs.existsSync(mediumFont) ? mediumFont : arabicFontPath)
+      normal: fontExists(regularFont) ? regularFont : arabicFontPath,
+      bold: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath),
+      italics: fontExists(regularFont) ? regularFont : arabicFontPath,
+      bolditalics: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath)
     }
   };
   
