@@ -11,9 +11,9 @@ export default defineConfig({
   build: {
     // Optimize chunk splitting for better code splitting
     rollupOptions: {
-      // Performance Optimization: Enhanced tree shaking
+      // Safer tree shaking - don't assume no side effects (can break React lazy loading)
       treeshake: {
-        moduleSideEffects: false, // Assume no side effects for better tree shaking
+        moduleSideEffects: 'no-external', // Only assume no side effects for external modules
         propertyReadSideEffects: false,
         tryCatchDeoptimization: false,
       },
@@ -31,6 +31,8 @@ export default defineConfig({
             // Other vendor libraries
             return 'vendor';
           }
+          // Return undefined for app code (let Vite handle it)
+          return undefined;
         },
         // Optimize chunk file names for better caching
         chunkFileNames: 'assets/[name]-[hash].js',
@@ -46,6 +48,8 @@ export default defineConfig({
     cssCodeSplit: true,
     // Ensure CSS is loaded synchronously
     cssMinify: true,
+    // Disable CSS code splitting temporarily to ensure CSS loads
+    // cssCodeSplit: false, // Uncomment if CSS isn't loading
     // Keep console logs for debugging (remove in production later)
     esbuild: {
       // drop: ['console', 'debugger'], // Temporarily disabled for debugging
