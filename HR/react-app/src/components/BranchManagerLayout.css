@@ -15,41 +15,145 @@
   background: var(--bg-secondary);
 }
 
-/* Branch Manager Nav Links - Enhanced Styling */
+/* Branch Manager Nav Links - Use dropdown style like main manager */
 .branch-navbar .nav-links {
-  gap: var(--spacing-xl);
+  gap: var(--spacing-sm);
   justify-content: center;
   flex: 1;
+  flex-wrap: wrap;
+  direction: rtl;
 }
 
-.branch-navbar .nav-links a {
-  color: var(--text);
-  font-weight: 600;
-  font-size: var(--font-size-base);
-  padding: var(--spacing-sm) var(--spacing-lg);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-base);
-  background: transparent;
-  border: 2px solid transparent;
+/* Dropdown Container */
+.branch-navbar .nav-dropdown {
   position: relative;
 }
 
-.branch-navbar .nav-links a:hover {
-  color: var(--primary-dark);
-  background: var(--primary-light);
-  border-color: var(--primary);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-sm);
+.branch-navbar .dropdown-toggle {
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 0.625rem 1.25rem;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  transition: all var(--transition-base);
+  white-space: nowrap;
+  position: relative;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
 }
 
-.branch-navbar .nav-links a.active {
-  color: white;
-  background: var(--primary-dark);
-  border-color: var(--primary-dark);
+.branch-navbar .dropdown-toggle:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.branch-navbar .dropdown-toggle.active {
+  background: var(--primary);
+  color: #2c3e3a;
   box-shadow: var(--shadow-md);
 }
 
-.branch-navbar .nav-links a.active:hover {
+.branch-navbar .dropdown-arrow {
+  font-size: 10px;
+  transition: transform var(--transition-base);
+}
+
+.branch-navbar .nav-dropdown:has(.dropdown-menu.open) .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+/* Dropdown Menu */
+.branch-navbar .dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  min-width: 200px;
+  margin-top: var(--spacing-xs);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  transition: all var(--transition-base);
+  z-index: 1000;
+  border: 1px solid var(--border-light);
+  overflow: hidden;
+}
+
+.branch-navbar .dropdown-menu.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.branch-navbar .dropdown-menu a {
+  display: block;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  transition: all var(--transition-base);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.branch-navbar .dropdown-menu a:last-child {
+  border-bottom: none;
+}
+
+.branch-navbar .dropdown-menu a:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.branch-navbar .dropdown-menu a.active {
   background: var(--primary);
-  border-color: var(--primary);
+  color: #2c3e3a;
+  font-weight: 600;
+}
+
+/* Mobile Menu Styles */
+@media (max-width: 768px) {
+  .branch-navbar .nav-links.mobile-open {
+    flex-direction: column;
+    width: 100%;
+    margin-top: var(--spacing-md);
+  }
+
+  .branch-navbar .nav-dropdown {
+    width: 100%;
+  }
+
+  .branch-navbar .dropdown-toggle {
+    width: 100%;
+    justify-content: space-between;
+    padding: var(--spacing-md);
+  }
+
+  .branch-navbar .dropdown-menu {
+    position: static;
+    width: 100%;
+    margin-top: 0;
+    box-shadow: none;
+    border: none;
+    border-top: 1px solid var(--border-light);
+    border-radius: 0;
+    transform: none;
+    opacity: 1;
+    visibility: visible;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height var(--transition-base);
+  }
+
+  .branch-navbar .dropdown-menu.open {
+    max-height: 500px;
+  }
 }

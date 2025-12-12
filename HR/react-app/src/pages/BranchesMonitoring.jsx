@@ -368,7 +368,7 @@ const BranchesMonitoring = () => {
                     {monthlyMissing.length > 0 && (
                       <div className="documents-priority-section priority-high">
                         <h4 className="priority-title">
-                          <span className="priority-icon">🔴</span>
+                          <span className="priority-icon" style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#dc3545' }}></span>
                           المستندات الشهرية (الأولوية القصوى)
                         </h4>
                         <div className="documents-list">
@@ -388,7 +388,7 @@ const BranchesMonitoring = () => {
                     {studentCadreMissing.length > 0 && (
                       <div className="documents-priority-section priority-medium">
                         <h4 className="priority-title">
-                          <span className="priority-icon">🟡</span>
+                          <span className="priority-icon" style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ffc107' }}></span>
                           مستندات الكوادر والطلاب
                         </h4>
                         <div className="documents-list">
@@ -408,7 +408,7 @@ const BranchesMonitoring = () => {
                     {otherMissing.length > 0 && (
                       <div className="documents-priority-section priority-low">
                         <h4 className="priority-title">
-                          <span className="priority-icon">🟢</span>
+                          <span className="priority-icon" style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#28a745' }}></span>
                           باقي المستندات
                         </h4>
                         <div className="documents-list">

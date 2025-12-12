@@ -867,7 +867,7 @@ const MonthlyDocuments = () => {
                     <div className={`status-indicator status-${branchStatus.overallStatus}`}>
                       {branchStatus.overallStatus === 'uploaded' && '✓'}
                       {branchStatus.overallStatus === 'pending' && (
-                        <span style={{ fontSize: '16px' }}>⚠️</span>
+                        <img src="https://img.icons8.com/material-rounded/16/error.png" alt="تحذير" style={{ width: '16px', height: '16px' }} />
                       )}
                       {branchStatus.overallStatus === 'missing' && '✗'}
                     </div>
@@ -883,7 +883,7 @@ const MonthlyDocuments = () => {
                           <span className={`doc-status status-${status.status}`}>
                             {status.status === 'uploaded' && '✓'}
                             {status.status === 'pending' && (
-                              <span style={{ fontSize: '16px' }}>⚠️</span>
+                              <img src="https://img.icons8.com/material-rounded/16/error.png" alt="تحذير" style={{ width: '16px', height: '16px' }} />
                             )}
                             {status.status === 'missing' && '✗'}
                           </span>
@@ -923,7 +923,7 @@ const MonthlyDocuments = () => {
                     <div className={`status-indicator status-${branchStatus.overallStatus}`}>
                       {branchStatus.overallStatus === 'uploaded' && '✓'}
                       {branchStatus.overallStatus === 'pending' && (
-                        <span style={{ fontSize: '16px' }}>⚠️</span>
+                        <img src="https://img.icons8.com/material-rounded/16/error.png" alt="تحذير" style={{ width: '16px', height: '16px' }} />
                       )}
                       {branchStatus.overallStatus === 'missing' && '✗'}
                     </div>
@@ -939,7 +939,7 @@ const MonthlyDocuments = () => {
                           <span className={`doc-status status-${status.status}`}>
                             {status.status === 'uploaded' && '✓'}
                             {status.status === 'pending' && (
-                              <span style={{ fontSize: '16px' }}>⚠️</span>
+                              <img src="https://img.icons8.com/material-rounded/16/error.png" alt="تحذير" style={{ width: '16px', height: '16px' }} />
                             )}
                             {status.status === 'missing' && '✗'}
                           </span>

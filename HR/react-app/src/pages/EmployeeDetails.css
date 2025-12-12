@@ -26,8 +26,14 @@
 }
 
 .employee-details-header h1::before {
-  content: '👤';
-  font-size: 2rem;
+  content: '';
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  background-image: url('https://img.icons8.com/material-rounded/32/user.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
 /* Employee Profile Card */

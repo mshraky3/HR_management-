@@ -13,6 +13,7 @@ const BranchManagerLayout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState(null);
 
   const handleLogout = () => {
     logout();
@@ -25,6 +26,51 @@ const BranchManagerLayout = ({ children }) => {
 
   const toggleMobileMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen);
+  };
+
+  const toggleDropdown = (dropdownName) => {
+    setOpenDropdown(openDropdown === dropdownName ? null : dropdownName);
+  };
+
+  const closeDropdown = () => {
+    setOpenDropdown(null);
+  };
+
+  // Navigation menu structure for branch managers
+  const menuItems = {
+    main: {
+      label: 'الرئيسية',
+      items: [
+        { path: '/dashboard', label: 'لوحة التحكم' },
+        { path: '/branch-info', label: 'معلومات الفرع' },
+      ]
+    },
+    employees: {
+      label: 'الموظفين',
+      items: [
+        { path: '/employees', label: 'موظفي الفرع' },
+        { path: '/reports', label: 'إصدار التقارير' },
+      ]
+    },
+    documents: {
+      label: 'المستندات',
+      items: [
+        { path: '/monthly-documents', label: 'المستندات الشهرية' },
+        { path: '/branch-documents', label: 'مستندات الفرع' },
+      ]
+    },
+    requests: {
+      label: 'الطلبات',
+      items: [
+        { path: '/branch-requests', label: 'طلبات' },
+      ]
+    },
+    monitoring: {
+      label: 'المتابعة',
+      items: [
+        { path: '/alerts', label: 'التنبيهات الذكية' },
+      ]
+    }
   };
 
   return (
@@ -42,30 +88,32 @@ const BranchManagerLayout = ({ children }) => {
           {mobileMenuOpen ? '✕' : '☰'}
         </button>
         <div className={`nav-links ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-          <Link to="/dashboard" className={isActive('/dashboard')} onClick={() => setMobileMenuOpen(false)}>
-            لوحة التحكم
-          </Link>
-          <Link to="/employees" className={isActive('/employees')} onClick={() => setMobileMenuOpen(false)}>
-            موظفي الفرع
-          </Link>
-          <Link to="/alerts" className={isActive('/alerts')} onClick={() => setMobileMenuOpen(false)}>
-            التنبيهات الذكية
-          </Link>
-          <Link to="/monthly-documents" className={isActive('/monthly-documents')} onClick={() => setMobileMenuOpen(false)}>
-            المستندات الشهرية
-          </Link>
-          <Link to="/branch-documents" className={isActive('/branch-documents')} onClick={() => setMobileMenuOpen(false)}>
-            مستندات الفرع
-          </Link>
-          <Link to="/branch-info" className={isActive('/branch-info')} onClick={() => setMobileMenuOpen(false)}>
-            معلومات الفرع
-          </Link>
-          <Link to="/reports" className={isActive('/reports')} onClick={() => setMobileMenuOpen(false)}>
-            إصدار التقارير
-          </Link>
-          <Link to="/branch-requests" className={isActive('/branch-requests')} onClick={() => setMobileMenuOpen(false)}>
-            طلبات
-          </Link>
+          {Object.entries(menuItems).map(([key, menu]) => (
+            <div key={key} className="nav-dropdown">
+              <button
+                className={`dropdown-toggle ${isActive(menu.items.map(item => item.path).find(path => location.pathname === path)) ? 'active' : ''}`}
+                onClick={() => toggleDropdown(key)}
+              >
+                {menu.label}
+                <span className="dropdown-arrow">▼</span>
+              </button>
+              <div className={`dropdown-menu ${openDropdown === key ? 'open' : ''}`}>
+                {menu.items.map((item) => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={isActive(item.path)}
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      closeDropdown();
+                    }}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
         <div className="nav-user">
           <span className="user-info">

@@ -81,7 +81,7 @@ export const NotificationProvider = ({ children }) => {
                 {notification.type === 'success' && '✓'}
                 {notification.type === 'error' && '✗'}
                 {notification.type === 'warning' && (
-                  <span style={{ fontSize: '20px' }}>⚠️</span>
+                  <img src="https://img.icons8.com/material-rounded/20/error.png" alt="تحذير" style={{ width: '20px', height: '20px' }} />
                 )}
                 {notification.type === 'info' && 'ℹ'}
               </span>

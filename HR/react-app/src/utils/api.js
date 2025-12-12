@@ -714,11 +714,20 @@ export const archiveAPI = {
   updateStatus: (id, data) => 
     api.put(`/api/archive/${id}/status`, data),
   
+  restore: (id, data) => 
+    api.post(`/api/archive/${id}/restore`, data),
+  
   getArchivedBranchDocuments: (filters = {}) => 
     api.get('/api/archive/branch-documents/all', { params: filters }),
   
   getArchivedBranchDocumentById: (id) => 
     api.get(`/api/archive/branch-documents/${id}`),
+  
+  export: (filters = {}, format = 'excel') => 
+    api.get('/api/archive/export', { 
+      params: { ...filters, format },
+      responseType: format === 'csv' ? 'blob' : 'arraybuffer'
+    }),
 };
 
 // Branch Statistics API

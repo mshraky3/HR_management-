@@ -29,6 +29,13 @@ const Archive = () => {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [statusForm, setStatusForm] = useState({ status: '', reason: '' });
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [totalEmployees, setTotalEmployees] = useState(0);
   
   // Documents state
   const [archivedDocuments, setArchivedDocuments] = useState([]);
@@ -66,17 +73,17 @@ const Archive = () => {
     }
   };
 
-  const loadArchivedEmployees = async () => {
+  const loadArchivedEmployees = async (page = currentPage) => {
     try {
       setLoadingEmployees(true);
       const filterParams = {};
       
-      // Add search filters
+      // Add search filters (now server-side)
       if (filters.search_name) {
-        // We'll need to filter client-side for name search
+        filterParams.search_name = filters.search_name;
       }
       if (filters.search_id) {
-        // We'll need to filter client-side for ID search
+        filterParams.search_id = filters.search_id;
       }
       if (filters.branch_id) {
         filterParams.branch_id = parseInt(filters.branch_id);
@@ -100,33 +107,24 @@ const Archive = () => {
         filterParams.status_change_date_to = filters.status_change_date_to;
       }
       
+      // Add pagination
+      filterParams.limit = itemsPerPage;
+      filterParams.page = page;
+      
       const response = await archiveAPI.getAll(filterParams);
       
       if (response.data.success) {
-        let employees = response.data.data || [];
-        
-        // Client-side filtering for name and ID
-        if (filters.search_name) {
-          const searchTerm = filters.search_name.toLowerCase();
-          employees = employees.filter(emp => 
-            `${emp.first_name} ${emp.second_name} ${emp.third_name} ${emp.fourth_name}`
-              .toLowerCase().includes(searchTerm)
-          );
-        }
-        
-        if (filters.search_id) {
-          const searchTerm = filters.search_id.toLowerCase();
-          employees = employees.filter(emp => 
-            (emp.id_or_residency_number || '').toLowerCase().includes(searchTerm) ||
-            (emp.employee_id_number || '').toLowerCase().includes(searchTerm)
-          );
-        }
-        
-        setArchivedEmployees(employees);
+        setArchivedEmployees(response.data.data || []);
+        setTotalEmployees(response.data.total || 0);
+        setCurrentPage(page);
       }
     } catch (error) {
       console.error('Error loading archived employees:', error);
-      showError('فشل تحميل الموظفين المؤرشفين');
+      if (error.response?.data?.message) {
+        showError(error.response.data.message);
+      } else {
+        showError('فشل تحميل الموظفين المؤرشفين');
+      }
     } finally {
       setLoadingEmployees(false);
     }
@@ -170,14 +168,24 @@ const Archive = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMainManager, activeTab]);
 
+  // Reset to page 1 when filters change
   useEffect(() => {
     if (activeTab === 'employees') {
-      loadArchivedEmployees();
+      setCurrentPage(1);
+      loadArchivedEmployees(1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.search_name, filters.search_id, filters.branch_id, filters.status, 
       filters.academic_year, filters.registration_date_from, filters.registration_date_to,
-      filters.status_change_date_from, filters.status_change_date_to]);
+      filters.status_change_date_from, filters.status_change_date_to, itemsPerPage]);
+  
+  // Load page when currentPage changes (but not when filters change)
+  useEffect(() => {
+    if (activeTab === 'employees') {
+      loadArchivedEmployees(currentPage);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]);
 
   useEffect(() => {
     if (activeTab === 'documents') {
@@ -215,27 +223,76 @@ const Archive = () => {
       return;
     }
 
-    try {
-      setUpdatingStatus(true);
-      const response = await archiveAPI.updateStatus(selectedEmployee, {
-        status: statusForm.status,
-        reason: statusForm.reason || null
-      });
+    // Check if trying to restore (change to active/pending)
+    const archivedStatuses = ['terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
+    const currentStatus = employeeDetails?.status;
+    const isRestore = archivedStatuses.includes(currentStatus) && 
+                     (statusForm.status === 'active' || statusForm.status === 'pending');
 
-      if (response.data.success) {
-        showSuccess('تم تحديث حالة الموظف بنجاح');
-        setShowStatusModal(false);
-        setStatusForm({ status: '', reason: '' });
-        loadArchivedEmployees();
-        if (selectedEmployee) {
-          handleViewEmployee(selectedEmployee); // Reload details
+    if (isRestore) {
+      // Use restore endpoint
+      try {
+        setUpdatingStatus(true);
+        const response = await archiveAPI.restore(selectedEmployee, {
+          status: statusForm.status,
+          reason: statusForm.reason || 'تم الاستعادة من الأرشيف'
+        });
+
+        if (response.data.success) {
+          showSuccess(response.data.message || 'تم استعادة الموظف بنجاح');
+          setShowStatusModal(false);
+          setStatusForm({ status: '', reason: '' });
+          setSelectedEmployee(null);
+          setEmployeeDetails(null);
+          loadArchivedEmployees(currentPage);
         }
+      } catch (error) {
+        console.error('Error restoring employee:', error);
+        showError(error.response?.data?.message || 'فشل استعادة الموظف');
+      } finally {
+        setUpdatingStatus(false);
       }
-    } catch (error) {
-      console.error('Error updating status:', error);
-      showError(error.response?.data?.message || 'فشل تحديث الحالة');
-    } finally {
-      setUpdatingStatus(false);
+    } else {
+      // Regular status update
+      try {
+        setUpdatingStatus(true);
+        const response = await archiveAPI.updateStatus(selectedEmployee, {
+          status: statusForm.status,
+          reason: statusForm.reason || null
+        });
+
+        if (response.data.success) {
+          showSuccess('تم تحديث حالة الموظف بنجاح');
+          setShowStatusModal(false);
+          setStatusForm({ status: '', reason: '' });
+          loadArchivedEmployees(currentPage);
+          if (selectedEmployee) {
+            handleViewEmployee(selectedEmployee); // Reload details
+          }
+        }
+      } catch (error) {
+        console.error('Error updating status:', error);
+        showError(error.response?.data?.message || 'فشل تحديث الحالة');
+      } finally {
+        setUpdatingStatus(false);
+      }
+    }
+  };
+
+  const handleStatusUpdateClick = (employee) => {
+    setSelectedEmployee(employee.id);
+    setStatusForm({
+      status: employee.status || '',
+      reason: employee.status_change_reason || ''
+    });
+    setShowStatusModal(true);
+  };
+
+  const handleConfirmAction = async () => {
+    if (confirmAction) {
+      await confirmAction();
+      setShowConfirmModal(false);
+      setConfirmAction(null);
     }
   };
 
@@ -385,6 +442,76 @@ const Archive = () => {
     }
   };
 
+  const handleExportExcel = async () => {
+    try {
+      const filterParams = {};
+      
+      // Build filter params same as loadArchivedEmployees
+      if (filters.search_name) filterParams.search_name = filters.search_name;
+      if (filters.search_id) filterParams.search_id = filters.search_id;
+      if (filters.branch_id) filterParams.branch_id = parseInt(filters.branch_id);
+      if (filters.status) filterParams.status = filters.status;
+      if (filters.academic_year) filterParams.academic_year = filters.academic_year;
+      if (filters.registration_date_from) filterParams.registration_date_from = filters.registration_date_from;
+      if (filters.registration_date_to) filterParams.registration_date_to = filters.registration_date_to;
+      if (filters.status_change_date_from) filterParams.status_change_date_from = filters.status_change_date_from;
+      if (filters.status_change_date_to) filterParams.status_change_date_to = filters.status_change_date_to;
+      
+      const response = await archiveAPI.export(filterParams, 'excel');
+      
+      // Create blob from arraybuffer
+      const blob = new Blob([response.data], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `archived-employees-${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showSuccess('تم تصدير البيانات بنجاح');
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      showError(error.response?.data?.message || 'فشل تصدير البيانات');
+    }
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      const filterParams = {};
+      
+      // Build filter params same as loadArchivedEmployees
+      if (filters.search_name) filterParams.search_name = filters.search_name;
+      if (filters.search_id) filterParams.search_id = filters.search_id;
+      if (filters.branch_id) filterParams.branch_id = parseInt(filters.branch_id);
+      if (filters.status) filterParams.status = filters.status;
+      if (filters.academic_year) filterParams.academic_year = filters.academic_year;
+      if (filters.registration_date_from) filterParams.registration_date_from = filters.registration_date_from;
+      if (filters.registration_date_to) filterParams.registration_date_to = filters.registration_date_to;
+      if (filters.status_change_date_from) filterParams.status_change_date_from = filters.status_change_date_from;
+      if (filters.status_change_date_to) filterParams.status_change_date_to = filters.status_change_date_to;
+      
+      const response = await archiveAPI.export(filterParams, 'csv');
+      
+      // Create blob from response
+      const blob = response.data instanceof Blob ? response.data : new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `archived-employees-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showSuccess('تم تصدير البيانات بنجاح');
+    } catch (error) {
+      console.error('Error exporting to CSV:', error);
+      showError(error.response?.data?.message || 'فشل تصدير البيانات');
+    }
+  };
+
   const handleGenerateReport = async () => {
     try {
       // Use the same report generation as Reports page
@@ -443,13 +570,35 @@ const Archive = () => {
     <div className="archive-page">
       <div className="page-header">
         <h1>الأرشيف</h1>
-        {activeTab === 'employees' && archivedEmployees.length > 0 && (
-          <button
-            className="btn btn-primary"
-            onClick={handleGenerateReport}
-          >
-            إنشاء تقرير
-          </button>
+        {activeTab === 'employees' && (
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {totalEmployees > 0 && (
+              <>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleExportExcel}
+                  disabled={loadingEmployees}
+                >
+                  {loadingEmployees ? 'جاري التحميل...' : 'تصدير Excel'}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleExportCSV}
+                  disabled={loadingEmployees}
+                >
+                  {loadingEmployees ? 'جاري التحميل...' : 'تصدير CSV'}
+                </button>
+              </>
+            )}
+            {archivedEmployees.length > 0 && (
+              <button
+                className="btn btn-primary"
+                onClick={handleGenerateReport}
+              >
+                إنشاء تقرير
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -560,26 +709,29 @@ const Archive = () => {
                 />
               </div>
             </div>
-            <button
-              className="btn btn-secondary"
-              onClick={() => {
-                setFilters({
-                  search_name: '',
-                  search_id: '',
-                  branch_id: '',
-                  status: '',
-                  academic_year: '',
-                  registration_date_from: '',
-                  registration_date_to: '',
-                  status_change_date_from: '',
-                  status_change_date_to: '',
-                  doc_branch_id: '',
-                  doc_document_type: ''
-                });
-              }}
-            >
-              إعادة تعيين الفلاتر
-            </button>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setFilters({
+                    search_name: '',
+                    search_id: '',
+                    branch_id: '',
+                    status: '',
+                    academic_year: '',
+                    registration_date_from: '',
+                    registration_date_to: '',
+                    status_change_date_from: '',
+                    status_change_date_to: '',
+                    doc_branch_id: '',
+                    doc_document_type: ''
+                  });
+                  setCurrentPage(1);
+                }}
+              >
+                إعادة تعيين الفلاتر
+              </button>
+            </div>
           </div>
 
           {/* Employees List */}
@@ -639,14 +791,7 @@ const Archive = () => {
                           </button>
                           <button
                             className="btn btn-sm btn-secondary"
-                            onClick={() => {
-                              setSelectedEmployee(employee.id);
-                              setStatusForm({
-                                status: employee.status || '',
-                                reason: employee.status_change_reason || ''
-                              });
-                              setShowStatusModal(true);
-                            }}
+                            onClick={() => handleStatusUpdateClick(employee)}
                           >
                             تعديل الحالة
                           </button>
@@ -656,6 +801,86 @@ const Archive = () => {
                   ))}
                 </tbody>
               </table>
+              
+              {/* Pagination Controls */}
+              {totalEmployees > itemsPerPage && (
+                <div className="pagination" style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                  <div className="pagination-info" style={{ color: '#666', fontSize: '14px' }}>
+                    عرض {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, totalEmployees)} من {totalEmployees}
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <select
+                      value={itemsPerPage}
+                      onChange={(e) => {
+                        setItemsPerPage(parseInt(e.target.value, 10));
+                        setCurrentPage(1);
+                      }}
+                      style={{ padding: '6px 10px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '14px' }}
+                    >
+                      <option value={25}>25 لكل صفحة</option>
+                      <option value={50}>50 لكل صفحة</option>
+                      <option value={100}>100 لكل صفحة</option>
+                      <option value={200}>200 لكل صفحة</option>
+                    </select>
+                    
+                    <button
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      الأولى
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      السابقة
+                    </button>
+                    
+                    {/* Page numbers */}
+                    {Array.from({ length: Math.min(5, Math.ceil(totalEmployees / itemsPerPage)) }, (_, i) => {
+                      const totalPages = Math.ceil(totalEmployees / itemsPerPage);
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`btn btn-sm ${currentPage === pageNum ? 'btn-primary' : 'btn-secondary'}`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                    
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalEmployees / itemsPerPage), prev + 1))}
+                      disabled={currentPage >= Math.ceil(totalEmployees / itemsPerPage)}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      التالية
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(Math.ceil(totalEmployees / itemsPerPage))}
+                      disabled={currentPage >= Math.ceil(totalEmployees / itemsPerPage)}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      الأخيرة
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -805,21 +1030,47 @@ const Archive = () => {
 
       {/* Status Update Modal */}
       {showStatusModal && (
-        <div className="modal-overlay" onClick={() => setShowStatusModal(false)}>
+        <div className="modal-overlay" onClick={() => {
+          if (!updatingStatus) {
+            setShowStatusModal(false);
+            setStatusForm({ status: '', reason: '' });
+          }
+        }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>تعديل حالة الموظف</h3>
+            {employeeDetails && (
+              <div style={{ marginBottom: '15px', padding: '10px', background: '#f5f5f5', borderRadius: '4px', fontSize: '14px' }}>
+                <strong>الموظف:</strong> {employeeDetails.first_name} {employeeDetails.second_name} {employeeDetails.third_name} {employeeDetails.fourth_name}
+                <br />
+                <strong>الحالة الحالية:</strong> {statusLabels[employeeDetails.status] || employeeDetails.status}
+              </div>
+            )}
             <div className="form-group">
-              <label>الحالة *</label>
+              <label>الحالة الجديدة *</label>
               <select
                 value={statusForm.status}
                 onChange={(e) => setStatusForm(prev => ({ ...prev, status: e.target.value }))}
                 required
+                disabled={updatingStatus}
               >
                 <option value="">اختر الحالة</option>
                 {Object.entries(statusLabels).map(([value, label]) => (
                   <option key={value} value={value}>{label}</option>
                 ))}
               </select>
+              {employeeDetails && (() => {
+                const archivedStatuses = ['terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
+                const isRestore = archivedStatuses.includes(employeeDetails.status) && 
+                                 (statusForm.status === 'active' || statusForm.status === 'pending');
+                if (isRestore) {
+                  return (
+                    <div style={{ marginTop: '8px', padding: '8px', background: '#e3f2fd', borderRadius: '4px', fontSize: '12px', color: '#1976d2' }}>
+                      ⓘ سيتم استعادة الموظف من الأرشيف
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
             <div className="form-group">
               <label>السبب (اختياري)</label>
@@ -828,21 +1079,52 @@ const Archive = () => {
                 onChange={(e) => setStatusForm(prev => ({ ...prev, reason: e.target.value }))}
                 rows="3"
                 placeholder="اكتب سبب تغيير الحالة..."
+                disabled={updatingStatus}
               />
             </div>
             <div className="modal-actions">
               <button
                 className="btn btn-primary"
                 onClick={handleUpdateStatus}
-                disabled={updatingStatus}
+                disabled={updatingStatus || !statusForm.status}
               >
                 {updatingStatus ? 'جاري الحفظ...' : 'حفظ'}
               </button>
               <button
                 className="btn btn-secondary"
                 onClick={() => {
-                  setShowStatusModal(false);
-                  setStatusForm({ status: '', reason: '' });
+                  if (!updatingStatus) {
+                    setShowStatusModal(false);
+                    setStatusForm({ status: '', reason: '' });
+                  }
+                }}
+                disabled={updatingStatus}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="modal-overlay" onClick={() => setShowConfirmModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>تأكيد الإجراء</h3>
+            <p>هل أنت متأكد من تنفيذ هذا الإجراء؟</p>
+            <div className="modal-actions">
+              <button
+                className="btn btn-primary"
+                onClick={handleConfirmAction}
+              >
+                تأكيد
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowConfirmModal(false);
+                  setConfirmAction(null);
                 }}
               >
                 إلغاء

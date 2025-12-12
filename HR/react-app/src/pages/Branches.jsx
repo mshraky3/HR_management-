@@ -96,9 +96,11 @@ const Branches = () => {
   const loadBranches = async () => {
     try {
       setLoading(true);
-      const filters = { is_active: 'true' };
+      // Send boolean true instead of string 'true' for better reliability
+      const filters = { is_active: true };
       
       // Branch managers only see their own branch
+      // Main managers should see all active branches
       if (!isMainManager() && user?.branch_id) {
         filters.id = user.branch_id;
       }

@@ -31,7 +31,6 @@ const getApiUrl = () => {
     return import.meta.env.VITE_API_URL;
   }
   
-  // Otherwise use the CURRENT setting from config
   return API_CONFIG[API_CONFIG.CURRENT] || API_CONFIG.LOCAL;
 };
 

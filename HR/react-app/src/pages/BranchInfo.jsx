@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { branchesAPI } from '../utils/api';
+import { branchesAPI, clearCache } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import './BranchInfo.css';
@@ -60,12 +60,28 @@ const BranchInfo = () => {
     e.preventDefault();
     try {
       setSaving(true);
-      await branchesAPI.updateMyBranch({
+      const response = await branchesAPI.updateMyBranch({
         phone_number: formData.phone_number || null,
         email: formData.email || null,
       });
+      
+      // Clear cache to ensure fresh data is loaded everywhere
+      clearCache('/api/branches');
+      
+      // Update state directly from response to avoid cache issues
+      if (response && response.data && response.data.success && response.data.data) {
+        const updatedBranch = response.data.data;
+        setBranch(updatedBranch);
+        setFormData({
+          phone_number: updatedBranch.phone_number || '',
+          email: updatedBranch.email || '',
+        });
+      } else {
+        // Fallback: reload from server if response format is unexpected
+        await loadBranch();
+      }
+      
       showSuccess('تم تحديث معلومات الفرع بنجاح');
-      await loadBranch(); // Reload to get updated data
     } catch (error) {
       console.error('Error updating branch:', error);
       showError('فشل تحديث معلومات الفرع: ' + (error.response?.data?.message || error.message));

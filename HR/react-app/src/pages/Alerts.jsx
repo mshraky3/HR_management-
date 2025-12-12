@@ -240,7 +240,9 @@ const Alerts = () => {
         <div>
           <h1>التنبيهات الذكية</h1>
           {unreadCount > 0 && (
-            <span className="unread-badge">{unreadCount} غير مقروء</span>
+            <span className="unread-badge">
+              {unreadCount} غير مقروء
+            </span>
           )}
         </div>
         <div className="alerts-header-actions">
@@ -265,7 +267,7 @@ const Alerts = () => {
             className="btn btn-secondary"
             onClick={() => setShowSettings(!showSettings)}
           >
-            إعدادات التنبيهات
+            {showSettings ? 'إغلاق الإعدادات' : 'إعدادات التنبيهات'}
           </button>
         </div>
       </div>
@@ -273,7 +275,8 @@ const Alerts = () => {
       {/* Scheduler Status (Main Manager only) */}
       {isMainManager() && schedulerStatus && (
         <div className="scheduler-status">
-          <strong>حالة المخطط:</strong> {schedulerStatus.isRunning ? '✓ يعمل' : '✗ متوقف'}
+          <strong>حالة المخطط:</strong> 
+          <span>{schedulerStatus.isRunning ? 'يعمل' : 'متوقف'}</span>
           {schedulerStatus.intervalMinutes && (
             <span> (يعمل كل {schedulerStatus.intervalMinutes} دقيقة)</span>
           )}
@@ -431,8 +434,8 @@ const Alerts = () => {
                 </div>
                 <div className="alert-meta">
                   <span className="alert-date">{formatDate(alert.created_at)}</span>
-                  {!alert.is_read && <span className="unread-indicator">●</span>}
-                  {alert.is_resolved && <span className="resolved-indicator">✓ محلول</span>}
+                  {!alert.is_read && <span className="unread-indicator"></span>}
+                  {alert.is_resolved && <span className="resolved-indicator">محلول</span>}
                 </div>
               </div>
 

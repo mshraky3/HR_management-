@@ -1052,7 +1052,7 @@ const Employees = () => {
       }
 
       // Show clear error message
-      showError(`❌ خطأ في حفظ الموظف\n\n${errorMessage}\n\nالرجاء التحقق من البيانات المدخلة والمحاولة مرة أخرى.`);
+      showError(`خطأ في حفظ الموظف\n\n${errorMessage}\n\nالرجاء التحقق من البيانات المدخلة والمحاولة مرة أخرى.`);
     } finally {
       setSaving(false);
       setUploadingDocuments(false);

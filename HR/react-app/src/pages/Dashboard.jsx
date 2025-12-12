@@ -7,7 +7,7 @@ import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI } from '../utils/api';
+import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, alertsAPI } from '../utils/api';
 import { 
   getRequiredBranchDocuments, 
   getBranchTypeLabel,
@@ -32,6 +32,10 @@ const Dashboard = () => {
   const [monthlyDocumentAlerts, setMonthlyDocumentAlerts] = useState([]);
   const [incompleteEmployees, setIncompleteEmployees] = useState([]);
   const [missingBranchDocumentAlerts, setMissingBranchDocumentAlerts] = useState([]);
+  const [missingBranchDocumentAlertsWithExpiry, setMissingBranchDocumentAlertsWithExpiry] = useState([]);
+  const [missingBranchDocumentAlertsWithoutExpiry, setMissingBranchDocumentAlertsWithoutExpiry] = useState([]);
+  const [documentsWithExpiry, setDocumentsWithExpiry] = useState([]);
+  const [documentsWithoutExpiry, setDocumentsWithoutExpiry] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [respondingTo, setRespondingTo] = useState(null);
   const [responseStatus, setResponseStatus] = useState('');
@@ -45,6 +49,12 @@ const Dashboard = () => {
   const [mainManagerNotifications, setMainManagerNotifications] = useState([]);
   const [newResponsesCount, setNewResponsesCount] = useState(0);
   const [branchInfo, setBranchInfo] = useState(null);
+  const [progressData, setProgressData] = useState({
+    employeesCompletion: 0,
+    branchDocumentsCompletion: 0,
+    alertsResolved: 0,
+    overallProgress: 0
+  });
 
   useEffect(() => {
     loadStats();
@@ -148,8 +158,19 @@ const Dashboard = () => {
         }
 
         // Check monthly documents and missing branch documents
-        checkMonthlyDocuments(documentsRes.data.data || [], branchesList);
-        checkMissingBranchDocuments(documentsRes.data.data || [], branchesList);
+        const allDocuments = documentsRes.data.data || [];
+        checkMonthlyDocuments(allDocuments, branchesList);
+        checkMissingBranchDocuments(allDocuments, branchesList);
+        
+        // Calculate progress for branch manager (after branchInfo is loaded)
+        if (branchInfoRes?.data?.success && branchInfoRes.data.data) {
+          await calculateProgress(employeesRes.data.data || [], allDocuments, branchInfoRes.data.data);
+        }
+        
+        // Separate documents by expiry date (after branches are set)
+        setTimeout(() => {
+          separateDocumentsByExpiry(allDocuments);
+        }, 100);
       } else if (isMainManager()) {
         // Main manager results
         setLoadingStats(true);
@@ -182,6 +203,8 @@ const Dashboard = () => {
         // Clear branch manager specific alerts
         setIncompleteEmployees([]);
         setMissingBranchDocumentAlerts([]);
+        setDocumentsWithExpiry([]);
+        setDocumentsWithoutExpiry([]);
         setLoadingStats(false);
       } else {
         // Set stats for branch managers (main manager stats set above)
@@ -261,6 +284,55 @@ const Dashboard = () => {
       setNewResponsesCount(0);
     }
   }, []);
+
+  // Calculate overall progress for branch manager
+  const calculateProgress = async (employees, documents, branch) => {
+    if (!branch || isMainManager()) return;
+    
+    try {
+      // 1. Calculate employees data completion
+      const totalEmployees = employees.length;
+      const completeEmployees = employees.filter(emp => emp.data_completion_status === 'complete').length;
+      const employeesCompletion = totalEmployees > 0 
+        ? Math.round((completeEmployees / totalEmployees) * 100) 
+        : 0;
+      
+      // 2. Calculate branch documents completion
+      const { getRequiredBranchDocuments } = await import('../utils/employeeHelpers');
+      const requiredDocs = getRequiredBranchDocuments(branch.branch_type);
+      const uploadedDocs = documents.filter(doc => 
+        requiredDocs.includes(doc.document_type) && doc.is_active
+      );
+      const branchDocumentsCompletion = requiredDocs.length > 0
+        ? Math.round((uploadedDocs.length / requiredDocs.length) * 100)
+        : 0;
+      
+      // 3. Calculate overall progress (weighted average)
+      // Employees: 50%, Documents: 50%
+      const overallProgress = Math.round(
+        (employeesCompletion * 0.5) + 
+        (branchDocumentsCompletion * 0.5)
+      );
+      
+      setProgressData({
+        employeesCompletion,
+        branchDocumentsCompletion,
+        alertsResolved: 0, // Not used anymore
+        overallProgress
+      });
+    } catch (error) {
+      console.error('Error calculating progress:', error);
+    }
+  };
+
+  // Get progress color class based on percentage
+  const getProgressColorClass = (percentage) => {
+    if (percentage >= 90) return 'excellent';
+    if (percentage >= 70) return 'good';
+    if (percentage >= 50) return 'moderate';
+    if (percentage >= 30) return 'low';
+    return 'critical';
+  };
 
   const checkMonthlyDocuments = (documents, branchesList) => {
     const alerts = [];
@@ -393,8 +465,35 @@ const Dashboard = () => {
     setMonthlyDocumentAlerts(alerts);
   };
 
+  // Helper function to determine if a document type requires expiry date
+  const requiresExpiryDate = (docType) => {
+    // Monthly documents require expiry date (must be updated monthly)
+    const monthlyTypes = getMonthlyRequiredBranchDocuments();
+    if (monthlyTypes.includes(docType)) {
+      return true;
+    }
+    
+    // Documents that typically require expiry dates
+    const expiryRequiredTypes = [
+      'license',           // الترخيص - usually has expiry
+      'permit',            // التصريح - usually has expiry
+      'insurance',         // التأمين - usually has expiry
+      'insurance_certificate', // شهادة التامينات - usually has expiry
+      'civil_defense_certificate', // شهادة الدفاع المدني - usually has expiry
+      'municipality_certificate',  // شهادة بلدي - usually has expiry
+      'contract',          // العقد - may have expiry
+      'rental_contract',   // عقد الايجار - usually has expiry
+      'security_contract', // عقد الامن و السالامة - usually has expiry
+      'registration'      // السجل التجاري - may have expiry
+    ];
+    
+    return expiryRequiredTypes.includes(docType);
+  };
+
   const checkMissingBranchDocuments = (documents, branchesList) => {
-    const alerts = [];
+    const alertsWithExpiry = [];
+    const alertsWithoutExpiry = [];
+    const seenAlerts = new Set(); // To prevent duplicates
     
     // Get document type labels from branch document type labels
     // This ensures consistency with the rule system
@@ -443,6 +542,12 @@ const Dashboard = () => {
       const nonMonthlyRequired = requiredDocTypes.filter(docType => !monthlyTypes.includes(docType));
       
       for (const docType of nonMonthlyRequired) {
+        // Create unique key to prevent duplicates
+        const alertKey = `${branch.id}-${docType}`;
+        if (seenAlerts.has(alertKey)) {
+          continue; // Skip if already added
+        }
+        
         // Check if this document type exists for this branch
         const branchDocs = documents.filter(
           doc => doc.branch_id === branch.id && doc.document_type === docType && doc.is_active !== false
@@ -450,42 +555,176 @@ const Dashboard = () => {
 
         if (branchDocs.length === 0) {
           // Document is missing
-          alerts.push({
+          const alert = {
             branchId: branch.id,
             branchName: branch.branch_name,
             branchType: branchType,
             documentType: docType,
             documentLabel: typeLabels[docType] || docType,
             message: `مستند ${typeLabels[docType] || docType} مفقود - يجب رفعه`
-          });
+          };
+          
+          // Check if document requires expiry date
+          if (requiresExpiryDate(docType)) {
+            alertsWithExpiry.push(alert);
+          } else {
+            alertsWithoutExpiry.push(alert);
+          }
+          
+          seenAlerts.add(alertKey);
         }
       }
     }
 
     // Sort by priority first, then by branch name, then by document type
-    alerts.sort((a, b) => {
-      // Priority order: 1) Monthly (highest), 2) Student/Cadre, 3) Others
+    const sortAlerts = (alerts) => {
+      return alerts.sort((a, b) => {
+        // Priority order: 1) Monthly (highest), 2) Student/Cadre, 3) Others
+        const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
+        const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
+        
+        const aIsMonthly = monthlyTypes.includes(a.documentType);
+        const bIsMonthly = monthlyTypes.includes(b.documentType);
+        if (aIsMonthly && !bIsMonthly) return -1;
+        if (!aIsMonthly && bIsMonthly) return 1;
+        
+        const aIsStudentCadre = studentCadreTypes.includes(a.documentType);
+        const bIsStudentCadre = studentCadreTypes.includes(b.documentType);
+        if (aIsStudentCadre && !bIsStudentCadre) return -1;
+        if (!aIsStudentCadre && bIsStudentCadre) return 1;
+        
+        // Then sort by branch name, then by document type
+        const branchCompare = a.branchName.localeCompare(b.branchName, 'ar');
+        if (branchCompare !== 0) return branchCompare;
+        return a.documentLabel.localeCompare(b.documentLabel, 'ar');
+      });
+    };
+
+    // Keep old state for backward compatibility
+    const allAlerts = [...alertsWithExpiry, ...alertsWithoutExpiry];
+    setMissingBranchDocumentAlerts(allAlerts);
+    setMissingBranchDocumentAlertsWithExpiry(sortAlerts(alertsWithExpiry));
+    setMissingBranchDocumentAlertsWithoutExpiry(sortAlerts(alertsWithoutExpiry));
+  };
+
+  // Separate documents by expiry date
+  const separateDocumentsByExpiry = useCallback((documents) => {
+    if (isMainManager()) return;
+    
+    const branchId = user?.branch_id;
+    if (!branchId || branches.length === 0) return;
+
+    // Filter documents for this branch
+    const branchDocs = documents.filter(
+      doc => doc.branch_id === branchId && doc.is_active !== false
+    );
+
+    // Separate by expiry date
+    const withExpiry = [];
+    const withoutExpiry = [];
+
+    branchDocs.forEach(doc => {
+      // Skip monthly documents (handled separately)
       const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
-      const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
-      
-      const aIsMonthly = monthlyTypes.includes(a.documentType);
-      const bIsMonthly = monthlyTypes.includes(b.documentType);
-      if (aIsMonthly && !bIsMonthly) return -1;
-      if (!aIsMonthly && bIsMonthly) return 1;
-      
-      const aIsStudentCadre = studentCadreTypes.includes(a.documentType);
-      const bIsStudentCadre = studentCadreTypes.includes(b.documentType);
-      if (aIsStudentCadre && !bIsStudentCadre) return -1;
-      if (!aIsStudentCadre && bIsStudentCadre) return 1;
-      
-      // Then sort by branch name, then by document type
-      const branchCompare = a.branchName.localeCompare(b.branchName, 'ar');
-      if (branchCompare !== 0) return branchCompare;
-      return a.documentLabel.localeCompare(b.documentLabel, 'ar');
+      if (monthlyTypes.includes(doc.document_type)) {
+        return;
+      }
+
+      // Check if document has expiry date
+      if (doc.expiry_date) {
+        const expiryDate = new Date(doc.expiry_date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Only show if expired or expiring soon (within 90 days)
+        const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+        
+        if (daysUntilExpiry <= 90) {
+          const typeLabels = {
+            license: 'الترخيص',
+            permit: 'التصريح',
+            insurance: 'التأمين',
+            insurance_print: 'كشف التأمينات',
+            contract: 'العقد',
+            rental_contract: 'عقد الايجار',
+            certification: 'الشهادة',
+            registration: 'السجل التجاري',
+            security_contract: 'عقد الامن و السالامة',
+            civil_defense_certificate: 'شهادة الدفاع المدني',
+            municipality_certificate: 'شهادة بلدي',
+            insurance_certificate: 'شهادة التامينات',
+            insurance_statement: 'كشف التأمينات',
+            operational_plan: 'الخطة التشغلية للمركز',
+            owner_civil_id_copy: 'نسخه من هوية الاحوال الشخصية لمالك المركز',
+            disclosure_commitment: 'افصاح و تعهد',
+            certification_commitment_form: 'نموذج تصديق و تعاقد',
+            financial_platform_declaration: ' اقرار المنصة المالية',
+            financial_claim_form: 'نموذج مطالبة مالية',
+            student_cadre_file: 'بيانات الطلاب',
+            dropped_students: 'الطلاب المنقطعين',
+            free_seats: 'المقاعد المتاحة',
+            acceptance_notifications: 'إشعارات القبول'
+          };
+
+          withExpiry.push({
+            id: doc.id,
+            branchId: doc.branch_id,
+            branchName: doc.branch_name || branches.find(b => b.id === doc.branch_id)?.branch_name || 'غير محدد',
+            documentType: doc.document_type,
+            documentLabel: typeLabels[doc.document_type] || doc.document_type,
+            expiryDate: expiryDate,
+            daysUntilExpiry: daysUntilExpiry,
+            isExpired: daysUntilExpiry < 0,
+            message: daysUntilExpiry < 0 
+              ? `مستند ${typeLabels[doc.document_type] || doc.document_type} منتهي الصلاحية منذ ${Math.abs(daysUntilExpiry)} يوم`
+              : daysUntilExpiry === 0
+              ? `مستند ${typeLabels[doc.document_type] || doc.document_type} ينتهي اليوم`
+              : `مستند ${typeLabels[doc.document_type] || doc.document_type} سينتهي خلال ${daysUntilExpiry} يوم`
+          });
+        }
+      } else {
+        // Check if document is missing (not in missingBranchDocumentAlerts)
+        const typeLabels = {
+          license: 'الترخيص',
+          permit: 'التصريح',
+          insurance: 'التأمين',
+          insurance_print: 'كشف التأمينات',
+          contract: 'العقد',
+          rental_contract: 'عقد الايجار',
+          certification: 'الشهادة',
+          registration: 'السجل التجاري',
+          security_contract: 'عقد الامن و السالامة',
+          civil_defense_certificate: 'شهادة الدفاع المدني',
+          municipality_certificate: 'شهادة بلدي',
+          insurance_certificate: 'شهادة التامينات',
+          insurance_statement: 'كشف التأمينات',
+          operational_plan: 'الخطة التشغلية للمركز',
+          owner_civil_id_copy: 'نسخه من هوية الاحوال الشخصية لمالك المركز',
+          disclosure_commitment: 'افصاح و تعهد',
+          certification_commitment_form: 'نموذج تصديق و تعاقد',
+          financial_platform_declaration: ' اقرار المنصة المالية',
+          financial_claim_form: 'نموذج مطالبة مالية',
+          student_cadre_file: 'بيانات الطلاب',
+          dropped_students: 'الطلاب المنقطعين',
+          free_seats: 'المقاعد المتاحة',
+          acceptance_notifications: 'إشعارات القبول'
+        };
+
+        // Only add if it's a required document that's missing
+        // This will be handled by checkMissingBranchDocuments, so we skip here
+      }
     });
 
-    setMissingBranchDocumentAlerts(alerts);
-  };
+    // Sort by expiry date (expired first, then by days until expiry)
+    withExpiry.sort((a, b) => {
+      if (a.isExpired && !b.isExpired) return -1;
+      if (!a.isExpired && b.isExpired) return 1;
+      return a.daysUntilExpiry - b.daysUntilExpiry;
+    });
+
+    setDocumentsWithExpiry(withExpiry);
+    setDocumentsWithoutExpiry(withoutExpiry);
+  }, [isMainManager, user, branches]);
 
   // Get monthly documents status for display
   const getMonthlyDocumentsSummary = () => {
@@ -556,23 +795,353 @@ const Dashboard = () => {
         }
       </p>
 
-      {/* Branch Info Alert - Only for branch managers */}
-      {!isMainManager() && branchInfo && (!branchInfo.phone_number || !branchInfo.email) && (
-        <div className="branch-info-alert">
-          <span className="branch-info-alert-icon">ℹ️</span>
-          <span className="branch-info-alert-text">
-            {!branchInfo.phone_number && !branchInfo.email 
-              ? 'يرجى إكمال معلومات الفرع (رقم الجوال والإيميل)'
-              : !branchInfo.phone_number 
-              ? 'يرجى إضافة رقم جوال الفرع'
-              : 'يرجى إضافة إيميل الفرع'
-            }
-          </span>
-          <Link to="/branch-info" className="branch-info-alert-link">
-            تحديث المعلومات
-          </Link>
+      {/* Progress Bar - Only for branch managers */}
+      {!isMainManager() && (
+        <div className="dashboard-progress-section">
+          <h2 className="dashboard-section-title">
+            <img src="https://img.icons8.com/material-rounded/24/combo-chart.png" alt="إحصائيات" className="section-icon" style={{ width: '24px', height: '24px' }} />
+            التقدم الإجمالي
+          </h2>
+          <div className="progress-card">
+            <div className="progress-overall">
+              <div className="progress-header">
+                <span className="progress-label">التقدم الإجمالي</span>
+                <span className="progress-percentage">{progressData.overallProgress}%</span>
+              </div>
+              <div className="progress-bar-container">
+                <div 
+                  className={`progress-bar progress-${getProgressColorClass(progressData.overallProgress)}`}
+                  style={{ width: `${progressData.overallProgress}%` }}
+                >
+                  <div className="progress-bar-fill"></div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="progress-details">
+              <div className="progress-item">
+                <div className="progress-item-header">
+                  <span className="progress-item-label">اكتمال بيانات الموظفين</span>
+                  <span className="progress-item-value">{progressData.employeesCompletion}%</span>
+                </div>
+                <div className="progress-bar-container small">
+                  <div 
+                    className={`progress-bar progress-${getProgressColorClass(progressData.employeesCompletion)}`}
+                    style={{ width: `${progressData.employeesCompletion}%` }}
+                  >
+                    <div className="progress-bar-fill"></div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="progress-item">
+                <div className="progress-item-header">
+                  <span className="progress-item-label">اكتمال مستندات الفرع</span>
+                  <span className="progress-item-value">{progressData.branchDocumentsCompletion}%</span>
+                </div>
+                <div className="progress-bar-container small">
+                  <div 
+                    className={`progress-bar progress-${getProgressColorClass(progressData.branchDocumentsCompletion)}`}
+                    style={{ width: `${progressData.branchDocumentsCompletion}%` }}
+                  >
+                    <div className="progress-bar-fill"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
+
+      {/* 1. Branch Info Alert - Highest Priority - Only for branch managers */}
+      {!isMainManager() && branchInfo && (!branchInfo.phone_number || !branchInfo.email) && (
+        <div className="dashboard-alert-section priority-1">
+          <h2 className="dashboard-section-title">
+            <img src="https://img.icons8.com/material-rounded/24/building.png" alt="مبنى" className="section-icon" style={{ width: '24px', height: '24px' }} />
+            معلومات الفرع
+          </h2>
+          <div className="alert-card alert-branch-info">
+            <div className="alert-card-header">
+              <span className="alert-priority-badge badge-critical">الأولوية القصوى</span>
+            </div>
+            <div className="alert-card-body">
+              <p className="alert-message">
+                {!branchInfo.phone_number && !branchInfo.email 
+                  ? 'يرجى إكمال معلومات الفرع (رقم الجوال والإيميل)'
+                  : !branchInfo.phone_number 
+                  ? 'يرجى إضافة رقم جوال الفرع'
+                  : 'يرجى إضافة إيميل الفرع'
+                }
+              </p>
+            </div>
+            <div className="alert-card-actions">
+              <Link to="/branch-info" className="btn-alert btn-critical">
+                تحديث المعلومات الآن
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Documents with Expiry Date - Second Priority (Unified Section) */}
+      {!isMainManager() && (() => {
+        // Combine all documents that require expiry dates (no duplicates)
+        const seenDocsWithExpiry = new Set();
+        const allDocsWithExpiry = [];
+        
+        // 1. Add uploaded documents that are expiring soon
+        documentsWithExpiry.forEach(doc => {
+          const key = `${doc.branchId}-${doc.documentType}`;
+          if (!seenDocsWithExpiry.has(key)) {
+            seenDocsWithExpiry.add(key);
+            allDocsWithExpiry.push({
+              ...doc,
+              alertType: 'expiring',
+              status: doc.isExpired ? 'critical' : doc.daysUntilExpiry <= 7 ? 'must_do' : 'preferred'
+            });
+          }
+        });
+        
+        // 2. Add monthly document alerts (must be uploaded monthly)
+        monthlyDocumentAlerts.forEach(alert => {
+          const key = `${alert.branchId}-${alert.documentType}`;
+          if (!seenDocsWithExpiry.has(key)) {
+            seenDocsWithExpiry.add(key);
+            allDocsWithExpiry.push({
+              ...alert,
+              alertType: 'monthly',
+              documentLabel: alert.documentLabel
+            });
+          }
+        });
+        
+        // 3. Add missing documents that require expiry dates
+        missingBranchDocumentAlertsWithExpiry.forEach(alert => {
+          const key = `${alert.branchId}-${alert.documentType}`;
+          if (!seenDocsWithExpiry.has(key)) {
+            seenDocsWithExpiry.add(key);
+            allDocsWithExpiry.push({
+              ...alert,
+              alertType: 'missing',
+              status: 'must_do'
+            });
+          }
+        });
+        
+        // Sort: critical first, then must_do, then preferred
+        allDocsWithExpiry.sort((a, b) => {
+          const statusOrder = { critical: 0, must_do: 1, preferred: 2 };
+          const aOrder = statusOrder[a.status] || 3;
+          const bOrder = statusOrder[b.status] || 3;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return (a.documentLabel || '').localeCompare((b.documentLabel || ''), 'ar');
+        });
+        
+        if (allDocsWithExpiry.length === 0) return null;
+        
+        return (
+          <div className="dashboard-alert-section priority-2">
+            <h2 className="dashboard-section-title">
+              <img src="https://img.icons8.com/material-rounded/24/calendar.png" alt="تقويم" className="section-icon" style={{ width: '24px', height: '24px' }} />
+              مستندات لها تاريخ انتهاء أو تحتاج تحديث دوري
+              <span className="section-count">({allDocsWithExpiry.length})</span>
+            </h2>
+            <p className="section-description" style={{ color: '#666', marginBottom: '15px', fontSize: '14px' }}>
+              المستندات التي تتطلب تاريخ انتهاء أو تحديث شهري/سنوي
+            </p>
+            
+            {/* Critical notice for monthly documents if any are critical */}
+            {allDocsWithExpiry.some(a => a.status === 'critical') && (
+              <div className="critical-notice" style={{
+                background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
+                border: '2px solid #dc2626',
+                borderRadius: '12px',
+                padding: '16px',
+                marginBottom: '20px',
+                textAlign: 'center'
+              }}>
+                <strong style={{ color: '#991b1b', fontSize: '16px' }}>
+                  تنبيه عاجل: يوجد مستندات منتهية أو يجب رفعها فوراً
+                </strong>
+              </div>
+            )}
+            
+            <div className="alerts-container">
+              {allDocsWithExpiry.map((doc, index) => (
+                <div 
+                  key={`expiry-${doc.branchId || 'unknown'}-${doc.documentType}-${index}`}
+                  className={`alert-card ${
+                    doc.status === 'critical' ? 'alert-critical' : 
+                    doc.status === 'must_do' ? 'alert-must-do' : 'alert-warning'
+                  }`}
+                >
+                  <div className="alert-header">
+                    <span className={`alert-badge ${
+                      doc.status === 'critical' ? 'badge-critical' : 
+                      doc.status === 'must_do' ? 'badge-danger' : 'badge-warning'
+                    }`}>
+                      {doc.alertType === 'expiring' 
+                        ? (doc.isExpired ? 'منتهي الصلاحية' : 'ينتهي قريباً')
+                        : doc.alertType === 'monthly'
+                        ? (doc.status === 'critical' ? 'عاجل جداً' : 'مطلوب شهرياً')
+                        : 'مستند مفقود'}
+                    </span>
+                  </div>
+                  <div className="alert-body">
+                    <p className="alert-message">{doc.message}</p>
+                    {doc.expiryDate && (
+                      <p className="alert-date">
+                        تاريخ الانتهاء: {new Date(doc.expiryDate).toLocaleDateString('ar-SA', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </p>
+                    )}
+                    {doc.lastUploadDate && (
+                      <p className="alert-date" style={{ fontSize: '12px', color: '#888', marginTop: '5px' }}>
+                        آخر تحديث: {new Date(doc.lastUploadDate).toLocaleDateString('ar-SA')}
+                      </p>
+                    )}
+                  </div>
+                  <div className="alert-actions">
+                    <Link 
+                      to={`/branch-documents?branch_id=${doc.branchId}&document_type=${doc.documentType}`}
+                      className={`btn-alert ${doc.status === 'critical' ? 'btn-critical' : 'btn-important'}`}
+                    >
+                      {doc.alertType === 'expiring' && doc.isExpired ? 'تجديد المستند الآن' : 
+                       doc.alertType === 'missing' ? 'رفع المستند' : 'عرض المستند'}
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 3. Incomplete Employees - Third Priority */}
+      {!isMainManager() && incompleteEmployees.length > 0 && (
+        <div className="dashboard-alert-section priority-3">
+          <h2 className="dashboard-section-title">
+            <img src="https://img.icons8.com/material-rounded/24/user.png" alt="موظف" className="section-icon" style={{ width: '24px', height: '24px' }} />
+            الموظفين غير مكتملي البيانات
+            <span className="section-count">({incompleteEmployees.length})</span>
+          </h2>
+          <p className="section-description">
+            يوجد {incompleteEmployees.length} موظف بحاجة إلى إكمال بياناته
+          </p>
+          <div className="incomplete-employees-table">
+            <table className="data-table" style={{ width: '100%' }}>
+              <thead>
+                <tr>
+                  <th>الاسم</th>
+                  <th>المهنة</th>
+                  <th>الإجراء</th>
+                </tr>
+              </thead>
+              <tbody>
+                {incompleteEmployees.slice(0, 10).map((employee) => {
+                  return (
+                    <tr key={employee.id}>
+                      <td>
+                        {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
+                      </td>
+                      <td>{employee.occupation || '-'}</td>
+                      <td>
+                        <Link 
+                          to={`/employees/${employee.id}`}
+                          className="btn-alert btn-important"
+                          style={{ padding: '4px 10px', fontSize: '11px' }}
+                        >
+                          إكمال البيانات
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {incompleteEmployees.length > 10 && (
+              <div style={{ marginTop: '15px', textAlign: 'center' }}>
+                <Link 
+                  to="/employees?data_completion_status=incomplete" 
+                  className="btn-alert btn-important" 
+                  style={{ padding: '8px 16px', fontSize: '13px' }}
+                >
+                  عرض جميع الموظفين غير مكتملي البيانات ({incompleteEmployees.length})
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 4. Documents without Expiry Date - Fourth Priority */}
+      {!isMainManager() && (() => {
+        // Only show documents that DON'T require expiry dates (static documents)
+        const seenDocsWithoutExpiry = new Set();
+        const allDocsWithoutExpiry = [];
+        
+        // Add missing documents that don't require expiry dates
+        missingBranchDocumentAlertsWithoutExpiry.forEach(alert => {
+          const key = `${alert.branchId}-${alert.documentType}`;
+          if (!seenDocsWithoutExpiry.has(key)) {
+            seenDocsWithoutExpiry.add(key);
+            allDocsWithoutExpiry.push({
+              ...alert,
+              status: alert.status || 'must_do'
+            });
+          }
+        });
+
+        // Sort by document label
+        allDocsWithoutExpiry.sort((a, b) => {
+          return (a.documentLabel || '').localeCompare((b.documentLabel || ''), 'ar');
+        });
+
+        if (allDocsWithoutExpiry.length === 0) return null;
+
+        return (
+          <div className="dashboard-alert-section priority-4">
+            <h2 className="dashboard-section-title">
+              <img src="https://img.icons8.com/material-rounded/24/document.png" alt="مستند" className="section-icon" style={{ width: '24px', height: '24px' }} />
+              مستندات بدون تاريخ انتهاء
+              <span className="section-count">({allDocsWithoutExpiry.length})</span>
+            </h2>
+            <p className="section-description" style={{ color: '#666', marginBottom: '15px', fontSize: '14px' }}>
+              المستندات الثابتة التي لا تحتاج تاريخ انتهاء أو تحديث دوري
+            </p>
+
+            {/* Unified documents container */}
+            <div className="alerts-container">
+              {allDocsWithoutExpiry.map((alert, index) => (
+                <div 
+                  key={`no-expiry-${alert.branchId || 'unknown'}-${alert.documentType || index}-${index}`}
+                  className="alert-card alert-must-do"
+                >
+                  <div className="alert-header">
+                    <span className="alert-badge badge-info">
+                      مستند مفقود
+                    </span>
+                  </div>
+                  <div className="alert-body">
+                    <p className="alert-message">{alert.message}</p>
+                  </div>
+                  <div className="alert-actions">
+                    <Link 
+                      to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
+                      className="btn-alert btn-important"
+                    >
+                      رفع المستند
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {isMainManager() && (
         stats.loading ? (
@@ -840,161 +1409,7 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* Incomplete Employees Alert - Only for branch managers */}
-      {!isMainManager() && incompleteEmployees.length > 0 && (
-        <div className="incomplete-employees-alert">
-          <h2>الموظفين غير مكتملي البيانات</h2>
-          <p style={{ color: '#666', marginBottom: '10px', marginTop: '0', fontSize: '13px' }}>
-            يوجد {incompleteEmployees.length} موظف بحاجة إلى إكمال بياناته
-          </p>
-          <div className="incomplete-employees-table">
-            <table className="data-table" style={{ width: '100%' }}>
-              <thead>
-                <tr>
-                  <th>الاسم</th>
-                  <th>المهنة</th>
-                  <th>الإجراء</th>
-                </tr>
-              </thead>
-              <tbody>
-                {incompleteEmployees.slice(0, 10).map((employee) => {
-                  return (
-                    <tr key={employee.id}>
-                      <td>
-                        {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
-                      </td>
-                      <td>{employee.occupation || '-'}</td>
-                      <td>
-                        <Link 
-                          to={`/employees/${employee.id}`}
-                          className="btn-alert"
-                          style={{ padding: '4px 10px', fontSize: '11px' }}
-                        >
-                          إكمال البيانات
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {incompleteEmployees.length > 10 && (
-              <div style={{ marginTop: '10px', textAlign: 'center' }}>
-                <Link to="/employees?data_completion_status=incomplete" className="btn-alert" style={{ padding: '6px 12px', fontSize: '12px' }}>
-                  عرض جميع الموظفين غير مكتملي البيانات ({incompleteEmployees.length})
-                </Link>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
-      {/* All Unuploaded Documents - Only for branch managers */}
-      {!isMainManager() && (() => {
-        // Combine monthly and missing branch document alerts into one unified list
-        const allUnuploadedDocuments = [
-          ...monthlyDocumentAlerts.map(alert => ({
-            ...alert,
-            isMonthly: true
-          })),
-          ...missingBranchDocumentAlerts.map(alert => ({
-            ...alert,
-            isMonthly: false,
-            status: alert.status || 'must_do'
-          }))
-        ];
-
-        // Sort: critical first, then must_do, then preferred, then others
-        allUnuploadedDocuments.sort((a, b) => {
-          const statusOrder = { critical: 0, must_do: 1, preferred: 2 };
-          const aOrder = statusOrder[a.status] || 3;
-          const bOrder = statusOrder[b.status] || 3;
-          if (aOrder !== bOrder) return aOrder - bOrder;
-          return (a.branchName || '').localeCompare((b.branchName || ''), 'ar');
-        });
-
-        if (allUnuploadedDocuments.length === 0) return null;
-
-        return (
-          <div className="missing-branch-documents-alerts">
-            <h2>مستندات مطلوب رفعها</h2>
-            <p style={{ color: '#666', marginBottom: '20px' }}>
-              يوجد {allUnuploadedDocuments.length} مستند غير مرفوع يحتاج إلى رفع
-            </p>
-            
-            {/* Critical notice for monthly documents if any are critical */}
-            {allUnuploadedDocuments.some(a => a.status === 'critical') && (
-              <div className="critical-notice" style={{
-                background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
-                border: '2px solid #dc2626',
-                borderRadius: '12px',
-                padding: '16px',
-                marginBottom: '20px',
-                textAlign: 'center',
-                animation: 'pulse-critical 2s infinite'
-              }}>
-                <strong style={{ color: '#991b1b', fontSize: '18px' }}>
-                  تنبيه عاجل: اليوم هو آخر يوم في الشهر - يجب رفع مسيرات الرواتب وات الحضور والانصراف فوراً
-                </strong>
-              </div>
-            )}
-
-            {/* Unified documents container */}
-            <div className="alerts-container">
-              {allUnuploadedDocuments.map((alert, index) => (
-                <div 
-                  key={`unuploaded-${alert.branchId || 'unknown'}-${alert.documentType || index}-${index}`}
-                  className={`alert-card ${
-                    alert.status === 'critical' 
-                      ? 'alert-critical' 
-                      : alert.status === 'must_do' 
-                      ? 'alert-must-do' 
-                      : alert.status === 'preferred'
-                      ? 'alert-preferred'
-                      : 'alert-must-do'
-                  }`}
-                >
-                  <div className="alert-header">
-                    <span className={`alert-badge ${
-                      alert.status === 'critical' 
-                        ? 'badge-critical' 
-                        : alert.status === 'must_do' 
-                        ? 'badge-danger' 
-                        : alert.status === 'preferred'
-                        ? 'badge-warning'
-                        : 'badge-danger'
-                    }`}>
-                      {alert.status === 'critical' 
-                        ? 'عاجل جداً' 
-                        : alert.status === 'must_do' 
-                        ? 'يجب التنفيذ' 
-                        : alert.status === 'preferred'
-                        ? 'تذكير'
-                        : 'مستند مفقود'}
-                    </span>
-                  </div>
-                  <div className="alert-body">
-                    <p className="alert-message">{alert.message}</p>
-                    {alert.lastUploadDate && (
-                      <p className="alert-date" style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>
-                        آخر تحديث: {new Date(alert.lastUploadDate).toLocaleDateString('en-US')}
-                      </p>
-                    )}
-                  </div>
-                  <div className="alert-actions">
-                    <Link 
-                      to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
-                      className={`btn-alert ${alert.status === 'critical' ? 'btn-critical' : ''}`}
-                    >
-                      رفع المستند الآن
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Branch Statistics Summary - Main Manager Only */}
       {isMainManager() && branchStats && branchStats.length > 0 && (

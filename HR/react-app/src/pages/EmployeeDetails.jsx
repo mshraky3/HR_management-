@@ -330,7 +330,7 @@ const EmployeeDetails = () => {
   const getInitials = (firstName, secondName) => {
     const first = firstName?.charAt(0) || '';
     const second = secondName?.charAt(0) || '';
-    return (first + second).toUpperCase() || '👤';
+    return (first + second).toUpperCase() || '?';
   };
 
   const getStatusBadgeClass = (status) => {
@@ -390,7 +390,7 @@ const EmployeeDetails = () => {
         {employee.data_completion_status === 'incomplete' && (
           <div className="alert-card alert-warning">
             <h2>
-              <span style={{ fontSize: '24px', marginLeft: '8px' }}>⚠️</span>
+              <img src="https://img.icons8.com/material-rounded/24/error.png" alt="تحذير" style={{ width: '24px', height: '24px', marginLeft: '8px' }} />
               البيانات الناقصة
             </h2>
             <p>
@@ -430,7 +430,10 @@ const EmployeeDetails = () => {
           <div className={`status-completion-box ${employee.data_completion_status === 'complete' ? 'complete' : 'incomplete'}`}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '24px' }}>
-                {employee.data_completion_status === 'complete' ? '✓' : '⚠️'}
+                {employee.data_completion_status === 'complete' ? 
+                  <img src="https://img.icons8.com/material-rounded/24/checkmark.png" alt="مكتمل" style={{ width: '24px', height: '24px' }} /> : 
+                  <img src="https://img.icons8.com/material-rounded/24/error.png" alt="غير مكتمل" style={{ width: '24px', height: '24px' }} />
+                }
               </span>
               <strong>
                 حالة البيانات: {employee.data_completion_status === 'complete' ? 'مكتملة' : 'غير مكتملة'}
@@ -497,7 +500,8 @@ const EmployeeDetails = () => {
                     }}
                     className="btn btn-danger btn-md"
                   >
-                    ❌ عدم التجديد
+                    <img src="https://img.icons8.com/material-rounded/24/cancel.png" alt="إلغاء" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} />
+                        عدم التجديد
                   </button>
                 </div>
               ) : (
@@ -909,7 +913,7 @@ const EmployeeDetails = () => {
               {documents.map((doc) => (
                 <div key={doc.id} className="document-card">
                   <div className="document-card-header">
-                    <div className="document-type-icon">📄</div>
+                    <div className="document-type-icon"><img src="https://img.icons8.com/material-rounded/24/document.png" alt="مستند" style={{ width: '24px', height: '24px' }} /></div>
                     <h3 className="document-card-title">{getDocumentTypeLabel(doc.document_type)}</h3>
                   </div>
                   <div className="document-card-body">
@@ -967,7 +971,7 @@ const EmployeeDetails = () => {
                             جاري التحميل...
                           </>
                         ) : (
-                          <>📄 فتح PDF</>
+                          <><img src="https://img.icons8.com/material-rounded/24/document.png" alt="PDF" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} /> فتح PDF</>
                         )}
                       </button>
                     )}
@@ -982,7 +986,7 @@ const EmployeeDetails = () => {
                           جاري التحميل...
                         </>
                       ) : (
-                        <>⬇️ تحميل</>
+                        <><img src="https://img.icons8.com/material-rounded/24/download--v1.png" alt="تحميل" style={{ width: '16px', height: '16px', verticalAlign: 'middle', marginLeft: '5px' }} /> تحميل</>
                       )}
                     </button>
                   </div>
@@ -1011,7 +1015,8 @@ const EmployeeDetails = () => {
               </>
             ) : (
               <>
-                📄 إنشاء ملف الموظف (PDF)
+                <img src="https://img.icons8.com/material-rounded/24/document.png" alt="مستند" style={{ width: '20px', height: '20px', verticalAlign: 'middle', marginLeft: '8px' }} />
+                إنشاء ملف الموظف (PDF)
               </>
             )}
           </button>
