@@ -8,11 +8,62 @@ import { authenticate } from '../middleware/auth.js';
 import { checkBranchAccess } from '../middleware/authorization.js';
 import { validateRequired, validateEmployeeName, validateDate, validateEmail } from '../middleware/validation.js';
 import { Document } from '../models/Document.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+
+// Get employees with server-side pagination (optimized for large datasets)
+router.get('/paginated', async (req, res) => {
+  try {
+    const { Employee } = await import('../models/Employee.js');
+    
+    // Parse pagination params
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.min(100, Math.max(10, parseInt(req.query.pageSize) || 50));
+    
+    // Handle branch_id
+    let branchId = null;
+    if (req.user.role === 'branch_manager') {
+      branchId = req.user.branch_id;
+    } else if (req.query.branch_id) {
+      if (Array.isArray(req.query.branch_id)) {
+        branchId = req.query.branch_id.map(id => parseInt(id)).filter(id => !isNaN(id));
+      } else if (typeof req.query.branch_id === 'string' && req.query.branch_id.includes(',')) {
+        branchId = req.query.branch_id.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      } else {
+        branchId = parseInt(req.query.branch_id);
+        if (isNaN(branchId)) branchId = null;
+      }
+    }
+    
+    const filters = {
+      branch_id: branchId,
+      occupation: req.query.occupation,
+      data_completion_status: req.query.data_completion_status,
+      status: req.query.status,
+      search_name: req.query.search_name,
+      search_id: req.query.search_id,
+      search_phone: req.query.search_phone,
+    };
+    
+    const result = await Employee.findAllPaginated(filters, page, pageSize);
+    
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    log.error('Error fetching paginated employees', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'فشل جلب الموظفين',
+      error: error.message
+    });
+  }
+});
 
 // Get all employees (filtered by branch for branch managers)
 router.get('/', async (req, res) => {
@@ -70,7 +121,7 @@ router.post('/:id/update-completion-status', async (req, res) => {
     const updatedEmployee = await updateEmployeeCompletionStatus(parseInt(req.params.id));
     res.json({ success: true, data: updatedEmployee });
   } catch (error) {
-    console.error('Error updating completion status:', error);
+    log.error('Error updating completion status', { error: error.message });
     res.status(500).json({
       success: false,
       message: 'فشل تحديث حالة الإكمال',
@@ -163,7 +214,7 @@ router.get('/:id/missing-data', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching missing data:', error);
+    log.error('Error fetching missing data', { error: error.message });
     res.status(500).json({
       success: false,
       message: 'فشل جلب البيانات المفقودة',
@@ -335,7 +386,7 @@ router.post('/',
         const updatedEmployee = await Employee.findById(employee.id);
         res.status(201).json({ success: true, data: updatedEmployee });
       } catch (completionError) {
-        console.error('Error checking completion status:', completionError);
+        log.warn('Error checking completion status', { error: completionError.message });
         // Still return success, but with original employee data
         res.status(201).json({ success: true, data: employee });
       }
@@ -420,7 +471,7 @@ router.put('/:id',
         const updatedEmployee = await Employee.findById(employee.id);
         res.json({ success: true, data: updatedEmployee });
       } catch (completionError) {
-        console.error('Error checking completion status:', completionError);
+        log.warn('Error checking completion status', { error: completionError.message });
         // Still return success, but with original employee data
         res.json({ success: true, data: employee });
       }
@@ -473,7 +524,7 @@ router.delete('/:id', async (req, res) => {
       data: updatedEmployee
     });
   } catch (error) {
-    console.error('Error deleting employee:', error);
+    log.error('Error deleting employee', { error: error.message });
     res.status(500).json({
       success: false,
       message: 'فشل إلغاء تفعيل الموظف',
@@ -537,7 +588,7 @@ router.put('/:id/status', async (req, res) => {
       data: updatedEmployee
     });
   } catch (error) {
-    console.error('Error updating employee status:', error);
+    log.error('Error updating employee status', { error: error.message });
     res.status(500).json({
       success: false,
       message: 'فشل تحديث حالة الموظف',
@@ -671,7 +722,7 @@ router.post('/:id/renew', async (req, res) => {
       data: renewedEmployee
     });
   } catch (error) {
-    console.error('Error renewing employee:', error);
+    log.error('Error renewing employee', { error: error.message });
     res.status(500).json({
       success: false,
       message: 'فشل تجديد العقد',
@@ -744,7 +795,7 @@ router.post('/:id/non-renewal', async (req, res) => {
       data: updatedEmployee
     });
   } catch (error) {
-    console.error('Error processing non-renewal:', error);
+    log.error('Error processing non-renewal', { error: error.message });
     res.status(500).json({
       success: false,
       message: 'فشل تحديد عدم التجديد',

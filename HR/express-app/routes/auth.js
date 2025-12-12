@@ -8,6 +8,7 @@ import { authenticate } from '../middleware/auth.js';
 import { User } from '../models/User.js';
 import { Branch } from '../models/Branch.js';
 import { generateToken } from '../utils/jwt.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -35,7 +36,7 @@ router.post('/login', async (req, res) => {
     try {
       user = await User.findByUsername(username);
     } catch (dbError) {
-      console.error('Database error in User.findByUsername:', dbError);
+      log.error('Database error in User.findByUsername', { error: dbError.message });
       return res.status(500).json({
         success: false,
         message: 'خطأ في اتصال قاعدة البيانات. يرجى التحقق من إعدادات الخادم.',
@@ -49,7 +50,7 @@ router.post('/login', async (req, res) => {
       try {
         branch = await Branch.findByUsername(username);
       } catch (dbError) {
-        console.error('Database error in Branch.findByUsername:', dbError);
+        log.error('Database error in Branch.findByUsername', { error: dbError.message });
         return res.status(500).json({
           success: false,
           message: 'خطأ في اتصال قاعدة البيانات. يرجى التحقق من إعدادات الخادم.',
@@ -144,7 +145,7 @@ router.post('/login', async (req, res) => {
         }
       } catch (loginTrackingError) {
         // Don't fail login if tracking fails, just log it
-        console.error('Error tracking login:', loginTrackingError);
+        log.warn('Error tracking login', { error: loginTrackingError.message });
       }
     }
 
@@ -163,15 +164,13 @@ router.post('/login', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Login error:', error);
-    console.error('Error stack:', error.stack);
+    log.error('Login error', { error: error.message });
     res.status(500).json({
       success: false,
       message: 'فشل تسجيل الدخول',
       error: process.env.NODE_ENV === 'production' 
         ? 'خطأ داخلي في الخادم. يرجى التحقق من سجلات الخادم.' 
-        : error.message,
-      ...(process.env.NODE_ENV !== 'production' && { stack: error.stack })
+        : error.message
     });
   }
 });
@@ -208,7 +207,7 @@ router.get('/me', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get user error:', error);
+    log.error('Get user error', { error: error.message });
     res.status(500).json({
       success: false,
       message: 'فشل الحصول على معلومات المستخدم',

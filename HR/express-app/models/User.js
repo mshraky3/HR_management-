@@ -4,6 +4,7 @@
  */
 
 import sql from '../config/database.js';
+import { log } from '../utils/logger.js';
 
 export const User = {
   /**
@@ -17,7 +18,7 @@ export const User = {
       `;
       return user || null;
     } catch (error) {
-      console.error('Error finding user by username:', error);
+      log.error('Error finding user by username', { error: error.message });
       throw error;
     }
   },
@@ -34,7 +35,7 @@ export const User = {
       `;
       return user || null;
     } catch (error) {
-      console.error('Error finding user by ID:', error);
+      log.error('Error finding user by ID', { error: error.message });
       throw error;
     }
   },
@@ -54,7 +55,7 @@ export const User = {
       
       return user;
     } catch (error) {
-      console.error('Error creating user:', error);
+      log.error('Error creating user', { error: error.message });
       throw error;
     }
   },
@@ -86,7 +87,7 @@ export const User = {
       
       return await query;
     } catch (error) {
-      console.error('Error finding users:', error);
+      log.error('Error finding users', { error: error.message });
       throw error;
     }
   },
@@ -125,7 +126,7 @@ export const User = {
       const result = await sql.unsafe(query, values);
       return result[0] || null;
     } catch (error) {
-      console.error('Error updating user:', error);
+      log.error('Error updating user', { error: error.message });
       throw error;
     }
   },
@@ -144,7 +145,7 @@ export const User = {
       
       return user;
     } catch (error) {
-      console.error('Error soft deleting user:', error);
+      log.error('Error soft deleting user', { error: error.message });
       throw error;
     }
   }

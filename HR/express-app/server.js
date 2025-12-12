@@ -10,6 +10,7 @@ import apiRoutes from './routes/index.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { testConnection } from './config/database.js';
 import { startScheduler } from './utils/alertScheduler.js';
+import logger, { httpLogger, log } from './utils/logger.js';
 
 dotenv.config();
 
@@ -40,21 +41,16 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging middleware (for debugging - disabled in production)
-if (process.env.NODE_ENV !== 'production') {
-  app.use((req, res, next) => {
-    console.log(`${req.method} ${req.path}`);
-    next();
-  });
-}
+// Request logging middleware using structured logger
+app.use(httpLogger);
 
 // Test database connection on startup
 async function testDbConnection() {
   try {
     await testConnection();
   } catch (error) {
-    console.error('Warning: Database connection test failed:', error.message);
-    console.log('Server will start, but database operations may fail.');
+    log.warn('Database connection test failed', { error: error.message });
+    log.info('Server will start, but database operations may fail');
   }
 }
 
@@ -63,14 +59,12 @@ async function testBlobStorage() {
   try {
     const { isBlobStorageConfigured } = await import('./utils/blobStorage.js');
     if (isBlobStorageConfigured()) {
-      console.log('✅ Blob Storage is configured (BLOB_READ_WRITE_TOKEN found)');
+      log.info('Blob Storage is configured (BLOB_READ_WRITE_TOKEN found)');
     } else {
-      console.warn('⚠️  Warning: BLOB_READ_WRITE_TOKEN is not set.');
-      console.warn('   Blob Storage operations will fail. For local development, run: vercel env pull');
-      console.warn('   Server will start, but file uploads will not work.');
+      log.warn('BLOB_READ_WRITE_TOKEN is not set - file uploads will not work');
     }
   } catch (error) {
-    console.error('Warning: Could not check Blob Storage configuration:', error.message);
+    log.warn('Could not check Blob Storage configuration', { error: error.message });
   }
 }
 
@@ -80,9 +74,9 @@ async function initDatabase() {
     // Import and run database initialization
     const { initializeDatabase } = await import('./database/init.js');
     await initializeDatabase();
-    console.log('HRM database tables initialized successfully');
+    log.info('HRM database tables initialized successfully');
   } catch (error) {
-    console.error('Error initializing database:', error);
+    log.error('Error initializing database', { error: error.message });
     // Don't exit - allow server to start even if tables already exist
   }
 }
@@ -95,14 +89,14 @@ async function startup() {
     await testDbConnection();
   } catch (error) {
     // Don't block startup if DB test fails - connection will be retried on first request
-    console.warn('Database connection test failed on startup, will retry on first request');
+    log.warn('Database connection test failed on startup, will retry on first request');
   }
   
   try {
     await testBlobStorage();
   } catch (error) {
     // Don't block startup if Blob Storage test fails
-    console.warn('Blob Storage test failed on startup');
+    log.warn('Blob Storage test failed on startup');
   }
   
   // Initialize database tables (idempotent - safe to run multiple times)
@@ -113,14 +107,14 @@ async function startup() {
       await initDatabase();
     } catch (error) {
       // Don't block startup - tables may already exist
-      console.warn('Database initialization had issues (tables may already exist):', error.message);
+      log.warn('Database initialization had issues (tables may already exist)', { error: error.message });
     }
   }
 }
 
 // Run startup asynchronously (don't block server start)
 startup().catch(err => {
-  console.error('Startup error:', err);
+  log.error('Startup error', { error: err.message });
 });
 
 // Performance Optimization: Add caching headers for static data
@@ -172,16 +166,16 @@ app.use(errorHandler);
 if (process.env.NODE_ENV === 'production' || process.env.ENABLE_ALERT_SCHEDULER === 'true') {
   try {
     startScheduler(1440); // Run every 24 hours (1440 minutes)
-    console.log('Alert scheduler started successfully');
+    log.info('Alert scheduler started successfully');
   } catch (error) {
-    console.error('Failed to start alert scheduler:', error);
+    log.error('Failed to start alert scheduler', { error: error.message });
   }
 }
 
 // Only listen if not in Vercel environment
 if (process.env.VERCEL !== '1') {
   app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    log.info(`Server is running on port ${PORT}`);
   });
 }
 

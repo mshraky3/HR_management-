@@ -28,6 +28,7 @@
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.17.2",
     "pdfmake": "^0.2.20",
-    "postgres": "^3.4.7"
+    "postgres": "^3.4.7",
+    "winston": "^3.19.0"
   }
 }

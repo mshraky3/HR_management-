@@ -5,6 +5,7 @@
 
 import postgres from 'postgres';
 import dotenv from 'dotenv';
+import { log } from '../utils/logger.js';
 
 dotenv.config();
 
@@ -28,17 +29,17 @@ const sql = postgres({
   },
   // Connection retry settings
   onnotice: () => {}, // Suppress PostgreSQL notices in production
-  debug: process.env.NODE_ENV === 'development' ? console.log : undefined,
+  debug: process.env.LOG_DB_QUERIES === 'true' ? (connection, query) => log.debug('DB Query', { query: query?.substring?.(0, 100) }) : undefined,
 });
 
 // Test database connection
 export async function testConnection() {
   try {
     const result = await sql`SELECT NOW() as current_time`;
-    console.log('Database connected successfully:', result[0].current_time);
+    log.info('Database connected successfully', { timestamp: result[0].current_time });
     return { success: true, timestamp: result[0].current_time };
   } catch (error) {
-    console.error('Database connection failed:', error);
+    log.error('Database connection failed', { error: error.message });
     throw error;
   }
 }

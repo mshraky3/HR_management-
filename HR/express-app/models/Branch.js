@@ -4,6 +4,7 @@
  */
 
 import sql from '../config/database.js';
+import { log } from '../utils/logger.js';
 
 export const Branch = {
   /**
@@ -17,7 +18,7 @@ export const Branch = {
       `;
       return branch || null;
     } catch (error) {
-      console.error('Error finding branch by ID:', error);
+      log.error('Error finding branch by ID', { error: error.message });
       throw error;
     }
   },
@@ -33,7 +34,7 @@ export const Branch = {
       `;
       return branch || null;
     } catch (error) {
-      console.error('Error finding branch by username:', error);
+      log.error('Error finding branch by username', { error: error.message });
       throw error;
     }
   },
@@ -63,7 +64,7 @@ export const Branch = {
       
       return await query;
     } catch (error) {
-      console.error('Error finding branches:', error);
+      log.error('Error finding branches', { error: error.message });
       throw error;
     }
   },
@@ -86,7 +87,7 @@ export const Branch = {
       
       return branch;
     } catch (error) {
-      console.error('Error creating branch:', error);
+      log.error('Error creating branch', { error: error.message });
       throw error;
     }
   },
@@ -125,7 +126,7 @@ export const Branch = {
       const result = await sql.unsafe(query, values);
       return result[0] || null;
     } catch (error) {
-      console.error('Error updating branch:', error);
+      log.error('Error updating branch', { error: error.message });
       throw error;
     }
   },
@@ -144,7 +145,7 @@ export const Branch = {
       
       return branch;
     } catch (error) {
-      console.error('Error soft deleting branch:', error);
+      log.error('Error soft deleting branch', { error: error.message });
       throw error;
     }
   }

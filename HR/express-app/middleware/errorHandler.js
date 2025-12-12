@@ -3,8 +3,10 @@
  * Centralized error handling
  */
 
+import { logError, log } from '../utils/logger.js';
+
 export const errorHandler = (err, req, res, next) => {
-  console.error('Error:', err);
+  logError(err, { path: req.path, method: req.method });
 
   // Database errors
   if (err.code === '23505') { // Unique violation

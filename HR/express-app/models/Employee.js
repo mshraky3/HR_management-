@@ -4,6 +4,7 @@
  */
 
 import sql from '../config/database.js';
+import { log } from '../utils/logger.js';
 
 export const Employee = {
   /**
@@ -19,7 +20,7 @@ export const Employee = {
       `;
       return employee || null;
     } catch (error) {
-      console.error('Error finding employee by ID:', error);
+      log.error('Error finding employee by ID', { error: error.message });
       throw error;
     }
   },
@@ -37,7 +38,7 @@ export const Employee = {
       `;
       return employee || null;
     } catch (error) {
-      console.error('Error finding employee by employee ID:', error);
+      log.error('Error finding employee by employee ID', { error: error.message });
       throw error;
     }
   },
@@ -55,7 +56,7 @@ export const Employee = {
       `;
       return employee || null;
     } catch (error) {
-      console.error('Error finding employee by ID/residency number:', error);
+      log.error('Error finding employee by ID/residency number', { error: error.message });
       throw error;
     }
   },
@@ -157,9 +158,129 @@ export const Employee = {
         }
       }
       
+      // If pagination is requested, also return total count
+      if (filters.withCount === true || filters.withCount === 'true') {
+        const countQuery = `SELECT COUNT(*) as total FROM employees WHERE ${whereClause}`;
+        const [employees, countResult] = await Promise.all([
+          sql.unsafe(queryString, params),
+          sql.unsafe(countQuery, params)
+        ]);
+        
+        return {
+          data: employees,
+          total: parseInt(countResult[0]?.total || 0, 10),
+          limit: limit || employees.length,
+          offset: offset || 0
+        };
+      }
+      
       return await sql.unsafe(queryString, params);
     } catch (error) {
-      console.error('Error finding employees:', error);
+      log.error('Error finding employees', { error: error.message });
+      throw error;
+    }
+  },
+
+  /**
+   * Get employees with pagination and total count
+   * Optimized for large datasets
+   * @param {Object} filters - Filter options
+   * @param {number} page - Page number (1-indexed)
+   * @param {number} pageSize - Items per page
+   * @returns {Promise<{data: Array, total: number, page: number, pageSize: number, totalPages: number}>}
+   */
+  async findAllPaginated(filters = {}, page = 1, pageSize = 50) {
+    try {
+      const conditions = [];
+      const params = [];
+      let paramIndex = 1;
+      
+      conditions.push('1=1');
+      
+      if (filters.branch_id) {
+        if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
+          const placeholders = filters.branch_id.map(() => `$${paramIndex++}`).join(', ');
+          conditions.push(`branch_id IN (${placeholders})`);
+          params.push(...filters.branch_id);
+        } else if (!Array.isArray(filters.branch_id)) {
+          conditions.push(`branch_id = $${paramIndex++}`);
+          params.push(filters.branch_id);
+        }
+      }
+      
+      if (filters.occupation) {
+        conditions.push(`occupation = $${paramIndex++}`);
+        params.push(filters.occupation);
+      }
+      
+      if (filters.status) {
+        conditions.push(`status = $${paramIndex++}`);
+        params.push(filters.status);
+      } else {
+        conditions.push(`(status IS NULL OR status IN ('active', 'pending'))`);
+      }
+      
+      if (filters.data_completion_status) {
+        conditions.push(`data_completion_status = $${paramIndex++}`);
+        params.push(filters.data_completion_status);
+      }
+      
+      if (filters.search_name) {
+        const namePattern = `%${filters.search_name}%`;
+        conditions.push(`(
+          first_name ILIKE $${paramIndex} OR 
+          second_name ILIKE $${paramIndex} OR 
+          third_name ILIKE $${paramIndex} OR 
+          fourth_name ILIKE $${paramIndex}
+        )`);
+        params.push(namePattern);
+        paramIndex++;
+      }
+      
+      if (filters.search_id) {
+        conditions.push(`id_or_residency_number ILIKE $${paramIndex++}`);
+        params.push(`%${filters.search_id}%`);
+      }
+      
+      if (filters.search_phone) {
+        conditions.push(`phone_number ILIKE $${paramIndex++}`);
+        params.push(`%${filters.search_phone}%`);
+      }
+      
+      const whereClause = conditions.join(' AND ');
+      
+      // Calculate offset
+      const offset = (page - 1) * pageSize;
+      
+      // Execute count and data queries in parallel
+      const countQuery = `SELECT COUNT(*) as total FROM employees WHERE ${whereClause}`;
+      const dataQuery = `
+        SELECT id, employee_id_number, branch_id, first_name, second_name, third_name, fourth_name,
+               occupation, nationality, id_or_residency_number, phone_number, email,
+               data_completion_status, status, created_at
+        FROM employees 
+        WHERE ${whereClause} 
+        ORDER BY created_at DESC 
+        LIMIT ${pageSize} OFFSET ${offset}
+      `;
+      
+      const [countResult, employees] = await Promise.all([
+        sql.unsafe(countQuery, params),
+        sql.unsafe(dataQuery, params)
+      ]);
+      
+      const total = parseInt(countResult[0]?.total || 0, 10);
+      const totalPages = Math.ceil(total / pageSize);
+      
+      return {
+        data: employees,
+        total,
+        page,
+        pageSize,
+        totalPages
+      };
+    } catch (error) {
+      log.error('Error finding paginated employees', { error: error.message });
       throw error;
     }
   },
@@ -229,7 +350,7 @@ export const Employee = {
       
       return employee;
     } catch (error) {
-      console.error('Error creating employee:', error);
+      log.error('Error creating employee', { error: error.message });
       throw error;
     }
   },
@@ -291,7 +412,7 @@ export const Employee = {
       const result = await sql.unsafe(query, values);
       return result[0] || null;
     } catch (error) {
-      console.error('Error updating employee:', error);
+      log.error('Error updating employee', { error: error.message });
       throw error;
     }
   },
@@ -310,7 +431,7 @@ export const Employee = {
       
       return employee;
     } catch (error) {
-      console.error('Error soft deleting employee:', error);
+      log.error('Error soft deleting employee', { error: error.message });
       throw error;
     }
   },
@@ -345,7 +466,7 @@ export const Employee = {
       
       return employee;
     } catch (error) {
-      console.error('Error updating employee status:', error);
+      log.error('Error updating employee status', { error: error.message });
       throw error;
     }
   },
@@ -383,7 +504,7 @@ export const Employee = {
       
       return await sql.unsafe(queryString, params);
     } catch (error) {
-      console.error('Error finding employees by status:', error);
+      log.error('Error finding employees by status', { error: error.message });
       throw error;
     }
   },
@@ -416,7 +537,7 @@ export const Employee = {
       `;
       
       if (!statusColumnExists || statusColumnExists.length === 0) {
-        console.log('Status column does not exist. Please run migration script: node express-app/scripts/migrate-add-employee-status-and-terms.js');
+        log.warn('Status column does not exist. Please run migration script: node express-app/scripts/migrate-add-employee-status-and-terms.js');
         return { data: [], total: 0 }; // Return empty result if column doesn't exist
       }
       
@@ -542,7 +663,7 @@ export const Employee = {
         total: total
       };
     } catch (error) {
-      console.error('Error finding archived employees:', error);
+      log.error('Error finding archived employees', { error: error.message });
       throw error;
     }
   },
@@ -569,7 +690,7 @@ export const Employee = {
       
       return employee;
     } catch (error) {
-      console.error('Error renewing employee:', error);
+      log.error('Error renewing employee', { error: error.message });
       throw error;
     }
   }
