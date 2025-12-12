@@ -50,7 +50,9 @@ export const Branch = {
       }
       
       if (filters.is_active !== undefined) {
-        query = sql`${query} AND is_active = ${filters.is_active}`;
+        // Ensure boolean conversion for is_active filter
+        const isActiveBool = filters.is_active === true || filters.is_active === 'true' || filters.is_active === 1;
+        query = sql`${query} AND is_active = ${isActiveBool}`;
       }
       
       if (filters.id) {

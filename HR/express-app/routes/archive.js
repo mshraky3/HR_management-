@@ -12,31 +12,111 @@ import sql from '../config/database.js';
 
 const router = express.Router();
 
+// Status labels mapping
+const statusLabels = {
+  active: 'نشط',
+  pending: 'قيد الانتظار',
+  terminated_article_80: 'إنهاء المادة 80',
+  terminated_article_77: 'إنهاء المادة 77',
+  resigned: 'استقالة',
+  contract_ended: 'انتهاء العقد',
+  non_renewal: 'عدم التجديد',
+  other: 'أخرى'
+};
+
 // All routes require authentication and main manager
 router.use(authenticate);
 router.use(requireMainManager);
 
 /**
  * GET /api/archive
- * Get archived employees with filters
- * Query params: branch_id, status, academic_year, registration_date_from, registration_date_to,
- *                status_change_date_from, status_change_date_to
+ * Get archived employees with filters, pagination, and server-side search
+ * Query params: 
+ *   - branch_id: Branch ID(s) to filter by (single value or comma-separated)
+ *   - status: Status to filter by
+ *   - academic_year: Academic year to filter by
+ *   - registration_date_from: Start date for registration (YYYY-MM-DD)
+ *   - registration_date_to: End date for registration (YYYY-MM-DD)
+ *   - status_change_date_from: Start date for status change (YYYY-MM-DD)
+ *   - status_change_date_to: End date for status change (YYYY-MM-DD)
+ *   - search_name: Search term for employee name (server-side ILIKE)
+ *   - search_id: Search term for ID/residency number (server-side ILIKE)
+ *   - limit: Number of records per page (default: no limit, max: 10000)
+ *   - offset: Number of records to skip (for pagination)
+ *   - page: Page number (alternative to offset, calculates offset = (page - 1) * limit)
  */
 router.get('/', async (req, res) => {
   try {
+    // Parse branch_id - support single value, array, or comma-separated string
+    let branchId = undefined;
+    if (req.query.branch_id) {
+      if (Array.isArray(req.query.branch_id)) {
+        branchId = req.query.branch_id.map(id => parseInt(id)).filter(id => !isNaN(id));
+      } else if (typeof req.query.branch_id === 'string' && req.query.branch_id.includes(',')) {
+        branchId = req.query.branch_id.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      } else {
+        const parsed = parseInt(req.query.branch_id);
+        if (!isNaN(parsed)) {
+          branchId = parsed;
+        }
+      }
+    }
+    
+    // Date validation: ensure from <= to
+    if (req.query.registration_date_from && req.query.registration_date_to) {
+      const from = new Date(req.query.registration_date_from);
+      const to = new Date(req.query.registration_date_to);
+      if (from > to) {
+        return res.status(400).json({
+          success: false,
+          message: 'تاريخ البداية يجب أن يكون قبل تاريخ النهاية'
+        });
+      }
+    }
+    
+    if (req.query.status_change_date_from && req.query.status_change_date_to) {
+      const from = new Date(req.query.status_change_date_from);
+      const to = new Date(req.query.status_change_date_to);
+      if (from > to) {
+        return res.status(400).json({
+          success: false,
+          message: 'تاريخ بداية تغيير الحالة يجب أن يكون قبل تاريخ نهاية تغيير الحالة'
+        });
+      }
+    }
+    
     const filters = {
-      branch_id: req.query.branch_id 
-        ? (Array.isArray(req.query.branch_id) 
-            ? req.query.branch_id.map(id => parseInt(id)).filter(id => !isNaN(id))
-            : [parseInt(req.query.branch_id)].filter(id => !isNaN(id)))
-        : undefined,
+      branch_id: branchId,
       status: req.query.status,
       academic_year: req.query.academic_year,
       registration_date_from: req.query.registration_date_from,
       registration_date_to: req.query.registration_date_to,
       status_change_date_from: req.query.status_change_date_from,
-      status_change_date_to: req.query.status_change_date_to
+      status_change_date_to: req.query.status_change_date_to,
+      search_name: req.query.search_name,
+      search_id: req.query.search_id
     };
+    
+    // Handle pagination
+    if (req.query.limit) {
+      const limit = parseInt(req.query.limit, 10);
+      if (!isNaN(limit) && limit > 0 && limit <= 10000) {
+        filters.limit = limit;
+        
+        // Calculate offset from page number or use provided offset
+        if (req.query.page) {
+          const page = parseInt(req.query.page, 10);
+          if (!isNaN(page) && page > 0) {
+            filters.offset = (page - 1) * limit;
+          }
+        } else if (req.query.offset) {
+          const offset = parseInt(req.query.offset, 10);
+          if (!isNaN(offset) && offset >= 0) {
+            filters.offset = offset;
+          }
+        }
+      }
+    }
     
     // Remove undefined values
     Object.keys(filters).forEach(key => {
@@ -46,24 +126,17 @@ router.get('/', async (req, res) => {
       }
     });
     
-    const employees = await Employee.findArchived(filters);
-    
-    // Get branch information for each employee
-    const employeesWithBranches = await Promise.all(
-      employees.map(async (employee) => {
-        const branch = await Branch.findById(employee.branch_id);
-        return {
-          ...employee,
-          branch_name: branch?.branch_name || 'غير معروف',
-          branch_type: branch?.branch_type || 'unknown'
-        };
-      })
-    );
+    // Get archived employees with branch info (JOIN is now in findArchived)
+    const result = await Employee.findArchived(filters);
     
     res.json({
       success: true,
-      data: employeesWithBranches,
-      count: employeesWithBranches.length
+      data: result.data,
+      count: result.data.length,
+      total: result.total,
+      page: req.query.page ? parseInt(req.query.page, 10) : undefined,
+      limit: filters.limit,
+      offset: filters.offset
     });
   } catch (error) {
     console.error('Error fetching archived employees:', error);
@@ -276,6 +349,7 @@ router.get('/:id', async (req, res) => {
 /**
  * PUT /api/archive/:id/status
  * Update archived employee status
+ * Note: Changing from archived status to active/pending should use /restore endpoint
  */
 router.put('/:id/status', async (req, res) => {
   try {
@@ -301,6 +375,18 @@ router.put('/:id/status', async (req, res) => {
       });
     }
     
+    // Prevent changing from archived to active/pending directly
+    // Use /restore endpoint for that operation
+    const archivedStatuses = ['terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
+    const isCurrentlyArchived = archivedStatuses.includes(employee.status);
+    
+    if (isCurrentlyArchived && (status === 'active' || status === 'pending')) {
+      return res.status(400).json({
+        success: false,
+        message: 'لا يمكن تغيير حالة موظف مؤرشف إلى نشط مباشرة. يرجى استخدام وظيفة الاستعادة'
+      });
+    }
+    
     // Update status
     const updatedEmployee = await Employee.updateStatus(
       employeeId,
@@ -319,6 +405,256 @@ router.put('/:id/status', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'فشل تحديث حالة الموظف',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/archive/:id/restore
+ * Restore archived employee to active or pending status
+ */
+router.post('/:id/restore', async (req, res) => {
+  try {
+    const { Employee } = await import('../models/Employee.js');
+    const employeeId = parseInt(req.params.id);
+    const { status, reason } = req.body;
+    
+    // Validation - must be active or pending
+    if (!status || (status !== 'active' && status !== 'pending')) {
+      return res.status(400).json({
+        success: false,
+        message: 'يجب اختيار حالة نشط أو قيد الانتظار للاستعادة'
+      });
+    }
+    
+    // Check if employee exists
+    const employee = await Employee.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'الموظف غير موجود'
+      });
+    }
+    
+    // Check if employee is archived
+    const archivedStatuses = ['terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
+    if (!archivedStatuses.includes(employee.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'هذا الموظف غير موجود في الأرشيف'
+      });
+    }
+    
+    // Restore employee
+    const updatedEmployee = await Employee.updateStatus(
+      employeeId,
+      status,
+      req.user.branch_id || employee.branch_id,
+      reason || 'تم الاستعادة من الأرشيف'
+    );
+    
+    res.json({
+      success: true,
+      message: `تم استعادة الموظف بنجاح إلى حالة ${status === 'active' ? 'نشط' : 'قيد الانتظار'}`,
+      data: updatedEmployee
+    });
+  } catch (error) {
+    console.error('Error restoring employee:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل استعادة الموظف',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/archive/export
+ * Export archived employees to Excel or CSV
+ * Query params: same as GET /api/archive, plus format (excel or csv, default: excel)
+ */
+router.get('/export', async (req, res) => {
+  try {
+    const format = req.query.format || 'excel';
+    const ExcelJS = (await import('exceljs')).default;
+    
+    // Use same filters as GET /api/archive
+    let branchId = undefined;
+    if (req.query.branch_id) {
+      if (Array.isArray(req.query.branch_id)) {
+        branchId = req.query.branch_id.map(id => parseInt(id)).filter(id => !isNaN(id));
+      } else if (typeof req.query.branch_id === 'string' && req.query.branch_id.includes(',')) {
+        branchId = req.query.branch_id.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      } else {
+        const parsed = parseInt(req.query.branch_id);
+        if (!isNaN(parsed)) {
+          branchId = parsed;
+        }
+      }
+    }
+    
+    const filters = {
+      branch_id: branchId,
+      status: req.query.status,
+      academic_year: req.query.academic_year,
+      registration_date_from: req.query.registration_date_from,
+      registration_date_to: req.query.registration_date_to,
+      status_change_date_from: req.query.status_change_date_from,
+      status_change_date_to: req.query.status_change_date_to,
+      search_name: req.query.search_name,
+      search_id: req.query.search_id
+      // No pagination for export - get all matching records
+    };
+    
+    // Remove undefined values
+    Object.keys(filters).forEach(key => {
+      if (filters[key] === undefined || 
+          (Array.isArray(filters[key]) && filters[key].length === 0)) {
+        delete filters[key];
+      }
+    });
+    
+    // Get all archived employees (no pagination)
+    const result = await Employee.findArchived(filters);
+    const employees = result.data;
+    
+    if (format === 'csv') {
+      // Generate CSV
+      const csvHeaders = [
+        'رقم الموظف',
+        'الاسم الأول',
+        'الاسم الثاني',
+        'الاسم الثالث',
+        'الاسم الرابع',
+        'رقم الهوية/الإقامة',
+        'الفرع',
+        'نوع الفرع',
+        'الحالة',
+        'السنة الدراسية',
+        'تاريخ التسجيل',
+        'تاريخ تغيير الحالة',
+        'سبب تغيير الحالة'
+      ];
+      
+      const csvRows = employees.map(emp => [
+        emp.employee_id_number || '',
+        emp.first_name || '',
+        emp.second_name || '',
+        emp.third_name || '',
+        emp.fourth_name || '',
+        emp.id_or_residency_number || '',
+        emp.branch_name || '',
+        emp.branch_type || '',
+        statusLabels[emp.status] || emp.status || '',
+        emp.academic_year || '',
+        emp.created_at ? new Date(emp.created_at).toLocaleDateString('en-GB') : '',
+        emp.status_changed_at ? new Date(emp.status_changed_at).toLocaleDateString('en-GB') : '',
+        emp.status_change_reason || ''
+      ]);
+      
+      // Convert to CSV string (simple implementation)
+      const csvContent = [
+        csvHeaders.join(','),
+        ...csvRows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+      
+      // Add BOM for Excel UTF-8 support
+      const csvBuffer = Buffer.from('\ufeff' + csvContent, 'utf8');
+      
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="archived-employees-${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send(csvBuffer);
+      return;
+    }
+    
+    // Generate Excel (default)
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('الموظفين المؤرشفين');
+    
+    // Set RTL direction
+    worksheet.views = [{ rightToLeft: true }];
+    
+    // Define columns
+    worksheet.columns = [
+      { header: 'رقم الموظف', key: 'employee_id_number', width: 15 },
+      { header: 'الاسم الأول', key: 'first_name', width: 20 },
+      { header: 'الاسم الثاني', key: 'second_name', width: 20 },
+      { header: 'الاسم الثالث', key: 'third_name', width: 20 },
+      { header: 'الاسم الرابع', key: 'fourth_name', width: 20 },
+      { header: 'رقم الهوية/الإقامة', key: 'id_or_residency_number', width: 20 },
+      { header: 'الفرع', key: 'branch_name', width: 25 },
+      { header: 'نوع الفرع', key: 'branch_type', width: 15 },
+      { header: 'الحالة', key: 'status', width: 20 },
+      { header: 'السنة الدراسية', key: 'academic_year', width: 15 },
+      { header: 'تاريخ التسجيل', key: 'created_at', width: 15 },
+      { header: 'تاريخ تغيير الحالة', key: 'status_changed_at', width: 18 },
+      { header: 'سبب تغيير الحالة', key: 'status_change_reason', width: 30 }
+    ];
+    
+    // Add data rows
+    employees.forEach(emp => {
+      worksheet.addRow({
+        employee_id_number: emp.employee_id_number || '',
+        first_name: emp.first_name || '',
+        second_name: emp.second_name || '',
+        third_name: emp.third_name || '',
+        fourth_name: emp.fourth_name || '',
+        id_or_residency_number: emp.id_or_residency_number || '',
+        branch_name: emp.branch_name || 'غير معروف',
+        branch_type: emp.branch_type === 'school' ? 'مدرسة' : emp.branch_type === 'daycare' ? 'مركز رعاية نهارية' : emp.branch_type || '',
+        status: statusLabels[emp.status] || emp.status || '',
+        academic_year: emp.academic_year || '',
+        created_at: emp.created_at ? new Date(emp.created_at).toLocaleDateString('en-GB') : '',
+        status_changed_at: emp.status_changed_at ? new Date(emp.status_changed_at).toLocaleDateString('en-GB') : '',
+        status_change_reason: emp.status_change_reason || ''
+      });
+    });
+    
+    // Style header row
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, size: 12, name: 'Arial' };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE0E0E0' }
+    };
+    headerRow.alignment = { 
+      horizontal: 'center', 
+      vertical: 'middle',
+      wrapText: true,
+      textDirection: 'right-to-left'
+    };
+    headerRow.border = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' }
+    };
+    
+    // Set RTL alignment for all cells
+    worksheet.eachRow((row, rowNumber) => {
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        cell.alignment = {
+          horizontal: rowNumber === 1 ? 'center' : 'right',
+          vertical: 'middle',
+          wrapText: true,
+          textDirection: 'right-to-left'
+        };
+      });
+    });
+    
+    // Generate buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="archived-employees-${new Date().toISOString().split('T')[0]}.xlsx"`);
+    res.send(buffer);
+  } catch (error) {
+    console.error('Error exporting archived employees:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل تصدير البيانات',
       error: error.message
     });
   }

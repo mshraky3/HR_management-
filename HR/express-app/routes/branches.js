@@ -17,12 +17,19 @@ router.get('/', authenticate, async (req, res) => {
     const { Branch } = await import('../models/Branch.js');
     const filters = {
       branch_type: req.query.branch_type,
-      is_active: req.query.is_active !== undefined ? req.query.is_active === 'true' : undefined
+      is_active: req.query.is_active !== undefined ? (req.query.is_active === 'true' || req.query.is_active === true) : undefined
     };
     
     // Branch managers only see their own branch
+    // Main managers should see all branches regardless of branch_id
+    // IMPORTANT: Only apply branch_id filter for branch_manager role, never for main_manager
     if (req.user && req.user.role === 'branch_manager' && req.user.branch_id) {
       filters.id = req.user.branch_id;
+    }
+    
+    // Safety check: Remove any branch_id filter if user is main_manager (in case frontend sends it)
+    if (req.user && req.user.role === 'main_manager' && filters.id) {
+      delete filters.id;
     }
     
     const branches = await Branch.findAll(filters);

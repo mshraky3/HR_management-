@@ -390,6 +390,21 @@ export const Employee = {
 
   /**
    * Get archived employees (non-active statuses)
+   * Returns employees with branch information using JOIN (fixes N+1 query problem)
+   * Supports pagination, server-side search, and filtering
+   * @param {Object} filters - Filter options
+   * @param {number} filters.limit - Number of records to return (for pagination)
+   * @param {number} filters.offset - Number of records to skip (for pagination)
+   * @param {string|Array} filters.branch_id - Branch ID(s) to filter by
+   * @param {string} filters.status - Status to filter by
+   * @param {string} filters.academic_year - Academic year to filter by
+   * @param {string} filters.registration_date_from - Start date for registration
+   * @param {string} filters.registration_date_to - End date for registration
+   * @param {string} filters.status_change_date_from - Start date for status change
+   * @param {string} filters.status_change_date_to - End date for status change
+   * @param {string} filters.search_name - Search term for employee name (server-side ILIKE)
+   * @param {string} filters.search_id - Search term for ID/residency number (server-side ILIKE)
+   * @returns {Promise<{data: Array, total: number}>} - Employees with branch info and total count
    */
   async findArchived(filters = {}) {
     try {
@@ -402,7 +417,7 @@ export const Employee = {
       
       if (!statusColumnExists || statusColumnExists.length === 0) {
         console.log('Status column does not exist. Please run migration script: node express-app/scripts/migrate-add-employee-status-and-terms.js');
-        return []; // Return empty array if column doesn't exist
+        return { data: [], total: 0 }; // Return empty result if column doesn't exist
       }
       
       const conditions = [];
@@ -410,54 +425,122 @@ export const Employee = {
       let paramIndex = 1;
       
       // Exclude active and pending (pending are not archived yet)
-      conditions.push("status NOT IN ('active', 'pending')");
+      conditions.push("e.status NOT IN ('active', 'pending')");
       
       if (filters.branch_id) {
         if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
           const placeholders = filters.branch_id.map(() => `$${paramIndex++}`).join(', ');
-          conditions.push(`branch_id IN (${placeholders})`);
+          conditions.push(`e.branch_id IN (${placeholders})`);
           params.push(...filters.branch_id);
         } else if (!Array.isArray(filters.branch_id)) {
-          conditions.push(`branch_id = $${paramIndex++}`);
+          conditions.push(`e.branch_id = $${paramIndex++}`);
           params.push(filters.branch_id);
         }
       }
       
       if (filters.status) {
-        conditions.push(`status = $${paramIndex++}`);
+        conditions.push(`e.status = $${paramIndex++}`);
         params.push(filters.status);
       }
       
       if (filters.academic_year) {
-        conditions.push(`academic_year = $${paramIndex++}`);
+        conditions.push(`e.academic_year = $${paramIndex++}`);
         params.push(filters.academic_year);
       }
       
       // Date range filters
       if (filters.registration_date_from) {
-        conditions.push(`created_at >= $${paramIndex++}`);
+        conditions.push(`e.created_at >= $${paramIndex++}`);
         params.push(filters.registration_date_from);
       }
       
       if (filters.registration_date_to) {
-        conditions.push(`created_at <= $${paramIndex++}`);
+        conditions.push(`e.created_at <= $${paramIndex++}`);
         params.push(filters.registration_date_to);
       }
       
       if (filters.status_change_date_from) {
-        conditions.push(`status_changed_at >= $${paramIndex++}`);
+        conditions.push(`e.status_changed_at >= $${paramIndex++}`);
         params.push(filters.status_change_date_from);
       }
       
       if (filters.status_change_date_to) {
-        conditions.push(`status_changed_at <= $${paramIndex++}`);
+        conditions.push(`e.status_changed_at <= $${paramIndex++}`);
         params.push(filters.status_change_date_to);
       }
       
-      const whereClause = conditions.join(' AND ');
-      const queryString = `SELECT * FROM employees WHERE ${whereClause} ORDER BY status_changed_at DESC, created_at DESC`;
+      // Server-side search by name (using ILIKE for partial match)
+      if (filters.search_name) {
+        const namePattern = `%${filters.search_name}%`;
+        conditions.push(`(
+          e.first_name ILIKE $${paramIndex} OR 
+          e.second_name ILIKE $${paramIndex} OR 
+          e.third_name ILIKE $${paramIndex} OR 
+          e.fourth_name ILIKE $${paramIndex}
+        )`);
+        params.push(namePattern);
+        paramIndex++;
+      }
       
-      return await sql.unsafe(queryString, params);
+      // Server-side search by ID or residency number
+      if (filters.search_id) {
+        conditions.push(`(
+          e.id_or_residency_number ILIKE $${paramIndex} OR 
+          e.employee_id_number ILIKE $${paramIndex}
+        )`);
+        params.push(`%${filters.search_id}%`);
+        paramIndex++;
+      }
+      
+      const whereClause = conditions.join(' AND ');
+      
+      // Get total count first (for pagination)
+      const countQuery = `
+        SELECT COUNT(*) as total
+        FROM employees e
+        WHERE ${whereClause}
+      `;
+      const countResult = await sql.unsafe(countQuery, params);
+      const total = parseInt(countResult[0]?.total || 0, 10);
+      
+      // Build main query with JOIN to get branch information (fixes N+1 query problem)
+      let queryString = `
+        SELECT 
+          e.*,
+          b.branch_name,
+          b.branch_type
+        FROM employees e
+        LEFT JOIN branches b ON e.branch_id = b.id
+        WHERE ${whereClause}
+        ORDER BY e.status_changed_at DESC, e.created_at DESC
+      `;
+      
+      // Add pagination if provided
+      const limit = filters.limit ? parseInt(filters.limit, 10) : null;
+      const offset = filters.offset ? parseInt(filters.offset, 10) : null;
+      
+      if (limit && limit > 0 && limit <= 10000) {
+        queryString += ` LIMIT $${paramIndex++}`;
+        params.push(limit);
+        if (offset && offset >= 0) {
+          queryString += ` OFFSET $${paramIndex++}`;
+          params.push(offset);
+        }
+      }
+      
+      const employees = await sql.unsafe(queryString, params);
+      
+      // Map results to include branch_name and branch_type (already in result from JOIN)
+      const employeesWithBranches = employees.map(employee => ({
+        ...employee,
+        branch_name: employee.branch_name || 'غير معروف',
+        branch_type: employee.branch_type || 'unknown'
+      }));
+      
+      return {
+        data: employeesWithBranches,
+        total: total
+      };
     } catch (error) {
       console.error('Error finding archived employees:', error);
       throw error;

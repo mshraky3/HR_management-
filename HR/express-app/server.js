@@ -9,6 +9,7 @@ import path from 'path';
 import apiRoutes from './routes/index.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { testConnection } from './config/database.js';
+import { startScheduler } from './utils/alertScheduler.js';
 
 dotenv.config();
 
@@ -165,6 +166,17 @@ app.get('/', (req, res) => {
 // Error handling middleware (must be last)
 app.use(notFound);
 app.use(errorHandler);
+
+// Start alert scheduler (runs every 24 hours)
+// Only start in production or if explicitly enabled
+if (process.env.NODE_ENV === 'production' || process.env.ENABLE_ALERT_SCHEDULER === 'true') {
+  try {
+    startScheduler(1440); // Run every 24 hours (1440 minutes)
+    console.log('Alert scheduler started successfully');
+  } catch (error) {
+    console.error('Failed to start alert scheduler:', error);
+  }
+}
 
 // Only listen if not in Vercel environment
 if (process.env.VERCEL !== '1') {
