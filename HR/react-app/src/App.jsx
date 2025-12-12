@@ -67,6 +67,9 @@ const TermManagement = lazy(() => import('./pages/TermManagement'));
 const BranchesMonitoring = lazy(() => import('./pages/BranchesMonitoring'));
 const BranchInfo = lazy(() => import('./pages/BranchInfo'));
 const DirectContact = lazy(() => import('./pages/DirectContact'));
+const BranchRequests = lazy(() => import('./pages/BranchRequests'));
+const ManageRequests = lazy(() => import('./pages/ManageRequests'));
+const Alerts = lazy(() => import('./pages/Alerts'));
 
 // Wrapper component to choose layout based on role
 const RoleBasedLayout = ({ children }) => {
@@ -253,6 +256,36 @@ function App() {
                   <ProtectedRoute>
                     <RoleBasedLayout>
                       <BranchInfo />
+                    </RoleBasedLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/branch-requests"
+                element={
+                  <ProtectedRoute>
+                    <RoleBasedLayout>
+                      <BranchRequests />
+                    </RoleBasedLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/manage-requests"
+                element={
+                  <ProtectedRoute requireMainManager>
+                    <Layout>
+                      <ManageRequests />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/alerts"
+                element={
+                  <ProtectedRoute>
+                    <RoleBasedLayout>
+                      <Alerts />
                     </RoleBasedLayout>
                   </ProtectedRoute>
                 }

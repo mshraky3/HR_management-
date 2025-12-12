@@ -48,6 +48,9 @@ const BranchManagerLayout = ({ children }) => {
           <Link to="/employees" className={isActive('/employees')} onClick={() => setMobileMenuOpen(false)}>
             موظفي الفرع
           </Link>
+          <Link to="/alerts" className={isActive('/alerts')} onClick={() => setMobileMenuOpen(false)}>
+            التنبيهات الذكية
+          </Link>
           <Link to="/monthly-documents" className={isActive('/monthly-documents')} onClick={() => setMobileMenuOpen(false)}>
             المستندات الشهرية
           </Link>
@@ -59,6 +62,9 @@ const BranchManagerLayout = ({ children }) => {
           </Link>
           <Link to="/reports" className={isActive('/reports')} onClick={() => setMobileMenuOpen(false)}>
             إصدار التقارير
+          </Link>
+          <Link to="/branch-requests" className={isActive('/branch-requests')} onClick={() => setMobileMenuOpen(false)}>
+            طلبات
           </Link>
         </div>
         <div className="nav-user">

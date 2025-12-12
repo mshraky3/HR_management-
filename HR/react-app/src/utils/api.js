@@ -750,5 +750,95 @@ export const branchStatisticsAPI = {
   },
 };
 
+// Requests API
+export const requestsAPI = {
+  getAll: (filters = {}) => {
+    const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+    return api.get('/api/requests', { params: cleanFilters });
+  },
+  
+  getById: (id) => 
+    api.get(`/api/requests/${id}`),
+  
+  getMainManagers: () => 
+    api.get('/api/requests/main-managers'),
+  
+  create: (formData) => 
+    api.post('/api/requests', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  
+  respond: (id, formData) => 
+    api.put(`/api/requests/${id}/respond`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  
+  delete: (id) => 
+    api.delete(`/api/requests/${id}`),
+};
+
+// Alerts API
+export const alertsAPI = {
+  getAll: (filters = {}) => {
+    const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+    return api.get('/api/alerts', { params: cleanFilters });
+  },
+  
+  getById: (id) => 
+    api.get(`/api/alerts/${id}`),
+  
+  getUnreadCount: (filters = {}) => {
+    const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+    return api.get('/api/alerts/unread-count', { params: cleanFilters });
+  },
+  
+  create: (data) => 
+    api.post('/api/alerts', data),
+  
+  update: (id, data) => 
+    api.put(`/api/alerts/${id}`, data),
+  
+  markAsRead: (id) => 
+    api.patch(`/api/alerts/${id}/read`),
+  
+  markAsResolved: (id) => 
+    api.patch(`/api/alerts/${id}/resolve`),
+  
+  markMultipleAsRead: (alertIds) => 
+    api.post('/api/alerts/mark-read', { alert_ids: alertIds }),
+  
+  delete: (id) => 
+    api.delete(`/api/alerts/${id}`),
+  
+  // Settings
+  getSettings: () => 
+    api.get('/api/alerts/settings'),
+  
+  updateSettings: (data) => 
+    api.put('/api/alerts/settings', data),
+  
+  // Scheduler (Main Manager only)
+  generate: () => 
+    api.post('/api/alerts/generate'),
+  
+  getSchedulerStatus: () => 
+    api.get('/api/alerts/scheduler/status'),
+};
+
 export default api;
 

@@ -60,7 +60,7 @@ const BranchStatistics = () => {
           blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         } else {
           // If it's not a blob, it might be an error response
-          throw new Error('Invalid response format');
+          throw new Error('تنسيق الاستجابة غير صحيح');
         }
         
         const url = window.URL.createObjectURL(blob);

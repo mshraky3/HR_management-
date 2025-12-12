@@ -52,11 +52,13 @@ const Layout = ({ children }) => {
         { path: '/employees', label: 'قائمة الموظفين' },
         { path: '/employee-file', label: 'ملف موظف' },
         { path: '/reports', label: 'إصدار التقارير' },
+        { path: '/manage-requests', label: 'إدارة الطلبات' },
       ]
     },
     monitoring: {
       label: 'المتابعة والمراقبة',
       items: [
+        { path: '/alerts', label: 'التنبيهات الذكية' },
         { path: '/branches-monitoring', label: 'الفروع' },
         { path: '/monthly-documents', label: 'المستندات الشهرية' },
         { path: '/branch-statistics', label: 'إحصائيات الفروع' },

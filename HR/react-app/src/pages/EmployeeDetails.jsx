@@ -9,6 +9,7 @@ import { employeesAPI, documentsAPI, branchesAPI, setBranchDocumentsPassword } f
 import { getDocumentTypeLabel } from '../utils/employeeConstants';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { isSaudi } from '../utils/employeeHelpers';
 import './EmployeeDetails.css';
 
 const EmployeeDetails = () => {
@@ -605,22 +606,23 @@ const EmployeeDetails = () => {
                 <th>رقم الهوية/الإقامة</th>
                 <td>{employee.id_or_residency_number || '-'}</td>
               </tr>
-              {employee.date_of_birth_hijri && (
+              {/* تاريخ الميلاد - للموظف السعودي: هجري فقط، لغير السعودي: ميلادي فقط */}
+              {employee.date_of_birth_hijri && isSaudi(employee.nationality) && (
                 <tr>
-                  <th>تاريخ الميلاد (هجري)</th>
-                  <td>{employee.date_of_birth_hijri}</td>
-                  {employee.date_of_birth_gregorian && (
-                    <>
-                      <th>تاريخ الميلاد (ميلادي)</th>
-                      <td>{new Date(employee.date_of_birth_gregorian).toLocaleDateString('en-US')}</td>
-                    </>
-                  )}
+                  <th>تاريخ الميلاد</th>
+                  <td colSpan="3">{employee.date_of_birth_hijri}</td>
                 </tr>
               )}
-              {!employee.date_of_birth_hijri && employee.date_of_birth_gregorian && (
+              {!employee.date_of_birth_hijri && employee.date_of_birth_gregorian && isSaudi(employee.nationality) && (
                 <tr>
-                  <th>تاريخ الميلاد (ميلادي)</th>
-                  <td colSpan="3">{new Date(employee.date_of_birth_gregorian).toLocaleDateString('en-US')}</td>
+                  <th>تاريخ الميلاد</th>
+                  <td colSpan="3">-</td>
+                </tr>
+              )}
+              {employee.date_of_birth_gregorian && !isSaudi(employee.nationality) && (
+                <tr>
+                  <th>تاريخ الميلاد</th>
+                  <td colSpan="3">{new Date(employee.date_of_birth_gregorian).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>
                 </tr>
               )}
               {(employee.id_expiry_date_hijri || employee.id_expiry_date_gregorian) && (
