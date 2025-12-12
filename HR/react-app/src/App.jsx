@@ -9,6 +9,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
+import { PushNotificationProvider } from './contexts/PushNotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import BranchManagerLayout from './components/BranchManagerLayout';
@@ -96,9 +97,10 @@ function App() {
   return (
     <AuthProvider>
       <NotificationProvider>
-        <Router>
-          <Suspense fallback={<PageLoading />}>
-            <Routes>
+        <PushNotificationProvider>
+          <Router>
+            <Suspense fallback={<PageLoading />}>
+              <Routes>
               <Route path="/login" element={<Login />} />
               <Route
                 path="/dashboard"
@@ -297,6 +299,7 @@ function App() {
             </Routes>
           </Suspense>
         </Router>
+      </PushNotificationProvider>
       </NotificationProvider>
     </AuthProvider>
   );

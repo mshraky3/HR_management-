@@ -453,6 +453,10 @@ export const employeesAPI = {
   getAll: (filters = {}) => 
     api.get('/api/employees', { params: filters }),
   
+  // Server-side pagination - optimized for large datasets
+  getPaginated: (params = {}) => 
+    api.get('/api/employees/paginated', { params }),
+  
   getById: (id) => 
     api.get(`/api/employees/${id}`),
   

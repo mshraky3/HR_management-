@@ -3,9 +3,11 @@
  * Main layout with navigation - Main Manager only
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { usePushNotifications } from '../contexts/PushNotificationContext';
+import NotificationSettings from './NotificationSettings';
 import './Layout.css';
 
 const Layout = ({ children }) => {
@@ -14,6 +16,26 @@ const Layout = ({ children }) => {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [showNotificationSettings, setShowNotificationSettings] = useState(false);
+  
+  const { 
+    isSupported: notificationsSupported,
+    permission: notificationPermission,
+    isEnabled: notificationsEnabled,
+    shouldPromptForPermission,
+    requestPermission
+  } = usePushNotifications();
+  
+  // Prompt for notification permission on first load (if needed)
+  useEffect(() => {
+    if (shouldPromptForPermission()) {
+      // Show a subtle prompt after 3 seconds
+      const timer = setTimeout(() => {
+        // Don't auto-prompt, just highlight the bell icon
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [shouldPromptForPermission]);
 
   const handleLogout = () => {
     logout();
@@ -118,6 +140,17 @@ const Layout = ({ children }) => {
           ))}
         </div>
         <div className="nav-user">
+          {/* Notification Bell */}
+          {notificationsSupported && (
+            <button 
+              className={`notification-bell ${notificationPermission === 'default' ? 'prompt' : ''} ${notificationsEnabled ? 'enabled' : ''}`}
+              onClick={() => setShowNotificationSettings(true)}
+              title="إعدادات الإشعارات"
+            >
+              🔔
+              {notificationPermission === 'default' && <span className="notification-dot"></span>}
+            </button>
+          )}
           <span className="user-info">
             {user?.full_name || user?.username}
           </span>
@@ -129,6 +162,15 @@ const Layout = ({ children }) => {
       <main className="main-content">
         {children}
       </main>
+      
+      {/* Notification Settings Modal */}
+      {showNotificationSettings && (
+        <div className="notification-settings-modal" onClick={() => setShowNotificationSettings(false)}>
+          <div onClick={(e) => e.stopPropagation()}>
+            <NotificationSettings onClose={() => setShowNotificationSettings(false)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

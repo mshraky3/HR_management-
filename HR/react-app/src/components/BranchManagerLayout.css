@@ -119,6 +119,87 @@
   font-weight: 600;
 }
 
+/* Notification Bell (inherit from Layout.css) */
+.branch-navbar .notification-bell {
+  position: relative;
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+}
+
+.branch-navbar .notification-bell:hover {
+  background: var(--primary-light);
+  opacity: 1;
+}
+
+.branch-navbar .notification-bell.enabled {
+  opacity: 1;
+}
+
+.branch-navbar .notification-bell.prompt {
+  animation: bellPulse 2s infinite;
+}
+
+.branch-navbar .notification-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  background: #ef4444;
+  border-radius: 50%;
+  animation: dotPulse 1.5s infinite;
+}
+
+/* Modal styles (same as Layout.css) */
+.notification-settings-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: modalFadeIn 0.2s ease;
+}
+
+@keyframes bellPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+@keyframes dotPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* Mobile Menu Styles */
 @media (max-width: 768px) {
   .branch-navbar .nav-links.mobile-open {
