@@ -57,7 +57,7 @@ router.get('/', async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch employees',
+      message: 'فشل جلب الموظفين',
       error: error.message
     });
   }
@@ -73,7 +73,7 @@ router.post('/:id/update-completion-status', async (req, res) => {
     console.error('Error updating completion status:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update completion status',
+      message: 'فشل تحديث حالة الإكمال',
       error: error.message
     });
   }
@@ -88,7 +88,7 @@ router.get('/:id/documents', async (req, res) => {
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found'
+        message: 'الموظف غير موجود'
       });
     }
 
@@ -96,7 +96,7 @@ router.get('/:id/documents', async (req, res) => {
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: 'تم رفض الوصول'
       });
     }
 
@@ -111,7 +111,7 @@ router.get('/:id/documents', async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch employee documents',
+      message: 'فشل جلب مستندات الموظف',
       error: error.message
     });
   }
@@ -128,7 +128,7 @@ router.get('/:id/missing-data', async (req, res) => {
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found'
+        message: 'الموظف غير موجود'
       });
     }
     
@@ -136,7 +136,7 @@ router.get('/:id/missing-data', async (req, res) => {
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: 'تم رفض الوصول'
       });
     }
     
@@ -166,7 +166,7 @@ router.get('/:id/missing-data', async (req, res) => {
     console.error('Error fetching missing data:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch missing data',
+      message: 'فشل جلب البيانات المفقودة',
       error: error.message
     });
   }
@@ -181,7 +181,7 @@ router.get('/:id', async (req, res) => {
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found'
+        message: 'الموظف غير موجود'
       });
     }
     
@@ -189,7 +189,7 @@ router.get('/:id', async (req, res) => {
       if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: 'تم رفض الوصول'
       });
     }
     
@@ -197,7 +197,7 @@ router.get('/:id', async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch employee',
+      message: 'فشل جلب الموظف',
       error: error.message
     });
   }
@@ -298,7 +298,7 @@ router.post('/',
         if (req.body[field] && typeof req.body[field] === 'string' && req.body[field].length > maxLength) {
           return res.status(400).json({
             success: false,
-            message: `Field "${field}" exceeds maximum length of ${maxLength} characters`
+            message: `الحقل "${field}" يتجاوز الحد الأقصى لعدد الأحرف (${maxLength} حرف)`
           });
         }
       }
@@ -342,7 +342,7 @@ router.post('/',
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'Failed to create employee',
+        message: 'فشل إنشاء الموظف',
         error: error.message
       });
     }
@@ -365,14 +365,14 @@ router.put('/:id',
       if (!existingEmployee) {
         return res.status(404).json({
           success: false,
-          message: 'Employee not found'
+          message: 'الموظف غير موجود'
         });
       }
       
       if (req.user.role === 'branch_manager' && req.user.branch_id !== existingEmployee.branch_id) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied'
+          message: 'تم رفض الوصول'
         });
       }
       
@@ -427,7 +427,7 @@ router.put('/:id',
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'Failed to update employee',
+        message: 'فشل تحديث الموظف',
         error: error.message
       });
     }
@@ -454,7 +454,7 @@ router.delete('/:id', async (req, res) => {
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found'
+        message: 'الموظف غير موجود'
       });
     }
     

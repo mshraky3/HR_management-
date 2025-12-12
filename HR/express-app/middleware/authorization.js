@@ -74,7 +74,7 @@ export const checkBranchAccess = (req, res, next) => {
       if (userBranchId && userBranchId !== requestedId) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied. You can only access your own branch data.'
+          message: 'تم رفض الوصول. يمكنك فقط الوصول إلى بيانات فرعك.'
         });
       }
     }

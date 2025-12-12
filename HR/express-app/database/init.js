@@ -504,6 +504,128 @@ export async function initializeDatabase() {
       'Created index on academic_years is_current'
     );
 
+    // 14. Create requests table
+    console.log('Creating requests table...');
+    await createTable('requests', `
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER NOT NULL,
+      main_manager_id INTEGER NOT NULL,
+      employee_id INTEGER,
+      request_name VARCHAR(255) NOT NULL,
+      request_text TEXT NOT NULL,
+      attachment_url VARCHAR(500),
+      attachment_name VARCHAR(255),
+      attachment_type VARCHAR(100),
+      status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'in_progress', 'completed')),
+      response_text TEXT,
+      responded_at TIMESTAMP,
+      responded_by INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      FOREIGN KEY (main_manager_id) REFERENCES users(id) ON DELETE RESTRICT,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL,
+      FOREIGN KEY (responded_by) REFERENCES users(id) ON DELETE SET NULL
+    `);
+
+    // Create indexes for requests
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_requests_branch_id ON requests(branch_id)',
+      'Created index on requests.branch_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_requests_main_manager_id ON requests(main_manager_id)',
+      'Created index on requests.main_manager_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_requests_employee_id ON requests(employee_id)',
+      'Created index on requests.employee_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status)',
+      'Created index on requests.status'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_requests_created_at ON requests(created_at)',
+      'Created index on requests.created_at'
+    );
+
+    // 15. Create alerts table (Smart Alerts System)
+    console.log('Creating alerts table...');
+    await createTable('alerts', `
+      id SERIAL PRIMARY KEY,
+      alert_type VARCHAR(50) NOT NULL CHECK (alert_type IN ('id_expiry', 'missing_document', 'incomplete_data', 'custom')),
+      priority VARCHAR(20) NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
+      title VARCHAR(255) NOT NULL,
+      message TEXT NOT NULL,
+      branch_id INTEGER,
+      employee_id INTEGER,
+      related_entity_type VARCHAR(50),
+      related_entity_id INTEGER,
+      alert_data JSONB,
+      is_read BOOLEAN DEFAULT false,
+      is_resolved BOOLEAN DEFAULT false,
+      resolved_at TIMESTAMP,
+      resolved_by INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      expires_at TIMESTAMP,
+      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL
+    `);
+
+    // Create indexes for alerts
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_alerts_type ON alerts(alert_type)',
+      'Created index on alerts.alert_type'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_alerts_branch_id ON alerts(branch_id)',
+      'Created index on alerts.branch_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_alerts_employee_id ON alerts(employee_id)',
+      'Created index on alerts.employee_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_alerts_is_read ON alerts(is_read)',
+      'Created index on alerts.is_read'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_alerts_is_resolved ON alerts(is_resolved)',
+      'Created index on alerts.is_resolved'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_alerts_priority ON alerts(priority)',
+      'Created index on alerts.priority'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at DESC)',
+      'Created index on alerts.created_at'
+    );
+
+    // 16. Create alert_settings table (User notification preferences)
+    console.log('Creating alert_settings table...');
+    await createTable('alert_settings', `
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL UNIQUE,
+      id_expiry_enabled BOOLEAN DEFAULT true,
+      id_expiry_days_before INTEGER DEFAULT 30,
+      missing_document_enabled BOOLEAN DEFAULT true,
+      incomplete_data_enabled BOOLEAN DEFAULT true,
+      email_notifications_enabled BOOLEAN DEFAULT false,
+      sms_notifications_enabled BOOLEAN DEFAULT false,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    `);
+
+    // Create index for alert_settings
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_alert_settings_user_id ON alert_settings(user_id)',
+      'Created index on alert_settings.user_id'
+    );
+
     // ========== PERFORMANCE OPTIMIZATION: Additional Indexes for Employees ==========
     // These indexes significantly improve query performance for common operations
     

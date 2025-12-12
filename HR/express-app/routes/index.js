@@ -17,6 +17,8 @@ import termRoutes from './terms.js';
 import academicYearRoutes from './academic-years.js';
 import archiveRoutes from './archive.js';
 import branchStatisticsRoutes from './branch-statistics.js';
+import requestRoutes from './requests.js';
+import alertRoutes from './alerts.js';
 
 const router = express.Router();
 
@@ -39,6 +41,8 @@ router.use('/terms', termRoutes);
 router.use('/academic-years', academicYearRoutes);
 router.use('/archive', archiveRoutes);
 router.use('/branch-statistics', branchStatisticsRoutes);
+router.use('/requests', requestRoutes);
+router.use('/alerts', alertRoutes);
 
 export default router;
 

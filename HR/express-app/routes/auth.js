@@ -24,7 +24,7 @@ router.post('/login', async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Username and password are required'
+        message: 'اسم المستخدم وكلمة المرور مطلوبان'
       });
     }
 
@@ -38,7 +38,7 @@ router.post('/login', async (req, res) => {
       console.error('Database error in User.findByUsername:', dbError);
       return res.status(500).json({
         success: false,
-        message: 'Database connection error. Please check server configuration.',
+        message: 'خطأ في اتصال قاعدة البيانات. يرجى التحقق من إعدادات الخادم.',
         error: process.env.NODE_ENV === 'development' ? dbError.message : undefined
       });
     }
@@ -52,7 +52,7 @@ router.post('/login', async (req, res) => {
         console.error('Database error in Branch.findByUsername:', dbError);
         return res.status(500).json({
           success: false,
-          message: 'Database connection error. Please check server configuration.',
+          message: 'خطأ في اتصال قاعدة البيانات. يرجى التحقق من إعدادات الخادم.',
           error: process.env.NODE_ENV === 'development' ? dbError.message : undefined
         });
       }
@@ -62,7 +62,7 @@ router.post('/login', async (req, res) => {
         if (branch.password !== password) {
           return res.status(401).json({
             success: false,
-            message: 'Invalid username or password'
+            message: 'اسم المستخدم أو كلمة المرور غير صحيحة'
           });
         }
 
@@ -70,7 +70,7 @@ router.post('/login', async (req, res) => {
         if (!branch.is_active) {
           return res.status(403).json({
             success: false,
-            message: 'Branch account is deactivated. Please contact administrator.'
+            message: 'حساب الفرع معطل. يرجى الاتصال بالمسؤول.'
           });
         }
 
@@ -91,7 +91,7 @@ router.post('/login', async (req, res) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid username or password'
+        message: 'اسم المستخدم أو كلمة المرور غير صحيحة'
       });
     }
 
@@ -99,7 +99,7 @@ router.post('/login', async (req, res) => {
     if (!isBranchLogin && !user.is_active) {
       return res.status(403).json({
         success: false,
-        message: 'Account is deactivated. Please contact administrator.'
+        message: 'الحساب معطل. يرجى الاتصال بالمسؤول.'
       });
     }
 
@@ -107,7 +107,7 @@ router.post('/login', async (req, res) => {
     if (!isBranchLogin && user.password !== password) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid username or password'
+        message: 'اسم المستخدم أو كلمة المرور غير صحيحة'
       });
     }
 
@@ -151,7 +151,7 @@ router.post('/login', async (req, res) => {
     // Return token and user info (without password)
     res.json({
       success: true,
-      message: 'Login successful',
+      message: 'تم تسجيل الدخول بنجاح',
       token: token,
       user: {
         id: user.id,
@@ -167,9 +167,9 @@ router.post('/login', async (req, res) => {
     console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
-      message: 'Login failed',
+      message: 'فشل تسجيل الدخول',
       error: process.env.NODE_ENV === 'production' 
-        ? 'Internal server error. Please check server logs.' 
+        ? 'خطأ داخلي في الخادم. يرجى التحقق من سجلات الخادم.' 
         : error.message,
       ...(process.env.NODE_ENV !== 'production' && { stack: error.stack })
     });
@@ -189,7 +189,7 @@ router.get('/me', authenticate, async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'المستخدم غير موجود'
       });
     }
 
@@ -211,7 +211,7 @@ router.get('/me', authenticate, async (req, res) => {
     console.error('Get user error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get user info',
+      message: 'فشل الحصول على معلومات المستخدم',
       error: error.message
     });
   }
@@ -222,7 +222,7 @@ router.post('/logout', authenticate, (req, res) => {
   // TODO: Implement token blacklisting if needed
   res.json({
     success: true,
-    message: 'Logged out successfully'
+      message: 'تم تسجيل الخروج بنجاح'
   });
 });
 

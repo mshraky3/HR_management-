@@ -141,6 +141,55 @@ export async function uploadBranchDocumentToBlob(fileBuffer, fileName, mimeType,
 }
 
 /**
+ * Upload request attachment to Vercel Blob Storage
+ * @param {Buffer} fileBuffer - File buffer data
+ * @param {string} fileName - Original file name
+ * @param {string} mimeType - File MIME type
+ * @param {number} requestId - Request ID
+ * @returns {Promise<string>} - Blob URL
+ */
+export async function uploadRequestAttachmentToBlob(fileBuffer, fileName, mimeType, requestId) {
+  try {
+    // Validate Blob Storage configuration
+    validateBlobConfig();
+    
+    // Validate inputs
+    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+      throw new Error('Invalid file buffer provided');
+    }
+    if (!fileName || !mimeType || !requestId) {
+      throw new Error('Missing required parameters for blob upload');
+    }
+
+    const uniqueFileName = generateFileName(fileName);
+    const blobPath = `requests/${requestId}/attachments/${uniqueFileName}`;
+    
+    const blob = await put(blobPath, fileBuffer, {
+      access: 'public',
+      contentType: mimeType,
+      addRandomSuffix: false,
+      // token is automatically read from process.env.BLOB_READ_WRITE_TOKEN
+    });
+    
+    // Validate URL length (database column is VARCHAR(500))
+    if (blob.url && blob.url.length > 500) {
+      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+    }
+    
+    return blob.url;
+  } catch (error) {
+    console.error('Error uploading request attachment to Blob:', error);
+    
+    // Provide helpful error messages
+    if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
+      throw error; // Re-throw configuration errors as-is
+    }
+    
+    throw new Error(`Failed to upload file to Blob: ${error.message}`);
+  }
+}
+
+/**
  * Delete file from Vercel Blob Storage
  * @param {string} blobUrl - Blob URL to delete
  * @returns {Promise<boolean>} - Success status

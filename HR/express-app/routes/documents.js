@@ -34,7 +34,7 @@ router.get('/', async (req, res) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: 'Authentication required'
+        message: 'يجب تسجيل الدخول'
       });
     }
 
@@ -60,14 +60,14 @@ router.get('/', async (req, res) => {
       if (!employee) {
         return res.status(404).json({
           success: false,
-          message: 'Employee not found'
+          message: 'الموظف غير موجود'
         });
       }
 
       if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied'
+          message: 'تم رفض الوصول'
         });
       }
 
@@ -111,7 +111,7 @@ router.get('/', async (req, res) => {
     console.error('Error fetching documents:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch documents',
+      message: 'فشل جلب المستندات',
       error: error.message
     });
   }
@@ -129,7 +129,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     if (!employee_id || !document_type) {
       return res.status(400).json({
         success: false,
-        message: 'employee_id and document_type are required'
+        message: 'معرف الموظف ونوع المستند مطلوبان'
       });
     }
 
@@ -137,7 +137,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     if (!isValidDocumentType(document_type)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid document_type'
+        message: 'نوع المستند غير صحيح'
       });
     }
 
@@ -146,14 +146,14 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found'
+        message: 'الموظف غير موجود'
       });
     }
 
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
-        message: 'You can only upload documents for employees in your branch'
+        message: 'يمكنك فقط رفع مستندات لموظفي فرعك'
       });
     }
 
@@ -239,7 +239,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     if (!uploadedById) {
       return res.status(500).json({
         success: false,
-        message: 'No valid user found for uploaded_by field. Please ensure at least one user exists in the system.'
+        message: 'لم يتم العثور على مستخدم صالح لحقل uploaded_by. يرجى التأكد من وجود مستخدم واحد على الأقل في النظام.'
       });
     }
     
@@ -292,7 +292,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     console.error('Error uploading document:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to upload document',
+      message: 'فشل رفع المستند',
       error: error.message
     });
   }
@@ -310,7 +310,7 @@ router.get('/:id/download', async (req, res) => {
     if (!document) {
       return res.status(404).json({
         success: false,
-        message: 'Document not found'
+        message: 'المستند غير موجود'
       });
     }
 
@@ -319,7 +319,7 @@ router.get('/:id/download', async (req, res) => {
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: 'تم رفض الوصول'
       });
     }
 
@@ -327,7 +327,7 @@ router.get('/:id/download', async (req, res) => {
     if (!document.file_path) {
       return res.status(404).json({
         success: false,
-        message: 'File path not found in database'
+        message: 'مسار الملف غير موجود في قاعدة البيانات'
       });
     }
 
@@ -343,8 +343,8 @@ router.get('/:id/download', async (req, res) => {
       // On Vercel, local files are not accessible
       return res.status(404).json({
         success: false,
-        message: 'File not found. This file may need to be re-uploaded to Blob Storage.',
-        error: 'Local file access not available on serverless platform'
+        message: 'الملف غير موجود. قد يحتاج هذا الملف إلى إعادة الرفع إلى Blob Storage.',
+        error: 'الوصول إلى الملفات المحلية غير متاح على منصة serverless'
       });
     }
 
@@ -368,7 +368,7 @@ router.get('/:id/download', async (req, res) => {
       } else {
         return res.status(404).json({
           success: false,
-          message: 'File not found on server'
+          message: 'الملف غير موجود على الخادم'
         });
       }
     }
@@ -380,7 +380,7 @@ router.get('/:id/download', async (req, res) => {
     console.error('Error downloading document:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to download document',
+      message: 'فشل تحميل المستند',
       error: error.message
     });
   }
@@ -398,7 +398,7 @@ router.get('/:id/preview', async (req, res) => {
     if (!document) {
       return res.status(404).json({
         success: false,
-        message: 'Document not found'
+        message: 'المستند غير موجود'
       });
     }
 
@@ -407,7 +407,7 @@ router.get('/:id/preview', async (req, res) => {
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: 'تم رفض الوصول'
       });
     }
 
@@ -433,8 +433,8 @@ router.get('/:id/preview', async (req, res) => {
           // On Vercel, local files are not accessible
           return res.status(404).json({
             success: false,
-            message: 'File preview not available. This file may need to be re-uploaded to Blob Storage.',
-            error: 'Local file access not available on serverless platform'
+            message: 'معاينة الملف غير متاحة. قد يحتاج هذا الملف إلى إعادة الرفع إلى Blob Storage.',
+            error: 'الوصول إلى الملفات المحلية غير متاح على منصة serverless'
           });
         }
 
@@ -468,7 +468,7 @@ router.get('/:id/preview', async (req, res) => {
     // For PDFs or if preview not available, return document info
     res.json({
       success: true,
-      message: 'Preview not available for this document type',
+      message: 'معاينة غير متاحة لهذا النوع من المستندات',
       data: {
         id: document.id,
         file_name: document.file_name,
@@ -483,7 +483,7 @@ router.get('/:id/preview', async (req, res) => {
     console.error('Error getting document preview:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get document preview',
+      message: 'فشل الحصول على معاينة المستند',
       error: error.message
     });
   }
@@ -502,7 +502,7 @@ router.get('/:id', async (req, res) => {
     if (!document) {
       return res.status(404).json({
         success: false,
-        message: 'Document not found'
+        message: 'المستند غير موجود'
       });
     }
 
@@ -511,14 +511,14 @@ router.get('/:id', async (req, res) => {
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found'
+        message: 'الموظف غير موجود'
       });
     }
 
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: 'تم رفض الوصول'
       });
     }
 
@@ -527,7 +527,7 @@ router.get('/:id', async (req, res) => {
     console.error('Error fetching document:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch document',
+      message: 'فشل جلب المستند',
       error: error.message
     });
   }
@@ -544,7 +544,7 @@ router.put('/:id', async (req, res) => {
     if (!document) {
       return res.status(404).json({
         success: false,
-        message: 'Document not found'
+        message: 'المستند غير موجود'
       });
     }
 
@@ -553,7 +553,7 @@ router.put('/:id', async (req, res) => {
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: 'تم رفض الوصول'
       });
     }
 
@@ -572,7 +572,7 @@ router.put('/:id', async (req, res) => {
     console.error('Error updating document:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update document',
+      message: 'فشل تحديث المستند',
       error: error.message
     });
   }
@@ -589,7 +589,7 @@ router.post('/:id/verify', async (req, res) => {
     if (!document) {
       return res.status(404).json({
         success: false,
-        message: 'Document not found'
+        message: 'المستند غير موجود'
       });
     }
 
@@ -597,7 +597,7 @@ router.post('/:id/verify', async (req, res) => {
     if (req.user.role !== 'main_manager') {
       return res.status(403).json({
         success: false,
-        message: 'Only main manager can verify documents'
+        message: 'يمكن للمدير الرئيسي فقط التحقق من المستندات'
       });
     }
 
@@ -623,7 +623,7 @@ router.post('/:id/verify', async (req, res) => {
     
     res.json({
       success: true,
-      message: 'Document verified successfully',
+      message: 'تم التحقق من المستند بنجاح',
       data: verifiedDocument
     });
   } catch (error) {
@@ -647,7 +647,7 @@ router.delete('/:id', async (req, res) => {
     if (!document) {
       return res.status(404).json({
         success: false,
-        message: 'Document not found'
+        message: 'المستند غير موجود'
       });
     }
 
@@ -656,7 +656,7 @@ router.delete('/:id', async (req, res) => {
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: 'تم رفض الوصول'
       });
     }
 
@@ -664,7 +664,7 @@ router.delete('/:id', async (req, res) => {
     if (req.user.role !== 'main_manager') {
       return res.status(403).json({
         success: false,
-        message: 'Only main manager can delete documents'
+        message: 'يمكن للمدير الرئيسي فقط حذف المستندات'
       });
     }
 
@@ -686,7 +686,7 @@ router.delete('/:id', async (req, res) => {
     
     res.json({
       success: true,
-      message: 'Document deleted successfully',
+      message: 'تم حذف المستند بنجاح',
       data: deletedDocument
     });
   } catch (error) {

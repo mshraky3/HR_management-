@@ -128,12 +128,12 @@ export const verifyBranchDocumentsPassword = async (req, res, next) => {
 
     // Check access - branch managers can only access their own branch
     if (req.user?.role === 'branch_manager' && req.user.branch_id !== parsedBranchId) {
-      return res.status(403).json({ success: false, message: 'Access denied' });
+      return res.status(403).json({ success: false, message: 'تم رفض الوصول' });
     }
 
     // Verify password
     if (branch.branch_documents_password !== password) {
-      return res.status(401).json({ success: false, message: 'Invalid branch documents password' });
+      return res.status(401).json({ success: false, message: 'كلمة مرور مستندات الفرع غير صحيحة' });
     }
 
     // Password is correct, continue
@@ -142,7 +142,7 @@ export const verifyBranchDocumentsPassword = async (req, res, next) => {
     console.error('Error verifying branch documents password:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to verify password',
+      message: 'فشل التحقق من كلمة المرور',
       error: error.message
     });
   }

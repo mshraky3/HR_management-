@@ -28,7 +28,7 @@ router.get('/', async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch users',
+      message: 'فشل جلب المستخدمين',
       error: error.message
     });
   }
@@ -51,7 +51,7 @@ router.get('/:id', async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch user',
+      message: 'فشل جلب المستخدم',
       error: error.message
     });
   }

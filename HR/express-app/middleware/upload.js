@@ -24,7 +24,7 @@ const fileFilter = (req, file, cb) => {
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only PDF, JPEG, PNG, and GIF files are allowed.'), false);
+    cb(new Error('نوع الملف غير مدعوم. يُسمح فقط بملفات PDF و JPEG و PNG و GIF.'), false);
   }
 };
 
@@ -50,7 +50,7 @@ export const validateUploadedFile = (req, res, next) => {
   if (!req.file) {
     return res.status(400).json({
       success: false,
-      message: 'No file uploaded'
+      message: 'لم يتم رفع أي ملف'
     });
   }
 
@@ -58,7 +58,7 @@ export const validateUploadedFile = (req, res, next) => {
   if (!isValidMimeType(req.file.mimetype)) {
     return res.status(400).json({
       success: false,
-      message: 'Invalid file type. Only PDF and image files are allowed.'
+      message: 'نوع الملف غير مدعوم. يُسمح فقط بملفات PDF والصور.'
     });
   }
 
@@ -66,7 +66,7 @@ export const validateUploadedFile = (req, res, next) => {
   if (!isValidFileSize(req.file.size)) {
     return res.status(400).json({
       success: false,
-      message: 'File size exceeds maximum limit of 1MB'
+      message: 'حجم الملف يتجاوز الحد الأقصى المسموح به (1 ميجابايت)'
     });
   }
 

@@ -30,7 +30,7 @@ router.get('/', authenticate, async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch branches',
+      message: 'فشل جلب الفروع',
       error: error.message
     });
   }
@@ -45,7 +45,7 @@ router.put('/my-branch',
       if (!req.user || req.user.role !== 'branch_manager' || !req.user.branch_id) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied. This endpoint is only for branch managers.'
+          message: 'تم رفض الوصول. هذا المسار متاح فقط لمديري الفروع.'
         });
       }
 
@@ -98,7 +98,7 @@ router.put('/my-branch',
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'Failed to update branch',
+        message: 'فشل تحديث الفرع',
         error: error.message
       });
     }
@@ -122,7 +122,7 @@ router.get('/:id', authenticate, checkBranchAccess, async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch branch',
+      message: 'فشل جلب الفرع',
       error: error.message
     });
   }
@@ -158,7 +158,7 @@ router.post('/',
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'Failed to create branch',
+        message: 'فشل إنشاء الفرع',
         error: error.message
       });
     }
@@ -201,7 +201,7 @@ router.put('/:id',
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'Failed to update branch',
+        message: 'فشل تحديث الفرع',
         error: error.message
       });
     }
@@ -228,7 +228,7 @@ router.delete('/:id',
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'Failed to delete branch',
+        message: 'فشل حذف الفرع',
         error: error.message
       });
     }

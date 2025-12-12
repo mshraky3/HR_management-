@@ -201,7 +201,7 @@ router.post('/verify-password', async (req, res) => {
     if (!branch_id || !password) {
       return res.status(400).json({
         success: false,
-        message: 'branch_id and password are required'
+        message: 'معرف الفرع وكلمة المرور مطلوبان'
       });
     }
 
@@ -209,32 +209,32 @@ router.post('/verify-password', async (req, res) => {
     if (isNaN(parsedBranchId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid branch ID format'
+        message: 'تنسيق معرف الفرع غير صحيح'
       });
     }
 
     // Get branch
     const branch = await Branch.findById(parsedBranchId);
     if (!branch) {
-      return res.status(404).json({ success: false, message: 'Branch not found' });
+      return res.status(404).json({ success: false, message: 'الفرع غير موجود' });
     }
 
     // Check access - branch managers can only verify their own branch
     if (req.user.role === 'branch_manager' && req.user.branch_id !== parsedBranchId) {
-      return res.status(403).json({ success: false, message: 'Access denied' });
+      return res.status(403).json({ success: false, message: 'تم رفض الوصول' });
     }
 
     // Verify password
     if (branch.branch_documents_password !== password) {
-      return res.status(401).json({ success: false, message: 'Invalid password' });
+      return res.status(401).json({ success: false, message: 'كلمة المرور غير صحيحة' });
     }
 
-    res.json({ success: true, message: 'Password verified successfully' });
+    res.json({ success: true, message: 'تم التحقق من كلمة المرور بنجاح' });
   } catch (error) {
     console.error('Error verifying password:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to verify password',
+      message: 'فشل التحقق من كلمة المرور',
       error: error.message
     });
   }
@@ -283,7 +283,7 @@ router.get('/', verifyBranchDocumentsPassword, async (req, res) => {
     console.error('Error fetching branch documents:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch branch documents',
+      message: 'فشل جلب مستندات الفرع',
       error: error.message
     });
   }
@@ -302,7 +302,7 @@ router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFi
     if (!branch_id || !document_type || !req.file) {
       return res.status(400).json({
         success: false,
-        message: 'branch_id, document_type, and file are required'
+        message: 'معرف الفرع ونوع المستند والملف مطلوبة'
       });
     }
 
@@ -311,7 +311,7 @@ router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFi
     if (!branch) {
       return res.status(404).json({
         success: false,
-        message: 'Branch not found'
+        message: 'الفرع غير موجود'
       });
     }
 
@@ -342,7 +342,7 @@ router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFi
     if (healthcareOnlyDocuments.includes(document_type) && branch.branch_type !== 'healthcare_center') {
       return res.status(400).json({
         success: false,
-        message: 'This document type is only available for healthcare centers'
+        message: 'هذا النوع من المستندات متاح فقط لمراكز الرعاية الصحية'
       });
     }
 
@@ -400,7 +400,7 @@ router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFi
     console.error('Error uploading branch document:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to upload branch document',
+      message: 'فشل رفع مستند الفرع',
       error: error.message
     });
   }
@@ -455,7 +455,7 @@ router.get('/:id/download', verifyBranchDocumentsPassword, async (req, res) => {
         console.error('Error fetching blob file:', error);
         return res.status(500).json({
           success: false,
-          message: 'Failed to fetch document file',
+          message: 'فشل جلب ملف المستند',
           error: error.message
         });
       }
@@ -477,7 +477,7 @@ router.get('/:id/download', verifyBranchDocumentsPassword, async (req, res) => {
     console.error('Error downloading branch document:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to download document',
+      message: 'فشل تحميل المستند',
       error: error.message
     });
   }
@@ -495,7 +495,7 @@ router.get('/:id/preview', verifyBranchDocumentsPassword, async (req, res) => {
     if (isNaN(documentId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid document ID'
+        message: 'معرف المستند غير صحيح'
       });
     }
 
@@ -542,7 +542,7 @@ router.get('/:id/preview', verifyBranchDocumentsPassword, async (req, res) => {
     // For PDFs or if preview not available, return document info
     res.json({
       success: true,
-      message: 'Preview not available for this document type',
+      message: 'معاينة غير متاحة لهذا النوع من المستندات',
       data: {
         id: document.id,
         file_name: document.file_name,
@@ -557,7 +557,7 @@ router.get('/:id/preview', verifyBranchDocumentsPassword, async (req, res) => {
     console.error('Error getting branch document preview:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get document preview',
+      message: 'فشل الحصول على معاينة المستند',
       error: error.message
     });
   }
@@ -575,7 +575,7 @@ router.get('/:id', verifyBranchDocumentsPassword, async (req, res) => {
     if (isNaN(documentId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid document ID'
+        message: 'معرف المستند غير صحيح'
       });
     }
 
@@ -600,7 +600,7 @@ router.get('/:id', verifyBranchDocumentsPassword, async (req, res) => {
     console.error('Error fetching branch document:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch document',
+      message: 'فشل جلب المستند',
       error: error.message
     });
   }
@@ -645,7 +645,7 @@ router.post('/:id/verify', verifyBranchDocumentsPassword, async (req, res) => {
     console.error('Error verifying branch document:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to verify document',
+      message: 'فشل التحقق من المستند',
       error: error.message
     });
   }
@@ -690,14 +690,14 @@ router.put('/:id', verifyBranchDocumentsPassword, uploadSingle, async (req, res)
       if (!isValidMimeType(req.file.mimetype)) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid file type. Only PDF and image files are allowed.'
+          message: 'نوع الملف غير مدعوم. يُسمح فقط بملفات PDF والصور.'
         });
       }
 
       if (!isValidFileSize(req.file.size)) {
         return res.status(400).json({
           success: false,
-          message: 'File size exceeds maximum limit of 1MB'
+          message: 'حجم الملف يتجاوز الحد الأقصى المسموح به (1 ميجابايت)'
         });
       }
 
@@ -770,7 +770,7 @@ router.put('/:id', verifyBranchDocumentsPassword, uploadSingle, async (req, res)
     console.error('Error updating branch document:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update document',
+      message: 'فشل تحديث المستند',
       error: error.message
     });
   }
@@ -814,7 +814,7 @@ router.delete('/:id', verifyBranchDocumentsPassword, async (req, res) => {
     console.error('Error deleting branch document:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to delete document',
+      message: 'فشل حذف المستند',
       error: error.message
     });
   }
@@ -832,7 +832,7 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
     if (req.user.role !== 'main_manager') {
       return res.status(403).json({
         success: false,
-        message: 'Access denied. Only main managers can generate reports.'
+        message: 'تم رفض الوصول. يمكن للمديرين الرئيسيين فقط إنشاء التقارير.'
       });
     }
 
@@ -841,7 +841,7 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
     if (!document_type) {
       return res.status(400).json({
         success: false,
-        message: 'Document type is required'
+        message: 'نوع المستند مطلوب'
       });
     }
 
@@ -1283,7 +1283,7 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
             if (!res.headersSent) {
               res.status(500).json({
                 success: false,
-                message: 'Failed to generate PDF report',
+                message: 'فشل إنشاء تقرير PDF',
                 error: error.message
               });
             }
@@ -1346,7 +1346,7 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
-        message: 'Failed to generate report',
+        message: 'فشل إنشاء التقرير',
         error: error.message
       });
     }
