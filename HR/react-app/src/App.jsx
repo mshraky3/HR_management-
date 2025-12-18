@@ -4,7 +4,7 @@
  * Performance Optimization: Code Splitting & Lazy Loading
  * All page components are lazy-loaded to reduce initial bundle size by 50-70%
  */
-
+import { Analytics } from "@vercel/analytics/react"
 import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -298,6 +298,7 @@ function App() {
               />
             </Routes>
           </Suspense>
+          <Analytics />
         </Router>
       </PushNotificationProvider>
       </NotificationProvider>
