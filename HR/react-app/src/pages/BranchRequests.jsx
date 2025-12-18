@@ -3,14 +3,14 @@
  * Branch managers can submit requests to main managers
  */
 
-import { useState, useEffect } from 'react';
-import { requestsAPI, usersAPI, employeesAPI } from '../utils/api';
+import { useState, useEffect, useCallback } from 'react';
+import { requestsAPI, employeesAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import './BranchRequests.css';
 
 const BranchRequests = () => {
-  const { user, isMainManager } = useAuth();
+  const { user } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const [requests, setRequests] = useState([]);
   const [mainManagers, setMainManagers] = useState([]);
@@ -18,7 +18,7 @@ const BranchRequests = () => {
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [saving, setSaving] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     main_manager_id: '',
     employee_id: '',
@@ -27,27 +27,27 @@ const BranchRequests = () => {
   });
   const [attachmentFile, setAttachmentFile] = useState(null);
 
-  useEffect(() => {
-    if (isMainManager()) {
-      return; // This page is only for branch managers
-    }
-    loadData();
-    
-    // Auto-refresh every 5 seconds
-    const interval = setInterval(() => {
-      loadData();
-    }, 5000);
-    
-    return () => clearInterval(interval);
-  }, []);
+  const branchId = user?.branch_id || null;
+  const isMainManagerUser = user?.role === 'main_manager';
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    if (!user || isMainManagerUser) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      setLoading(true);
+      const employeeFilters = { is_active: true };
+      if (branchId) {
+        employeeFilters.branch_id = branchId;
+      }
+
       const [requestsRes, managersRes, employeesRes] = await Promise.all([
         requestsAPI.getAll(),
         requestsAPI.getMainManagers(),
-        employeesAPI.getAll({ branch_id: user?.branch_id, is_active: true }),
+        employeesAPI.getAll(employeeFilters),
       ]);
 
       if (requestsRes.data.success) {
@@ -67,7 +67,11 @@ const BranchRequests = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, isMainManagerUser, branchId, showError]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -104,7 +108,7 @@ const BranchRequests = () => {
         });
         setAttachmentFile(null);
         setShowCreateForm(false);
-        loadData();
+        await loadData();
       }
     } catch (error) {
       console.error('Error creating request:', error);
@@ -123,7 +127,7 @@ const BranchRequests = () => {
       const response = await requestsAPI.delete(id);
       if (response.data.success) {
         showSuccess('تم حذف الطلب بنجاح');
-        loadData();
+        await loadData();
       }
     } catch (error) {
       console.error('Error deleting request:', error);
@@ -155,7 +159,7 @@ const BranchRequests = () => {
     });
   };
 
-  if (isMainManager()) {
+  if (isMainManagerUser) {
     return (
       <div className="branch-requests-container">
         <div className="empty-state">
