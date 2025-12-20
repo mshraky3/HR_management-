@@ -260,6 +260,28 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       // If decoding fails, use original filename
     }
     
+    // Archive (deactivate) old documents of the same type for this employee
+    // This ensures only the latest document is active, while old ones are archived
+    // Note: For multi-file document types (like experience_certificate, additional_courses),
+    // we don't archive - those can have multiple active documents
+    const singleFileDocumentTypes = [
+      'id_or_residency', 'direct_letter', 'bank_iban', 'primary_qualification',
+      'employment_contract', 'passport', 'professional_license', 'classification',
+      'speech_therapy_course', 'physical_therapy_course', 'medical_disclosure_form',
+      'speech_therapy_70_hours_course', 'therapy_40_hours_course', 'medical_insurance'
+    ];
+    
+    if (singleFileDocumentTypes.includes(document_type)) {
+      try {
+        // Archive old documents of this type BEFORE creating the new one
+        // We'll exclude the new document ID after creation, but for now archive all
+        await Document.archiveByEmployeeAndType(parseInt(employee_id), document_type);
+      } catch (archiveError) {
+        console.error('Error archiving old documents:', archiveError);
+        // Continue with upload even if archiving fails
+      }
+    }
+
     // Create document record - store blob URL in file_path
     const document = await Document.create({
       employee_id: parseInt(employee_id),

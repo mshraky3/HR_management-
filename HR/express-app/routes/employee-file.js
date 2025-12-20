@@ -977,15 +977,41 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
     };
     
     // Helper function to merge PDF documents in order
-    const mergePdfDocuments = async (headerPdfBuffer) => {
+    const mergePdfDocuments = async () => {
       try {
-        // Load header PDF (title and info only, if needed)
-        const finalPdf = await PDFDocument.load(headerPdfBuffer);
+        // Start with first employee's PDF instead of empty header
+        if (employees.length === 0) {
+          throw new Error('No employees to generate PDF for');
+        }
         
-        // For each employee, create their PDF and merge it, then merge their PDF documents
-        for (let i = 0; i < employees.length; i++) {
+        // Create first employee's PDF
+        const firstEmployee = employees[0];
+        const firstEmployeePdfBuffer = await createEmployeePdf(firstEmployee, 0, true);
+        const finalPdf = await PDFDocument.load(firstEmployeePdfBuffer);
+        
+        // Merge PDF documents for first employee
+        const firstEmployeeData = normalizedMap[firstEmployee.id] || { found: [], selected: [] };
+        const firstEmployeeDocuments = firstEmployeeData.found || [];
+        
+        for (const doc of firstEmployeeDocuments) {
+          const docFileData = documentFilesMap[doc.id];
+          if (docFileData && docFileData.mimeType === 'application/pdf') {
+            try {
+              const pdfToMerge = await PDFDocument.load(docFileData.buffer);
+              const pdfPages = await finalPdf.copyPages(pdfToMerge, pdfToMerge.getPageIndices());
+              pdfPages.forEach((page) => {
+                finalPdf.addPage(page);
+              });
+            } catch (error) {
+              console.error(`Error merging PDF document ${doc.id}:`, error);
+            }
+          }
+        }
+        
+        // For remaining employees, create their PDF and merge it, then merge their PDF documents
+        for (let i = 1; i < employees.length; i++) {
           const employee = employees[i];
-          const isFirst = i === 0;
+          const isFirst = false;
           
           try {
             // Create PDF for this employee
@@ -1031,53 +1057,13 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
       }
     };
     
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       try {
-        // Create a minimal header PDF (or use first employee's PDF as header)
-        // For simplicity, we'll create an empty PDF as header and merge employees
-        const headerContent = [];
-        
-        const headerDocDefinition = {
-          pageSize: 'A4',
-          pageMargins: [40, 60, 40, 60],
-          images: {},
-          defaultStyle: {
-            font: 'Roboto',
-            fontSize: 10,
-            color: 'black'
-          },
-          styles: {},
-          content: headerContent
-        };
-        
-        const headerPdfDoc = printer.createPdfKitDocument(headerDocDefinition);
-        const chunks = [];
-        
-        headerPdfDoc.on('data', (chunk) => {
-          chunks.push(chunk);
-        });
-        
-        headerPdfDoc.on('end', async () => {
-          try {
-            const headerPdfBuffer = Buffer.concat(chunks);
-            
-            // Merge all employee PDFs and their PDF documents
-            const finalPdfBuffer = await mergePdfDocuments(headerPdfBuffer);
-            
-            resolve(finalPdfBuffer);
-          } catch (mergeError) {
-            console.error('Error merging PDFs:', mergeError);
-            reject(mergeError);
-          }
-        });
-        
-        headerPdfDoc.on('error', (error) => {
-          reject(error);
-        });
-        
-        headerPdfDoc.end();
-        
+        // Merge all employee PDFs and their PDF documents (starting with first employee, no empty header)
+        const finalPdfBuffer = await mergePdfDocuments();
+        resolve(finalPdfBuffer);
       } catch (error) {
+        console.error('Error merging PDFs:', error);
         reject(error);
       }
     });

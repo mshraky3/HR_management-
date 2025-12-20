@@ -193,6 +193,136 @@ router.get('/branch-documents/all', async (req, res) => {
 });
 
 /**
+ * GET /api/archive/employee-documents/all
+ * Get archived employee documents (is_active = false)
+ * Main manager only
+ * NOTE: This must come BEFORE /:id route to avoid conflicts
+ */
+router.get('/employee-documents/all', async (req, res) => {
+  try {
+    // Only main manager can access archived employee documents
+    if (req.user?.role !== 'main_manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'يمكن للمدير الرئيسي فقط الوصول إلى المستندات المؤرشفة'
+      });
+    }
+
+    const { Document } = await import('../models/Document.js');
+    
+    const filters = {
+      branch_id: req.query.branch_id ? parseInt(req.query.branch_id) : undefined,
+      document_type: req.query.document_type,
+      employee_id: req.query.employee_id ? parseInt(req.query.employee_id) : undefined
+    };
+
+    // Remove undefined values
+    Object.keys(filters).forEach(key => {
+      if (filters[key] === undefined) delete filters[key];
+    });
+
+    const documents = await Document.findArchived(filters);
+    
+    res.json({
+      success: true,
+      data: documents || [],
+      count: documents?.length || 0
+    });
+  } catch (error) {
+    console.error('Error fetching archived employee documents:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل جلب المستندات المؤرشفة',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * DELETE /api/archive/employee-documents/:id
+ * Permanently delete archived employee document (hard delete)
+ * Main manager only
+ */
+router.delete('/employee-documents/:id', async (req, res) => {
+  try {
+    // Only main manager can permanently delete documents
+    if (req.user?.role !== 'main_manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'يمكن للمدير الرئيسي فقط حذف المستندات المؤرشفة'
+      });
+    }
+
+    const documentId = parseInt(req.params.id);
+    if (isNaN(documentId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'معرف المستند غير صحيح'
+      });
+    }
+
+    const { Document } = await import('../models/Document.js');
+    
+    // First check if document exists and is archived
+    const existingDoc = await sql`
+      SELECT id, file_path, is_active, employee_id
+      FROM employee_documents
+      WHERE id = ${documentId}
+    `;
+
+    if (!existingDoc || existingDoc.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'المستند غير موجود'
+      });
+    }
+
+    const doc = existingDoc[0];
+
+    if (doc.is_active) {
+      return res.status(400).json({
+        success: false,
+        message: 'لا يمكن حذف المستندات النشطة. يجب أرشفتها أولاً'
+      });
+    }
+
+    // Delete file from blob storage if it exists
+    if (doc.file_path && (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://'))) {
+      try {
+        const { deleteFromBlob } = await import('../utils/blobStorage.js');
+        await deleteFromBlob(doc.file_path);
+      } catch (deleteError) {
+        console.error('Error deleting file from blob storage:', deleteError);
+        // Continue with database deletion even if blob deletion fails
+      }
+    }
+
+    // Permanently delete from database
+    const deletedDocument = await Document.permanentDelete(documentId);
+    
+    if (!deletedDocument) {
+      return res.status(404).json({
+        success: false,
+        message: 'المستند غير موجود'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'تم حذف المستند نهائياً',
+      data: deletedDocument
+    });
+  } catch (error) {
+    console.error('Error permanently deleting document:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل حذف المستند',
+      error: error.message
+    });
+  }
+});
+
+/**
  * GET /api/archive/statistics
  * Get archive statistics grouped by branch, academic year, status, etc.
  */

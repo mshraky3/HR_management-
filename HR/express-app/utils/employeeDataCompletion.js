@@ -33,13 +33,13 @@ import sql from '../config/database.js';
  */
 export async function checkEmployeeDataCompletion(employee, options = {}) {
   const missingFields = [];
-  
+
   // Get branch type
   const [branch] = await sql`
     SELECT branch_type FROM branches WHERE id = ${employee.branch_id}
   `;
   const branchType = branch?.branch_type || null;
-  
+
   // Get documents if not provided
   let documents = options.documents;
   if (!documents) {
@@ -49,7 +49,7 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
     `;
   }
   const documentTypes = documents.map(d => d.document_type);
-  
+
   // Get classifications if not provided
   let classifications = options.classifications;
   if (!classifications) {
@@ -59,7 +59,7 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
     `;
   }
   const classificationProfessions = classifications.map(c => c.profession);
-  
+
   // Get certificates if not provided
   let certificates = options.certificates;
   if (!certificates) {
@@ -69,7 +69,7 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
     `;
   }
   const certificateTypes = certificates.map(c => c.course_type);
-  
+
   // BASIC REQUIRED FIELDS (always required)
   // These are already enforced at database level, but we check anyway
   if (!employee.first_name || !employee.second_name || !employee.third_name || !employee.fourth_name) {
@@ -81,7 +81,7 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
   if (!employee.nationality) {
     missingFields.push('الجنسية');
   }
-  
+
   // COMMON FIELDS (required for complete data)
   if (!employee.employee_id_number) {
     missingFields.push('رقم الموظف');
@@ -97,15 +97,15 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
   if (!employee.id_type) {
     missingFields.push('نوع الهوية');
   }
-  
+
   // NATIONALITY-SPECIFIC REQUIREMENTS
   const nationalityLower = (employee.nationality || '').toLowerCase();
-  const isSaudi = nationalityLower.includes('سعودي') || 
-                  nationalityLower.includes('saudi') ||
-                  nationalityLower.includes('السعودية') ||
-                  employee.id_type === 'citizen';
+  const isSaudi = nationalityLower.includes('سعودي') ||
+    nationalityLower.includes('saudi') ||
+    nationalityLower.includes('السعودية') ||
+    employee.id_type === 'citizen';
   const isNonSaudi = employee.id_type === 'resident' || (!isSaudi && employee.id_type);
-  
+
   // Date of birth requirements: Saudi employees only need Hijri date, non-Saudis need Gregorian
   if (isSaudi) {
     // Saudi: Only Hijri date required
@@ -123,7 +123,7 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
       missingFields.push('تاريخ الميلاد');
     }
   }
-  
+
   // Non-Saudi employees: REQUIRED - Passport document and passport number
   // All non-Saudi employees (residents) MUST have a passport copy uploaded
   if (isNonSaudi && employee.id_type === 'resident') {
@@ -135,25 +135,54 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
     if (!employee.passport_number) {
       missingFields.push('رقم جواز السفر');
     }
+    // Added strict checks to match frontend validation
+    if (!employee.passport_issue_date) {
+      missingFields.push('تاريخ إصدار جواز السفر');
+    }
+    if (!employee.passport_expiry_date) {
+      missingFields.push('تاريخ انتهاء جواز السفر');
+    }
+    if (!employee.passport_issue_place) {
+      missingFields.push('مكان إصدار جواز السفر');
+    }
+    if (!employee.residency_issue_date) {
+      missingFields.push('تاريخ إصدار الإقامة');
+    }
   }
-  
+
   // ============================================================================
   // DOCUMENT REQUIREMENTS
   // ============================================================================
   // NOTE: Documents are optional in general, BUT employees cannot be marked as
   // complete until ALL required documents (based on their characteristics) are uploaded.
   // Required documents are determined by:
-  // 1. Nationality (non-Saudis need passport)
-  // 2. Profession (certain professions need specific certificates/classifications)
-  // 3. Role (managers need experience certificate)
-  // 4. Branch type (school employees need professional license)
+  // 1. Common required documents (ID/Residency, Direct Letter, Bank IBAN)
+  // 2. Nationality (non-Saudis need passport)
+  // 3. Profession (certain professions need specific certificates/classifications)
+  // 4. Role (managers need experience certificate)
+  // 5. Branch type (school employees need professional license)
   // ============================================================================
-  
+
+  // COMMON REQUIRED DOCUMENTS (for all employees)
+  // These four documents are mandatory for all employees to be considered complete
+  if (!documentTypes.includes('id_or_residency')) {
+    missingFields.push('الهوية/الإقامة (مستند مطلوب)');
+  }
+  if (!documentTypes.includes('direct_letter')) {
+    missingFields.push('خطاب مباشرة (مستند مطلوب)');
+  }
+  if (!documentTypes.includes('bank_iban')) {
+    missingFields.push('مستند الآيبان (مستند مطلوب)');
+  }
+  if (!documentTypes.includes('employment_contract')) {
+    missingFields.push('عقد العمل (مستند مطلوب وأساسي)');
+  }
+
   // PROFESSION-SPECIFIC REQUIREMENTS
   // IMPORTANT: Use job_title field (structured dropdown selection) instead of parsing occupation (free text)
   // This ensures accurate matching based on the actual job title selected by the user
   const jobTitle = employee.job_title || '';
-  
+
   // Professions requiring professional classification (stored in separate table, not documents)
   // These professions MUST have a classification record to be considered complete
   // Based on job_title dropdown values from the form
@@ -163,12 +192,12 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
     'اخصائي نفسي',    // Psychology
     'تمريض'            // Nursing
   ];
-  
+
   const needsClassification = classificationRequiredJobTitles.includes(jobTitle);
-  
+
   if (needsClassification) {
-    const hasClassification = classificationProfessions.some(cp => 
-      classificationRequiredJobTitles.some(jt => 
+    const hasClassification = classificationProfessions.some(cp =>
+      classificationRequiredJobTitles.some(jt =>
         cp.toLowerCase().includes(jt.toLowerCase())
       )
     );
@@ -176,26 +205,26 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
       missingFields.push('التصنيف المهني (مطلوب لهذه المهنة)');
     }
   }
-  
+
   // Speech Therapist: REQUIRED - 70-hour course certificate
   // Based on job_title dropdown value: 'النطق و التخاطب'
   if (jobTitle === 'النطق و التخاطب') {
-    const has70HourCourse = documentTypes.includes('speech_therapy_70_hours_course') || 
-                           documentTypes.includes('speech_therapy_70h') ||
-                           documentTypes.includes('speech_therapy_course') || // Alternative name
-                           certificateTypes.includes('speech_therapy_70h');
+    const has70HourCourse = documentTypes.includes('speech_therapy_70_hours_course') ||
+      documentTypes.includes('speech_therapy_70h') ||
+      documentTypes.includes('speech_therapy_course') || // Alternative name
+      certificateTypes.includes('speech_therapy_70h');
     if (!has70HourCourse) {
       missingFields.push('شهادة دورة 70 ساعة (مطلوب لأخصائي النطق)');
     }
   }
-  
+
   // Physical Therapist: REQUIRED - 40-hour course certificate
   // Note: This is different from Physiotherapy (which needs classification, not this certificate)
   // Based on job_title dropdown - if there's a specific "Physical Therapist" job title, add it here
   // Currently, the dropdown only has 'علاج طبيعي' (Physiotherapy) which requires classification
   // This check is kept for any future job titles that specifically require the 40-hour course
   // If no such job title exists in the dropdown, this check will never trigger
-  
+
   // Manager/Supervisor: REQUIRED - Experience certificate
   // Based on job_title dropdown values from the form
   const managerJobTitles = [
@@ -204,15 +233,15 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
     'مديرة مراكز',       // Center Director (healthcare)
     'مشرف فني عام'       // General Technical Supervisor (healthcare)
   ];
-  
+
   const isManager = managerJobTitles.includes(jobTitle);
-  
+
   if (isManager) {
     if (!documentTypes.includes('experience_certificate')) {
       missingFields.push('شهادة الخبرة (مطلوب للمدير/المشرف)');
     }
   }
-  
+
   // BRANCH TYPE SPECIFIC REQUIREMENTS
   // School employees: REQUIRED - Professional license
   // All employees working in schools MUST have a professional license
@@ -221,7 +250,7 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
       missingFields.push('الترخيص المهني (مطلوب لموظفي المدارس)');
     }
   }
-  
+
   // ADDITIONAL COMMON FIELDS (for complete profile)
   // Note: Date of birth is already handled above based on nationality
   if (!employee.religion) {
@@ -232,6 +261,9 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
   }
   if (!employee.educational_qualification) {
     missingFields.push('المؤهل التعليمي');
+  }
+  if (!employee.specialization) {
+    missingFields.push('التخصص');
   }
   if (!employee.email) {
     missingFields.push('البريد الإلكتروني');
@@ -248,7 +280,7 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
   if (employee.salary === null || employee.salary === undefined) {
     missingFields.push('الراتب');
   }
-  
+
   // ID expiry date: Only required for non-Saudis (residents have expiry dates)
   // Saudi citizens' national IDs don't expire
   if (!isSaudi) {
@@ -256,7 +288,7 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
       missingFields.push('تاريخ انتهاء الهوية/الإقامة');
     }
   }
-  
+
   // Check if employee has NO documents at all
   // Documents are optional for completion, but if there are NO documents, 
   // it should be flagged in missing data for attention
@@ -264,21 +296,42 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
   if (hasNoDocuments) {
     missingFields.push('المستندات (لا توجد مستندات مرفوعة)');
   }
-  
+
   // Calculate completion status
   // IMPORTANT: If employee has NO documents at all, they should be marked as incomplete
-  // so they appear in the missing data list for attention, even if all other fields are complete.
-  // However, if they have some documents but are missing specific required ones, 
-  // those specific requirements don't block completion (they're tracked but optional).
-  const documentRelatedKeywords = ['مستند', 'شهادة', 'ترخيص', 'جواز', 'دورة', 'تصنيف'];
-  const nonDocumentMissingFields = missingFields.filter(field => 
-    !documentRelatedKeywords.some(keyword => field.includes(keyword))
+  // Required common documents (id_or_residency, direct_letter, bank_iban, employment_contract) 
+  // MUST be present for completion, regardless of other documents.
+  // These are the four essential documents that ALL employees must have.
+  // Other profession-specific documents are tracked but don't block completion if employee has some documents.
+  
+  // Check for required common documents
+  const requiredCommonDocuments = [
+    'id_or_residency',
+    'direct_letter',
+    'bank_iban',
+    'employment_contract'
+  ];
+  const hasAllRequiredDocuments = requiredCommonDocuments.every(docType => 
+    documentTypes.includes(docType)
   );
   
-  // If employee has NO documents at all, mark as incomplete for attention
-  // Otherwise, only check non-document fields for completion
-  const isComplete = hasNoDocuments ? false : (nonDocumentMissingFields.length === 0);
-  
+  // Separate required document fields from optional ones
+  const documentRelatedKeywords = ['مستند', 'شهادة', 'ترخيص', 'جواز', 'دورة', 'تصنيف'];
+  const requiredDocumentKeywords = ['الهوية/الإقامة', 'خطاب مباشرة', 'مستند الآيبان', 'عقد العمل'];
+  const missingRequiredDocuments = missingFields.filter(field =>
+    documentRelatedKeywords.some(keyword => field.includes(keyword)) &&
+    requiredDocumentKeywords.some(keyword => field.includes(keyword))
+  );
+  const nonDocumentMissingFields = missingFields.filter(field =>
+    !documentRelatedKeywords.some(keyword => field.includes(keyword))
+  );
+
+  // Employee is complete only if:
+  // 1. Has no documents at all → incomplete (for attention)
+  // 2. Has all required common documents AND no non-document fields missing → complete
+  // 3. Missing required documents OR missing non-document fields → incomplete
+  const isComplete = hasNoDocuments ? false : (hasAllRequiredDocuments && nonDocumentMissingFields.length === 0);
+
   return {
     isComplete,
     missingFields
@@ -296,23 +349,23 @@ export async function updateEmployeeCompletionStatus(employeeId) {
     const [employee] = await sql`
       SELECT * FROM employees WHERE id = ${employeeId}
     `;
-    
+
     if (!employee) {
       throw new Error('Employee not found');
     }
-    
+
     // Check completion
     const completion = await checkEmployeeDataCompletion(employee);
-    
+
     // Update status
     const newStatus = completion.isComplete ? 'complete' : 'incomplete';
-    
+
     await sql`
       UPDATE employees 
       SET data_completion_status = ${newStatus}, updated_at = CURRENT_TIMESTAMP
       WHERE id = ${employeeId}
     `;
-    
+
     return {
       ...employee,
       data_completion_status: newStatus,

@@ -43,7 +43,7 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// Update my branch (branch manager only - can only update phone_number and email)
+// Update my branch (branch manager only - can update phone_number, email, and number_of_employees)
 router.put('/my-branch',
   authenticate,
   async (req, res) => {
@@ -72,14 +72,36 @@ router.put('/my-branch',
         });
       }
 
-      // Only allow updating phone_number and email
-      const allowedFields = ['phone_number', 'email'];
+      // Validate number_of_employees if provided
+      if (req.body.number_of_employees !== undefined && req.body.number_of_employees !== null && req.body.number_of_employees !== '') {
+        const numEmployees = parseInt(req.body.number_of_employees);
+        if (isNaN(numEmployees) || numEmployees < 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'عدد الموظفين يجب أن يكون رقماً صحيحاً موجباً'
+          });
+        }
+      }
+
+      // Only allow updating phone_number, email, and number_of_employees
+      const allowedFields = ['phone_number', 'email', 'number_of_employees'];
       const updateData = {};
       
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) {
-          // Convert empty string to null
-          updateData[field] = req.body[field] === '' ? null : req.body[field];
+          // Convert empty string to null, except for number_of_employees which should be parsed as integer
+          if (field === 'number_of_employees') {
+            // Handle number_of_employees: parse as integer, or set to null if empty/null
+            const value = req.body[field];
+            if (value === '' || value === null || value === undefined) {
+              updateData[field] = null;
+            } else {
+              const parsed = parseInt(value, 10);
+              updateData[field] = isNaN(parsed) ? null : parsed;
+            }
+          } else {
+            updateData[field] = req.body[field] === '' ? null : req.body[field];
+          }
         }
       }
 
@@ -158,6 +180,17 @@ router.post('/',
         });
       }
 
+      // Validate number_of_employees if provided
+      if (req.body.number_of_employees !== undefined && req.body.number_of_employees !== null && req.body.number_of_employees !== '') {
+        const numEmployees = parseInt(req.body.number_of_employees);
+        if (isNaN(numEmployees) || numEmployees < 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'عدد الموظفين يجب أن يكون رقماً صحيحاً موجباً'
+          });
+        }
+      }
+
       const { Branch } = await import('../models/Branch.js');
       const branch = await Branch.create(req.body);
       
@@ -192,6 +225,17 @@ router.put('/:id',
           success: false,
           message: 'صيغة رقم الجوال غير صحيحة'
         });
+      }
+
+      // Validate number_of_employees if provided
+      if (req.body.number_of_employees !== undefined && req.body.number_of_employees !== null && req.body.number_of_employees !== '') {
+        const numEmployees = parseInt(req.body.number_of_employees);
+        if (isNaN(numEmployees) || numEmployees < 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'عدد الموظفين يجب أن يكون رقماً صحيحاً موجباً'
+          });
+        }
       }
 
       const { Branch } = await import('../models/Branch.js');

@@ -694,10 +694,15 @@ router.put('/:id', verifyBranchDocumentsPassword, uploadSingle, async (req, res)
         });
       }
 
-      if (!isValidFileSize(req.file.size)) {
+      // Determine max file size based on document type
+      const highCapacityDocs = ['operational_plan', 'acceptance_notifications'];
+      const maxFileSize = highCapacityDocs.includes(document.document_type) ? 15 : 1;
+
+      if (!isValidFileSize(req.file.size, maxFileSize)) {
+        const sizeLimitMsg = maxFileSize === 15 ? '15 ميجابايت' : '1 ميجابايت';
         return res.status(400).json({
           success: false,
-          message: 'حجم الملف يتجاوز الحد الأقصى المسموح به (1 ميجابايت)'
+          message: `حجم الملف يتجاوز الحد الأقصى المسموح به (${sizeLimitMsg})`
         });
       }
 

@@ -19,11 +19,11 @@ router.use(authenticate);
 router.get('/paginated', async (req, res) => {
   try {
     const { Employee } = await import('../models/Employee.js');
-    
+
     // Parse pagination params
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const pageSize = Math.min(100, Math.max(10, parseInt(req.query.pageSize) || 50));
-    
+
     // Handle branch_id
     let branchId = null;
     if (req.user.role === 'branch_manager') {
@@ -38,7 +38,7 @@ router.get('/paginated', async (req, res) => {
         if (isNaN(branchId)) branchId = null;
       }
     }
-    
+
     const filters = {
       branch_id: branchId,
       occupation: req.query.occupation,
@@ -48,9 +48,9 @@ router.get('/paginated', async (req, res) => {
       search_id: req.query.search_id,
       search_phone: req.query.search_phone,
     };
-    
+
     const result = await Employee.findAllPaginated(filters, page, pageSize);
-    
+
     res.json({
       success: true,
       ...result
@@ -69,7 +69,8 @@ router.get('/paginated', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const { Employee } = await import('../models/Employee.js');
-    
+    const { updateEmployeeCompletionStatus } = await import('../utils/employeeDataCompletion.js');
+
     // Handle branch_id - support single value or array
     let branchId = null;
     if (req.user.role === 'branch_manager') {
@@ -87,7 +88,7 @@ router.get('/', async (req, res) => {
         if (isNaN(branchId)) branchId = null;
       }
     }
-    
+
     const filters = {
       branch_id: branchId,
       occupation: req.query.occupation,
@@ -102,9 +103,36 @@ router.get('/', async (req, res) => {
       limit: req.query.limit,
       offset: req.query.offset
     };
-    
+
     const employees = await Employee.findAll(filters);
-    res.json({ success: true, data: employees });
+    
+    // Recalculate completion status for all employees on each load
+    // This ensures data states are always up-to-date
+    try {
+      const recalculationPromises = employees.map(async (employee) => {
+        try {
+          await updateEmployeeCompletionStatus(employee.id);
+          // Reload employee to get updated status
+          return await Employee.findById(employee.id);
+        } catch (error) {
+          log.warn('Error recalculating completion status for employee', { 
+            employeeId: employee.id, 
+            error: error.message 
+          });
+          // Return original employee if recalculation fails
+          return employee;
+        }
+      });
+      
+      // Wait for all recalculations to complete (with parallel execution)
+      const updatedEmployees = await Promise.all(recalculationPromises);
+      
+      res.json({ success: true, data: updatedEmployees });
+    } catch (recalcError) {
+      log.error('Error during batch completion status recalculation', { error: recalcError.message });
+      // If batch recalculation fails, return original employees
+      res.json({ success: true, data: employees });
+    }
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -135,7 +163,7 @@ router.get('/:id/documents', async (req, res) => {
   try {
     const { Employee } = await import('../models/Employee.js');
     const employee = await Employee.findById(parseInt(req.params.id));
-    
+
     if (!employee) {
       return res.status(404).json({
         success: false,
@@ -173,16 +201,16 @@ router.get('/:id/missing-data', async (req, res) => {
   try {
     const { Employee } = await import('../models/Employee.js');
     const { checkEmployeeDataCompletion } = await import('../utils/employeeDataCompletion.js');
-    
+
     const employee = await Employee.findById(parseInt(req.params.id));
-    
+
     if (!employee) {
       return res.status(404).json({
         success: false,
         message: 'الموظف غير موجود'
       });
     }
-    
+
     // Check branch access
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
@@ -190,7 +218,7 @@ router.get('/:id/missing-data', async (req, res) => {
         message: 'تم رفض الوصول'
       });
     }
-    
+
     // Get documents, classifications, and certificates
     const sql = (await import('../config/database.js')).default;
     const [documents, classifications, certificates] = await Promise.all([
@@ -198,14 +226,14 @@ router.get('/:id/missing-data', async (req, res) => {
       sql`SELECT profession FROM employee_professional_classifications WHERE employee_id = ${employee.id}`,
       sql`SELECT course_type FROM employee_course_certificates WHERE employee_id = ${employee.id}`
     ]);
-    
+
     // Check completion
     const completion = await checkEmployeeDataCompletion(employee, {
       documents,
       classifications,
       certificates
     });
-    
+
     res.json({
       success: true,
       data: {
@@ -228,22 +256,22 @@ router.get('/:id', async (req, res) => {
   try {
     const { Employee } = await import('../models/Employee.js');
     const employee = await Employee.findById(parseInt(req.params.id));
-    
+
     if (!employee) {
       return res.status(404).json({
         success: false,
         message: 'الموظف غير موجود'
       });
     }
-    
-      // Check branch access
-      if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
+
+    // Check branch access
+    if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
         message: 'تم رفض الوصول'
       });
     }
-    
+
     res.json({ success: true, data: employee });
   } catch (error) {
     res.status(500).json({
@@ -272,45 +300,22 @@ router.post('/',
       const { Employee } = await import('../models/Employee.js');
       const { updateEmployeeCompletionStatus } = await import('../utils/employeeDataCompletion.js');
       const { isSaudi } = await import('../utils/employeeHelpers.js');
-      
+
       // Validate date of birth is provided and correct type based on nationality
       const hasHijriDate = req.body.date_of_birth_hijri && req.body.date_of_birth_hijri.trim() !== '';
       const hasGregorianDate = req.body.date_of_birth_gregorian && req.body.date_of_birth_gregorian.trim() !== '';
-      
+
       // Date of birth is REQUIRED for all employees
-      if (req.body.nationality) {
-        const isSaudiNationality = isSaudi(req.body.nationality);
-        if (isSaudiNationality) {
-          // Saudi employees: Hijri date is required
-          if (!hasHijriDate) {
-            return res.status(400).json({
-              success: false,
-              message: 'تاريخ الميلاد مطلوب للموظف السعودي (يجب أن يكون هجري)'
-            });
-          }
-          // Clear Gregorian date for Saudi employees
-          req.body.date_of_birth_gregorian = null;
-        } else {
-          // Non-Saudi employees: Gregorian date is required
-          if (!hasGregorianDate) {
-            return res.status(400).json({
-              success: false,
-              message: 'تاريخ الميلاد مطلوب للموظف غير السعودي (يجب أن يكون ميلادي)'
-            });
-          }
-          // Clear Hijri date for non-Saudi employees
-          req.body.date_of_birth_hijri = null;
-        }
-      } else {
-        // Nationality not provided - require at least one date type (fallback)
-        if (!hasHijriDate && !hasGregorianDate) {
-          return res.status(400).json({
-            success: false,
-            message: 'تاريخ الميلاد مطلوب. الرجاء إدخال تاريخ الميلاد.'
-          });
-        }
+      // Date of birth is REQUIRED for all employees
+      // Relaxed validation: Require at least one date format to be present
+      // We no longer restrict by nationality or clear the other date type
+      if (!hasHijriDate && !hasGregorianDate) {
+        return res.status(400).json({
+          success: false,
+          message: 'تاريخ الميلاد مطلوب. الرجاء إدخال تاريخ الميلاد (هجري أو ميلادي).'
+        });
       }
-      
+
       // For branch managers, force branch_id to their branch (prevent manipulation)
       if (req.user.role === 'branch_manager') {
         if (req.body.branch_id && req.body.branch_id !== req.user.branch_id) {
@@ -322,9 +327,9 @@ router.post('/',
         // Force branch_id to their branch
         req.body.branch_id = req.user.branch_id;
       }
-      
+
       // Ensure date fields are properly set (already handled above based on nationality)
-      
+
       // Validate field lengths before insertion
       const fieldLengths = {
         'first_name': 100,
@@ -344,7 +349,7 @@ router.post('/',
         'id_or_residency_number': 100,
         'employee_id_number': 100
       };
-      
+
       for (const [field, maxLength] of Object.entries(fieldLengths)) {
         if (req.body[field] && typeof req.body[field] === 'string' && req.body[field].length > maxLength) {
           return res.status(400).json({
@@ -353,17 +358,17 @@ router.post('/',
           });
         }
       }
-      
+
       // Set created_by to branch_id (never null)
       // For branch managers: use their branch_id
       // For main managers: use the employee's branch_id
       let createdByBranchId = req.body.branch_id;
-      
+
       // If branch manager, force to their branch_id
       if (req.user.role === 'branch_manager' && req.user.branch_id) {
         createdByBranchId = req.user.branch_id;
       }
-      
+
       // Ensure branch_id is set (should never be null at this point)
       if (!createdByBranchId) {
         return res.status(400).json({
@@ -371,14 +376,14 @@ router.post('/',
           message: 'لا يمكن تحديد الفرع. الرجاء المحاولة مرة أخرى.'
         });
       }
-      
+
       const employee = await Employee.create({
         ...req.body,
         created_by: createdByBranchId,
         updated_by: createdByBranchId, // For new records, updated_by = created_by
         data_completion_status: 'incomplete' // Default to incomplete
       });
-      
+
       // Check and update completion status
       try {
         await updateEmployeeCompletionStatus(employee.id);
@@ -410,7 +415,7 @@ router.put('/:id',
   async (req, res) => {
     try {
       const { Employee } = await import('../models/Employee.js');
-      
+
       // Check if employee exists and user has access
       const existingEmployee = await Employee.findById(parseInt(req.params.id));
       if (!existingEmployee) {
@@ -419,14 +424,14 @@ router.put('/:id',
           message: 'الموظف غير موجود'
         });
       }
-      
+
       if (req.user.role === 'branch_manager' && req.user.branch_id !== existingEmployee.branch_id) {
         return res.status(403).json({
           success: false,
           message: 'تم رفض الوصول'
         });
       }
-      
+
       // For branch managers, prevent changing branch_id (force it to their branch)
       if (req.user.role === 'branch_manager') {
         if (req.body.branch_id && req.body.branch_id !== req.user.branch_id) {
@@ -438,17 +443,17 @@ router.put('/:id',
         // Force branch_id to their branch (prevent manipulation)
         req.body.branch_id = req.user.branch_id;
       }
-      
+
       // Set updated_by to branch_id (never null)
       // For branch managers: use their branch_id
       // For main managers: use the employee's branch_id (from existing employee or request)
       let updatedByBranchId = req.body.branch_id || existingEmployee.branch_id;
-      
+
       // If branch manager, force to their branch_id
       if (req.user.role === 'branch_manager' && req.user.branch_id) {
         updatedByBranchId = req.user.branch_id;
       }
-      
+
       // Ensure branch_id is set (should never be null at this point)
       if (!updatedByBranchId) {
         return res.status(400).json({
@@ -456,13 +461,13 @@ router.put('/:id',
           message: 'لا يمكن تحديد الفرع. الرجاء المحاولة مرة أخرى.'
         });
       }
-      
+
       const employee = await Employee.update(
         parseInt(req.params.id),
         req.body,
         updatedByBranchId
       );
-      
+
       // Check and update completion status after update
       try {
         const { updateEmployeeCompletionStatus } = await import('../utils/employeeDataCompletion.js');
@@ -489,9 +494,9 @@ router.put('/:id',
 router.delete('/:id', async (req, res) => {
   try {
     const { Employee } = await import('../models/Employee.js');
-    
+
     const employeeId = parseInt(req.params.id);
-    
+
     // Only main manager can delete employees
     if (req.user.role !== 'main_manager') {
       return res.status(403).json({
@@ -499,7 +504,7 @@ router.delete('/:id', async (req, res) => {
         message: 'Only main manager can delete employees'
       });
     }
-    
+
     // Check if employee exists
     const employee = await Employee.findById(employeeId);
     if (!employee) {
@@ -508,7 +513,7 @@ router.delete('/:id', async (req, res) => {
         message: 'الموظف غير موجود'
       });
     }
-    
+
     // Archive employee by setting status to 'other' with deactivation reason
     // Use employee's branch_id as statusChangedBy
     const updatedEmployee = await Employee.updateStatus(
@@ -517,7 +522,7 @@ router.delete('/:id', async (req, res) => {
       employee.branch_id,
       'تم إلغاء التفعيل'
     );
-    
+
     res.json({
       success: true,
       message: 'تم إلغاء تفعيل الموظف بنجاح',
@@ -538,10 +543,10 @@ router.put('/:id/status', async (req, res) => {
   try {
     const { Employee } = await import('../models/Employee.js');
     const { Branch } = await import('../models/Branch.js');
-    
+
     const employeeId = parseInt(req.params.id);
     const { status, reason } = req.body;
-    
+
     // Validation
     const validStatuses = ['active', 'pending', 'terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
     if (!status || !validStatuses.includes(status)) {
@@ -550,7 +555,7 @@ router.put('/:id/status', async (req, res) => {
         message: 'حالة غير صحيحة'
       });
     }
-    
+
     // Check if employee exists and user has access
     const employee = await Employee.findById(employeeId);
     if (!employee) {
@@ -559,7 +564,7 @@ router.put('/:id/status', async (req, res) => {
         message: 'الموظف غير موجود'
       });
     }
-    
+
     // Check access: branch managers can only update their branch employees
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
@@ -567,13 +572,13 @@ router.put('/:id/status', async (req, res) => {
         message: 'غير مصرح لك بتغيير حالة هذا الموظف'
       });
     }
-    
+
     // Determine who changed the status
     let statusChangedBy = employee.branch_id; // Default to employee's branch
     if (req.user.role === 'branch_manager' && req.user.branch_id) {
       statusChangedBy = req.user.branch_id;
     }
-    
+
     // Update status
     const updatedEmployee = await Employee.updateStatus(
       employeeId,
@@ -581,7 +586,7 @@ router.put('/:id/status', async (req, res) => {
       statusChangedBy,
       reason || null
     );
-    
+
     res.json({
       success: true,
       message: 'تم تحديث حالة الموظف بنجاح',
@@ -605,9 +610,9 @@ router.post('/:id/renew', async (req, res) => {
     const { Branch } = await import('../models/Branch.js');
     const { Term } = await import('../models/Term.js');
     const { AcademicYear } = await import('../models/AcademicYear.js');
-    
+
     const employeeId = parseInt(req.params.id);
-    
+
     // Check if user is branch manager
     if (req.user.role !== 'branch_manager' || !req.user.branch_id) {
       return res.status(403).json({
@@ -615,7 +620,7 @@ router.post('/:id/renew', async (req, res) => {
         message: 'فقط مديرو الفروع يمكنهم تجديد عقود الموظفين'
       });
     }
-    
+
     // Get employee
     const employee = await Employee.findById(employeeId);
     if (!employee) {
@@ -624,7 +629,7 @@ router.post('/:id/renew', async (req, res) => {
         message: 'الموظف غير موجود'
       });
     }
-    
+
     // Check access
     if (employee.branch_id !== req.user.branch_id) {
       return res.status(403).json({
@@ -632,7 +637,7 @@ router.post('/:id/renew', async (req, res) => {
         message: 'غير مصرح لك بتجديد عقد هذا الموظف'
       });
     }
-    
+
     // Check if employee is pending
     if (employee.status !== 'pending') {
       return res.status(400).json({
@@ -640,7 +645,7 @@ router.post('/:id/renew', async (req, res) => {
         message: 'هذا الموظف ليس في حالة انتظار التجديد'
       });
     }
-    
+
     // Get branch to determine branch type
     const branch = await Branch.findById(employee.branch_id);
     if (!branch) {
@@ -649,7 +654,7 @@ router.post('/:id/renew', async (req, res) => {
         message: 'الفرع غير موجود'
       });
     }
-    
+
     // Get current academic year and term
     const currentYear = await AcademicYear.getCurrentYear(branch.branch_type);
     if (!currentYear) {
@@ -658,7 +663,7 @@ router.post('/:id/renew', async (req, res) => {
         message: 'لا توجد سنة دراسية حالية لهذا النوع من الفروع'
       });
     }
-    
+
     const currentTerm = await Term.getCurrentTerm(branch.branch_type);
     if (!currentTerm) {
       return res.status(400).json({
@@ -666,32 +671,32 @@ router.post('/:id/renew', async (req, res) => {
         message: 'لا يوجد فصل دراسي حالياً'
       });
     }
-    
+
     // Get employee documents
     const documents = await Document.findByEmployeeId(employeeId);
     const documentTypes = documents.map(d => d.document_type);
-    
+
     // Validate required documents for renewal
     const requiredDocs = ['employment_contract', 'employment_letter'];
     if (employee.gender === 'female') {
       requiredDocs.push('medical_examination');
     }
-    
-    const missingDocs = requiredDocs.filter(docType => 
+
+    const missingDocs = requiredDocs.filter(docType =>
       !documentTypes.includes(docType) &&
       !documentTypes.includes(docType.replace('_', '_')) // Handle variations
     );
-    
+
     // Check if documents are recent (uploaded/updated in last 90 days)
     const now = new Date();
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-    
+
     const recentDocs = documents.filter(doc => {
       if (!requiredDocs.includes(doc.document_type)) return false;
       const uploadDate = new Date(doc.uploaded_at);
       return uploadDate >= ninetyDaysAgo;
     });
-    
+
     if (missingDocs.length > 0 || recentDocs.length < requiredDocs.length) {
       return res.status(400).json({
         success: false,
@@ -700,7 +705,7 @@ router.post('/:id/renew', async (req, res) => {
         required_documents: requiredDocs
       });
     }
-    
+
     // Renew employee
     const renewedEmployee = await Employee.renewEmployee(
       employeeId,
@@ -708,14 +713,14 @@ router.post('/:id/renew', async (req, res) => {
       currentTerm.id,
       req.user.branch_id
     );
-    
+
     if (!renewedEmployee) {
       return res.status(400).json({
         success: false,
         message: 'فشل تجديد العقد. تأكد من أن حالة الموظف هي "قيد الانتظار"'
       });
     }
-    
+
     res.json({
       success: true,
       message: 'تم تجديد عقد الموظف بنجاح',
@@ -735,10 +740,10 @@ router.post('/:id/renew', async (req, res) => {
 router.post('/:id/non-renewal', async (req, res) => {
   try {
     const { Employee } = await import('../models/Employee.js');
-    
+
     const employeeId = parseInt(req.params.id);
     const { status, reason } = req.body;
-    
+
     // Check if user is branch manager
     if (req.user.role !== 'branch_manager' || !req.user.branch_id) {
       return res.status(403).json({
@@ -746,7 +751,7 @@ router.post('/:id/non-renewal', async (req, res) => {
         message: 'فقط مديرو الفروع يمكنهم تحديد عدم التجديد'
       });
     }
-    
+
     // Get employee
     const employee = await Employee.findById(employeeId);
     if (!employee) {
@@ -755,7 +760,7 @@ router.post('/:id/non-renewal', async (req, res) => {
         message: 'الموظف غير موجود'
       });
     }
-    
+
     // Check access
     if (employee.branch_id !== req.user.branch_id) {
       return res.status(403).json({
@@ -763,7 +768,7 @@ router.post('/:id/non-renewal', async (req, res) => {
         message: 'غير مصرح لك بتحديد عدم التجديد لهذا الموظف'
       });
     }
-    
+
     // Check if employee is pending
     if (employee.status !== 'pending') {
       return res.status(400).json({
@@ -771,7 +776,7 @@ router.post('/:id/non-renewal', async (req, res) => {
         message: 'هذا الموظف ليس في حالة انتظار التجديد'
       });
     }
-    
+
     // Validate status (must be an archived status, not active or pending)
     const archivedStatuses = ['terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
     if (!status || !archivedStatuses.includes(status)) {
@@ -780,7 +785,7 @@ router.post('/:id/non-renewal', async (req, res) => {
         message: 'يجب اختيار حالة أرشيفية (مثل: إنهاء العقد، الاستقالة، إلخ)'
       });
     }
-    
+
     // Update status to archived status
     const updatedEmployee = await Employee.updateStatus(
       employeeId,
@@ -788,7 +793,7 @@ router.post('/:id/non-renewal', async (req, res) => {
       req.user.branch_id,
       reason || 'عدم تجديد العقد'
     );
-    
+
     res.json({
       success: true,
       message: 'تم نقل الموظف إلى الأرشيف بنجاح',
