@@ -10,7 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import NationalitySelect from '../components/NationalitySelect';
 import BankSelect from '../components/BankSelect';
-import { getDocumentTypeLabel, DOCUMENT_TYPE_LABELS } from '../utils/employeeConstants';
+import { getDocumentTypeLabel, DOCUMENT_TYPE_LABELS, DATA_COMPLETION_STATUS } from '../utils/employeeConstants';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 import './Reports.css';
 
@@ -116,7 +116,7 @@ const Reports = () => {
     maritalStatuses: [],
     educationalQualifications: [],
     contractTypes: [],
-    dataCompletionStatuses: ['complete', 'incomplete'],
+    dataCompletionStatuses: [DATA_COMPLETION_STATUS.COMPLETE, DATA_COMPLETION_STATUS.INCOMPLETE],
   });
 
   const loadBranches = async () => {
@@ -177,7 +177,7 @@ const Reports = () => {
           maritalStatuses: maritalStatuses.sort(),
           educationalQualifications: educationalQualifications.sort(),
           contractTypes: contractTypes.sort(),
-          dataCompletionStatuses: ['complete', 'incomplete'],
+          dataCompletionStatuses: [DATA_COMPLETION_STATUS.COMPLETE, DATA_COMPLETION_STATUS.INCOMPLETE],
         });
       }
     } catch (error) {
@@ -598,7 +598,7 @@ const Reports = () => {
   };
 
   const getDataCompletionStatusLabel = (value) => {
-    return value === 'complete' ? 'مكتمل' : 'غير مكتمل';
+    return value === DATA_COMPLETION_STATUS.COMPLETE ? 'مكتمل' : 'غير مكتمل';
   };
 
   // Helper function to check if multiple branches are selected

@@ -4,10 +4,11 @@
  */
 
 import { useState, useEffect } from 'react';
-import { branchesAPI, employeesAPI, branchDocumentsAPI } from '../utils/api';
+import { branchesAPI, employeesAPI, branchDocumentsAPI, clearCache } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { getRequiredBranchDocuments, getBranchTypeLabel, getMonthlyRequiredBranchDocuments } from '../utils/employeeHelpers';
+import { DATA_COMPLETION_STATUS } from '../utils/employeeConstants';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 import './BranchesMonitoring.css';
 
@@ -48,7 +49,48 @@ const BranchesMonitoring = () => {
       setLoadingDetails(true);
       setSelectedBranch(branch);
 
-      // Load employees for this branch
+      // Clear cache to ensure fresh data
+      clearCache('/api/employees');
+
+      // First, update completion status for all employees in this branch
+      // This ensures the status shown is always up-to-date without caching
+      try {
+        const allEmployeesResponse = await employeesAPI.getAll({
+          branch_id: branch.id,
+          is_active: true
+        });
+        
+        if (allEmployeesResponse.data.success && allEmployeesResponse.data.data) {
+          const allEmployees = allEmployeesResponse.data.data.filter(emp =>
+            !emp.status || emp.status === 'active' || emp.status === 'pending'
+          );
+          
+          // Update completion status in batches
+          const BATCH_SIZE = 5;
+          for (let i = 0; i < allEmployees.length; i += BATCH_SIZE) {
+            const batch = allEmployees.slice(i, i + BATCH_SIZE);
+            await Promise.all(
+              batch.map(emp => 
+                employeesAPI.updateCompletionStatus(emp.id).catch(err => {
+                  console.warn(`Failed to update completion status for employee ${emp.id}:`, err);
+                  return null;
+                })
+              )
+            );
+            if (i + BATCH_SIZE < allEmployees.length) {
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Error updating completion status before loading:', error);
+        // Continue loading even if status update fails
+      }
+
+      // Clear cache again after status updates
+      clearCache('/api/employees');
+
+      // Now load employees for this branch with fresh status
       const employeesResponse = await employeesAPI.getAll({
         branch_id: branch.id,
         is_active: true
@@ -62,8 +104,8 @@ const BranchesMonitoring = () => {
 
       // Calculate completion statistics
       const total = employees.length;
-      const complete = employees.filter(emp => emp.data_completion_status === 'complete').length;
-      const incomplete = employees.filter(emp => emp.data_completion_status === 'incomplete').length;
+      const complete = employees.filter(emp => emp.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE).length;
+      const incomplete = employees.filter(emp => emp.data_completion_status === DATA_COMPLETION_STATUS.INCOMPLETE || !emp.data_completion_status).length;
       const completionPercentage = total > 0 ? Math.round((complete / total) * 100) : 0;
 
       setCompletionStats({
@@ -290,9 +332,9 @@ const BranchesMonitoring = () => {
                           <td>{employee.occupation || '-'}</td>
                           <td>
                             <span className={`completion-badge ${
-                              employee.data_completion_status === 'complete' ? 'complete' : 'incomplete'
+                              employee.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE ? 'complete' : 'incomplete'
                             }`}>
-                              {employee.data_completion_status === 'complete' ? 'مكتمل' : 'غير مكتمل'}
+                              {employee.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE ? 'مكتمل' : 'غير مكتمل'}
                             </span>
                           </td>
                           <td>

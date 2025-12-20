@@ -1,6 +1,6 @@
 /**
  * Branch Info Page
- * Branch manager can update branch contact information (phone and email)
+ * Branch manager can update branch contact information (phone, email, and number of employees)
  */
 
 import { useState, useEffect } from 'react';
@@ -18,6 +18,7 @@ const BranchInfo = () => {
   const [formData, setFormData] = useState({
     phone_number: '',
     email: '',
+    number_of_employees: '',
   });
 
   useEffect(() => {
@@ -36,6 +37,9 @@ const BranchInfo = () => {
         setFormData({
           phone_number: branchData.phone_number || '',
           email: branchData.email || '',
+          number_of_employees: branchData.number_of_employees !== null && branchData.number_of_employees !== undefined 
+            ? String(branchData.number_of_employees) 
+            : '',
         });
       } else {
         showError('فشل تحميل معلومات الفرع');
@@ -55,15 +59,33 @@ const BranchInfo = () => {
       [name]: value
     }));
   };
+  
+  const handleNumberChange = (e) => {
+    const { name, value } = e.target;
+    // For number inputs, allow empty string or valid numbers
+    setFormData(prev => ({
+      ...prev,
+      [name]: value === '' ? '' : value
+    }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
       setSaving(true);
-      const response = await branchesAPI.updateMyBranch({
-        phone_number: formData.phone_number || null,
-        email: formData.email || null,
-      });
+      
+      // Prepare update data - explicitly handle number_of_employees
+      const updateData = {
+        phone_number: formData.phone_number.trim() || null,
+        email: formData.email.trim() || null,
+      };
+      
+      // Handle number_of_employees: always send it explicitly
+      // If empty string or falsy, send null; if has value, send the string value (backend will parse as int)
+      const numEmployeesStr = String(formData.number_of_employees || '').trim();
+      updateData.number_of_employees = numEmployeesStr === '' ? null : numEmployeesStr;
+      
+      const response = await branchesAPI.updateMyBranch(updateData);
       
       // Clear cache to ensure fresh data is loaded everywhere
       clearCache('/api/branches');
@@ -75,6 +97,9 @@ const BranchInfo = () => {
         setFormData({
           phone_number: updatedBranch.phone_number || '',
           email: updatedBranch.email || '',
+          number_of_employees: updatedBranch.number_of_employees !== null && updatedBranch.number_of_employees !== undefined 
+            ? String(updatedBranch.number_of_employees) 
+            : '',
         });
       } else {
         // Fallback: reload from server if response format is unexpected
@@ -143,6 +168,24 @@ const BranchInfo = () => {
               placeholder="مثال: branch@example.com"
               className="form-input"
             />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="number_of_employees">عدد الموظفين في الفرع</label>
+            <input
+              type="number"
+              id="number_of_employees"
+              name="number_of_employees"
+              value={formData.number_of_employees}
+              onChange={handleNumberChange}
+              placeholder="مثال: 50"
+              min="0"
+              step="1"
+              className="form-input"
+            />
+            <small style={{ display: 'block', marginTop: '5px', color: '#666', fontSize: '12px' }}>
+              يستخدم هذا العدد لحساب نسبة اكتمال بيانات الموظفين بدقة أكبر في لوحة التحكم
+            </small>
           </div>
 
           <div className="form-actions">

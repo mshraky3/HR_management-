@@ -56,7 +56,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const AccountManagement = lazy(() => import('./pages/AccountManagement'));
 const Branches = lazy(() => import('./pages/Branches'));
 const Employees = lazy(() => import('./pages/Employees'));
-const EmployeeDetails = lazy(() => import('./pages/EmployeeDetails'));
+const EmployeeDetails = lazy(() => import('./pages/EmployeeDetails/index.jsx'));
 const BranchDocuments = lazy(() => import('./pages/BranchDocuments'));
 const MonthlyDocuments = lazy(() => import('./pages/MonthlyDocuments'));
 const Reports = lazy(() => import('./pages/Reports'));

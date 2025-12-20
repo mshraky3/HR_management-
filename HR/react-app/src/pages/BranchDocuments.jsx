@@ -229,10 +229,14 @@ const BranchDocuments = () => {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Validate file size (1MB max)
-      const maxSize = 1 * 1024 * 1024; // 1MB in bytes
+      // Determine max file size based on document type
+      const highCapacityDocs = ['operational_plan', 'acceptance_notifications'];
+      const isHighCapacity = highCapacityDocs.includes(uploadData.document_type);
+      const maxSize = (isHighCapacity ? 15 : 1) * 1024 * 1024;
+
       if (file.size > maxSize) {
-        showWarning(`حجم الملف كبير جداً. الحد الأقصى لحجم الملف هو 1 ميجابايت.`);
+        const sizeLimitMsg = isHighCapacity ? '15 ميجابايت' : '1 ميجابايت';
+        showWarning(`حجم الملف كبير جداً. الحد الأقصى لحجم الملف هو ${sizeLimitMsg}.`);
         e.target.value = ''; // Clear the file input
         return;
       }
@@ -244,6 +248,18 @@ const BranchDocuments = () => {
     e.preventDefault();
     if (!uploadData.file) {
       showWarning('الرجاء اختيار ملف');
+      return;
+    }
+
+    // Re-validate file size before upload (in case document type changed)
+    const highCapacityDocs = ['operational_plan', 'acceptance_notifications'];
+    // Check both uploadData.document_type and fallback to 'other' logic if needed, but strict check is better
+    const isHighCapacity = highCapacityDocs.includes(uploadData.document_type);
+    const maxSize = (isHighCapacity ? 15 : 1) * 1024 * 1024;
+
+    if (uploadData.file.size > maxSize) {
+      const sizeLimitMsg = isHighCapacity ? '15 ميجابايت' : '1 ميجابايت';
+      showWarning(`حجم الملف كبير جداً. الحد الأقصى لحجم الملف هو ${sizeLimitMsg}.`);
       return;
     }
 
@@ -591,10 +607,14 @@ const BranchDocuments = () => {
   const handleFileChangeEdit = (e) => {
     const file = e.target.files[0] || null;
     if (file) {
-      // Validate file size (1MB max)
-      const maxSize = 1 * 1024 * 1024; // 1MB in bytes
+      // Determine max file size based on document type
+      const highCapacityDocs = ['operational_plan', 'acceptance_notifications'];
+      const isHighCapacity = editingDocument && highCapacityDocs.includes(editingDocument.document_type);
+      const maxSize = (isHighCapacity ? 15 : 1) * 1024 * 1024;
+
       if (file.size > maxSize) {
-        showWarning(`حجم الملف كبير جداً. الحد الأقصى لحجم الملف هو 1 ميجابايت.`);
+        const sizeLimitMsg = isHighCapacity ? '15 ميجابايت' : '1 ميجابايت';
+        showWarning(`حجم الملف كبير جداً. الحد الأقصى لحجم الملف هو ${sizeLimitMsg}.`);
         e.target.value = ''; // Clear the file input
         return;
       }

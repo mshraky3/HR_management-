@@ -7,7 +7,7 @@ import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, alertsAPI } from '../utils/api';
+import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, alertsAPI, clearCache } from '../utils/api';
 import { 
   getRequiredBranchDocuments, 
   getBranchTypeLabel,
@@ -15,6 +15,7 @@ import {
   isMonthlyBranchDocument
 } from '../utils/employeeHelpers';
 import { getBranchTypeRules } from '../utils/employeeRules';
+import { DATA_COMPLETION_STATUS } from '../utils/employeeConstants';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -62,6 +63,10 @@ const Dashboard = () => {
 
   const loadStats = async () => {
     try {
+      // Clear cache to ensure fresh data (especially completion status)
+      clearCache('/api/employees');
+      clearCache('/api/branch-statistics');
+      
       // Build filters based on user role
       const branchFilters = { is_active: true };
       const employeeFilters = { is_active: true };
@@ -128,10 +133,51 @@ const Dashboard = () => {
           setNotifications([]);
         }
 
-        // Load incomplete and pending employees in parallel (batch for branch managers)
+        // First, recalculate completion status for all employees in the branch
+        // This ensures the incomplete employees section always shows up-to-date data on each load
+        try {
+          // Get all active employees first (for branch managers, this is just their branch)
+          const allEmployeesRes = await employeesAPI.getAll({
+            ...employeeFilters,
+            is_active: true
+          }).catch(() => ({ data: { success: false, data: [] } }));
+          
+          if (allEmployeesRes.data.success && allEmployeesRes.data.data) {
+            const allEmployees = allEmployeesRes.data.data.filter(emp => 
+              !emp.status || emp.status === 'active' || emp.status === 'pending'
+            );
+            
+            // Update completion status for all employees in batches to avoid overwhelming the server
+            // Process in smaller batches with delays between batches
+            const BATCH_SIZE = 5; // Smaller batch size for better performance
+            for (let i = 0; i < allEmployees.length; i += BATCH_SIZE) {
+              const batch = allEmployees.slice(i, i + BATCH_SIZE);
+              await Promise.all(
+                batch.map(emp => 
+                  employeesAPI.updateCompletionStatus(emp.id).catch(err => {
+                    console.warn(`Failed to update completion status for employee ${emp.id}:`, err);
+                    return null;
+                  })
+                )
+              );
+              // Small delay between batches to avoid overwhelming the server
+              if (i + BATCH_SIZE < allEmployees.length) {
+                await new Promise(resolve => setTimeout(resolve, 50));
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('Error recalculating completion status:', error);
+          // Continue even if recalculation fails - we'll use existing data
+        }
+        
+        // Clear cache for employees to ensure fresh data after status updates
+        clearCache('/api/employees');
+        
+        // Now load incomplete employees with freshly calculated status
         const incompleteFilters = { 
           ...employeeFilters, 
-          data_completion_status: 'incomplete'
+          data_completion_status: DATA_COMPLETION_STATUS.INCOMPLETE
         };
         
         const [incompleteRes, pendingRes] = await Promise.all([
@@ -291,10 +337,14 @@ const Dashboard = () => {
     
     try {
       // 1. Calculate employees data completion
-      const totalEmployees = employees.length;
-      const completeEmployees = employees.filter(emp => emp.data_completion_status === 'complete').length;
-      const employeesCompletion = totalEmployees > 0 
-        ? Math.round((completeEmployees / totalEmployees) * 100) 
+      // Use branch.number_of_employees if set, otherwise use actual employees count
+      // This provides more accurate percentage when branch has expected number of employees
+      const expectedEmployeeCount = branch.number_of_employees && branch.number_of_employees > 0 
+        ? branch.number_of_employees 
+        : employees.length;
+      const completeEmployees = employees.filter(emp => emp.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE).length;
+      const employeesCompletion = expectedEmployeeCount > 0 
+        ? Math.round((completeEmployees / expectedEmployeeCount) * 100) 
         : 0;
       
       // 2. Calculate branch documents completion
@@ -1065,7 +1115,7 @@ const Dashboard = () => {
             {incompleteEmployees.length > 10 && (
               <div style={{ marginTop: '15px', textAlign: 'center' }}>
                 <Link 
-                  to="/employees?data_completion_status=incomplete" 
+                  to={`/employees?data_completion_status=${DATA_COMPLETION_STATUS.INCOMPLETE}`} 
                   className="btn-alert btn-important" 
                   style={{ padding: '8px 16px', fontSize: '13px' }}
                 >

@@ -170,6 +170,7 @@ const Branches = () => {
       branch_documents_password: branch.branch_documents_password || '',
       phone_number: branch.phone_number || '',
       email: branch.email || '',
+      number_of_employees: branch.number_of_employees || '',
     });
     setShowForm(true);
   };
@@ -195,6 +196,7 @@ const Branches = () => {
       branch_documents_password: 'test',
       phone_number: '',
       email: '',
+      number_of_employees: '',
     });
   };
 
@@ -360,6 +362,19 @@ const Branches = () => {
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="مثال: branch@example.com"
                   />
+                </div>
+                <div className="form-group">
+                  <label>عدد الموظفين في الفرع</label>
+                  <input
+                    type="number"
+                    value={formData.number_of_employees}
+                    onChange={(e) => setFormData({ ...formData, number_of_employees: e.target.value })}
+                    placeholder="مثال: 50"
+                    min="0"
+                  />
+                  <small style={{ display: 'block', marginTop: '5px', color: '#666', fontSize: '12px' }}>
+                    يستخدم هذا العدد لحساب نسبة اكتمال بيانات الموظفين بدقة أكبر في لوحة التحكم
+                  </small>
                 </div>
               </div>
 

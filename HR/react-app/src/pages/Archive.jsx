@@ -18,7 +18,7 @@ const Archive = () => {
   const navigate = useNavigate();
   
   // Tab state
-  const [activeTab, setActiveTab] = useState('employees'); // 'employees' or 'documents'
+  const [activeTab, setActiveTab] = useState('employees'); // 'employees', 'documents', or 'employee-documents'
   
   // Employees state
   const [archivedEmployees, setArchivedEmployees] = useState([]);
@@ -37,14 +37,23 @@ const Archive = () => {
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const [totalEmployees, setTotalEmployees] = useState(0);
   
-  // Documents state
+  // Branch Documents state
   const [archivedDocuments, setArchivedDocuments] = useState([]);
   const [loadingDocuments, setLoadingDocuments] = useState(true);
   const [previewDocument, setPreviewDocument] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   
+  // Employee Documents state
+  const [archivedEmployeeDocuments, setArchivedEmployeeDocuments] = useState([]);
+  const [loadingEmployeeDocuments, setLoadingEmployeeDocuments] = useState(true);
+  const [deletingDocumentId, setDeletingDocumentId] = useState(null);
+  
   // Filters
   const [filters, setFilters] = useState({
+    // Employee document filters
+    emp_doc_branch_id: '',
+    emp_doc_document_type: '',
+    emp_doc_employee_id: '',
     // Employee filters
     search_name: '',
     search_id: '',
@@ -162,8 +171,10 @@ const Archive = () => {
     loadBranches();
     if (activeTab === 'employees') {
       loadArchivedEmployees();
-    } else {
+    } else if (activeTab === 'documents') {
       loadArchivedDocuments();
+    } else if (activeTab === 'employee-documents') {
+      loadArchivedEmployeeDocuments();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMainManager, activeTab]);
@@ -193,6 +204,63 @@ const Archive = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.doc_branch_id, filters.doc_document_type]);
+
+  const loadArchivedEmployeeDocuments = async () => {
+    try {
+      setLoadingEmployeeDocuments(true);
+      const filterParams = {};
+      
+      if (filters.emp_doc_branch_id) {
+        filterParams.branch_id = parseInt(filters.emp_doc_branch_id);
+      }
+      if (filters.emp_doc_document_type) {
+        filterParams.document_type = filters.emp_doc_document_type;
+      }
+      if (filters.emp_doc_employee_id) {
+        filterParams.employee_id = parseInt(filters.emp_doc_employee_id);
+      }
+      
+      const response = await archiveAPI.getArchivedEmployeeDocuments(filterParams);
+      
+      if (response.data.success) {
+        setArchivedEmployeeDocuments(response.data.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading archived employee documents:', error);
+      showError('فشل تحميل المستندات المؤرشفة');
+    } finally {
+      setLoadingEmployeeDocuments(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'employee-documents') {
+      loadArchivedEmployeeDocuments();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.emp_doc_branch_id, filters.emp_doc_document_type, filters.emp_doc_employee_id]);
+
+  const handlePermanentDeleteDocument = async (documentId) => {
+    if (!confirm('هل أنت متأكد من رغبتك في حذف هذا المستند نهائياً؟ لا يمكن التراجع عن هذا الإجراء.')) {
+      return;
+    }
+
+    try {
+      setDeletingDocumentId(documentId);
+      await archiveAPI.permanentDeleteEmployeeDocument(documentId);
+      showSuccess('تم حذف المستند نهائياً');
+      loadArchivedEmployeeDocuments();
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      if (error.response?.data?.message) {
+        showError(error.response.data.message);
+      } else {
+        showError('فشل حذف المستند');
+      }
+    } finally {
+      setDeletingDocumentId(null);
+    }
+  };
 
   const handleViewEmployee = async (employeeId) => {
     if (selectedEmployee === employeeId && employeeDetails) {
@@ -478,39 +546,6 @@ const Archive = () => {
     }
   };
 
-  const handleExportCSV = async () => {
-    try {
-      const filterParams = {};
-      
-      // Build filter params same as loadArchivedEmployees
-      if (filters.search_name) filterParams.search_name = filters.search_name;
-      if (filters.search_id) filterParams.search_id = filters.search_id;
-      if (filters.branch_id) filterParams.branch_id = parseInt(filters.branch_id);
-      if (filters.status) filterParams.status = filters.status;
-      if (filters.academic_year) filterParams.academic_year = filters.academic_year;
-      if (filters.registration_date_from) filterParams.registration_date_from = filters.registration_date_from;
-      if (filters.registration_date_to) filterParams.registration_date_to = filters.registration_date_to;
-      if (filters.status_change_date_from) filterParams.status_change_date_from = filters.status_change_date_from;
-      if (filters.status_change_date_to) filterParams.status_change_date_to = filters.status_change_date_to;
-      
-      const response = await archiveAPI.export(filterParams, 'csv');
-      
-      // Create blob from response
-      const blob = response.data instanceof Blob ? response.data : new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `archived-employees-${new Date().toISOString().split('T')[0]}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      showSuccess('تم تصدير البيانات بنجاح');
-    } catch (error) {
-      console.error('Error exporting to CSV:', error);
-      showError(error.response?.data?.message || 'فشل تصدير البيانات');
-    }
-  };
 
   const handleGenerateReport = async () => {
     try {
@@ -573,22 +608,13 @@ const Archive = () => {
         {activeTab === 'employees' && (
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {totalEmployees > 0 && (
-              <>
-                <button
-                  className="btn btn-primary"
-                  onClick={handleExportExcel}
-                  disabled={loadingEmployees}
-                >
-                  {loadingEmployees ? 'جاري التحميل...' : 'تصدير Excel'}
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={handleExportCSV}
-                  disabled={loadingEmployees}
-                >
-                  {loadingEmployees ? 'جاري التحميل...' : 'تصدير CSV'}
-                </button>
-              </>
+              <button
+                className="btn btn-primary"
+                onClick={handleExportExcel}
+                disabled={loadingEmployees}
+              >
+                {loadingEmployees ? 'جاري التحميل...' : 'تصدير Excel'}
+              </button>
             )}
             {archivedEmployees.length > 0 && (
               <button
@@ -615,6 +641,12 @@ const Archive = () => {
           onClick={() => setActiveTab('documents')}
         >
           مستندات الفروع المؤرشفة ({archivedDocuments.length})
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'employee-documents' ? 'active' : ''}`}
+          onClick={() => setActiveTab('employee-documents')}
+        >
+          مستندات الموظفين المؤرشفة ({archivedEmployeeDocuments.length})
         </button>
       </div>
 
@@ -1023,6 +1055,131 @@ const Archive = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Employee Documents Tab */}
+      {activeTab === 'employee-documents' && (
+        <div className="archive-content">
+          {/* Employee Document Filters */}
+          <div className="archive-filters">
+            <h3>البحث والفلترة</h3>
+            <div className="filters-grid">
+              <div className="filter-group">
+                <label>الفرع</label>
+                <select
+                  value={filters.emp_doc_branch_id}
+                  onChange={(e) => setFilters(prev => ({ ...prev, emp_doc_branch_id: e.target.value }))}
+                >
+                  <option value="">الكل</option>
+                  {branches.map(branch => (
+                    <option key={branch.id} value={branch.id}>{branch.branch_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="filter-group">
+                <label>نوع المستند</label>
+                <select
+                  value={filters.emp_doc_document_type}
+                  onChange={(e) => setFilters(prev => ({ ...prev, emp_doc_document_type: e.target.value }))}
+                >
+                  <option value="">الكل</option>
+                  {archivedEmployeeDocuments
+                    .reduce((types, doc) => {
+                      if (!types.includes(doc.document_type)) {
+                        types.push(doc.document_type);
+                      }
+                      return types;
+                    }, [])
+                    .map(type => (
+                      <option key={type} value={type}>
+                        {getDocumentTypeLabel(type) || type}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div className="filter-group">
+                <label>رقم الموظف</label>
+                <input
+                  type="text"
+                  value={filters.emp_doc_employee_id}
+                  onChange={(e) => setFilters(prev => ({ ...prev, emp_doc_employee_id: e.target.value }))}
+                  placeholder="ابحث برقم الموظف..."
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Employee Documents List */}
+          {loadingEmployeeDocuments ? (
+            <div className="loading">جاري التحميل...</div>
+          ) : archivedEmployeeDocuments.length === 0 ? (
+            <div className="empty-state">
+              <p>لا توجد مستندات مؤرشفة</p>
+            </div>
+          ) : (
+            <div className="documents-table-container">
+              <table className="documents-table">
+                <thead>
+                  <tr>
+                    <th>الموظف</th>
+                    <th>رقم الموظف</th>
+                    <th>الفرع</th>
+                    <th>نوع المستند</th>
+                    <th>اسم الملف</th>
+                    <th>تاريخ الرفع</th>
+                    <th>تاريخ الأرشفة</th>
+                    <th>الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {archivedEmployeeDocuments.map((doc) => (
+                    <tr key={doc.id}>
+                      <td>
+                        {doc.first_name} {doc.second_name} {doc.third_name} {doc.fourth_name}
+                      </td>
+                      <td>{doc.employee_id_number || '-'}</td>
+                      <td>{doc.branch_name || '-'}</td>
+                      <td>{getDocumentTypeLabel(doc.document_type) || doc.document_type}</td>
+                      <td>{doc.file_name}</td>
+                      <td>
+                        {doc.uploaded_at
+                          ? new Date(doc.uploaded_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                          : '-'}
+                      </td>
+                      <td>
+                        {doc.updated_at
+                          ? new Date(doc.updated_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                          : '-'}
+                      </td>
+                      <td>
+                        <div className="action-buttons">
+                          <button
+                            className="btn btn-sm btn-primary"
+                            onClick={() => {
+                              const url = doc.file_path;
+                              if (url) {
+                                window.open(url, '_blank');
+                              }
+                            }}
+                          >
+                            عرض
+                          </button>
+                          <button
+                            className="btn btn-sm btn-danger"
+                            onClick={() => handlePermanentDeleteDocument(doc.id)}
+                            disabled={deletingDocumentId === doc.id}
+                          >
+                            {deletingDocumentId === doc.id ? 'جاري الحذف...' : 'حذف نهائي'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

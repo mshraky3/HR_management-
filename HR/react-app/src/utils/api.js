@@ -727,6 +727,12 @@ export const archiveAPI = {
   getArchivedBranchDocumentById: (id) => 
     api.get(`/api/archive/branch-documents/${id}`),
   
+  getArchivedEmployeeDocuments: (filters = {}) => 
+    api.get('/api/archive/employee-documents/all', { params: filters }),
+  
+  permanentDeleteEmployeeDocument: (id) => 
+    api.delete(`/api/archive/employee-documents/${id}`),
+  
   export: (filters = {}, format = 'excel') => 
     api.get('/api/archive/export', { 
       params: { ...filters, format },
