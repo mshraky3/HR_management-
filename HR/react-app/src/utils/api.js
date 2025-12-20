@@ -1,0 +1,863 @@
+/**
+ * API Service
+ * Centralized API calls with authentication
+ * Performance Optimization: Caching and Request Deduplication
+ */
+
+import axios from 'axios';
+import { API_URL } from '../config/api.js';
+
+// In-memory storage for branch documents passwords (not persistent, cleared on page reload)
+// Key: branchId, Value: password
+const branchDocumentsPasswords = new Map();
+
+// API Response Cache - stores successful GET requests
+// Key: cache key (URL + params), Value: { data, timestamp, expiry }
+const apiCache = new Map();
+
+// Request Deduplication - prevents duplicate concurrent requests
+// Key: request key, Value: Promise
+const pendingRequests = new Map();
+
+// Cache configuration
+const CACHE_TTL = {
+  // Short cache (30 seconds) - for frequently changing data
+  SHORT: 30 * 1000,
+  // Medium cache (2 minutes) - for moderately changing data
+  MEDIUM: 2 * 60 * 1000,
+  // Long cache (5 minutes) - for rarely changing data
+  LONG: 5 * 60 * 1000,
+  // Very long cache (15 minutes) - for static data
+  VERY_LONG: 15 * 60 * 1000,
+};
+
+// Generate cache key from request config
+const getCacheKey = (config) => {
+  const url = config.url || '';
+  const params = config.params ? JSON.stringify(config.params) : '';
+  const method = config.method || 'get';
+  return `${method.toUpperCase()}:${url}:${params}`;
+};
+
+// Generate request deduplication key
+const getRequestKey = (config) => {
+  return getCacheKey(config);
+};
+
+// Check if cache entry is still valid
+const isCacheValid = (cacheEntry) => {
+  if (!cacheEntry) return false;
+  return Date.now() < cacheEntry.timestamp + cacheEntry.expiry;
+};
+
+// Get cache TTL based on endpoint
+const getCacheTTL = (url) => {
+  // Static data - very long cache
+  if (url.includes('/api/branches') && !url.includes('/my-branch')) {
+    return CACHE_TTL.VERY_LONG;
+  }
+  // User data - long cache
+  if (url.includes('/api/users')) {
+    return CACHE_TTL.LONG;
+  }
+  // Employee data - medium cache (can change frequently)
+  if (url.includes('/api/employees')) {
+    return CACHE_TTL.MEDIUM;
+  }
+  // Documents - medium cache
+  if (url.includes('/api/documents') || url.includes('/api/branch-documents')) {
+    return CACHE_TTL.MEDIUM;
+  }
+  // Statistics - short cache (changes frequently)
+  if (url.includes('/api/branch-statistics')) {
+    return CACHE_TTL.SHORT;
+  }
+  // Notifications - short cache (real-time data)
+  if (url.includes('/api/notifications')) {
+    return CACHE_TTL.SHORT;
+  }
+  // Default - medium cache
+  return CACHE_TTL.MEDIUM;
+};
+
+// Clear cache for specific endpoint pattern
+export const clearCache = (pattern) => {
+  if (!pattern) {
+    // Clear all cache
+    apiCache.clear();
+    return;
+  }
+  // Clear cache entries matching pattern
+  for (const [key] of apiCache) {
+    if (key.includes(pattern)) {
+      apiCache.delete(key);
+    }
+  }
+};
+
+// Clear cache on mutations (POST, PUT, DELETE)
+const clearRelatedCache = (url) => {
+  // Clear related cache entries when data is modified
+  if (url.includes('/api/employees')) {
+    clearCache('/api/employees');
+    clearCache('/api/branch-statistics'); // Statistics depend on employees
+  } else if (url.includes('/api/branches')) {
+    clearCache('/api/branches');
+  } else if (url.includes('/api/documents')) {
+    clearCache('/api/documents');
+    clearCache('/api/employees'); // Employee completion status may change
+  } else if (url.includes('/api/branch-documents')) {
+    clearCache('/api/branch-documents');
+  } else if (url.includes('/api/notifications')) {
+    clearCache('/api/notifications');
+  } else if (url.includes('/api/users')) {
+    clearCache('/api/users');
+  }
+};
+
+// Document-to-branch mapping (metadata only, not sensitive)
+const documentBranchMapping = new Map();
+
+// Functions to manage branch documents passwords
+export const setBranchDocumentsPassword = (branchId, password) => {
+  branchDocumentsPasswords.set(branchId, password);
+};
+
+export const getBranchDocumentsPassword = (branchId) => {
+  return branchDocumentsPasswords.get(branchId);
+};
+
+export const clearBranchDocumentsPassword = (branchId) => {
+  branchDocumentsPasswords.delete(branchId);
+};
+
+export const clearAllBranchDocumentsPasswords = () => {
+  branchDocumentsPasswords.clear();
+};
+
+// Functions to manage document-to-branch mapping
+export const setDocumentBranchMapping = (documentId, branchId) => {
+  documentBranchMapping.set(documentId, branchId);
+};
+
+export const getDocumentBranchMapping = (documentId) => {
+  return documentBranchMapping.get(documentId);
+};
+
+// Create axios instance
+const api = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Helper function to extract branch ID from request config
+const extractBranchId = (config) => {
+  // Check query params
+  if (config.params?.branch_id) {
+    return config.params.branch_id;
+  }
+  
+  // Check URL path params (e.g., /api/branch-documents/:id)
+  const urlMatch = config.url?.match(/\/api\/branch-documents\/(\d+)/);
+  if (urlMatch) {
+    const documentId = urlMatch[1];
+    const branchId = getDocumentBranchMapping(documentId);
+    if (branchId) return branchId;
+    
+    // Fallback: use first available password (assuming single branch access)
+    if (branchDocumentsPasswords.size > 0) {
+      return branchDocumentsPasswords.keys().next().value;
+    }
+  }
+  
+  // Check URL path params for employee-file generate-single (e.g., /api/employee-file/generate-single/:employee_id)
+  const employeeFileMatch = config.url?.match(/\/api\/employee-file\/generate-single\/(\d+)/);
+  if (employeeFileMatch) {
+    // Try to get branch_id from query params if provided
+    if (config.params?.branch_id) {
+      return config.params.branch_id;
+    }
+    // Fallback: use first available password (assuming single branch access)
+    if (branchDocumentsPasswords.size > 0) {
+      return branchDocumentsPasswords.keys().next().value;
+    }
+  }
+  
+  // Check request data (for POST/PUT)
+  if (config.data) {
+    if (config.data instanceof FormData) {
+      return config.data.get('branch_id');
+    }
+    // Handle JSON stringified data (axios may stringify before interceptor)
+    if (typeof config.data === 'string') {
+      try {
+        const parsed = JSON.parse(config.data);
+        if (parsed.branch_id) {
+          return parsed.branch_id;
+        }
+      } catch (e) {
+        // Not JSON, continue
+      }
+    }
+    // Handle object data (most common case)
+    if (typeof config.data === 'object' && config.data !== null) {
+      if (config.data.branch_id) {
+        return config.data.branch_id;
+      }
+    }
+  }
+  
+  // For reports API, try to get branch_id from URL query if available
+  if (config.url?.includes('/api/reports')) {
+    const url = new URL(config.url, window.location.origin);
+    const branchIdParam = url.searchParams.get('branch_id');
+    if (branchIdParam) {
+      return branchIdParam;
+    }
+  }
+  
+  // Fallback: use first available password (assuming single branch access)
+  if (branchDocumentsPasswords.size > 0) {
+    return branchDocumentsPasswords.keys().next().value;
+  }
+  
+  return null;
+};
+
+// Helper function to get password for branch documents API calls
+const getPasswordForRequest = (branchId) => {
+  if (branchId) {
+    const password = getBranchDocumentsPassword(branchId);
+    if (password) return password;
+    
+    // Try to get from localStorage as fallback (for monthly documents page)
+    try {
+      const storedPassword = localStorage.getItem(`branch_documents_password_${branchId}`);
+      if (storedPassword) {
+        // Store in memory for future requests
+        setBranchDocumentsPassword(branchId, storedPassword);
+        return storedPassword;
+      }
+    } catch (e) {
+      // localStorage not available, continue
+    }
+  }
+  // Fallback: try to get password for any verified branch
+  if (branchDocumentsPasswords.size > 0) {
+    const firstBranchId = branchDocumentsPasswords.keys().next().value;
+    return getBranchDocumentsPassword(firstBranchId);
+  }
+  return null;
+};
+
+// Add token to requests if available
+api.interceptors.request.use(
+  async (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    
+    // Add branch documents password for branch documents, reports, and employee-file API calls
+    if (config.url?.includes('/api/branch-documents') || 
+        config.url?.includes('/api/reports') || 
+        config.url?.includes('/api/employee-file/generate-single')) {
+      const branchId = extractBranchId(config);
+      const password = getPasswordForRequest(branchId);
+      if (password) {
+        config.headers['X-Branch-Documents-Password'] = password;
+      }
+    }
+    
+    // Request Deduplication and Caching for GET requests
+    const method = (config.method || 'get').toLowerCase();
+    if (method === 'get') {
+      const requestKey = getRequestKey(config);
+      
+      // Check for pending request (deduplication)
+      const pendingRequest = pendingRequests.get(requestKey);
+      if (pendingRequest) {
+        // Attach metadata to config to handle in response interceptor
+        config.__isDeduplicated = true;
+        config.__pendingRequest = pendingRequest;
+        return config;
+      }
+      
+      // Check cache
+      const cacheKey = getCacheKey(config);
+      const cacheEntry = apiCache.get(cacheKey);
+      if (cacheEntry && isCacheValid(cacheEntry)) {
+        // Attach cached response to config
+        config.__isCached = true;
+        config.__cachedResponse = cacheEntry.data;
+        return config;
+      }
+      
+      // Store request promise for deduplication
+      const requestPromise = axios(config);
+      pendingRequests.set(requestKey, requestPromise);
+      
+      // Clean up after request completes
+      requestPromise.finally(() => {
+        pendingRequests.delete(requestKey);
+      });
+    }
+    
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Handle 401 errors (unauthorized) and cache successful responses
+api.interceptors.response.use(
+  (response) => {
+    const config = response.config;
+    
+    // Handle cached response
+    if (config?.__isCached) {
+      return config.__cachedResponse;
+    }
+    
+    // Handle deduplicated request
+    if (config?.__isDeduplicated) {
+      return config.__pendingRequest;
+    }
+    
+    // Cache successful GET requests
+    const method = (config?.method || 'get').toLowerCase();
+    
+    if (method === 'get' && response.status === 200) {
+      const cacheKey = getCacheKey(config);
+      const cacheTTL = getCacheTTL(config.url || '');
+      
+      apiCache.set(cacheKey, {
+        data: response,
+        timestamp: Date.now(),
+        expiry: cacheTTL,
+      });
+      
+      // Clean up old cache entries periodically (keep cache size manageable)
+      if (apiCache.size > 100) {
+        // Remove expired entries
+        for (const [key, entry] of apiCache.entries()) {
+          if (!isCacheValid(entry)) {
+            apiCache.delete(key);
+          }
+        }
+      }
+    }
+    
+    // Clear related cache on successful mutations
+    if (config && ['post', 'put', 'delete', 'patch'].includes(method)) {
+      clearRelatedCache(config.url || '');
+    }
+    
+    return response;
+  },
+  (error) => {
+    // Remove from pending requests on error
+    if (error.config) {
+      const requestKey = getRequestKey(error.config);
+      pendingRequests.delete(requestKey);
+    }
+    // Only redirect to login for authentication-related 401 errors
+    // Don't redirect for business logic 401 errors (e.g., invalid branch documents password)
+    if (error.response?.status === 401) {
+      const url = error.config?.url || '';
+      const errorMessage = error.response?.data?.message || '';
+      
+      // Check if this is a business logic error (not authentication error)
+      const isBusinessLogicError = 
+        errorMessage.includes('password') ||
+        errorMessage.includes('Password') ||
+        errorMessage.includes('Branch documents password') ||
+        errorMessage.includes('Invalid branch documents password') ||
+        url.includes('/branch-documents/verify-password');
+      
+      // Check if this is an authentication error
+      const isAuthError = 
+        errorMessage.includes('token') ||
+        errorMessage.includes('Token') ||
+        errorMessage.includes('Authentication required') ||
+        errorMessage.includes('Authentication failed') ||
+        errorMessage.includes('Invalid token') ||
+        errorMessage.includes('Token has expired') ||
+        errorMessage.includes('Please login');
+      
+      // Only redirect if it's an authentication error, not a business logic error
+      if (isAuthError && !isBusinessLogicError) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Auth API
+export const authAPI = {
+  login: (username, password) => 
+    api.post('/api/auth/login', { username, password }),
+  
+  logout: () => 
+    api.post('/api/auth/logout'),
+  
+  getMe: () => 
+    api.get('/api/auth/me'),
+};
+
+// Users API
+export const usersAPI = {
+  getAll: (filters = {}) => 
+    api.get('/api/users', { params: filters }),
+  
+  getById: (id) => 
+    api.get(`/api/users/${id}`),
+  
+  create: (data) => 
+    api.post('/api/users', data),
+  
+  update: (id, data) => 
+    api.put(`/api/users/${id}`, data),
+  
+  delete: (id) => 
+    api.delete(`/api/users/${id}`),
+};
+
+// Branches API
+export const branchesAPI = {
+  getAll: (filters = {}) => 
+    api.get('/api/branches', { params: filters }),
+  
+  getById: (id) => 
+    api.get(`/api/branches/${id}`),
+  
+  create: (data) => 
+    api.post('/api/branches', data),
+  
+  update: (id, data) => 
+    api.put(`/api/branches/${id}`, data),
+  
+  updateMyBranch: (data) => 
+    api.put('/api/branches/my-branch', data),
+  
+  delete: (id) => 
+    api.delete(`/api/branches/${id}`),
+};
+
+// Employees API
+export const employeesAPI = {
+  getAll: (filters = {}) => 
+    api.get('/api/employees', { params: filters }),
+  
+  // Server-side pagination - optimized for large datasets
+  getPaginated: (params = {}) => 
+    api.get('/api/employees/paginated', { params }),
+  
+  getById: (id) => 
+    api.get(`/api/employees/${id}`),
+  
+  create: (data) => 
+    api.post('/api/employees', data),
+  
+  update: (id, data) => 
+    api.put(`/api/employees/${id}`, data),
+  
+  delete: (id) => 
+    api.delete(`/api/employees/${id}`),
+  
+  getDocuments: (id, filters = {}) => 
+    api.get(`/api/employees/${id}/documents`, { params: filters }),
+  
+  getMissingData: (id) => 
+    api.get(`/api/employees/${id}/missing-data`),
+  
+  updateCompletionStatus: (id) => 
+    api.post(`/api/employees/${id}/update-completion-status`),
+  
+  generateEmployeeFile: (data, config = {}) =>
+    api.post('/api/employee-file/generate', data, {
+      ...config,
+      responseType: config.responseType || 'blob',
+    }),
+  
+  generateSingleEmployeeFile: (employeeId, config = {}) => {
+    const { branch_id, ...restConfig } = config;
+    const params = branch_id ? { branch_id } : {};
+    return api.post(`/api/employee-file/generate-single/${employeeId}`, {}, {
+      ...restConfig,
+      params,
+      responseType: config.responseType || 'blob',
+    });
+  },
+  
+  updateStatus: (id, data) => 
+    api.put(`/api/employees/${id}/status`, data),
+  
+  renew: (id) => 
+    api.post(`/api/employees/${id}/renew`),
+  
+  nonRenewal: (id, data) => 
+    api.post(`/api/employees/${id}/non-renewal`, data),
+};
+
+// Documents API
+export const documentsAPI = {
+  getAll: (filters = {}) => {
+    // Remove null/undefined values from filters
+    const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+    return api.get('/api/documents', { params: cleanFilters });
+  },
+  
+  getById: (id) => 
+    api.get(`/api/documents/${id}`),
+  
+  upload: (formData) => 
+    api.post('/api/documents', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  
+  download: (id) => 
+    api.get(`/api/documents/${id}/download`, { responseType: 'blob' }),
+  
+  preview: (id) => 
+    api.get(`/api/documents/${id}/preview`),
+  
+  update: (id, data) => 
+    api.put(`/api/documents/${id}`, data),
+  
+  verify: (id) => 
+    api.post(`/api/documents/${id}/verify`),
+  
+  delete: (id, deleteFile = false) => 
+    api.delete(`/api/documents/${id}`, { params: { deleteFile } }),
+  
+  search: (searchTerm, employeeId = null) => 
+    api.get('/api/documents', { 
+      params: { search: searchTerm, employee_id: employeeId } 
+    }),
+  
+  getExpiring: (days = 30) => 
+    api.get('/api/documents', { params: { expiring: true, days } }),
+  
+  getUnverified: (employeeId = null) => 
+    api.get('/api/documents', { 
+      params: { unverified: true, employee_id: employeeId } 
+    }),
+  
+  getByEmployeeId: (employeeId) => 
+    api.get(`/api/employees/${employeeId}/documents`),
+};
+
+// Branch Documents API
+export const branchDocumentsAPI = {
+  getAll: (filters = {}) => {
+    const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+    return api.get('/api/branch-documents', { params: cleanFilters });
+  },
+  
+  getById: (id) => 
+    api.get(`/api/branch-documents/${id}`),
+  
+  verifyPassword: (branchId, password) =>
+    api.post('/api/branch-documents/verify-password', { branch_id: branchId, password }),
+  
+  upload: (formData) => 
+    api.post('/api/branch-documents', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  
+  download: (id) => 
+    api.get(`/api/branch-documents/${id}/download`, { responseType: 'blob' }),
+  
+  preview: (id) => 
+    api.get(`/api/branch-documents/${id}/preview`),
+  
+  update: (id, data) => 
+    api.put(`/api/branch-documents/${id}`, data),
+  
+  updateWithFile: (id, formData) => 
+    api.put(`/api/branch-documents/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  
+  verify: (id) => 
+    api.post(`/api/branch-documents/${id}/verify`),
+  
+  delete: (id) => 
+    api.delete(`/api/branch-documents/${id}`),
+  
+  generatePayrollReport: (data) =>
+    api.post('/api/branch-documents/generate-payroll-report', data, {
+      responseType: 'blob'
+    }),
+};
+
+// Reports API
+export const reportsAPI = {
+  generate: (data, config = {}) => 
+    api.post('/api/reports/generate', data, {
+      ...config,
+      responseType: config.responseType || 'blob',
+    }),
+  
+  preview: (filename) => 
+    api.get(`/api/reports/preview/${filename}`, { responseType: 'blob' }),
+};
+
+// Notifications API
+export const notificationsAPI = {
+  // Main Manager APIs
+  getAll: (filters = {}) => 
+    api.get('/api/notifications', { params: filters }),
+  
+  getById: (id) => 
+    api.get(`/api/notifications/${id}`),
+  
+  create: (data) => {
+    // If data is FormData, set proper headers
+    if (data instanceof FormData) {
+      return api.post('/api/notifications', data, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+    }
+    return api.post('/api/notifications', data);
+  },
+  
+  update: (id, data) => 
+    api.put(`/api/notifications/${id}`, data),
+  
+  delete: (id) => 
+    api.delete(`/api/notifications/${id}`),
+  
+  // Branch Manager APIs
+  getMyBranchNotifications: (filters = {}) => 
+    api.get('/api/notifications/my-branch/notifications', { params: filters }),
+  
+  getBranchNotifications: (branchId, filters = {}) => 
+    api.get(`/api/notifications/branch/${branchId}`, { params: filters }),
+  
+  respond: (notificationId, data) => 
+    api.post(`/api/notifications/${notificationId}/respond`, data),
+};
+
+// Terms API
+export const termsAPI = {
+  getAll: (filters = {}) => 
+    api.get('/api/terms', { params: filters }),
+  
+  getById: (id) => 
+    api.get(`/api/terms/${id}`),
+  
+  create: (data) => 
+    api.post('/api/terms', data),
+  
+  createAcademicYear: (data) => 
+    api.post('/api/terms/create-academic-year', data),
+  
+  update: (id, data) => 
+    api.put(`/api/terms/${id}`, data),
+  
+  delete: (id) => 
+    api.delete(`/api/terms/${id}`),
+  
+  getCurrent: (branchType) => 
+    api.get(`/api/terms/current/${branchType}`),
+};
+
+// Academic Years API
+export const academicYearsAPI = {
+  getAll: (filters = {}) => 
+    api.get('/api/academic-years', { params: filters }),
+  
+  getById: (id) => 
+    api.get(`/api/academic-years/${id}`),
+  
+  getCurrent: (branchType) => 
+    api.get(`/api/academic-years/current/${branchType}`),
+  
+  create: (data) => 
+    api.post('/api/academic-years', data),
+  
+  update: (id, data) => 
+    api.put(`/api/academic-years/${id}`, data),
+  
+  endYear: (yearId, branchType) => 
+    api.post(`/api/academic-years/${yearId}/end-year`, { branch_type: branchType }),
+  
+  completeYear: (id) => 
+    api.post(`/api/academic-years/${id}/complete`),
+};
+
+// Archive API
+export const archiveAPI = {
+  getAll: (filters = {}) => 
+    api.get('/api/archive', { params: filters }),
+  
+  getById: (id) => 
+    api.get(`/api/archive/${id}`),
+  
+  getStatistics: (filters = {}) => 
+    api.get('/api/archive/statistics', { params: filters }),
+  
+  updateStatus: (id, data) => 
+    api.put(`/api/archive/${id}/status`, data),
+  
+  restore: (id, data) => 
+    api.post(`/api/archive/${id}/restore`, data),
+  
+  getArchivedBranchDocuments: (filters = {}) => 
+    api.get('/api/archive/branch-documents/all', { params: filters }),
+  
+  getArchivedBranchDocumentById: (id) => 
+    api.get(`/api/archive/branch-documents/${id}`),
+  
+  getArchivedEmployeeDocuments: (filters = {}) => 
+    api.get('/api/archive/employee-documents/all', { params: filters }),
+  
+  permanentDeleteEmployeeDocument: (id) => 
+    api.delete(`/api/archive/employee-documents/${id}`),
+  
+  export: (filters = {}, format = 'excel') => 
+    api.get('/api/archive/export', { 
+      params: { ...filters, format },
+      responseType: format === 'csv' ? 'blob' : 'arraybuffer'
+    }),
+};
+
+// Branch Statistics API
+export const branchStatisticsAPI = {
+  getAll: () => 
+    api.get('/api/branch-statistics'),
+  
+  generatePerformanceReport: async (data) => {
+    try {
+      return await api.post('/api/branch-statistics/performance-report', data, { 
+        responseType: 'blob'
+      });
+    } catch (error) {
+      // When responseType is 'blob', axios converts error responses to blobs too
+      // We need to check if the error response is actually JSON wrapped in a blob
+      if (error.response && error.response.data instanceof Blob) {
+        try {
+          const text = await error.response.data.text();
+          const jsonError = JSON.parse(text);
+          // Replace blob with parsed JSON
+          error.response.data = jsonError;
+        } catch (parseError) {
+          // If parsing fails, it's a real blob error, keep it as is
+          console.error('Failed to parse error blob:', parseError);
+        }
+      }
+      throw error;
+    }
+  },
+};
+
+// Requests API
+export const requestsAPI = {
+  getAll: (filters = {}) => {
+    const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+    return api.get('/api/requests', { params: cleanFilters });
+  },
+  
+  getById: (id) => 
+    api.get(`/api/requests/${id}`),
+  
+  getMainManagers: () => 
+    api.get('/api/requests/main-managers'),
+  
+  create: (formData) => 
+    api.post('/api/requests', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  
+  respond: (id, formData) => 
+    api.put(`/api/requests/${id}/respond`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  
+  delete: (id) => 
+    api.delete(`/api/requests/${id}`),
+};
+
+// Alerts API
+export const alertsAPI = {
+  getAll: (filters = {}) => {
+    const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+    return api.get('/api/alerts', { params: cleanFilters });
+  },
+  
+  getById: (id) => 
+    api.get(`/api/alerts/${id}`),
+  
+  getUnreadCount: (filters = {}) => {
+    const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+    return api.get('/api/alerts/unread-count', { params: cleanFilters });
+  },
+  
+  create: (data) => 
+    api.post('/api/alerts', data),
+  
+  update: (id, data) => 
+    api.put(`/api/alerts/${id}`, data),
+  
+  markAsRead: (id) => 
+    api.patch(`/api/alerts/${id}/read`),
+  
+  markAsResolved: (id) => 
+    api.patch(`/api/alerts/${id}/resolve`),
+  
+  markMultipleAsRead: (alertIds) => 
+    api.post('/api/alerts/mark-read', { alert_ids: alertIds }),
+  
+  delete: (id) => 
+    api.delete(`/api/alerts/${id}`),
+  
+  // Settings
+  getSettings: () => 
+    api.get('/api/alerts/settings'),
+  
+  updateSettings: (data) => 
+    api.put('/api/alerts/settings', data),
+  
+  // Scheduler (Main Manager only)
+  generate: () => 
+    api.post('/api/alerts/generate'),
+  
+  getSchedulerStatus: () => 
+    api.get('/api/alerts/scheduler/status'),
+};
+
+export default api;
+

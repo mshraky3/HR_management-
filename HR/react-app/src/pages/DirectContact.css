@@ -1,0 +1,167 @@
+.direct-contact-container {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.direct-contact-header {
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.direct-contact-header h1 {
+  font-size: 2rem;
+  color: #2c3e50;
+  margin-bottom: 0.5rem;
+}
+
+.page-description {
+  color: #7f8c8d;
+  font-size: 1rem;
+}
+
+.loading-container,
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: #7f8c8d;
+}
+
+.branches-contact-list {
+  margin-top: 2rem;
+}
+
+.branches-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+}
+
+.branch-contact-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.branch-contact-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.branch-info {
+  margin-bottom: 1.5rem;
+}
+
+.branch-name {
+  font-size: 1.25rem;
+  color: #2c3e50;
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.contact-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.contact-label {
+  color: #7f8c8d;
+  font-weight: 500;
+  min-width: 120px;
+}
+
+.contact-value {
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.whatsapp-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.875rem 1.5rem;
+  background: #25d366;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.whatsapp-button:hover {
+  background: #20ba5a;
+  transform: scale(1.02);
+}
+
+.whatsapp-button:active {
+  transform: scale(0.98);
+}
+
+.whatsapp-button.disabled,
+.whatsapp-button:disabled {
+  background: #95a5a6;
+  color: white;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.whatsapp-button.disabled:hover,
+.whatsapp-button:disabled:hover {
+  background: #95a5a6;
+  transform: none;
+}
+
+.whatsapp-button.disabled:active,
+.whatsapp-button:disabled:active {
+  transform: none;
+}
+
+.whatsapp-button svg {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .direct-contact-container {
+    padding: 1rem;
+  }
+
+  .branches-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .branch-contact-card {
+    padding: 1.25rem;
+  }
+
+  .contact-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .contact-label {
+    min-width: auto;
+  }
+}
+
