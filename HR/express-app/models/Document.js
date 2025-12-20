@@ -256,6 +256,97 @@ export const Document = {
       console.error('Error soft deleting document:', error);
       throw error;
     }
+  },
+
+  /**
+   * Find archived documents (is_active = false)
+   */
+  async findArchived(filters = {}) {
+    try {
+      let query = sql`
+        SELECT ed.*, e.first_name, e.second_name, e.third_name, e.fourth_name, 
+               e.employee_id_number, b.branch_name
+        FROM employee_documents ed
+        INNER JOIN employees e ON ed.employee_id = e.id
+        LEFT JOIN branches b ON e.branch_id = b.id
+        WHERE ed.is_active = false
+      `;
+      
+      if (filters.employee_id) {
+        query = sql`${query} AND ed.employee_id = ${filters.employee_id}`;
+      }
+      
+      if (filters.document_type) {
+        query = sql`${query} AND ed.document_type = ${filters.document_type}`;
+      }
+      
+      if (filters.branch_id) {
+        query = sql`${query} AND e.branch_id = ${filters.branch_id}`;
+      }
+      
+      query = sql`${query} ORDER BY ed.updated_at DESC, ed.uploaded_at DESC`;
+      
+      return await query;
+    } catch (error) {
+      console.error('Error finding archived documents:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Permanently delete document (hard delete from database)
+   * Main manager only
+   */
+  async permanentDelete(id) {
+    try {
+      const [document] = await sql`
+        DELETE FROM employee_documents 
+        WHERE id = ${id}
+        RETURNING id, file_name, file_path
+      `;
+      
+      return document || null;
+    } catch (error) {
+      console.error('Error permanently deleting document:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Archive (deactivate) old documents of the same type for an employee
+   * This is used when uploading a new document to archive the old ones
+   * @param {number} employeeId - Employee ID
+   * @param {string} documentType - Document type
+   * @param {number} excludeId - Document ID to exclude from archiving (the new one being uploaded)
+   */
+  async archiveByEmployeeAndType(employeeId, documentType, excludeId = null) {
+    try {
+      if (excludeId) {
+        const result = await sql`
+          UPDATE employee_documents 
+          SET is_active = false, updated_at = CURRENT_TIMESTAMP
+          WHERE employee_id = ${employeeId} 
+          AND document_type = ${documentType}
+          AND is_active = true
+          AND id != ${excludeId}
+          RETURNING id, file_name, document_type, is_active
+        `;
+        return result;
+      } else {
+        const result = await sql`
+          UPDATE employee_documents 
+          SET is_active = false, updated_at = CURRENT_TIMESTAMP
+          WHERE employee_id = ${employeeId} 
+          AND document_type = ${documentType}
+          AND is_active = true
+          RETURNING id, file_name, document_type, is_active
+        `;
+        return result;
+      }
+    } catch (error) {
+      console.error('Error archiving documents by employee and type:', error);
+      throw error;
+    }
   }
 };
 

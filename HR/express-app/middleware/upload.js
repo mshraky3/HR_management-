@@ -33,7 +33,7 @@ export const upload = multer({
   storage: storage, // Changed from diskStorage to memoryStorage
   fileFilter: fileFilter,
   limits: {
-    fileSize: 1 * 1024 * 1024 // 1MB max file size
+    fileSize: 15 * 1024 * 1024 // 15MB max file size (globally allow 15MB, restricted by type in check below)
   }
 });
 
@@ -62,11 +62,23 @@ export const validateUploadedFile = (req, res, next) => {
     });
   }
 
+  // Determine max file size based on document type
+  let maxFileSize = 1 * 1024 * 1024; // Default 1MB
+  
+  // High capacity documents (15MB)
+  const highCapacityDocs = ['operational_plan', 'acceptance_notifications'];
+  const documentType = req.body.document_type;
+  
+  if (documentType && highCapacityDocs.includes(documentType)) {
+    maxFileSize = 15 * 1024 * 1024; // 15MB
+  }
+
   // Validate file size
-  if (!isValidFileSize(req.file.size)) {
+  if (!isValidFileSize(req.file.size, maxFileSize / (1024 * 1024))) {
+    const sizeLimitMsg = maxFileSize === 15 * 1024 * 1024 ? '15 ميجابايت' : '1 ميجابايت';
     return res.status(400).json({
       success: false,
-      message: 'حجم الملف يتجاوز الحد الأقصى المسموح به (1 ميجابايت)'
+      message: `حجم الملف يتجاوز الحد الأقصى المسموح به (${sizeLimitMsg})`
     });
   }
 
