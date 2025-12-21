@@ -31,22 +31,66 @@ export const AuthProvider = ({ children }) => {
           if (response.data.success) {
             setUser(response.data.user);
             setToken(storedToken);
+            // Update stored user data with fresh data from server
+            localStorage.setItem('user', JSON.stringify(response.data.user));
           } else {
-            // Invalid token or user data
+            // Invalid token or user data - only clear if API explicitly says so
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             setToken(null);
           }
         } catch (error) {
-          // API call failed - clear invalid token and continue
-          // Don't log network errors in production to avoid console spam
-          if (process.env.NODE_ENV === 'development') {
-            console.error('Failed to load user:', error);
+          // Check if it's an authentication error (401) vs network error
+          const isAuthError = error.response?.status === 401;
+          const isNetworkError = !error.response; // No response = network issue
+          
+          if (isAuthError) {
+            // Token is invalid or expired - clear it
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            setToken(null);
+          } else if (isNetworkError) {
+            // Network error - keep token and use stored user data as fallback
+            // This prevents logout on page reload when network is temporarily unavailable
+            try {
+              const storedUser = localStorage.getItem('user');
+              if (storedUser) {
+                const parsedUser = JSON.parse(storedUser);
+                setUser(parsedUser);
+                setToken(storedToken);
+                // Log warning in development
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn('Network error loading user, using stored data:', error);
+                }
+              } else {
+                // No stored user data, but keep token for retry
+                setToken(storedToken);
+              }
+            } catch (parseError) {
+              // Stored user data is invalid, but keep token for retry
+              setToken(storedToken);
+              if (process.env.NODE_ENV === 'development') {
+                console.warn('Could not parse stored user data:', parseError);
+              }
+            }
+          } else {
+            // Other error (500, etc.) - keep token, might be temporary server issue
+            try {
+              const storedUser = localStorage.getItem('user');
+              if (storedUser) {
+                const parsedUser = JSON.parse(storedUser);
+                setUser(parsedUser);
+                setToken(storedToken);
+              } else {
+                setToken(storedToken);
+              }
+            } catch (parseError) {
+              setToken(storedToken);
+            }
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('Failed to load user, but keeping session:', error);
+            }
           }
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          setToken(null);
-          // Continue even if API call fails - user can still access login page
         }
       }
       // Always set loading to false, even if there's an error

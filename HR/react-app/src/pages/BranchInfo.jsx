@@ -87,8 +87,11 @@ const BranchInfo = () => {
       
       const response = await branchesAPI.updateMyBranch(updateData);
       
-      // Clear cache to ensure fresh data is loaded everywhere
+      // Aggressively clear all related cache to ensure fresh data everywhere
       clearCache('/api/branches');
+      clearCache('/api/branch-statistics');
+      clearCache('/api/employees'); // Employee completion status may depend on branch info
+      clearCache('/api/alerts'); // Clear alerts cache so Dashboard shows updated alerts
       
       // Update state directly from response to avoid cache issues
       if (response && response.data && response.data.success && response.data.data) {
@@ -107,6 +110,10 @@ const BranchInfo = () => {
       }
       
       showSuccess('تم تحديث معلومات الفرع بنجاح');
+      
+      // Trigger a custom event to notify Dashboard to refresh
+      // This ensures Dashboard reloads when user navigates back
+      window.dispatchEvent(new CustomEvent('branchInfoUpdated'));
     } catch (error) {
       console.error('Error updating branch:', error);
       showError('فشل تحديث معلومات الفرع: ' + (error.response?.data?.message || error.message));

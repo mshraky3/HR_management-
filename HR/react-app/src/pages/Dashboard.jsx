@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, memo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, alertsAPI, clearCache } from '../utils/api';
@@ -21,6 +21,7 @@ import './Dashboard.css';
 const Dashboard = () => {
   const { user, isMainManager } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
+  const location = useLocation();
   const [branches, setBranches] = useState([]);
   const [stats, setStats] = useState({
     branches: 0,
@@ -57,11 +58,7 @@ const Dashboard = () => {
     overallProgress: 0
   });
 
-  useEffect(() => {
-    loadStats();
-  }, []);
-
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
       // Clear cache to ensure fresh data (especially completion status)
       clearCache('/api/employees');
@@ -267,7 +264,46 @@ const Dashboard = () => {
       console.error('Error loading stats:', error);
       setStats((prev) => ({ ...prev, loading: false }));
     }
-  };
+  }, [user, isMainManager]); // Dependencies: user and isMainManager from context
+
+  // Load stats on mount and when navigating back to Dashboard
+  useEffect(() => {
+    loadStats();
+  }, [location.pathname, loadStats]); // Reload when route changes (including returning to Dashboard)
+
+  // Also reload when page becomes visible (user switches back to tab/window)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Reload data when page becomes visible to ensure fresh data
+        loadStats();
+      }
+    };
+
+    const handleFocus = () => {
+      // Reload data when window regains focus
+      loadStats();
+    };
+
+    // Listen for branch info updates from BranchInfo page
+    const handleBranchInfoUpdate = () => {
+      // Clear cache and reload when branch info is updated
+      clearCache('/api/branches');
+      clearCache('/api/branch-statistics');
+      clearCache('/api/alerts');
+      loadStats();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('branchInfoUpdated', handleBranchInfoUpdate);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('branchInfoUpdated', handleBranchInfoUpdate);
+    };
+  }, [loadStats]); // Include loadStats in dependencies
 
   // Check for new responses since last visit
   // Performance Optimization: Limit to first 20 notifications to prevent N+1 query problem

@@ -19,16 +19,18 @@ const apiCache = new Map();
 // Key: request key, Value: Promise
 const pendingRequests = new Map();
 
-// Cache configuration
+// Cache configuration - Aggressive reduction for maximum freshness
 const CACHE_TTL = {
-  // Short cache (30 seconds) - for frequently changing data
-  SHORT: 30 * 1000,
-  // Medium cache (2 minutes) - for moderately changing data
-  MEDIUM: 2 * 60 * 1000,
-  // Long cache (5 minutes) - for rarely changing data
-  LONG: 5 * 60 * 1000,
-  // Very long cache (15 minutes) - for static data
-  VERY_LONG: 15 * 60 * 1000,
+  // Short cache (5 seconds) - for frequently changing data
+  SHORT: 5 * 1000,
+  // Medium cache (10 seconds) - for moderately changing data
+  MEDIUM: 10 * 1000,
+  // Long cache (30 seconds) - for rarely changing data
+  LONG: 30 * 1000,
+  // Very long cache (1 minute) - for static data
+  VERY_LONG: 60 * 1000,
+  // No cache (0) - for real-time data that must always be fresh
+  NONE: 0,
 };
 
 // Generate cache key from request config
@@ -51,33 +53,41 @@ const isCacheValid = (cacheEntry) => {
 };
 
 // Get cache TTL based on endpoint
+// Dashboard and notification endpoints have NO CACHE for maximum freshness
 const getCacheTTL = (url) => {
-  // Static data - very long cache
-  if (url.includes('/api/branches') && !url.includes('/my-branch')) {
-    return CACHE_TTL.VERY_LONG;
-  }
-  // User data - long cache
-  if (url.includes('/api/users')) {
-    return CACHE_TTL.LONG;
-  }
-  // Employee data - medium cache (can change frequently)
-  if (url.includes('/api/employees')) {
-    return CACHE_TTL.MEDIUM;
-  }
-  // Documents - medium cache
-  if (url.includes('/api/documents') || url.includes('/api/branch-documents')) {
-    return CACHE_TTL.MEDIUM;
-  }
-  // Statistics - short cache (changes frequently)
+  // Dashboard-related endpoints - NO CACHE (must always be fresh)
   if (url.includes('/api/branch-statistics')) {
-    return CACHE_TTL.SHORT;
+    return CACHE_TTL.NONE; // Statistics must be real-time
   }
-  // Notifications - short cache (real-time data)
   if (url.includes('/api/notifications')) {
-    return CACHE_TTL.SHORT;
+    return CACHE_TTL.NONE; // Notifications must be real-time
   }
-  // Default - medium cache
-  return CACHE_TTL.MEDIUM;
+  if (url.includes('/api/alerts')) {
+    return CACHE_TTL.NONE; // Alerts must be real-time
+  }
+  
+  // Employee data - short cache (changes frequently, but allow minimal caching)
+  if (url.includes('/api/employees')) {
+    return CACHE_TTL.SHORT; // 5 seconds
+  }
+  
+  // Documents - short cache
+  if (url.includes('/api/documents') || url.includes('/api/branch-documents')) {
+    return CACHE_TTL.SHORT; // 5 seconds
+  }
+  
+  // Branches - medium cache (reduced from very long)
+  if (url.includes('/api/branches')) {
+    return CACHE_TTL.MEDIUM; // 10 seconds
+  }
+  
+  // User data - medium cache
+  if (url.includes('/api/users')) {
+    return CACHE_TTL.MEDIUM; // 10 seconds
+  }
+  
+  // Default - short cache for maximum freshness
+  return CACHE_TTL.SHORT;
 };
 
 // Clear cache for specific endpoint pattern
@@ -96,22 +106,44 @@ export const clearCache = (pattern) => {
 };
 
 // Clear cache on mutations (POST, PUT, DELETE)
+// Aggressively clear dashboard-related cache to ensure data freshness
 const clearRelatedCache = (url) => {
+  // Always clear dashboard-related endpoints after any mutation
+  const dashboardEndpoints = [
+    '/api/branch-statistics',
+    '/api/notifications',
+    '/api/alerts',
+    '/api/employees', // Dashboard shows employee data
+  ];
+  
   // Clear related cache entries when data is modified
   if (url.includes('/api/employees')) {
     clearCache('/api/employees');
-    clearCache('/api/branch-statistics'); // Statistics depend on employees
+    // Clear all dashboard endpoints
+    dashboardEndpoints.forEach(endpoint => clearCache(endpoint));
   } else if (url.includes('/api/branches')) {
     clearCache('/api/branches');
+    // Branch changes affect statistics and dashboard
+    clearCache('/api/branch-statistics');
+    clearCache('/api/employees'); // Employee completion status may change
   } else if (url.includes('/api/documents')) {
     clearCache('/api/documents');
     clearCache('/api/employees'); // Employee completion status may change
+    clearCache('/api/branch-statistics'); // Statistics depend on documents
   } else if (url.includes('/api/branch-documents')) {
     clearCache('/api/branch-documents');
+    clearCache('/api/branch-statistics'); // Statistics may depend on branch documents
   } else if (url.includes('/api/notifications')) {
     clearCache('/api/notifications');
+    // Notifications are already no-cache, but clear anyway
+  } else if (url.includes('/api/alerts')) {
+    clearCache('/api/alerts');
+    // Alerts are already no-cache, but clear anyway
   } else if (url.includes('/api/users')) {
     clearCache('/api/users');
+  } else {
+    // For any other mutation, clear dashboard endpoints to be safe
+    dashboardEndpoints.forEach(endpoint => clearCache(endpoint));
   }
 };
 
@@ -275,8 +307,12 @@ api.interceptors.request.use(
     const method = (config.method || 'get').toLowerCase();
     if (method === 'get') {
       const requestKey = getRequestKey(config);
+      const cacheTTL = getCacheTTL(config.url || '');
       
-      // Check for pending request (deduplication)
+      // Skip caching entirely for endpoints with CACHE_TTL.NONE (dashboard/notifications)
+      const shouldCache = cacheTTL !== CACHE_TTL.NONE;
+      
+      // Check for pending request (deduplication) - always enabled for performance
       const pendingRequest = pendingRequests.get(requestKey);
       if (pendingRequest) {
         // Attach metadata to config to handle in response interceptor
@@ -285,14 +321,16 @@ api.interceptors.request.use(
         return config;
       }
       
-      // Check cache
-      const cacheKey = getCacheKey(config);
-      const cacheEntry = apiCache.get(cacheKey);
-      if (cacheEntry && isCacheValid(cacheEntry)) {
-        // Attach cached response to config
-        config.__isCached = true;
-        config.__cachedResponse = cacheEntry.data;
-        return config;
+      // Check cache only if caching is enabled for this endpoint
+      if (shouldCache) {
+        const cacheKey = getCacheKey(config);
+        const cacheEntry = apiCache.get(cacheKey);
+        if (cacheEntry && isCacheValid(cacheEntry)) {
+          // Attach cached response to config
+          config.__isCached = true;
+          config.__cachedResponse = cacheEntry.data;
+          return config;
+        }
       }
       
       // Store request promise for deduplication
@@ -325,25 +363,29 @@ api.interceptors.response.use(
       return config.__pendingRequest;
     }
     
-    // Cache successful GET requests
+    // Cache successful GET requests (only if caching is enabled for this endpoint)
     const method = (config?.method || 'get').toLowerCase();
     
     if (method === 'get' && response.status === 200) {
-      const cacheKey = getCacheKey(config);
       const cacheTTL = getCacheTTL(config.url || '');
       
-      apiCache.set(cacheKey, {
-        data: response,
-        timestamp: Date.now(),
-        expiry: cacheTTL,
-      });
-      
-      // Clean up old cache entries periodically (keep cache size manageable)
-      if (apiCache.size > 100) {
-        // Remove expired entries
-        for (const [key, entry] of apiCache.entries()) {
-          if (!isCacheValid(entry)) {
-            apiCache.delete(key);
+      // Only cache if TTL is not NONE (dashboard/notifications should never be cached)
+      if (cacheTTL !== CACHE_TTL.NONE) {
+        const cacheKey = getCacheKey(config);
+        
+        apiCache.set(cacheKey, {
+          data: response,
+          timestamp: Date.now(),
+          expiry: cacheTTL,
+        });
+        
+        // Clean up old cache entries periodically (keep cache size manageable)
+        if (apiCache.size > 100) {
+          // Remove expired entries
+          for (const [key, entry] of apiCache.entries()) {
+            if (!isCacheValid(entry)) {
+              apiCache.delete(key);
+            }
           }
         }
       }

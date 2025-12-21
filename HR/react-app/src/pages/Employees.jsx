@@ -745,6 +745,12 @@ const Employees = () => {
     try {
       const data = { ...formData };
 
+      // Clear ID expiry dates for Saudi employees (their IDs don't expire)
+      if (isSaudiNationality) {
+        data.id_expiry_date_hijri = null;
+        data.id_expiry_date_gregorian = null;
+      }
+
       // Remove empty strings and convert to null for optional fields (non-numeric)
       // Note: date_of_birth fields are NOT in optionalFields - they are required
       const optionalFields = [
@@ -1376,7 +1382,9 @@ const Employees = () => {
       id_or_residency_number: employee.id_or_residency_number,
       id_type: employee.id_type,
       gender: employee.gender,
-      id_expiry_date_hijri: (() => {
+      // ID expiry date: Only load for non-Saudi employees
+      // Saudi employees' IDs don't expire, so clear this field
+      id_expiry_date_hijri: isSaudiEmployee ? '' : (() => {
         if (employee.id_expiry_date_hijri) return employee.id_expiry_date_hijri;
         if (employee.id_expiry_date_gregorian) {
           const gregDate = toInputDate(employee.id_expiry_date_gregorian);
@@ -1385,7 +1393,7 @@ const Employees = () => {
         }
         return '';
       })(),
-      id_expiry_date_gregorian: (() => {
+      id_expiry_date_gregorian: isSaudiEmployee ? '' : (() => {
         const greg = toInputDate(employee.id_expiry_date_gregorian);
         if (greg) return greg;
         if (employee.id_expiry_date_hijri) {
@@ -1548,11 +1556,12 @@ const Employees = () => {
   }, []);
 
   const handleDateOfBirthChange = useCallback((hijriDate, gregorianDate) => {
-    // accept both dates and update state
+    // التحويل التلقائي: عند إدخال تاريخ بأي من التقويمين، يتم تحويله تلقائياً وحفظ كلا التاريخين
+    // Auto-conversion: When entering a date in either calendar, it's automatically converted and both dates are saved
     setFormData(prev => ({
       ...prev,
-      date_of_birth_hijri: hijriDate,
-      date_of_birth_gregorian: gregorianDate
+      date_of_birth_hijri: hijriDate,      // التاريخ الهجري (يتم تحويله تلقائياً من الميلادي)
+      date_of_birth_gregorian: gregorianDate // التاريخ الميلادي (يتم تحويله تلقائياً من الهجري)
     }));
   }, []);
 
@@ -2021,17 +2030,19 @@ const Employees = () => {
                       />
                     </div>
 
-                    {/* تاريخ انتهاء الهوية/الإقامة - مطلوب الآن للجميع أو حسب الحاجة (يمكن تركه اختياري) */}
-                    <div className="form-group col-3">
-                      <HijriDatePicker
-                        label="تاريخ انتهاء الهوية/الإقامة"
-                        hijriValue={formData.id_expiry_date_hijri}
-                        gregorianValue={formData.id_expiry_date_gregorian}
-                        onChange={handleIdExpiryChange}
-                        defaultCalendarType={isSaudi() ? 'hijri' : 'gregorian'} // Set initial view preference
-                        required={isNonSaudi(formData.nationality)} // Required for non-Saudis
-                      />
-                    </div>
+                    {/* تاريخ انتهاء الهوية/الإقامة - مطلوب فقط لغير السعوديين */}
+                    {isNonSaudi(formData.nationality) && (
+                      <div className="form-group col-3">
+                        <HijriDatePicker
+                          label="تاريخ انتهاء الهوية/الإقامة *"
+                          hijriValue={formData.id_expiry_date_hijri}
+                          gregorianValue={formData.id_expiry_date_gregorian}
+                          onChange={handleIdExpiryChange}
+                          defaultCalendarType="gregorian"
+                          required={true}
+                        />
+                      </div>
+                    )}
 
                     {/* نوع الهوية - مخفي لأنه يتم تعيينه تلقائياً حسب الجنسية */}
                     <input

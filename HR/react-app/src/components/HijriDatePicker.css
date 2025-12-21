@@ -62,3 +62,47 @@
   color: var(--danger);
 }
 
+/* توضيح إمكانية إدخال التاريخ بأي من التقويمين */
+.date-picker-info {
+  margin-bottom: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--primary);
+}
+
+.info-text {
+  display: block;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* عرض التاريخ المحول */
+.converted-date-display {
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-tertiary, #f8f9fa);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  min-height: 20px;
+}
+
+.converted-date {
+  display: block;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.converted-date strong {
+  color: var(--primary);
+  margin-left: 5px;
+}
+
+.converted-date-placeholder {
+  display: block;
+  color: var(--text-light);
+  font-style: italic;
+}
+

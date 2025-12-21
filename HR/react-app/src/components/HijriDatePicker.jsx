@@ -89,6 +89,13 @@ const HijriDatePicker = ({
         {label} {required && <span className="required">*</span>}
       </label>
       
+      {/* توضيح: يمكن إدخال التاريخ بأي من التقويمين */}
+      <div className="date-picker-info">
+        <small className="info-text">
+          💡 يمكنك إدخال التاريخ بالتقويم الهجري أو الميلادي - سيتم التحويل تلقائياً وحفظ كلا التاريخين
+        </small>
+      </div>
+      
       <div className="calendar-type-selector">
         <button
           type="button"
@@ -153,12 +160,21 @@ const HijriDatePicker = ({
       )}
 
       {/* Display the converted value for reference */}
-      <div style={{ marginTop: '5px', fontSize: '12px', color: '#666' }}>
+      <div className="converted-date-display">
         {activeCalendar === 'hijri' && gregorianValue && (
-          <span>الموافق ميلادي: {gregorianValue}</span>
+          <span className="converted-date">
+            <strong>الموافق ميلادي:</strong> {gregorianValue}
+          </span>
         )}
         {activeCalendar === 'gregorian' && hijriValue && (
-          <span>الموافق هجري: {hijriValue}</span>
+          <span className="converted-date">
+            <strong>الموافق هجري:</strong> {hijriValue}
+          </span>
+        )}
+        {((activeCalendar === 'hijri' && !gregorianValue) || (activeCalendar === 'gregorian' && !hijriValue)) && (
+          <span className="converted-date-placeholder">
+            سيتم عرض التاريخ المحول تلقائياً بعد إدخال التاريخ
+          </span>
         )}
       </div>
     </div>
