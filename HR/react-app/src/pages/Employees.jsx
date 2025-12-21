@@ -134,6 +134,12 @@ const Employees = () => {
   const [dateOfBirthCalendarType, setDateOfBirthCalendarType] = useState(null);
   const [idExpiryCalendarType, setIdExpiryCalendarType] = useState(null);
 
+  // Check if selected educational qualification is basic education (doesn't require specialization, graduation year, or GPA)
+  const isBasicEducation = () => {
+    const basicEducationLevels = ['ابتدائي', 'متوسط', 'ثانوي', 'غير متعلم'];
+    return formData.educational_qualification && basicEducationLevels.includes(formData.educational_qualification);
+  };
+
   // Document uploads state
   const [documents, setDocuments] = useState({
     id_or_residency: null,
@@ -1405,7 +1411,15 @@ const Employees = () => {
       religion: employee.religion || '',
       marital_status: employee.marital_status || '',
       educational_qualification: employee.educational_qualification || '',
-      specialization: employee.specialization || '',
+      specialization: (() => {
+        // Clear specialization for basic education levels
+        const basicEducationLevels = ['ابتدائي', 'متوسط', 'ثانوي', 'غير متعلم'];
+        const qual = employee.educational_qualification || '';
+        if (basicEducationLevels.includes(qual)) {
+          return '';
+        }
+        return employee.specialization || '';
+      })(),
       bank_iban: employee.bank_iban || '',
       bank_name: employee.bank_name || DEFAULT_BANK_PLACEHOLDER,
       email: employee.email || '',
@@ -1421,8 +1435,24 @@ const Employees = () => {
       other_allowances: employee.other_allowances || '',
       deductions: employee.deductions || '',
       years_of_experience_in_same_institution: employee.years_of_experience_in_same_institution || '',
-      graduation_year: employee.graduation_year || '',
-      university_gpa: employee.university_gpa || '',
+      graduation_year: (() => {
+        // Clear graduation_year for basic education levels
+        const basicEducationLevels = ['ابتدائي', 'متوسط', 'ثانوي', 'غير متعلم'];
+        const qual = employee.educational_qualification || '';
+        if (basicEducationLevels.includes(qual)) {
+          return '';
+        }
+        return employee.graduation_year || '';
+      })(),
+      university_gpa: (() => {
+        // Clear university_gpa for basic education levels
+        const basicEducationLevels = ['ابتدائي', 'متوسط', 'ثانوي', 'غير متعلم'];
+        const qual = employee.educational_qualification || '';
+        if (basicEducationLevels.includes(qual)) {
+          return '';
+        }
+        return employee.university_gpa || '';
+      })(),
       passport_number: employee.passport_number || '',
       passport_issue_date: toInputDate(employee.passport_issue_date),
       passport_expiry_date: toInputDate(employee.passport_expiry_date),
@@ -2303,10 +2333,30 @@ const Employees = () => {
                       <label>المؤهل التعليمي</label>
                       <select
                         value={formData.educational_qualification}
-                        onChange={(e) => setFormData({ ...formData, educational_qualification: e.target.value })}
+                        onChange={(e) => {
+                          const newQualification = e.target.value;
+                          const basicEducationLevels = ['ابتدائي', 'متوسط', 'ثانوي', 'غير متعلم'];
+                          const isBasic = basicEducationLevels.includes(newQualification);
+                          
+                          // If switching to basic education, clear specialization, graduation_year, and university_gpa
+                          if (isBasic) {
+                            setFormData({ 
+                              ...formData, 
+                              educational_qualification: newQualification,
+                              specialization: '',
+                              graduation_year: '',
+                              university_gpa: ''
+                            });
+                          } else {
+                            setFormData({ ...formData, educational_qualification: newQualification });
+                          }
+                        }}
                       >
                         <option value="">اختر المؤهل التعليمي</option>
-                        <option value="تعليم اولي">تعليم اولي</option>
+                        <option value="ابتدائي">ابتدائي</option>
+                        <option value="متوسط">متوسط</option>
+                        <option value="ثانوي">ثانوي</option>
+                        <option value="غير متعلم">غير متعلم</option>
                         <option value="دبلوم">دبلوم</option>
                         <option value="بكالوريوس">بكالوريوس</option>
                         <option value="ماجستير">ماجستير</option>
@@ -2314,36 +2364,40 @@ const Employees = () => {
                       </select>
                     </div>
 
-                    <div className="form-group col-4">
-                      <label>التخصص</label>
-                      <input
-                        type="text"
-                        value={formData.specialization}
-                        onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
-                      />
-                    </div>
+                    {!isBasicEducation() && (
+                      <>
+                        <div className="form-group col-4">
+                          <label>التخصص</label>
+                          <input
+                            type="text"
+                            value={formData.specialization}
+                            onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                          />
+                        </div>
 
-                    <div className="form-group col-2">
-                      <label>سنة التخرج</label>
-                      <input
-                        type="number"
-                        min="1950"
-                        max={new Date().getFullYear() + 5}
-                        value={formData.graduation_year}
-                        onChange={(e) => setFormData({ ...formData, graduation_year: e.target.value })}
-                        placeholder="مثال: 2020"
-                      />
-                    </div>
+                        <div className="form-group col-2">
+                          <label>سنة التخرج</label>
+                          <input
+                            type="number"
+                            min="1950"
+                            max={new Date().getFullYear() + 5}
+                            value={formData.graduation_year}
+                            onChange={(e) => setFormData({ ...formData, graduation_year: e.target.value })}
+                            placeholder="مثال: 2020"
+                          />
+                        </div>
 
-                    <div className="form-group col-2">
-                      <label>المعدل الجامعي</label>
-                      <input
-                        type="text"
-                        value={formData.university_gpa}
-                        onChange={(e) => setFormData({ ...formData, university_gpa: e.target.value })}
-                        placeholder="مثال: 4.5 أو ممتاز"
-                      />
-                    </div>
+                        <div className="form-group col-2">
+                          <label>المعدل الجامعي</label>
+                          <input
+                            type="text"
+                            value={formData.university_gpa}
+                            onChange={(e) => setFormData({ ...formData, university_gpa: e.target.value })}
+                            placeholder="مثال: 4.5 أو ممتاز"
+                          />
+                        </div>
+                      </>
+                    )}
                     {/* ========== القسم الثالث: الراتب والبدلات ========== */}
                     <h3 className="col-12" style={{ marginTop: '24px', padding: '10px', background: '#e8f5e9', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
                       القسم الثالث: الراتب والبدلات
