@@ -9,7 +9,9 @@
     "init-db": "node scripts/init-db.js",
     "create-admin": "node scripts/create-admin.js",
     "add-branches": "node scripts/add-branches.js",
-    "migrate:performance-indexes": "node scripts/migrate-add-performance-indexes.js"
+    "migrate:performance-indexes": "node scripts/migrate-add-performance-indexes.js",
+    "recalculate:completion-status": "node scripts/recalculate-all-employees-completion-status.js",
+    "archive:old-documents": "node scripts/archive-old-documents.js"
   },
   "keywords": [],
   "author": "",
