@@ -262,7 +262,14 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
   if (!employee.educational_qualification) {
     missingFields.push('المؤهل التعليمي');
   }
-  if (!employee.specialization) {
+  
+  // Specialization, graduation_year, and university_gpa are only required for higher education qualifications
+  // Basic education levels (ابتدائي، متوسط، ثانوي، غير متعلم) do not require these fields
+  const basicEducationLevels = ['ابتدائي', 'متوسط', 'ثانوي', 'غير متعلم'];
+  const isBasicEducation = employee.educational_qualification && 
+    basicEducationLevels.includes(employee.educational_qualification);
+  
+  if (!isBasicEducation && !employee.specialization) {
     missingFields.push('التخصص');
   }
   if (!employee.email) {
