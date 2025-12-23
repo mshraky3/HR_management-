@@ -98,20 +98,47 @@ export const Branch = {
   async update(id, updates) {
     try {
       const allowedFields = ['branch_name', 'branch_location', 'username', 'password', 'branch_documents_password', 'is_active', 'phone_number', 'email', 'number_of_employees'];
-      const updateFields = Object.keys(updates).filter(key => allowedFields.includes(key));
+      
+      // Filter allowed fields and handle special cases
+      const updateFields = [];
+      const updateValues = [];
+      
+      for (const field of allowedFields) {
+        if (updates[field] !== undefined) {
+          // Skip empty password - means keep current password
+          if (field === 'password' && (updates[field] === '' || updates[field] === null)) {
+            continue;
+          }
+          
+          // Handle number_of_employees: parse as integer or set to null
+          if (field === 'number_of_employees') {
+            const value = updates[field];
+            if (value === '' || value === null || value === undefined) {
+              updateFields.push(field);
+              updateValues.push(null);
+            } else {
+              const parsed = parseInt(value, 10);
+              updateFields.push(field);
+              updateValues.push(isNaN(parsed) ? null : parsed);
+            }
+          } else {
+            // For other fields, include them in the update
+            updateFields.push(field);
+            updateValues.push(updates[field] === '' ? null : updates[field]);
+          }
+        }
+      }
       
       if (updateFields.length === 0) {
         throw new Error('No valid fields to update');
       }
-      
-      updates.updated_at = new Date();
       
       // Build SET clause manually
       const setClause = updateFields.map((field, index) => {
         return `${field} = $${index + 2}`;
       }).join(', ');
       
-      const values = updateFields.map(field => updates[field]);
+      const values = [...updateValues];
       values.unshift(id);
       
       const query = `
@@ -121,7 +148,7 @@ export const Branch = {
         RETURNING *
       `;
       
-      values.push(updates.updated_at);
+      values.push(new Date());
       
       const result = await sql.unsafe(query, values);
       return result[0] || null;
