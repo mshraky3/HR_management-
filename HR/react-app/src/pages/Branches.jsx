@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { branchesAPI } from '../utils/api';
+import { branchesAPI, clearCache } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
@@ -141,18 +141,49 @@ const Branches = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      let response;
       if (editingBranch) {
         // Don't send branch_type when updating - it cannot be changed
         const updateData = { ...formData };
         delete updateData.branch_type;
-        await branchesAPI.update(editingBranch.id, updateData);
+        
+        // If password is empty or same as current, don't send it (backend will keep current)
+        // Only send password if it's different from current
+        if (updateData.password === '' || updateData.password === editingBranch.password) {
+          delete updateData.password;
+        }
+        
+        response = await branchesAPI.update(editingBranch.id, updateData);
+        
+        // Clear cache to ensure fresh data everywhere
+        clearCache('/api/branches');
+        clearCache('/api/branch-statistics');
+        clearCache('/api/employees'); // Employee completion status may depend on branch info
+        clearCache('/api/alerts'); // Clear alerts cache so Dashboard shows updated alerts
+        
+        // Immediately update local state to avoid lag
+        if (response?.data?.success && response?.data?.data) {
+          const updatedBranch = response.data.data;
+          setBranches(prevBranches => 
+            prevBranches.map(b => b.id === editingBranch.id ? updatedBranch : b)
+          );
+          setAllBranches(prevBranches => 
+            prevBranches.map(b => b.id === editingBranch.id ? updatedBranch : b)
+          );
+        }
       } else {
         await branchesAPI.create(formData);
+        // Clear cache after creating
+        clearCache('/api/branches');
+        clearCache('/api/branch-statistics');
       }
       setShowForm(false);
       setEditingBranch(null);
       resetForm();
-      loadBranches();
+      // Only reload if not editing (for create) or if update didn't work
+      if (!editingBranch || !response?.data?.success) {
+        loadBranches();
+      }
       showSuccess(editingBranch ? 'تم تحديث الفرع بنجاح' : 'تم إنشاء الفرع بنجاح');
     } catch (error) {
       showError(error.response?.data?.message || 'فشل حفظ الفرع');
@@ -166,7 +197,7 @@ const Branches = () => {
       branch_location: branch.branch_location,
       branch_type: branch.branch_type,
       username: branch.username,
-      password: '',
+      password: branch.password || '', // Show current password
       branch_documents_password: branch.branch_documents_password || '',
       phone_number: branch.phone_number || '',
       email: branch.email || '',
@@ -318,12 +349,17 @@ const Branches = () => {
                 <div className="form-group">
                   <label>كلمة المرور {!editingBranch && '*'}</label>
                   <input
-                    type="password"
+                    type="text"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     required={!editingBranch}
                     placeholder={editingBranch ? 'اتركه فارغاً للاحتفاظ بالقيمة الحالية' : ''}
                   />
+                  {editingBranch && (
+                    <small style={{ color: '#666', fontSize: '12px', marginTop: '5px', display: 'block' }}>
+                      القيمة الحالية معروضة أعلاه. اتركه فارغاً للاحتفاظ بالقيمة الحالية أو أدخل قيمة جديدة.
+                    </small>
+                  )}
                 </div>
               </div>
               <div className="form-group">

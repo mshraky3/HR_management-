@@ -16,6 +16,7 @@ import {
 } from '../utils/employeeHelpers';
 import { getBranchTypeRules } from '../utils/employeeRules';
 import { DATA_COMPLETION_STATUS } from '../utils/employeeConstants';
+import DashboardProgress from './DashboardProgress';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -51,12 +52,8 @@ const Dashboard = () => {
   const [mainManagerNotifications, setMainManagerNotifications] = useState([]);
   const [newResponsesCount, setNewResponsesCount] = useState(0);
   const [branchInfo, setBranchInfo] = useState(null);
-  const [progressData, setProgressData] = useState({
-    employeesCompletion: 0,
-    branchDocumentsCompletion: 0,
-    alertsResolved: 0,
-    overallProgress: 0
-  });
+  const [employeesList, setEmployeesList] = useState([]);
+  const [documentsList, setDocumentsList] = useState([]);
 
   const loadStats = useCallback(async () => {
     try {
@@ -111,6 +108,12 @@ const Dashboard = () => {
       // Store branches for display
       const branchesList = branchesRes.data.success ? (branchesRes.data.data || []) : [];
       setBranches(branchesList);
+      
+      // Store employees and documents for progress component
+      const employeesData = employeesRes.data.success ? (employeesRes.data.data || []) : [];
+      const documentsData = documentsRes.data.data || [];
+      setEmployeesList(employeesData);
+      setDocumentsList(documentsData);
 
       // Process role-specific results
       if (!isMainManager() && user?.branch_id) {
@@ -205,10 +208,7 @@ const Dashboard = () => {
         checkMonthlyDocuments(allDocuments, branchesList);
         checkMissingBranchDocuments(allDocuments, branchesList);
         
-        // Calculate progress for branch manager (after branchInfo is loaded)
-        if (branchInfoRes?.data?.success && branchInfoRes.data.data) {
-          await calculateProgress(employeesRes.data.data || [], allDocuments, branchInfoRes.data.data);
-        }
+        // Progress calculation is now handled by DashboardProgress component (runs in parallel)
         
         // Separate documents by expiry date (after branches are set)
         setTimeout(() => {
@@ -367,58 +367,6 @@ const Dashboard = () => {
     }
   }, []);
 
-  // Calculate overall progress for branch manager
-  const calculateProgress = async (employees, documents, branch) => {
-    if (!branch || isMainManager()) return;
-    
-    try {
-      // 1. Calculate employees data completion
-      // Use branch.number_of_employees if set, otherwise use actual employees count
-      // This provides more accurate percentage when branch has expected number of employees
-      const expectedEmployeeCount = branch.number_of_employees && branch.number_of_employees > 0 
-        ? branch.number_of_employees 
-        : employees.length;
-      const completeEmployees = employees.filter(emp => emp.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE).length;
-      const employeesCompletion = expectedEmployeeCount > 0 
-        ? Math.round((completeEmployees / expectedEmployeeCount) * 100) 
-        : 0;
-      
-      // 2. Calculate branch documents completion
-      const { getRequiredBranchDocuments } = await import('../utils/employeeHelpers');
-      const requiredDocs = getRequiredBranchDocuments(branch.branch_type);
-      const uploadedDocs = documents.filter(doc => 
-        requiredDocs.includes(doc.document_type) && doc.is_active
-      );
-      const branchDocumentsCompletion = requiredDocs.length > 0
-        ? Math.round((uploadedDocs.length / requiredDocs.length) * 100)
-        : 0;
-      
-      // 3. Calculate overall progress (weighted average)
-      // Employees: 50%, Documents: 50%
-      const overallProgress = Math.round(
-        (employeesCompletion * 0.5) + 
-        (branchDocumentsCompletion * 0.5)
-      );
-      
-      setProgressData({
-        employeesCompletion,
-        branchDocumentsCompletion,
-        alertsResolved: 0, // Not used anymore
-        overallProgress
-      });
-    } catch (error) {
-      console.error('Error calculating progress:', error);
-    }
-  };
-
-  // Get progress color class based on percentage
-  const getProgressColorClass = (percentage) => {
-    if (percentage >= 90) return 'excellent';
-    if (percentage >= 70) return 'good';
-    if (percentage >= 50) return 'moderate';
-    if (percentage >= 30) return 'low';
-    return 'critical';
-  };
 
   const checkMonthlyDocuments = (documents, branchesList) => {
     const alerts = [];
@@ -882,61 +830,12 @@ const Dashboard = () => {
       </p>
 
       {/* Progress Bar - Only for branch managers */}
-      {!isMainManager() && (
-        <div className="dashboard-progress-section">
-          <h2 className="dashboard-section-title">
-            <img src="https://img.icons8.com/material-rounded/24/combo-chart.png" alt="إحصائيات" className="section-icon" style={{ width: '24px', height: '24px' }} />
-            التقدم الإجمالي
-          </h2>
-          <div className="progress-card">
-            <div className="progress-overall">
-              <div className="progress-header">
-                <span className="progress-label">التقدم الإجمالي</span>
-                <span className="progress-percentage">{progressData.overallProgress}%</span>
-              </div>
-              <div className="progress-bar-container">
-                <div 
-                  className={`progress-bar progress-${getProgressColorClass(progressData.overallProgress)}`}
-                  style={{ width: `${progressData.overallProgress}%` }}
-                >
-                  <div className="progress-bar-fill"></div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="progress-details">
-              <div className="progress-item">
-                <div className="progress-item-header">
-                  <span className="progress-item-label">اكتمال بيانات الموظفين</span>
-                  <span className="progress-item-value">{progressData.employeesCompletion}%</span>
-                </div>
-                <div className="progress-bar-container small">
-                  <div 
-                    className={`progress-bar progress-${getProgressColorClass(progressData.employeesCompletion)}`}
-                    style={{ width: `${progressData.employeesCompletion}%` }}
-                  >
-                    <div className="progress-bar-fill"></div>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="progress-item">
-                <div className="progress-item-header">
-                  <span className="progress-item-label">اكتمال مستندات الفرع</span>
-                  <span className="progress-item-value">{progressData.branchDocumentsCompletion}%</span>
-                </div>
-                <div className="progress-bar-container small">
-                  <div 
-                    className={`progress-bar progress-${getProgressColorClass(progressData.branchDocumentsCompletion)}`}
-                    style={{ width: `${progressData.branchDocumentsCompletion}%` }}
-                  >
-                    <div className="progress-bar-fill"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      {!isMainManager() && branchInfo && (
+        <DashboardProgress 
+          employees={employeesList}
+          documents={documentsList}
+          branch={branchInfo}
+        />
       )}
 
       {/* 1. Branch Info Alert - Highest Priority - Only for branch managers */}
