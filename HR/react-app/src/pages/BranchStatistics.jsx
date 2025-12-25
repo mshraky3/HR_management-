@@ -7,7 +7,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { branchStatisticsAPI } from '../utils/api';
+import { branchStatisticsAPI, branchDocumentsAPI } from '../utils/api';
+import { getRequiredBranchDocuments } from '../utils/employeeHelpers';
 import './BranchStatistics.css';
 
 const BranchStatistics = () => {
@@ -15,11 +16,12 @@ const BranchStatistics = () => {
   const { showError, showSuccess } = useNotification();
   
   const [statistics, setStatistics] = useState([]);
+  const [branchDocuments, setBranchDocuments] = useState({}); // { branchId: documents[] }
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [filterOperational, setFilterOperational] = useState('all'); // 'all', 'operational', 'inactive'
-  const [sortBy, setSortBy] = useState('branch_name'); // 'branch_name', 'completion', 'logins', 'activity'
+  const [sortBy, setSortBy] = useState('completion'); // 'branch_name', 'completion', 'logins', 'activity'
   const [generatingReport, setGeneratingReport] = useState(false);
 
   const loadStatistics = async () => {
@@ -28,7 +30,29 @@ const BranchStatistics = () => {
       const response = await branchStatisticsAPI.getAll();
       
       if (response.data.success) {
-        setStatistics(response.data.data || []);
+        const stats = response.data.data || [];
+        setStatistics(stats);
+        
+        // Load documents for all branches to calculate overall progress
+        const documentsMap = {};
+        await Promise.all(
+          stats.map(async (stat) => {
+            try {
+              const docsResponse = await branchDocumentsAPI.getAll({
+                branch_id: stat.branch_id
+              });
+              if (docsResponse.data.success) {
+                documentsMap[stat.branch_id] = docsResponse.data.data || [];
+              } else {
+                documentsMap[stat.branch_id] = [];
+              }
+            } catch (error) {
+              console.error(`Error loading documents for branch ${stat.branch_id}:`, error);
+              documentsMap[stat.branch_id] = [];
+            }
+          })
+        );
+        setBranchDocuments(documentsMap);
       }
     } catch (error) {
       console.error('Error loading statistics:', error);
@@ -122,6 +146,26 @@ const BranchStatistics = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMainManager, selectedMonth, selectedYear]);
 
+  // Calculate overall progress for each branch (employees + documents)
+  const calculateOverallProgress = (stat) => {
+    const employeesCompletion = stat.completion_percentage;
+    
+    // Calculate branch documents completion
+    const documents = branchDocuments[stat.branch_id] || [];
+    const requiredDocs = getRequiredBranchDocuments(stat.branch_type);
+    const uploadedDocs = documents.filter(doc => 
+      requiredDocs.includes(doc.document_type) && doc.is_active
+    );
+    const branchDocumentsCompletion = requiredDocs.length > 0
+      ? Math.round((uploadedDocs.length / requiredDocs.length) * 100)
+      : 0;
+    
+    // Overall progress = 50% employees + 50% documents
+    return Math.round(
+      (employeesCompletion * 0.5) + (branchDocumentsCompletion * 0.5)
+    );
+  };
+
   // Filter and sort statistics
   const filteredAndSortedStats = statistics
     .filter(stat => {
@@ -135,7 +179,7 @@ const BranchStatistics = () => {
     .sort((a, b) => {
       switch (sortBy) {
         case 'completion':
-          return b.completion_percentage - a.completion_percentage;
+          return calculateOverallProgress(b) - calculateOverallProgress(a);
         case 'logins':
           return b.login_days_this_month - a.login_days_this_month;
         case 'activity':
@@ -149,6 +193,23 @@ const BranchStatistics = () => {
   const operationalCount = statistics.filter(s => s.is_operational).length;
   const inactiveCount = statistics.filter(s => !s.is_operational).length;
   const totalBranches = statistics.length;
+
+  // Calculate overall progress across all branches
+  const overallProgress = statistics.length > 0
+    ? Math.round(
+        statistics.reduce((sum, s) => sum + calculateOverallProgress(s), 0) /
+          statistics.length
+      )
+    : 0;
+
+  // Get progress color class based on percentage
+  const getProgressColorClass = (percentage) => {
+    if (percentage >= 90) return 'excellent';
+    if (percentage >= 70) return 'good';
+    if (percentage >= 50) return 'moderate';
+    if (percentage >= 30) return 'low';
+    return 'critical';
+  };
 
   if (!isMainManager()) {
     return (
@@ -211,17 +272,125 @@ const BranchStatistics = () => {
           <div className="summary-value">{inactiveCount}</div>
         </div>
         <div className="summary-card">
-          <h3>متوسط نسبة الإكمال</h3>
+          <h3>متوسط التقدم الإجمالي</h3>
           <div className="summary-value">
-            {statistics.length > 0
-              ? Math.round(
-                  statistics.reduce((sum, s) => sum + s.completion_percentage, 0) /
-                    statistics.length
-                )
-              : 0}%
+            {Object.keys(branchDocuments).length > 0 ? overallProgress : '-'}%
           </div>
         </div>
       </div>
+
+      {/* Overall Progress Chart */}
+      {statistics.length > 0 && Object.keys(branchDocuments).length > 0 && (() => {
+        // Use all statistics that have documents loaded, not filtered ones
+        // Sort by progress (descending - highest first)
+        const branchesForChart = statistics
+          .filter(stat => branchDocuments[stat.branch_id])
+          .sort((a, b) => calculateOverallProgress(b) - calculateOverallProgress(a));
+        const yAxisMax = 100; // Always 0-100% for completion
+
+        // Generate colors for branches (same as login history chart)
+        const branchColors = [
+          '#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#F44336',
+          '#00BCD4', '#8BC34A', '#FFC107', '#E91E63', '#3F51B5',
+          '#009688', '#FF5722', '#795548', '#607D8B', '#9E9E9E'
+        ];
+
+        // Calculate statistics
+        const excellentCount = branchesForChart.filter(s => calculateOverallProgress(s) >= 90).length;
+        const goodCount = branchesForChart.filter(s => {
+          const p = calculateOverallProgress(s);
+          return p >= 70 && p < 90;
+        }).length;
+        const moderateCount = branchesForChart.filter(s => {
+          const p = calculateOverallProgress(s);
+          return p >= 50 && p < 70;
+        }).length;
+        const lowCount = branchesForChart.filter(s => {
+          const p = calculateOverallProgress(s);
+          return p >= 30 && p < 50;
+        }).length;
+        const criticalCount = branchesForChart.filter(s => calculateOverallProgress(s) < 30).length;
+
+        return (
+          <div className="chart-section">
+            <div className="chart-header-section">
+              <h2>التقدم الإجمالي لجميع الفروع</h2>
+              <div className="chart-summary-stats">
+                <div className="summary-stat-item">
+                  <span className="summary-stat-label">المتوسط:</span>
+                  <span className="summary-stat-value">{overallProgress}%</span>
+                </div>
+                <div className="summary-stat-item">
+                  <span className="summary-stat-label">إجمالي الفروع:</span>
+                  <span className="summary-stat-value">{branchesForChart.length}</span>
+                </div>
+              </div>
+            </div>
+            <div className="combined-chart-container">
+              {/* Legend */}
+              <div className="chart-legend">
+                {branchesForChart.map((stat, idx) => {
+                  const overallProgressValue = calculateOverallProgress(stat);
+                  return (
+                    <div key={stat.branch_id} className="legend-item">
+                      <div 
+                        className="legend-color" 
+                        style={{ backgroundColor: branchColors[idx % branchColors.length] }}
+                      ></div>
+                      <span className="legend-label">{stat.branch_name}</span>
+                      <span className="legend-total">
+                        ({overallProgressValue}%)
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Progress Chart */}
+              <div className="chart-wrapper progress-chart-wrapper">
+                <div className="chart-y-axis">
+                  {[0, 25, 50, 75, 100].map(val => (
+                    <div key={val} className="y-axis-label">
+                      <span className="y-axis-value">{val}%</span>
+                      {val > 0 && <div className="y-axis-line"></div>}
+                    </div>
+                  ))}
+                </div>
+                <div className="chart-bars-container">
+                  <div className="chart-bars combined-bars progress-bars">
+                    {branchesForChart.map((stat, idx) => {
+                      const overallProgressValue = calculateOverallProgress(stat);
+                      const branchColor = branchColors[idx % branchColors.length];
+
+                      return (
+                        <div key={stat.branch_id} className="chart-month-group progress-bar-group">
+                          <div className="month-bars-container">
+                            <div className="combined-bar-wrapper">
+                              <div
+                                className="combined-bar progress-bar-enhanced"
+                                style={{ 
+                                  height: `${Math.max(overallProgressValue, overallProgressValue > 0 ? 3 : 0)}%`,
+                                  backgroundColor: branchColor,
+                                  maxHeight: '100%'
+                                }}
+                                title={`${stat.branch_name}: التقدم الإجمالي ${overallProgressValue}%`}
+                              >
+                                {overallProgressValue > 5 && (
+                                  <span className="combined-bar-value">{overallProgressValue}%</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Filters and Sort */}
       <div className="filters-section">
@@ -259,11 +428,8 @@ const BranchStatistics = () => {
               <tr>
                 <th>اسم الفرع</th>
                 <th>نوع الفرع</th>
-                <th>حالة التشغيل</th>
-                <th>أيام تسجيل الدخول (هذا الشهر)</th>
-                <th>إجمالي الموظفين</th>
-                <th>الموظفين المكتملين</th>
-                <th>نسبة الإكمال</th>
+                <th>الحالة </th>
+                <th>تسجيل الدخول</th>
                 <th>النشاط (آخر 30 يوم)</th>
                 <th>آخر تسجيل دخول</th>
                 <th>آخر نشاط</th>
@@ -294,29 +460,6 @@ const BranchStatistics = () => {
                     <div className="metric-value">
                       {stat.login_days_this_month}
                       <span className="metric-label">يوم</span>
-                    </div>
-                  </td>
-                  <td>{stat.total_employees}</td>
-                  <td>{stat.complete_employees}</td>
-                  <td>
-                    <div className="completion-bar-container">
-                      <div className="completion-bar">
-                        <div
-                          className="completion-fill"
-                          style={{
-                            width: `${stat.completion_percentage}%`,
-                            backgroundColor:
-                              stat.completion_percentage >= 80
-                                ? '#4CAF50'
-                                : stat.completion_percentage >= 50
-                                ? '#FF9800'
-                                : '#F44336'
-                          }}
-                        />
-                      </div>
-                      <span className="completion-percentage">
-                        {stat.completion_percentage}%
-                      </span>
                     </div>
                   </td>
                   <td>
@@ -361,76 +504,184 @@ const BranchStatistics = () => {
         </div>
       )}
 
-      {/* Monthly Login History Chart */}
-      {statistics.length > 0 && (
-        <div className="chart-section">
-          <h2>تاريخ تسجيلات الدخول (آخر 6 أشهر)</h2>
-          <div className="login-history-chart">
-            {statistics.slice(0, 10).map(stat => {
-              if (!stat.monthly_login_history || stat.monthly_login_history.length === 0) {
-                return null;
-              }
-              
-              // Find max value for scaling
-              const maxDays = Math.max(31, ...stat.monthly_login_history.map(m => m.login_days));
-              
-              return (
-                <div key={stat.branch_id} className="chart-branch-card">
-                  <div className="chart-branch-header">
-                    <div className="chart-branch-name">{stat.branch_name}</div>
-                    <div className="chart-branch-total">
-                      إجمالي: {stat.monthly_login_history.reduce((sum, m) => sum + m.login_days, 0)} يوم
-                    </div>
-                  </div>
-                  <div className="chart-wrapper">
-                    <div className="chart-y-axis">
-                      {[0, 10, 20, 30].map(val => (
-                        <div key={val} className="y-axis-label">{val}</div>
-                      ))}
-                    </div>
-                    <div className="chart-bars-container">
-                      <div className="chart-bars">
-                        {stat.monthly_login_history.map((month, idx) => {
-                          const height = maxDays > 0 ? (month.login_days / maxDays) * 100 : 0;
-                          const monthDate = new Date(month.month);
-                          const monthName = monthDate.toLocaleDateString('en-US', { 
-                            month: 'short',
-                            calendar: 'gregory'
-                          });
-                          const year = monthDate.getFullYear();
-                          
-                          return (
-                            <div key={idx} className="chart-bar-container">
-                              <div className="chart-bar-wrapper">
-                                <div
-                                  className="chart-bar"
-                                  style={{ height: `${Math.max(height, 2)}%` }}
-                                  title={`${month.login_days} يوم في ${monthName} ${year}`}
-                                >
-                                  <span className="chart-bar-value">{month.login_days}</span>
-                                </div>
-                              </div>
-                              <div className="chart-bar-label">
-                                <div className="month-name">{monthName}</div>
-                                <div className="month-year">{year}</div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+      {/* Monthly Login History Chart - Single Month */}
+      {statistics.length > 0 && (() => {
+        // Get all branches with login history for the selected month
+        const targetMonthKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
+        
+        const branchesForLoginChart = statistics
+          .filter(stat => {
+            if (!stat.monthly_login_history || stat.monthly_login_history.length === 0) {
+              return false;
+            }
+            // Check if branch has data for the selected month
+            return stat.monthly_login_history.some(m => {
+              const mDate = new Date(m.month);
+              const mKey = `${mDate.getFullYear()}-${String(mDate.getMonth() + 1).padStart(2, '0')}`;
+              return mKey === targetMonthKey;
+            });
+          })
+          .map(stat => {
+            // Find matching month data
+            const monthData = stat.monthly_login_history.find(m => {
+              const mDate = new Date(m.month);
+              const mKey = `${mDate.getFullYear()}-${String(mDate.getMonth() + 1).padStart(2, '0')}`;
+              return mKey === targetMonthKey;
+            });
+            return {
+              ...stat,
+              loginDays: monthData ? monthData.login_days : 0
+            };
+          })
+          .sort((a, b) => b.loginDays - a.loginDays); // Sort by login days descending
+
+        if (branchesForLoginChart.length === 0) {
+          return (
+            <div className="chart-section">
+              <h2>تسجيلات الدخول - {new Date(selectedYear, selectedMonth - 1).toLocaleDateString('ar-SA', { 
+                month: 'long',
+                year: 'numeric',
+                calendar: 'gregory'
+              })}</h2>
+              <div className="no-chart-data">
+                لا توجد بيانات تسجيل دخول متاحة لهذا الشهر
+              </div>
+            </div>
+          );
+        }
+
+        // Find max value for scaling
+        const allLoginDays = branchesForLoginChart.map(b => b.loginDays);
+        const maxDays = Math.max(31, ...allLoginDays);
+        // Round up to nearest 5 for cleaner y-axis labels
+        const yAxisMax = Math.ceil(maxDays / 5) * 5;
+
+        // Generate colors for branches
+        const branchColors = [
+          '#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#F44336',
+          '#00BCD4', '#8BC34A', '#FFC107', '#E91E63', '#3F51B5',
+          '#009688', '#FF5722', '#795548', '#607D8B', '#9E9E9E'
+        ];
+
+        const monthName = new Date(selectedYear, selectedMonth - 1).toLocaleDateString('ar-SA', { 
+          month: 'long',
+          year: 'numeric',
+          calendar: 'gregory'
+        });
+
+        return (
+          <div className="chart-section">
+            <div className="chart-header-section">
+              <h2>تسجيلات الدخول</h2>
+              <div className="chart-header-actions">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                  className="month-select"
+                >
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => (
+                    <option key={month} value={month}>
+                      {new Date(selectedYear, month - 1).toLocaleDateString('en-US', { 
+                        month: 'long',
+                        calendar: 'gregory'
+                      })}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                  className="year-input"
+                  min="2020"
+                  max="2100"
+                />
+                <div className="chart-summary-stats">
+                  <div className="summary-stat-item">
+                    <span className="summary-stat-label">إجمالي الفروع:</span>
+                    <span className="summary-stat-value">{branchesForLoginChart.length}</span>
                   </div>
                 </div>
-              );
-            })}
-            {statistics.filter(s => !s.monthly_login_history || s.monthly_login_history.length === 0).length > 0 && (
-              <div className="no-chart-data">
-                بعض الفروع لا تحتوي على بيانات تسجيل دخول
               </div>
-            )}
+            </div>
+            <div className="combined-chart-container">
+              {/* Legend */}
+              <div className="chart-legend">
+                {branchesForLoginChart.map((stat, idx) => (
+                  <div key={stat.branch_id} className="legend-item">
+                    <div 
+                      className="legend-color" 
+                      style={{ backgroundColor: branchColors[idx % branchColors.length] }}
+                    ></div>
+                    <span className="legend-label">{stat.branch_name}</span>
+                    <span className="legend-total">
+                      ({stat.loginDays} يوم)
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Login Chart */}
+              <div className="chart-wrapper progress-chart-wrapper">
+                <div className="chart-y-axis">
+                  {(() => {
+                    // Generate y-axis labels based on max value
+                    const step = yAxisMax / 4;
+                    const labels = [];
+                    for (let i = 0; i <= 4; i++) {
+                      labels.push(Math.round(i * step));
+                    }
+                    return labels.map(val => (
+                      <div key={val} className="y-axis-label">
+                        <span className="y-axis-value">{val}</span>
+                        {val > 0 && <div className="y-axis-line"></div>}
+                      </div>
+                    ));
+                  })()}
+                </div>
+                <div className="chart-bars-container">
+                  <div className="chart-bars combined-bars progress-bars">
+                    {branchesForLoginChart.map((stat, idx) => {
+                      const loginDays = stat.loginDays;
+                      const branchColor = branchColors[idx % branchColors.length];
+                      // Calculate height based on yAxisMax
+                      let height = yAxisMax > 0 ? (loginDays / yAxisMax) * 100 : 0;
+                      // Ensure height doesn't exceed 100%
+                      height = Math.min(height, 100);
+                      // Ensure minimum height for visibility if there's data
+                      if (loginDays > 0 && height < 3) {
+                        height = 3;
+                      }
+
+                      return (
+                        <div key={stat.branch_id} className="chart-month-group progress-bar-group">
+                          <div className="month-bars-container">
+                            <div className="combined-bar-wrapper">
+                              <div
+                                className="combined-bar progress-bar-enhanced"
+                                style={{ 
+                                  height: `${Math.max(height, loginDays > 0 ? 3 : 0)}%`,
+                                  backgroundColor: branchColor,
+                                  maxHeight: '100%'
+                                }}
+                                title={`${stat.branch_name}: ${loginDays} يوم`}
+                              >
+                                {loginDays > 0 && height > 8 && (
+                                  <span className="combined-bar-value">{loginDays}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
