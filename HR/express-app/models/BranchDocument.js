@@ -145,7 +145,7 @@ export const BranchDocument = {
         INSERT INTO branch_documents (
           branch_id, document_type, file_name, file_path, file_size,
           mime_type, file_extension, thumbnail_path, description,
-          document_number, issue_date, expiry_date, iban_number, bank_name, uploaded_by
+          document_number, issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, iban_number, bank_name, uploaded_by
         )
         VALUES (
           ${documentData.branch_id},
@@ -159,7 +159,9 @@ export const BranchDocument = {
           ${documentData.description || null},
           ${documentData.document_number || null},
           ${documentData.issue_date || null},
+          ${documentData.issue_date_hijri || null},
           ${documentData.expiry_date || null},
+          ${documentData.expiry_date_hijri || null},
           ${documentData.iban_number || null},
           ${documentData.bank_name || null},
           ${documentData.uploaded_by || null}
@@ -184,7 +186,9 @@ export const BranchDocument = {
           description = ${updateData.description !== undefined ? updateData.description : sql`description`},
           document_number = ${updateData.document_number !== undefined ? updateData.document_number : sql`document_number`},
           issue_date = ${updateData.issue_date !== undefined ? updateData.issue_date : sql`issue_date`},
+          issue_date_hijri = ${updateData.issue_date_hijri !== undefined ? updateData.issue_date_hijri : sql`issue_date_hijri`},
           expiry_date = ${updateData.expiry_date !== undefined ? updateData.expiry_date : sql`expiry_date`},
+          expiry_date_hijri = ${updateData.expiry_date_hijri !== undefined ? updateData.expiry_date_hijri : sql`expiry_date_hijri`},
           iban_number = ${updateData.iban_number !== undefined ? updateData.iban_number : sql`iban_number`},
           bank_name = ${updateData.bank_name !== undefined ? updateData.bank_name : sql`bank_name`},
           updated_at = CURRENT_TIMESTAMP
@@ -214,7 +218,9 @@ export const BranchDocument = {
           description = ${updateData.description !== undefined ? updateData.description : sql`description`},
           document_number = ${updateData.document_number !== undefined ? updateData.document_number : sql`document_number`},
           issue_date = ${updateData.issue_date !== undefined ? updateData.issue_date : sql`issue_date`},
+          issue_date_hijri = ${updateData.issue_date_hijri !== undefined ? updateData.issue_date_hijri : sql`issue_date_hijri`},
           expiry_date = ${updateData.expiry_date !== undefined ? updateData.expiry_date : sql`expiry_date`},
+          expiry_date_hijri = ${updateData.expiry_date_hijri !== undefined ? updateData.expiry_date_hijri : sql`expiry_date_hijri`},
           uploaded_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ${id} AND is_active = true

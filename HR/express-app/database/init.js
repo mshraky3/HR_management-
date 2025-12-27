@@ -298,6 +298,20 @@ export async function initializeDatabase() {
       'Created index on branch_documents.file_name'
     );
 
+    // Add Hijri date columns to branch_documents if they don't exist
+    try {
+      await executeQuery(
+        'ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS issue_date_hijri VARCHAR(20)',
+        'Added issue_date_hijri column to branch_documents'
+      );
+      await executeQuery(
+        'ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(20)',
+        'Added expiry_date_hijri column to branch_documents'
+      );
+    } catch (error) {
+      console.log('Could not add Hijri date columns (may already exist):', error.message);
+    }
+
     // 7. Create employee_professional_classifications table
     console.log('Creating employee_professional_classifications table...');
     await createTable('employee_professional_classifications', `
