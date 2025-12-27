@@ -17,6 +17,7 @@ import { BranchDocument } from '../models/BranchDocument.js';
 import { Branch } from '../models/Branch.js';
 import { getExtensionFromMimeType, fixFilenameEncoding } from '../utils/fileUpload.js';
 import { uploadBranchDocumentToBlob, deleteFromBlob, fetchFromBlob } from '../utils/blobStorage.js';
+import { gregorianToHijri, hijriToGregorian, formatHijriToString, parseHijriString } from '../utils/dateConverter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -297,7 +298,7 @@ router.get('/', verifyBranchDocumentsPassword, async (req, res) => {
  */
 router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFile, async (req, res) => {
   try {
-    const { branch_id, document_type, description, document_number, issue_date, expiry_date, iban_number, bank_name } = req.body;
+    const { branch_id, document_type, description, document_number, issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, issue_date_type, expiry_date_type, iban_number, bank_name } = req.body;
 
     if (!branch_id || !document_type || !req.file) {
       return res.status(400).json({
@@ -373,6 +374,70 @@ router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFi
     // Use the fixed filename for database record
     const fileName = fixedFileName;
     
+    // Handle date conversion for issue_date
+    let finalIssueDate = issue_date || null;
+    let finalIssueDateHijri = issue_date_hijri || null;
+    
+    if (issue_date_type === 'hijri' && issue_date_hijri) {
+      // User provided Hijri date, convert to Gregorian
+      const hijriDate = parseHijriString(issue_date_hijri);
+      if (hijriDate) {
+        finalIssueDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+        finalIssueDateHijri = issue_date_hijri; // Store the provided Hijri date
+      }
+    } else if (issue_date_type === 'gregorian' && issue_date) {
+      // User provided Gregorian date, convert to Hijri
+      const hijriDate = gregorianToHijri(issue_date);
+      if (hijriDate) {
+        finalIssueDateHijri = formatHijriToString(hijriDate);
+        finalIssueDate = issue_date; // Store the provided Gregorian date
+      }
+    } else if (issue_date && !issue_date_hijri) {
+      // Legacy: only Gregorian provided, convert to Hijri
+      const hijriDate = gregorianToHijri(issue_date);
+      if (hijriDate) {
+        finalIssueDateHijri = formatHijriToString(hijriDate);
+      }
+    } else if (issue_date_hijri && !issue_date) {
+      // Legacy: only Hijri provided, convert to Gregorian
+      const hijriDate = parseHijriString(issue_date_hijri);
+      if (hijriDate) {
+        finalIssueDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+      }
+    }
+    
+    // Handle date conversion for expiry_date
+    let finalExpiryDate = expiry_date || null;
+    let finalExpiryDateHijri = expiry_date_hijri || null;
+    
+    if (expiry_date_type === 'hijri' && expiry_date_hijri) {
+      // User provided Hijri date, convert to Gregorian
+      const hijriDate = parseHijriString(expiry_date_hijri);
+      if (hijriDate) {
+        finalExpiryDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+        finalExpiryDateHijri = expiry_date_hijri; // Store the provided Hijri date
+      }
+    } else if (expiry_date_type === 'gregorian' && expiry_date) {
+      // User provided Gregorian date, convert to Hijri
+      const hijriDate = gregorianToHijri(expiry_date);
+      if (hijriDate) {
+        finalExpiryDateHijri = formatHijriToString(hijriDate);
+        finalExpiryDate = expiry_date; // Store the provided Gregorian date
+      }
+    } else if (expiry_date && !expiry_date_hijri) {
+      // Legacy: only Gregorian provided, convert to Hijri
+      const hijriDate = gregorianToHijri(expiry_date);
+      if (hijriDate) {
+        finalExpiryDateHijri = formatHijriToString(hijriDate);
+      }
+    } else if (expiry_date_hijri && !expiry_date) {
+      // Legacy: only Hijri provided, convert to Gregorian
+      const hijriDate = parseHijriString(expiry_date_hijri);
+      if (hijriDate) {
+        finalExpiryDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+      }
+    }
+    
     // Create document record - store blob URL
     const document = await BranchDocument.create({
       branch_id: parseInt(branch_id),
@@ -384,8 +449,10 @@ router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFi
       file_extension: getExtensionFromMimeType(req.file.mimetype),
       description: description || null,
       document_number: document_number || null,
-      issue_date: issue_date || null,
-      expiry_date: expiry_date || null,
+      issue_date: finalIssueDate,
+      issue_date_hijri: finalIssueDateHijri,
+      expiry_date: finalExpiryDate,
+      expiry_date_hijri: finalExpiryDateHijri,
       iban_number: iban_number || null,
       bank_name: bank_name || null,
       uploaded_by: uploadedById // Always set - either user.id or branch_id
@@ -737,6 +804,63 @@ router.put('/:id', verifyBranchDocumentsPassword, uploadSingle, async (req, res)
       // Use the fixed filename for database record
       const fileName = fixedFileName;
       
+      // Handle date conversion for issue_date
+      const { issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, issue_date_type, expiry_date_type } = req.body;
+      let finalIssueDate = req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date;
+      let finalIssueDateHijri = req.body.issue_date_hijri !== undefined ? req.body.issue_date_hijri : document.issue_date_hijri;
+      
+      if (issue_date_type === 'hijri' && issue_date_hijri) {
+        const hijriDate = parseHijriString(issue_date_hijri);
+        if (hijriDate) {
+          finalIssueDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+          finalIssueDateHijri = issue_date_hijri;
+        }
+      } else if (issue_date_type === 'gregorian' && issue_date) {
+        const hijriDate = gregorianToHijri(issue_date);
+        if (hijriDate) {
+          finalIssueDateHijri = formatHijriToString(hijriDate);
+          finalIssueDate = issue_date;
+        }
+      } else if (issue_date && !issue_date_hijri && req.body.issue_date !== undefined) {
+        const hijriDate = gregorianToHijri(issue_date);
+        if (hijriDate) {
+          finalIssueDateHijri = formatHijriToString(hijriDate);
+        }
+      } else if (issue_date_hijri && !issue_date && req.body.issue_date_hijri !== undefined) {
+        const hijriDate = parseHijriString(issue_date_hijri);
+        if (hijriDate) {
+          finalIssueDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+        }
+      }
+      
+      // Handle date conversion for expiry_date
+      let finalExpiryDate = req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date;
+      let finalExpiryDateHijri = req.body.expiry_date_hijri !== undefined ? req.body.expiry_date_hijri : document.expiry_date_hijri;
+      
+      if (expiry_date_type === 'hijri' && expiry_date_hijri) {
+        const hijriDate = parseHijriString(expiry_date_hijri);
+        if (hijriDate) {
+          finalExpiryDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+          finalExpiryDateHijri = expiry_date_hijri;
+        }
+      } else if (expiry_date_type === 'gregorian' && expiry_date) {
+        const hijriDate = gregorianToHijri(expiry_date);
+        if (hijriDate) {
+          finalExpiryDateHijri = formatHijriToString(hijriDate);
+          finalExpiryDate = expiry_date;
+        }
+      } else if (expiry_date && !expiry_date_hijri && req.body.expiry_date !== undefined) {
+        const hijriDate = gregorianToHijri(expiry_date);
+        if (hijriDate) {
+          finalExpiryDateHijri = formatHijriToString(hijriDate);
+        }
+      } else if (expiry_date_hijri && !expiry_date && req.body.expiry_date_hijri !== undefined) {
+        const hijriDate = parseHijriString(expiry_date_hijri);
+        if (hijriDate) {
+          finalExpiryDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+        }
+      }
+      
       // Update document with new file
       updatedDocument = await BranchDocument.updateFile(
         idResult.documentId,
@@ -748,19 +872,80 @@ router.put('/:id', verifyBranchDocumentsPassword, uploadSingle, async (req, res)
           file_extension: getExtensionFromMimeType(req.file.mimetype),
           description: req.body.description !== undefined ? req.body.description : document.description,
           document_number: req.body.document_number !== undefined ? req.body.document_number : document.document_number,
-          issue_date: req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date,
-          expiry_date: req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date,
+          issue_date: finalIssueDate,
+          issue_date_hijri: finalIssueDateHijri,
+          expiry_date: finalExpiryDate,
+          expiry_date_hijri: finalExpiryDateHijri,
           iban_number: req.body.iban_number !== undefined ? req.body.iban_number : document.iban_number,
           bank_name: req.body.bank_name !== undefined ? req.body.bank_name : document.bank_name
         }
       );
     } else {
       // Just update metadata
+      // Handle date conversion for issue_date
+      const { issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, issue_date_type, expiry_date_type } = req.body;
+      let finalIssueDate = req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date;
+      let finalIssueDateHijri = req.body.issue_date_hijri !== undefined ? req.body.issue_date_hijri : document.issue_date_hijri;
+      
+      if (issue_date_type === 'hijri' && issue_date_hijri) {
+        const hijriDate = parseHijriString(issue_date_hijri);
+        if (hijriDate) {
+          finalIssueDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+          finalIssueDateHijri = issue_date_hijri;
+        }
+      } else if (issue_date_type === 'gregorian' && issue_date) {
+        const hijriDate = gregorianToHijri(issue_date);
+        if (hijriDate) {
+          finalIssueDateHijri = formatHijriToString(hijriDate);
+          finalIssueDate = issue_date;
+        }
+      } else if (issue_date && !issue_date_hijri && req.body.issue_date !== undefined) {
+        const hijriDate = gregorianToHijri(issue_date);
+        if (hijriDate) {
+          finalIssueDateHijri = formatHijriToString(hijriDate);
+        }
+      } else if (issue_date_hijri && !issue_date && req.body.issue_date_hijri !== undefined) {
+        const hijriDate = parseHijriString(issue_date_hijri);
+        if (hijriDate) {
+          finalIssueDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+        }
+      }
+      
+      // Handle date conversion for expiry_date
+      let finalExpiryDate = req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date;
+      let finalExpiryDateHijri = req.body.expiry_date_hijri !== undefined ? req.body.expiry_date_hijri : document.expiry_date_hijri;
+      
+      if (expiry_date_type === 'hijri' && expiry_date_hijri) {
+        const hijriDate = parseHijriString(expiry_date_hijri);
+        if (hijriDate) {
+          finalExpiryDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+          finalExpiryDateHijri = expiry_date_hijri;
+        }
+      } else if (expiry_date_type === 'gregorian' && expiry_date) {
+        const hijriDate = gregorianToHijri(expiry_date);
+        if (hijriDate) {
+          finalExpiryDateHijri = formatHijriToString(hijriDate);
+          finalExpiryDate = expiry_date;
+        }
+      } else if (expiry_date && !expiry_date_hijri && req.body.expiry_date !== undefined) {
+        const hijriDate = gregorianToHijri(expiry_date);
+        if (hijriDate) {
+          finalExpiryDateHijri = formatHijriToString(hijriDate);
+        }
+      } else if (expiry_date_hijri && !expiry_date && req.body.expiry_date_hijri !== undefined) {
+        const hijriDate = parseHijriString(expiry_date_hijri);
+        if (hijriDate) {
+          finalExpiryDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+        }
+      }
+      
       updatedDocument = await BranchDocument.update(idResult.documentId, {
         description: req.body.description,
         document_number: req.body.document_number,
-        issue_date: req.body.issue_date,
-        expiry_date: req.body.expiry_date,
+        issue_date: finalIssueDate,
+        issue_date_hijri: finalIssueDateHijri,
+        expiry_date: finalExpiryDate,
+        expiry_date_hijri: finalExpiryDateHijri,
         iban_number: req.body.iban_number,
         bank_name: req.body.bank_name
       });
