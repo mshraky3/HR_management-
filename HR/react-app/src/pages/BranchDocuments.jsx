@@ -10,6 +10,8 @@ import { branchDocumentsAPI, branchesAPI, setBranchDocumentsPassword, setDocumen
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import BankSelect from '../components/BankSelect';
+import HijriDatePicker from '../components/HijriDatePicker';
+import { gregorianToHijri, hijriToGregorian, formatHijriToString, parseHijriString } from '../utils/dateConverters';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 
 const BranchDocuments = () => {
@@ -40,7 +42,11 @@ const BranchDocuments = () => {
     description: '',
     document_number: '',
     issue_date: '',
+    issue_date_hijri: '',
     expiry_date: '',
+    expiry_date_hijri: '',
+    issue_date_type: 'gregorian',
+    expiry_date_type: 'gregorian',
     iban_number: '',
     bank_name: '',
     file: null,
@@ -49,7 +55,11 @@ const BranchDocuments = () => {
     description: '',
     document_number: '',
     issue_date: '',
+    issue_date_hijri: '',
     expiry_date: '',
+    expiry_date_hijri: '',
+    issue_date_type: 'gregorian',
+    expiry_date_type: 'gregorian',
     iban_number: '',
     bank_name: '',
     file: null,
@@ -332,7 +342,11 @@ const BranchDocuments = () => {
       if (requiresDefaultFields) {
         if (uploadData.document_number) formData.append('document_number', uploadData.document_number);
         if (uploadData.issue_date) formData.append('issue_date', uploadData.issue_date);
+        if (uploadData.issue_date_hijri) formData.append('issue_date_hijri', uploadData.issue_date_hijri);
+        if (uploadData.issue_date_type) formData.append('issue_date_type', uploadData.issue_date_type);
         if (uploadData.expiry_date) formData.append('expiry_date', uploadData.expiry_date);
+        if (uploadData.expiry_date_hijri) formData.append('expiry_date_hijri', uploadData.expiry_date_hijri);
+        if (uploadData.expiry_date_type) formData.append('expiry_date_type', uploadData.expiry_date_type);
       }
       
       // IBAN fields only for IBAN documents
@@ -350,7 +364,11 @@ const BranchDocuments = () => {
         description: '',
         document_number: '',
         issue_date: '',
+        issue_date_hijri: '',
         expiry_date: '',
+        expiry_date_hijri: '',
+        issue_date_type: 'gregorian',
+        expiry_date_type: 'gregorian',
         iban_number: '',
         bank_name: '',
         file: null,
@@ -474,11 +492,19 @@ const BranchDocuments = () => {
 
   const handleEdit = (document) => {
     setEditingDocument(document);
+    // Determine date type based on which date exists
+    const issueDateType = document.issue_date_hijri ? 'hijri' : 'gregorian';
+    const expiryDateType = document.expiry_date_hijri ? 'hijri' : 'gregorian';
+    
     setEditData({
       description: document.description || '',
       document_number: document.document_number || '',
       issue_date: document.issue_date ? document.issue_date.split('T')[0] : '',
+      issue_date_hijri: document.issue_date_hijri || '',
       expiry_date: document.expiry_date ? document.expiry_date.split('T')[0] : '',
+      expiry_date_hijri: document.expiry_date_hijri || '',
+      issue_date_type: issueDateType,
+      expiry_date_type: expiryDateType,
       iban_number: document.iban_number || '',
       bank_name: document.bank_name || '',
       file: null,
@@ -557,7 +583,11 @@ const BranchDocuments = () => {
         if (requiresDefaultFields) {
           if (editData.document_number) formData.append('document_number', editData.document_number);
           if (editData.issue_date) formData.append('issue_date', editData.issue_date);
+          if (editData.issue_date_hijri) formData.append('issue_date_hijri', editData.issue_date_hijri);
+          if (editData.issue_date_type) formData.append('issue_date_type', editData.issue_date_type);
           if (editData.expiry_date) formData.append('expiry_date', editData.expiry_date);
+          if (editData.expiry_date_hijri) formData.append('expiry_date_hijri', editData.expiry_date_hijri);
+          if (editData.expiry_date_type) formData.append('expiry_date_type', editData.expiry_date_type);
         }
         
         // IBAN fields only for IBAN documents
@@ -582,7 +612,11 @@ const BranchDocuments = () => {
         if (requiresDefaultFields) {
           updatePayload.document_number = editData.document_number || null;
           updatePayload.issue_date = editData.issue_date || null;
+          updatePayload.issue_date_hijri = editData.issue_date_hijri || null;
+          updatePayload.issue_date_type = editData.issue_date_type || 'gregorian';
           updatePayload.expiry_date = editData.expiry_date || null;
+          updatePayload.expiry_date_hijri = editData.expiry_date_hijri || null;
+          updatePayload.expiry_date_type = editData.expiry_date_type || 'gregorian';
         }
         
         // IBAN fields only for IBAN documents
@@ -596,7 +630,7 @@ const BranchDocuments = () => {
       
       setShowEditForm(false);
       setEditingDocument(null);
-      setEditData({ description: '', document_number: '', issue_date: '', expiry_date: '', iban_number: '', bank_name: '', file: null });
+      setEditData({ description: '', document_number: '', issue_date: '', issue_date_hijri: '', expiry_date: '', expiry_date_hijri: '', issue_date_type: 'gregorian', expiry_date_type: 'gregorian', iban_number: '', bank_name: '', file: null });
       loadDocuments();
       showSuccess('تم تحديث المستند بنجاح');
     } catch (error) {
@@ -1004,6 +1038,11 @@ const BranchDocuments = () => {
                                 month: 'long',
                                 day: 'numeric'
                               })}
+                              {card.document.expiry_date_hijri && (
+                                <span style={{ marginRight: '10px', color: '#666' }}>
+                                  ({card.document.expiry_date_hijri} هجري)
+                                </span>
+                              )}
                             </span>
                           </div>
                         )}
@@ -1225,19 +1264,91 @@ const BranchDocuments = () => {
                     </div>
                     <div className="form-group">
                       <label>تاريخ الإصدار</label>
-                      <input
-                        type="date"
-                        value={uploadData.issue_date}
-                        onChange={(e) => setUploadData({ ...uploadData, issue_date: e.target.value })}
-                      />
+                      <div style={{ marginBottom: '10px' }}>
+                        <select
+                          value={uploadData.issue_date_type}
+                          onChange={(e) => setUploadData({ ...uploadData, issue_date_type: e.target.value, issue_date: '', issue_date_hijri: '' })}
+                          style={{ marginBottom: '5px', padding: '5px' }}
+                        >
+                          <option value="gregorian">ميلادي</option>
+                          <option value="hijri">هجري</option>
+                        </select>
+                      </div>
+                      {uploadData.issue_date_type === 'hijri' ? (
+                        <HijriDatePicker
+                          label=""
+                          hijriValue={uploadData.issue_date_hijri}
+                          gregorianValue={uploadData.issue_date}
+                          onChange={(hijri, gregorian) => {
+                            setUploadData({ ...uploadData, issue_date_hijri: hijri, issue_date: gregorian });
+                          }}
+                        />
+                      ) : (
+                        <input
+                          type="date"
+                          value={uploadData.issue_date}
+                          onChange={(e) => {
+                            const gregorian = e.target.value;
+                            const hijriDate = gregorianToHijri(gregorian);
+                            setUploadData({ 
+                              ...uploadData, 
+                              issue_date: gregorian,
+                              issue_date_hijri: hijriDate ? formatHijriToString(hijriDate) : ''
+                            });
+                          }}
+                        />
+                      )}
+                      {uploadData.issue_date && uploadData.issue_date_hijri && (
+                        <div style={{ marginTop: '5px', fontSize: '0.9em', color: '#666' }}>
+                          {uploadData.issue_date_type === 'gregorian' 
+                            ? `هجري: ${uploadData.issue_date_hijri}` 
+                            : `ميلادي: ${uploadData.issue_date}`}
+                        </div>
+                      )}
                     </div>
                     <div className="form-group">
                       <label>تاريخ الانتهاء</label>
-                      <input
-                        type="date"
-                        value={uploadData.expiry_date}
-                        onChange={(e) => setUploadData({ ...uploadData, expiry_date: e.target.value })}
-                      />
+                      <div style={{ marginBottom: '10px' }}>
+                        <select
+                          value={uploadData.expiry_date_type}
+                          onChange={(e) => setUploadData({ ...uploadData, expiry_date_type: e.target.value, expiry_date: '', expiry_date_hijri: '' })}
+                          style={{ marginBottom: '5px', padding: '5px' }}
+                        >
+                          <option value="gregorian">ميلادي</option>
+                          <option value="hijri">هجري</option>
+                        </select>
+                      </div>
+                      {uploadData.expiry_date_type === 'hijri' ? (
+                        <HijriDatePicker
+                          label=""
+                          hijriValue={uploadData.expiry_date_hijri}
+                          gregorianValue={uploadData.expiry_date}
+                          onChange={(hijri, gregorian) => {
+                            setUploadData({ ...uploadData, expiry_date_hijri: hijri, expiry_date: gregorian });
+                          }}
+                        />
+                      ) : (
+                        <input
+                          type="date"
+                          value={uploadData.expiry_date}
+                          onChange={(e) => {
+                            const gregorian = e.target.value;
+                            const hijriDate = gregorianToHijri(gregorian);
+                            setUploadData({ 
+                              ...uploadData, 
+                              expiry_date: gregorian,
+                              expiry_date_hijri: hijriDate ? formatHijriToString(hijriDate) : ''
+                            });
+                          }}
+                        />
+                      )}
+                      {uploadData.expiry_date && uploadData.expiry_date_hijri && (
+                        <div style={{ marginTop: '5px', fontSize: '0.9em', color: '#666' }}>
+                          {uploadData.expiry_date_type === 'gregorian' 
+                            ? `هجري: ${uploadData.expiry_date_hijri}` 
+                            : `ميلادي: ${uploadData.expiry_date}`}
+                        </div>
+                      )}
                     </div>
                   </>
                 ) : null;
@@ -1286,7 +1397,13 @@ const BranchDocuments = () => {
                       description: '',
                       document_number: '',
                       issue_date: '',
+                      issue_date_hijri: '',
                       expiry_date: '',
+                      expiry_date_hijri: '',
+                      issue_date_type: 'gregorian',
+                      expiry_date_type: 'gregorian',
+                      iban_number: '',
+                      bank_name: '',
                       file: null,
                     });
                   }} 
@@ -1344,19 +1461,91 @@ const BranchDocuments = () => {
                   </div>
                   <div className="form-group">
                     <label>تاريخ الإصدار</label>
-                    <input
-                      type="date"
-                      value={editData.issue_date}
-                      onChange={(e) => setEditData({ ...editData, issue_date: e.target.value })}
-                    />
+                    <div style={{ marginBottom: '10px' }}>
+                      <select
+                        value={editData.issue_date_type}
+                        onChange={(e) => setEditData({ ...editData, issue_date_type: e.target.value })}
+                        style={{ marginBottom: '5px', padding: '5px' }}
+                      >
+                        <option value="gregorian">ميلادي</option>
+                        <option value="hijri">هجري</option>
+                      </select>
+                    </div>
+                    {editData.issue_date_type === 'hijri' ? (
+                      <HijriDatePicker
+                        label=""
+                        hijriValue={editData.issue_date_hijri}
+                        gregorianValue={editData.issue_date}
+                        onChange={(hijri, gregorian) => {
+                          setEditData({ ...editData, issue_date_hijri: hijri, issue_date: gregorian });
+                        }}
+                      />
+                    ) : (
+                      <input
+                        type="date"
+                        value={editData.issue_date}
+                        onChange={(e) => {
+                          const gregorian = e.target.value;
+                          const hijriDate = gregorianToHijri(gregorian);
+                          setEditData({ 
+                            ...editData, 
+                            issue_date: gregorian,
+                            issue_date_hijri: hijriDate ? formatHijriToString(hijriDate) : ''
+                          });
+                        }}
+                      />
+                    )}
+                    {editData.issue_date && editData.issue_date_hijri && (
+                      <div style={{ marginTop: '5px', fontSize: '0.9em', color: '#666' }}>
+                        {editData.issue_date_type === 'gregorian' 
+                          ? `هجري: ${editData.issue_date_hijri}` 
+                          : `ميلادي: ${editData.issue_date}`}
+                      </div>
+                    )}
                   </div>
                   <div className="form-group">
                     <label>تاريخ الانتهاء</label>
-                    <input
-                      type="date"
-                      value={editData.expiry_date}
-                      onChange={(e) => setEditData({ ...editData, expiry_date: e.target.value })}
-                    />
+                    <div style={{ marginBottom: '10px' }}>
+                      <select
+                        value={editData.expiry_date_type}
+                        onChange={(e) => setEditData({ ...editData, expiry_date_type: e.target.value })}
+                        style={{ marginBottom: '5px', padding: '5px' }}
+                      >
+                        <option value="gregorian">ميلادي</option>
+                        <option value="hijri">هجري</option>
+                      </select>
+                    </div>
+                    {editData.expiry_date_type === 'hijri' ? (
+                      <HijriDatePicker
+                        label=""
+                        hijriValue={editData.expiry_date_hijri}
+                        gregorianValue={editData.expiry_date}
+                        onChange={(hijri, gregorian) => {
+                          setEditData({ ...editData, expiry_date_hijri: hijri, expiry_date: gregorian });
+                        }}
+                      />
+                    ) : (
+                      <input
+                        type="date"
+                        value={editData.expiry_date}
+                        onChange={(e) => {
+                          const gregorian = e.target.value;
+                          const hijriDate = gregorianToHijri(gregorian);
+                          setEditData({ 
+                            ...editData, 
+                            expiry_date: gregorian,
+                            expiry_date_hijri: hijriDate ? formatHijriToString(hijriDate) : ''
+                          });
+                        }}
+                      />
+                    )}
+                    {editData.expiry_date && editData.expiry_date_hijri && (
+                      <div style={{ marginTop: '5px', fontSize: '0.9em', color: '#666' }}>
+                        {editData.expiry_date_type === 'gregorian' 
+                          ? `هجري: ${editData.expiry_date_hijri}` 
+                          : `ميلادي: ${editData.expiry_date}`}
+                      </div>
+                    )}
                   </div>
                 </>
               )}

@@ -52,35 +52,35 @@
 
 /* Primary Button */
 .btn-primary {
-  background: var(--primary);
-  color: #2c3e3a;
-  box-shadow: 0 2px 4px rgba(185, 210, 207, 0.3);
+  background: #6b9a95; /* Darker, more visible teal */
+  color: #ffffff; /* White text for better contrast */
+  box-shadow: 0 2px 4px rgba(107, 154, 149, 0.4);
   /* Padding is inherited from .btn base class, no override needed */
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--primary-hover);
-  box-shadow: 0 4px 8px rgba(185, 210, 207, 0.4);
+  background: #5a8782; /* Even darker on hover */
+  box-shadow: 0 4px 8px rgba(107, 154, 149, 0.5);
   transform: translateY(-1px);
 }
 
 .btn-primary:active:not(:disabled) {
-  background: var(--primary-dark);
+  background: #4a6f6b; /* Darkest when active */
   transform: translateY(0);
-  box-shadow: 0 2px 4px rgba(185, 210, 207, 0.3);
+  box-shadow: 0 2px 4px rgba(107, 154, 149, 0.4);
 }
 
 /* Ready Button - Darker when form is valid */
 .btn-primary.btn-ready {
-  background: var(--primary-dark);
-  color: #1a2e2a;
-  box-shadow: 0 3px 6px rgba(139, 168, 164, 0.4);
+  background: #4a6f6b; /* Darkest teal for ready state */
+  color: #ffffff; /* White text for better contrast */
+  box-shadow: 0 3px 6px rgba(74, 111, 107, 0.5);
   font-weight: 700;
 }
 
 .btn-primary.btn-ready:hover:not(:disabled) {
-  background: #7a9a96;
-  box-shadow: 0 5px 10px rgba(139, 168, 164, 0.5);
+  background: #3d5d59; /* Even darker on hover */
+  box-shadow: 0 5px 10px rgba(74, 111, 107, 0.6);
   transform: translateY(-2px);
 }
 
