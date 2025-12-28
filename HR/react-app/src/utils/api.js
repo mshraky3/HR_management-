@@ -46,6 +46,62 @@ const getRequestKey = (config) => {
   return getCacheKey(config);
 };
 
+/**
+ * Detect if an error is a backend/database connection error
+ * @param {Error} error - The error object
+ * @returns {boolean} - True if this is a backend/database error
+ */
+const detectBackendError = (error) => {
+  // Network errors (no response from server)
+  if (!error.response) {
+    const code = error.code || '';
+    const message = (error.message || '').toLowerCase();
+    
+    // Connection refused, timeout, or network errors
+    if (
+      code === 'ECONNREFUSED' ||
+      code === 'ETIMEDOUT' ||
+      code === 'ENOTFOUND' ||
+      code === 'ECONNRESET' ||
+      message.includes('network error') ||
+      message.includes('connection') ||
+      message.includes('timeout')
+    ) {
+      return true;
+    }
+  }
+
+  // HTTP 500 errors with database-related messages
+  if (error.response?.status === 500) {
+    const errorMessage = (
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      error.message ||
+      ''
+    ).toLowerCase();
+
+    // Database connection errors
+    if (
+      errorMessage.includes('remaining connection slots') ||
+      errorMessage.includes('connection slots') ||
+      errorMessage.includes('database') ||
+      errorMessage.includes('postgres') ||
+      errorMessage.includes('connection') ||
+      errorMessage.includes('53300') || // PostgreSQL error code for connection limit
+      errorMessage.includes('too many connections')
+    ) {
+      return true;
+    }
+  }
+
+  // HTTP 503 Service Unavailable
+  if (error.response?.status === 503) {
+    return true;
+  }
+
+  return false;
+};
+
 // Check if cache entry is still valid
 const isCacheValid = (cacheEntry) => {
   if (!cacheEntry) return false;
@@ -404,6 +460,39 @@ api.interceptors.response.use(
       const requestKey = getRequestKey(error.config);
       pendingRequests.delete(requestKey);
     }
+
+    // Detect backend/database connection errors
+    const isBackendError = detectBackendError(error);
+    
+    if (isBackendError) {
+      // Console log full error details for debugging
+      console.error('Backend/Database Connection Error:', {
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+        name: error.name,
+        response: error.response ? {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: error.response.data,
+        } : null,
+        config: error.config ? {
+          url: error.config.url,
+          method: error.config.method,
+          baseURL: error.config.baseURL,
+        } : null,
+      });
+
+      // Set backend error state via global function (set by BackendErrorProvider)
+      if (window.setBackendError) {
+        window.setBackendError(error);
+      }
+      
+      // Don't show individual error notifications for backend errors (prevent spam)
+      // The maintenance page will be shown instead
+      return Promise.reject(error);
+    }
+
     // Only redirect to login for authentication-related 401 errors
     // Don't redirect for business logic 401 errors (e.g., invalid branch documents password)
     if (error.response?.status === 401) {

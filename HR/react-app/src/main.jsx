@@ -14,7 +14,35 @@ window.addEventListener('error', (event) => {
 });
 
 window.addEventListener('unhandledrejection', (event) => {
-  console.error('Unhandled promise rejection:', event.reason);
+  const error = event.reason;
+  console.error('Unhandled promise rejection:', {
+    message: error?.message || 'Unknown error',
+    stack: error?.stack,
+    response: error?.response ? {
+      status: error.response.status,
+      statusText: error.response.statusText,
+      data: error.response.data,
+      url: error.config?.url,
+      method: error.config?.method,
+    } : null,
+    code: error?.code,
+    name: error?.name,
+  });
+
+  // Check if this is a backend/database error
+  const isBackendError = 
+    !error?.response || // Network error
+    error.response?.status === 500 || // Server error
+    error.response?.status === 503 || // Service unavailable
+    error?.code === 'ECONNREFUSED' ||
+    error?.code === 'ETIMEDOUT' ||
+    (error.response?.status === 500 && 
+     (error.response?.data?.message || '').toLowerCase().includes('connection'));
+
+  // Set backend error state if available
+  if (isBackendError && window.setBackendError) {
+    window.setBackendError(error);
+  }
 });
 
 // Debug: Log that main.jsx is loading

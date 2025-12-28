@@ -10,9 +10,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { PushNotificationProvider } from './contexts/PushNotificationContext';
+import { BackendErrorProvider, useBackendError } from './contexts/BackendErrorContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import BranchManagerLayout from './components/BranchManagerLayout';
+import MaintenancePage from './pages/MaintenancePage';
 import './App.css';
 // Load shared page CSS immediately to prevent FOUC (Flash of Unstyled Content)
 // This ensures table styles are available before lazy-loaded pages render
@@ -78,6 +80,219 @@ const RoleBasedLayout = ({ children }) => {
   return isMainManager() ? <Layout>{children}</Layout> : <BranchManagerLayout>{children}</BranchManagerLayout>;
 };
 
+// App content component that checks for backend errors
+const AppContent = () => {
+  const { isBackendDown } = useBackendError();
+
+  // Show maintenance page if backend is down
+  if (isBackendDown) {
+    return <MaintenancePage />;
+  }
+
+  // Otherwise show normal app routes
+  return (
+    <Suspense fallback={<PageLoading />}>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <Dashboard />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/account-management"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <AccountManagement />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branches"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <Branches />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/employees"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <Employees />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/employees/:id"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <EmployeeDetails />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch-documents"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <BranchDocuments />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/monthly-documents"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <MonthlyDocuments />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <Reports />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/employee-file"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <EmployeeFile />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/notify-branches"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <NotifyBranches />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/archive"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <Archive />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch-statistics"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <BranchStatistics />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/term-management"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <TermManagement />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branches-monitoring"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <BranchesMonitoring />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/direct-contact"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <DirectContact />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch-info"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <BranchInfo />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch-requests"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <BranchRequests />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/manage-requests"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <ManageRequests />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/alerts"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <Alerts />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route 
+          path="/" 
+          element={<Navigate to="/login" replace />} 
+        />
+      </Routes>
+    </Suspense>
+  );
+};
+
 // Root redirect component - handles authentication check before redirecting
 const RootRedirect = () => {
   const { isAuthenticated, loading } = useAuth();
@@ -95,214 +310,18 @@ const RootRedirect = () => {
 
 function App() {
   return (
-    <AuthProvider>
-      <NotificationProvider>
-        <PushNotificationProvider>
-          <Router>
-            <Suspense fallback={<PageLoading />}>
-              <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <RoleBasedLayout>
-                      <Dashboard />
-                    </RoleBasedLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/account-management"
-                element={
-                  <ProtectedRoute requireMainManager>
-                    <Layout>
-                      <AccountManagement />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/branches"
-                element={
-                  <ProtectedRoute>
-                    <RoleBasedLayout>
-                      <Branches />
-                    </RoleBasedLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/employees"
-                element={
-                  <ProtectedRoute>
-                    <RoleBasedLayout>
-                      <Employees />
-                    </RoleBasedLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/employees/:id"
-                element={
-                  <ProtectedRoute>
-                    <RoleBasedLayout>
-                      <EmployeeDetails />
-                    </RoleBasedLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/branch-documents"
-                element={
-                  <ProtectedRoute>
-                    <RoleBasedLayout>
-                      <BranchDocuments />
-                    </RoleBasedLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/monthly-documents"
-                element={
-                  <ProtectedRoute>
-                    <RoleBasedLayout>
-                      <MonthlyDocuments />
-                    </RoleBasedLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/reports"
-                element={
-                  <ProtectedRoute>
-                    <RoleBasedLayout>
-                      <Reports />
-                    </RoleBasedLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/employee-file"
-                element={
-                  <ProtectedRoute requireMainManager>
-                    <Layout>
-                      <EmployeeFile />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/notify-branches"
-                element={
-                  <ProtectedRoute requireMainManager>
-                    <Layout>
-                      <NotifyBranches />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/archive"
-                element={
-                  <ProtectedRoute requireMainManager>
-                    <Layout>
-                      <Archive />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/branch-statistics"
-                element={
-                  <ProtectedRoute requireMainManager>
-                    <Layout>
-                      <BranchStatistics />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/term-management"
-                element={
-                  <ProtectedRoute requireMainManager>
-                    <Layout>
-                      <TermManagement />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/branches-monitoring"
-                element={
-                  <ProtectedRoute requireMainManager>
-                    <Layout>
-                      <BranchesMonitoring />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/direct-contact"
-                element={
-                  <ProtectedRoute requireMainManager>
-                    <Layout>
-                      <DirectContact />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/branch-info"
-                element={
-                  <ProtectedRoute>
-                    <RoleBasedLayout>
-                      <BranchInfo />
-                    </RoleBasedLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/branch-requests"
-                element={
-                  <ProtectedRoute>
-                    <RoleBasedLayout>
-                      <BranchRequests />
-                    </RoleBasedLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/manage-requests"
-                element={
-                  <ProtectedRoute requireMainManager>
-                    <Layout>
-                      <ManageRequests />
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/alerts"
-                element={
-                  <ProtectedRoute>
-                    <RoleBasedLayout>
-                      <Alerts />
-                    </RoleBasedLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route 
-                path="/" 
-                element={<Navigate to="/login" replace />} 
-              />
-            </Routes>
-          </Suspense>
-          <Analytics />
-        </Router>
-      </PushNotificationProvider>
-      </NotificationProvider>
-    </AuthProvider>
+    <BackendErrorProvider>
+      <AuthProvider>
+        <NotificationProvider>
+          <PushNotificationProvider>
+            <Router>
+              <AppContent />
+              <Analytics />
+            </Router>
+          </PushNotificationProvider>
+        </NotificationProvider>
+      </AuthProvider>
+    </BackendErrorProvider>
   );
 }
 
