@@ -13,7 +13,6 @@ export async function initializeDatabase() {
 
   try {
     // 1. Create branches table (no dependencies - must be first)
-    console.log('Creating branches table...');
     await createTable('branches', `
       id SERIAL PRIMARY KEY,
       branch_name VARCHAR(255) NOT NULL,
@@ -38,7 +37,6 @@ export async function initializeDatabase() {
     );
 
     // 2. Create users table (depends on branches)
-    console.log('Creating users table...');
     await createTable('users', `
       id SERIAL PRIMARY KEY,
       username VARCHAR(255) UNIQUE NOT NULL,
@@ -70,7 +68,6 @@ export async function initializeDatabase() {
     );
 
     // 3. Create schools table
-    console.log('Creating schools table...');
     await createTable('schools', `
       id SERIAL PRIMARY KEY,
       branch_id INTEGER UNIQUE NOT NULL,
@@ -83,7 +80,6 @@ export async function initializeDatabase() {
     `);
 
     // 4. Create healthcare_centers table
-    console.log('Creating healthcare_centers table...');
     await createTable('healthcare_centers', `
       id SERIAL PRIMARY KEY,
       branch_id INTEGER UNIQUE NOT NULL,
@@ -97,7 +93,6 @@ export async function initializeDatabase() {
     `);
 
     // 5. Create employees table
-    console.log('Creating employees table...');
     await createTable('employees', `
       id SERIAL PRIMARY KEY,
       employee_id_number VARCHAR(100) UNIQUE NOT NULL,
@@ -179,7 +174,6 @@ export async function initializeDatabase() {
     );
 
     // 6. Create employee_documents table
-    console.log('Creating employee_documents table...');
     await createTable('employee_documents', `
       id SERIAL PRIMARY KEY,
       employee_id INTEGER NOT NULL,
@@ -239,7 +233,6 @@ export async function initializeDatabase() {
     );
 
     // 7. Create branch_documents table
-    console.log('Creating branch_documents table...');
     await createTable('branch_documents', `
       id SERIAL PRIMARY KEY,
       branch_id INTEGER NOT NULL,
@@ -309,11 +302,10 @@ export async function initializeDatabase() {
         'Added expiry_date_hijri column to branch_documents'
       );
     } catch (error) {
-      console.log('Could not add Hijri date columns (may already exist):', error.message);
+      // Silent error handling
     }
 
     // 7. Create employee_professional_classifications table
-    console.log('Creating employee_professional_classifications table...');
     await createTable('employee_professional_classifications', `
       id SERIAL PRIMARY KEY,
       employee_id INTEGER NOT NULL,
@@ -340,7 +332,6 @@ export async function initializeDatabase() {
     );
 
     // 8. Create employee_course_certificates table
-    console.log('Creating employee_course_certificates table...');
     await createTable('employee_course_certificates', `
       id SERIAL PRIMARY KEY,
       employee_id INTEGER NOT NULL,
@@ -367,7 +358,6 @@ export async function initializeDatabase() {
     );
 
     // 9. Create notifications table
-    console.log('Creating notifications table...');
     await createTable('notifications', `
       id SERIAL PRIMARY KEY,
       message TEXT NOT NULL,
@@ -398,7 +388,6 @@ export async function initializeDatabase() {
     );
 
     // 10. Create notification_branches table (many-to-many relationship)
-    console.log('Creating notification_branches table...');
     await createTable('notification_branches', `
       id SERIAL PRIMARY KEY,
       notification_id INTEGER NOT NULL,
@@ -420,7 +409,6 @@ export async function initializeDatabase() {
     );
 
     // 11. Create notification_responses table
-    console.log('Creating notification_responses table...');
     await createTable('notification_responses', `
       id SERIAL PRIMARY KEY,
       notification_id INTEGER NOT NULL,
@@ -449,7 +437,6 @@ export async function initializeDatabase() {
     );
 
     // 12. Create terms table
-    console.log('Creating terms table...');
     await createTable('terms', `
       id SERIAL PRIMARY KEY,
       branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
@@ -484,7 +471,6 @@ export async function initializeDatabase() {
     );
 
     // 13. Create academic_years table
-    console.log('Creating academic_years table...');
     await createTable('academic_years', `
       id SERIAL PRIMARY KEY,
       branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
@@ -519,7 +505,6 @@ export async function initializeDatabase() {
     );
 
     // 14. Create requests table
-    console.log('Creating requests table...');
     await createTable('requests', `
       id SERIAL PRIMARY KEY,
       branch_id INTEGER NOT NULL,
@@ -565,7 +550,6 @@ export async function initializeDatabase() {
     );
 
     // 15. Create alerts table (Smart Alerts System)
-    console.log('Creating alerts table...');
     await createTable('alerts', `
       id SERIAL PRIMARY KEY,
       alert_type VARCHAR(50) NOT NULL CHECK (alert_type IN ('id_expiry', 'missing_document', 'incomplete_data', 'custom')),
@@ -619,7 +603,6 @@ export async function initializeDatabase() {
     );
 
     // 16. Create alert_settings table (User notification preferences)
-    console.log('Creating alert_settings table...');
     await createTable('alert_settings', `
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL UNIQUE,
@@ -655,12 +638,9 @@ export async function initializeDatabase() {
           'CREATE INDEX IF NOT EXISTS idx_employees_status ON employees(status)',
           'Created index on employees.status'
         );
-      } else {
-        console.log('Skipping employees.status index - column does not exist. Please run migration script first.');
       }
     } catch (error) {
-      console.log('Could not create index on employees.status:', error.message);
-      console.log('Note: If employees table exists without status column, run: node express-app/scripts/migrate-add-employee-status-and-terms.js');
+      // Silent error handling
     }
     
     // Index for is_active (used frequently in queries)
@@ -670,7 +650,7 @@ export async function initializeDatabase() {
         'Created index on employees.is_active'
       );
     } catch (error) {
-      console.log('Could not create index on employees.is_active:', error.message);
+      // Silent error handling
     }
     
     // Index for phone_number (used in search operations)
@@ -680,7 +660,7 @@ export async function initializeDatabase() {
         'Created index on employees.phone_number'
       );
     } catch (error) {
-      console.log('Could not create index on employees.phone_number:', error.message);
+      // Silent error handling
     }
     
     // Index for created_at (used in ORDER BY clauses)
@@ -690,7 +670,7 @@ export async function initializeDatabase() {
         'Created index on employees.created_at'
       );
     } catch (error) {
-      console.log('Could not create index on employees.created_at:', error.message);
+      // Silent error handling
     }
     
     // Index for updated_at (used in update tracking)
@@ -700,7 +680,7 @@ export async function initializeDatabase() {
         'Created index on employees.updated_at'
       );
     } catch (error) {
-      console.log('Could not create index on employees.updated_at:', error.message);
+      // Silent error handling
     }
     
     // Composite index: branch_id + status (very common query pattern)
@@ -717,7 +697,7 @@ export async function initializeDatabase() {
         );
       }
     } catch (error) {
-      console.log('Could not create composite index on employees(branch_id, status):', error.message);
+      // Silent error handling
     }
     
     // Composite index: branch_id + data_completion_status (used in dashboard)
@@ -727,7 +707,7 @@ export async function initializeDatabase() {
         'Created composite index on employees(branch_id, data_completion_status)'
       );
     } catch (error) {
-      console.log('Could not create composite index on employees(branch_id, data_completion_status):', error.message);
+      // Silent error handling
     }
     
     // Composite index: status + data_completion_status (used in filtering)
@@ -744,7 +724,7 @@ export async function initializeDatabase() {
         );
       }
     } catch (error) {
-      console.log('Could not create composite index on employees(status, data_completion_status):', error.message);
+      // Silent error handling
     }
     
     // Index for academic_year (if column exists)
@@ -759,12 +739,9 @@ export async function initializeDatabase() {
           'CREATE INDEX IF NOT EXISTS idx_employees_academic_year ON employees(academic_year)',
           'Created index on employees.academic_year'
         );
-      } else {
-        console.log('Skipping employees.academic_year index - column does not exist. Please run migration script first.');
       }
     } catch (error) {
-      console.log('Could not create index on employees.academic_year:', error.message);
-      console.log('Note: If employees table exists without academic_year column, run: node express-app/scripts/migrate-add-employee-status-and-terms.js');
+      // Silent error handling
     }
 
     // Add foreign key constraints for employees term references (after terms table is created)
@@ -790,7 +767,7 @@ export async function initializeDatabase() {
         }
       }
     } catch (error) {
-      console.log('Could not add foreign key for registration_term_id:', error.message);
+      // Silent error handling
     }
     
     try {
@@ -814,11 +791,10 @@ export async function initializeDatabase() {
         }
       }
     } catch (error) {
-      console.log('Could not add foreign key for current_term_id:', error.message);
+      // Silent error handling
     }
 
-    console.log('Database initialization completed successfully!');
-    return { success: true, message: 'All tables created successfully' };
+    return { success: true, message: 'Database initialization completed successfully' };
 
   } catch (error) {
     console.error('Error initializing database:', error);
@@ -830,7 +806,6 @@ export async function initializeDatabase() {
 if (import.meta.url === `file://${process.argv[1]}`) {
   initializeDatabase()
     .then(() => {
-      console.log('Database setup complete!');
       process.exit(0);
     })
     .catch((error) => {
