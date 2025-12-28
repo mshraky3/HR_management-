@@ -18,9 +18,10 @@ const sql = postgres({
   password: process.env.DATABASE_PASSWORD,
   ssl: 'require',
   // Connection Pool Optimization
-  // Performance Optimization: Increased from 20 to 50 to support parallel query execution
-  // With 20 branches × 9 parallel queries = 180 concurrent queries, pool of 50 handles this efficiently
-  max: parseInt(process.env.DB_POOL_MAX || '50', 10), // Increased from 20 to 50 for parallel query support
+  // Reduced from 50 to 25 to prevent exhausting database connection limits
+  // The postgres library efficiently reuses connections, so 25 is sufficient for parallel queries
+  // Single shared pool is used across all code (routes, models, db-helpers, migrations)
+  max: parseInt(process.env.DB_POOL_MAX || '25', 10), // Reduced from 50 to 25 to prevent connection exhaustion
   idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || '30', 10), // Increased from 20 to 30 seconds
   connect_timeout: 10, // Connection timeout in seconds
   // Performance settings
