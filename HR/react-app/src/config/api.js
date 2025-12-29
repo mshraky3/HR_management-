@@ -16,7 +16,6 @@ const API_CONFIG = {
 
   // Production URL (update this with your production API URL)
   PRODUCTION: 'https://hr-management-azure.vercel.app',
-
   // Current environment - Change this to switch between LOCAL and PRODUCTION
   // Options: 'LOCAL' or 'PRODUCTION'
   // For production deployment, set to 'PRODUCTION' or use VITE_API_URL env variable

@@ -30,12 +30,20 @@ window.addEventListener('unhandledrejection', (event) => {
   });
 
   // Check if this is a backend/database error
+  const errorCode = error?.code || '';
+  const errorErrno = error?.errno || '';
+  const errorMessage = (error?.message || '').toLowerCase();
+  
   const isBackendError = 
     !error?.response || // Network error
     error.response?.status === 500 || // Server error
     error.response?.status === 503 || // Service unavailable
-    error?.code === 'ECONNREFUSED' ||
-    error?.code === 'ETIMEDOUT' ||
+    errorCode === 'ECONNREFUSED' ||
+    errorCode === 'ETIMEDOUT' ||
+    errorCode === 'CONNECTION_CLOSED' ||
+    errorErrno === 'CONNECTION_CLOSED' ||
+    errorMessage.includes('connection_closed') ||
+    errorMessage.includes('connection closed') ||
     (error.response?.status === 500 && 
      (error.response?.data?.message || '').toLowerCase().includes('connection'));
 

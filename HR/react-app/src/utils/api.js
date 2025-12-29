@@ -52,11 +52,23 @@ const getRequestKey = (config) => {
  * @returns {boolean} - True if this is a backend/database error
  */
 const detectBackendError = (error) => {
+  // Check error code and errno for connection errors
+  const code = error.code || '';
+  const errno = error.errno || '';
+  const message = (error.message || '').toLowerCase();
+  
+  // Connection closed errors (CONNECTION_CLOSED)
+  if (
+    code === 'CONNECTION_CLOSED' ||
+    errno === 'CONNECTION_CLOSED' ||
+    message.includes('connection_closed') ||
+    message.includes('connection closed')
+  ) {
+    return true;
+  }
+
   // Network errors (no response from server)
   if (!error.response) {
-    const code = error.code || '';
-    const message = (error.message || '').toLowerCase();
-    
     // Connection refused, timeout, or network errors
     if (
       code === 'ECONNREFUSED' ||
@@ -87,6 +99,8 @@ const detectBackendError = (error) => {
       errorMessage.includes('database') ||
       errorMessage.includes('postgres') ||
       errorMessage.includes('connection') ||
+      errorMessage.includes('connection_closed') ||
+      errorMessage.includes('connection closed') ||
       errorMessage.includes('53300') || // PostgreSQL error code for connection limit
       errorMessage.includes('too many connections')
     ) {
