@@ -2,22 +2,25 @@
  * Vercel Blob Storage Utilities
  * Handles file uploads to Vercel Blob Storage
  * 
- * Requires BLOB_READ_WRITE_TOKEN environment variable to be set
- * This token is automatically provided by Vercel when using Blob Storage
- * For local development, use: vercel env pull
+ * Uses centralized blob storage configuration from config/blobStorage.js
+ * Supports dual blob stores with intelligent token fallback
  */
 
 import { put, del, head } from '@vercel/blob';
 import { generateFileName } from './fileUpload.js';
+import {
+  getActiveBlobToken,
+  getAllBlobTokens,
+  isBlobStorageConfigured as checkBlobStorageConfigured,
+  getBlobStoreName
+} from '../config/blobStorage.js';
 
 /**
  * Check if Blob Storage is properly configured
- * @returns {boolean} - Whether BLOB_READ_WRITE_TOKEN is available
+ * @returns {boolean} - Whether at least one blob token is available
  */
 export function isBlobStorageConfigured() {
-  // @vercel/blob automatically reads BLOB_READ_WRITE_TOKEN from process.env
-  // In Vercel, this is automatically set. For local dev, it should be in .env
-  return !!process.env.BLOB_READ_WRITE_TOKEN;
+  return checkBlobStorageConfigured();
 }
 
 /**
@@ -26,8 +29,8 @@ export function isBlobStorageConfigured() {
 function validateBlobConfig() {
   if (!isBlobStorageConfigured()) {
     throw new Error(
-      'BLOB_READ_WRITE_TOKEN is not configured. ' +
-      'Please set BLOB_READ_WRITE_TOKEN environment variable. ' +
+      'Blob Storage is not configured. ' +
+      'Please set BLOB_READ_WRITE_TOKEN or SPARE_BLOB_READ_WRITE_TOKEN environment variable. ' +
       'For local development, run: vercel env pull'
     );
   }
@@ -61,13 +64,18 @@ export async function uploadToBlob(fileBuffer, fileName, mimeType, employeeId, d
     // Create blob path: employees/{employeeId}/{documentType}/{filename}
     const blobPath = `employees/${employeeId}/${documentType}/${uniqueFileName}`;
     
-    // Upload to Vercel Blob
-    // @vercel/blob automatically uses BLOB_READ_WRITE_TOKEN from process.env
+    // Get active blob token from configuration
+    const token = getActiveBlobToken();
+    if (!token) {
+      throw new Error('Active blob storage token is not configured');
+    }
+    
+    // Upload to Vercel Blob using active token
     const blob = await put(blobPath, fileBuffer, {
       access: 'public', // Make files publicly accessible
       contentType: mimeType,
       addRandomSuffix: false, // We already have unique names
-      // token is automatically read from process.env.BLOB_READ_WRITE_TOKEN
+      token: token
     });
     
     // Validate URL length (database column is VARCHAR(500))
@@ -115,11 +123,17 @@ export async function uploadBranchDocumentToBlob(fileBuffer, fileName, mimeType,
     const uniqueFileName = generateFileName(fileName);
     const blobPath = `branches/${branchId}/${documentType}/${uniqueFileName}`;
     
+    // Get active blob token from configuration
+    const token = getActiveBlobToken();
+    if (!token) {
+      throw new Error('Active blob storage token is not configured');
+    }
+    
     const blob = await put(blobPath, fileBuffer, {
       access: 'public',
       contentType: mimeType,
       addRandomSuffix: false,
-      // token is automatically read from process.env.BLOB_READ_WRITE_TOKEN
+      token: token
     });
     
     // Validate URL length (database column is VARCHAR(500))
@@ -164,11 +178,17 @@ export async function uploadRequestAttachmentToBlob(fileBuffer, fileName, mimeTy
     const uniqueFileName = generateFileName(fileName);
     const blobPath = `requests/${requestId}/attachments/${uniqueFileName}`;
     
+    // Get active blob token from configuration
+    const token = getActiveBlobToken();
+    if (!token) {
+      throw new Error('Active blob storage token is not configured');
+    }
+    
     const blob = await put(blobPath, fileBuffer, {
       access: 'public',
       contentType: mimeType,
       addRandomSuffix: false,
-      // token is automatically read from process.env.BLOB_READ_WRITE_TOKEN
+      token: token
     });
     
     // Validate URL length (database column is VARCHAR(500))
@@ -191,6 +211,7 @@ export async function uploadRequestAttachmentToBlob(fileBuffer, fileName, mimeTy
 
 /**
  * Delete file from Vercel Blob Storage
+ * Uses intelligent token fallback to handle files from both blob stores
  * @param {string} blobUrl - Blob URL to delete
  * @returns {Promise<boolean>} - Success status
  */
@@ -201,9 +222,59 @@ export async function deleteFromBlob(blobUrl) {
       // Validate Blob Storage configuration
       validateBlobConfig();
       
-      // @vercel/blob automatically uses BLOB_READ_WRITE_TOKEN from process.env
-      await del(blobUrl);
-      return true;
+      // Get both tokens for fallback
+      const [activeToken, fallbackToken] = getAllBlobTokens();
+      
+      if (!activeToken && !fallbackToken) {
+        console.error('Error deleting from Blob: No blob tokens configured');
+        return false;
+      }
+      
+      // Try active token first
+      if (activeToken) {
+        try {
+          await del(blobUrl, { token: activeToken });
+          if (process.env.LOG_BLOB_OPERATIONS === 'true') {
+            console.log(`Deleted blob using ${getBlobStoreName()} token: ${blobUrl.substring(0, 50)}...`);
+          }
+          return true;
+        } catch (activeError) {
+          // Check if error indicates token mismatch (401, 403, or authentication errors)
+          const errorMessage = activeError.message?.toLowerCase() || '';
+          const isAuthError = activeError.status === 401 || 
+                             activeError.status === 403 ||
+                             errorMessage.includes('unauthorized') ||
+                             errorMessage.includes('forbidden') ||
+                             errorMessage.includes('token');
+          
+          // If it's an auth error and we have a fallback token, try it
+          if (isAuthError && fallbackToken) {
+            try {
+              await del(blobUrl, { token: fallbackToken });
+              if (process.env.LOG_BLOB_OPERATIONS === 'true') {
+                const fallbackStoreName = getBlobStoreName() === 'original' ? 'spare' : 'original';
+                console.log(`Deleted blob using fallback ${fallbackStoreName} token: ${blobUrl.substring(0, 50)}...`);
+              }
+              return true;
+            } catch (fallbackError) {
+              console.error('Error deleting from Blob with fallback token:', fallbackError.message);
+              return false;
+            }
+          } else {
+            // Not an auth error, or no fallback token available - rethrow
+            throw activeError;
+          }
+        }
+      } else if (fallbackToken) {
+        // Only fallback token available, try it directly
+        try {
+          await del(blobUrl, { token: fallbackToken });
+          return true;
+        } catch (fallbackError) {
+          console.error('Error deleting from Blob with fallback token:', fallbackError.message);
+          return false;
+        }
+      }
     }
     // If it's a local file path, return true (no action needed)
     return true;
@@ -216,6 +287,7 @@ export async function deleteFromBlob(blobUrl) {
 
 /**
  * Check if file exists in Blob Storage
+ * Uses intelligent token fallback to handle files from both blob stores
  * @param {string} blobUrl - Blob URL to check
  * @returns {Promise<boolean>} - Whether file exists
  */
@@ -225,9 +297,50 @@ export async function blobFileExists(blobUrl) {
       // Validate Blob Storage configuration
       validateBlobConfig();
       
-      // @vercel/blob automatically uses BLOB_READ_WRITE_TOKEN from process.env
-      await head(blobUrl);
-      return true;
+      // Get both tokens for fallback
+      const [activeToken, fallbackToken] = getAllBlobTokens();
+      
+      if (!activeToken && !fallbackToken) {
+        return false;
+      }
+      
+      // Try active token first
+      if (activeToken) {
+        try {
+          await head(blobUrl, { token: activeToken });
+          return true;
+        } catch (activeError) {
+          // Check if error indicates token mismatch (401, 403, or authentication errors)
+          const errorMessage = activeError.message?.toLowerCase() || '';
+          const isAuthError = activeError.status === 401 || 
+                             activeError.status === 403 ||
+                             errorMessage.includes('unauthorized') ||
+                             errorMessage.includes('forbidden') ||
+                             errorMessage.includes('token');
+          
+          // If it's an auth error and we have a fallback token, try it
+          if (isAuthError && fallbackToken) {
+            try {
+              await head(blobUrl, { token: fallbackToken });
+              return true;
+            } catch (fallbackError) {
+              // Both tokens failed - file doesn't exist or is inaccessible
+              return false;
+            }
+          } else {
+            // Not an auth error (likely 404 - file doesn't exist) or no fallback token
+            return false;
+          }
+        }
+      } else if (fallbackToken) {
+        // Only fallback token available, try it directly
+        try {
+          await head(blobUrl, { token: fallbackToken });
+          return true;
+        } catch (fallbackError) {
+          return false;
+        }
+      }
     }
     return false;
   } catch (error) {
@@ -286,11 +399,17 @@ export async function uploadNotificationAttachmentToBlob(fileBuffer, fileName, m
     const uniqueFileName = generateFileName(fileName);
     const blobPath = `notifications/${notificationId}/attachments/${uniqueFileName}`;
     
+    // Get active blob token from configuration
+    const token = getActiveBlobToken();
+    if (!token) {
+      throw new Error('Active blob storage token is not configured');
+    }
+    
     const blob = await put(blobPath, fileBuffer, {
       access: 'public',
       contentType: mimeType,
       addRandomSuffix: false,
-      // token is automatically read from process.env.BLOB_READ_WRITE_TOKEN
+      token: token
     });
     
     // Validate URL length (database column is VARCHAR(500))
