@@ -4,18 +4,15 @@
  * 
  * SWITCHING BETWEEN BLOB STORES:
  * ===============================
+ * To use the ORIGINAL blob store (default):
+ *   - Set USE_SPARE_BLOB=false in .env
+ *   - OR remove USE_SPARE_BLOB from .env
+ *   - OR don't set it at all
  * 
- * METHOD 1 (RECOMMENDED - Direct switch in this file):
- *   - Find the ACTIVE_BLOB_STORE constant below (around line 30)
- *   - Change it to 'original' or 'spare'
- *   - Save and restart your server
+ * To use the SPARE blob store:
+ *   - Set USE_SPARE_BLOB=true in .env
  * 
- * METHOD 2 (Environment variable):
- *   - Set USE_SPARE_BLOB=true in .env to use spare blob store
- *   - Set USE_SPARE_BLOB=false or remove it to use original blob store (default)
- *   - Restart your server for changes to take effect
- * 
- * Priority: ACTIVE_BLOB_STORE constant > USE_SPARE_BLOB env variable
+ * After changing USE_SPARE_BLOB, restart your server for changes to take effect.
  * 
  * ENVIRONMENT VARIABLES REQUIRED:
  * ===============================
@@ -30,29 +27,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// ============================================
-// BLOB STORE SELECTION - Switch here directly
-// ============================================
-// Change this to 'original' or 'spare' to switch blob stores
-// This takes precedence over the USE_SPARE_BLOB environment variable
-const ACTIVE_BLOB_STORE = 'spare'; // Options: 'original' | 'spare'
-// ============================================
-
 // Read blob storage tokens from environment
 const originalBlobToken = process.env.BLOB_READ_WRITE_TOKEN;
 const spareBlobToken = process.env.SPARE_BLOB_READ_WRITE_TOKEN;
 
 // Determine which blob store to use
-// Priority: 1) ACTIVE_BLOB_STORE constant above, 2) USE_SPARE_BLOB env variable, 3) default to original
-let useSpareBlob = false;
-if (ACTIVE_BLOB_STORE === 'spare') {
-  useSpareBlob = true;
-} else if (ACTIVE_BLOB_STORE === 'original') {
-  useSpareBlob = false;
-} else {
-  // Fallback to environment variable if constant is not set correctly
-  useSpareBlob = process.env.USE_SPARE_BLOB === 'true';
-}
+// Set USE_SPARE_BLOB=true in .env to use spare blob store
+// Set USE_SPARE_BLOB=false or don't set it to use original blob store (default)
+const useSpareBlob = process.env.USE_SPARE_BLOB === 'false';
 
 /**
  * Get the original blob storage token
