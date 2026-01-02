@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { branchesAPI } from '../utils/api';
+import BranchBadge from '../components/BranchBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import './DirectContact.css';
@@ -39,8 +40,8 @@ const DirectContact = () => {
   const formatPhoneNumber = (phoneNumber) => {
     if (!phoneNumber) return null;
     // Remove leading 0 and add country code 966
-    const cleaned = phoneNumber.startsWith('0') 
-      ? phoneNumber.substring(1) 
+    const cleaned = phoneNumber.startsWith('0')
+      ? phoneNumber.substring(1)
       : phoneNumber;
     // Remove any non-digit characters
     const digitsOnly = cleaned.replace(/\D/g, '');
@@ -49,12 +50,12 @@ const DirectContact = () => {
 
   const handleWhatsAppContact = (branchName, phoneNumber) => {
     if (!phoneNumber) return;
-    
+
     // Format message with branch name
     const message = encodeURIComponent(`مرحباً، أود التواصل مع فرع ${branchName}`);
     const formattedNumber = formatPhoneNumber(phoneNumber);
     if (!formattedNumber) return;
-    
+
     const whatsappUrl = `https://wa.me/966${formattedNumber}?text=${message}`;
     window.open(whatsappUrl, '_blank');
   };
@@ -88,7 +89,7 @@ const DirectContact = () => {
               return (
                 <div key={branch.id} className="branch-contact-card">
                   <div className="branch-info">
-                    <h3 className="branch-name">{branch.branch_name}</h3>
+                    <h3 className="branch-name"><BranchBadge branch={branch} /> {branch.branch_name}</h3>
                     <div className="contact-details">
                       <div className="contact-item">
                         <span className="contact-label">رقم التواصل:</span>

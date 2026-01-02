@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { reportsAPI, branchesAPI, employeesAPI, branchDocumentsAPI, setBranchDocumentsPassword, documentsAPI } from '../utils/api';
+import BranchBadge from '../components/BranchBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import NationalitySelect from '../components/NationalitySelect';
@@ -30,7 +31,7 @@ const Reports = () => {
   const [selectedBranchIds, setSelectedBranchIds] = useState([]);
   const [selectAllBranches, setSelectAllBranches] = useState(false);
   const [branchTypeFilter, setBranchTypeFilter] = useState([]); // For main manager: filter by branch type
-  
+
   // Form state
   const [reportTitle, setReportTitle] = useState('');
   const [fileType, setFileType] = useState('pdf'); // 'pdf' or 'excel'
@@ -45,19 +46,19 @@ const Reports = () => {
     min_age: '',
     max_age: '',
   });
-  
+
   const [selectedFields, setSelectedFields] = useState([
     'full_name',
     'employee_id_number',
     'id_or_residency_number',
     'nationality',
   ]);
-  
+
   // Selected documents for report
   const [selectedDocuments, setSelectedDocuments] = useState([]);
   const [showDocumentWarning, setShowDocumentWarning] = useState(false);
   const [missingDocumentsInfo, setMissingDocumentsInfo] = useState(null);
-  
+
   // Available fields for selection
   const availableFields = [
     { value: 'employee_id_number', label: 'رقم الموظف' },
@@ -107,7 +108,7 @@ const Reports = () => {
     { value: 'residency_issue_date', label: 'تاريخ إصدار الإقامة' },
     { value: 'data_completion_status', label: 'حالة إكمال البيانات' },
   ];
-  
+
   // Get unique values for filters
   const [filterOptions, setFilterOptions] = useState({
     nationalities: [],
@@ -122,7 +123,7 @@ const Reports = () => {
   const loadBranches = async () => {
     try {
       const filters = { is_active: true };
-      
+
       if (!isMainManager() && user?.branch_id) {
         filters.id = user.branch_id;
       } else if (isMainManager() && branchTypeFilter.length > 0) {
@@ -132,7 +133,7 @@ const Reports = () => {
         }
         // If both types selected, don't filter (show all)
       }
-      
+
       const response = await branchesAPI.getAll(filters);
       if (response.data.success) {
         setBranches(response.data.data);
@@ -150,7 +151,7 @@ const Reports = () => {
   const loadFilterOptions = async () => {
     try {
       const filters = { is_active: true };
-      
+
       if (!isMainManager() && user?.branch_id) {
         filters.branch_id = user.branch_id;
       } else if (isMainManager() && !selectAllBranches && selectedBranchIds.length > 0) {
@@ -158,18 +159,18 @@ const Reports = () => {
         filters.branch_id = selectedBranchIds;
       }
       // If selectAllBranches is true, don't filter by branch_id (get all employees)
-      
+
       const response = await employeesAPI.getAll(filters);
       if (response.data.success) {
         const employees = response.data.data || [];
-        
+
         // Extract unique values
         const nationalities = [...new Set(employees.map(e => e.nationality).filter(Boolean))];
         const jobTitles = [...new Set(employees.map(e => e.job_title).filter(Boolean))];
         const maritalStatuses = [...new Set(employees.map(e => e.marital_status).filter(Boolean))];
         const educationalQualifications = [...new Set(employees.map(e => e.educational_qualification).filter(Boolean))];
         const contractTypes = [...new Set(employees.map(e => e.contract_type).filter(Boolean))];
-        
+
         setFilterOptions({
           nationalities: nationalities.sort(),
           jobTitles: jobTitles.sort(),
@@ -215,15 +216,15 @@ const Reports = () => {
   }, [searchParams, isMainManager, branches]);
 
   const getCurrentBranchId = useCallback(() => {
-    return currentBranchId || 
-           (!isMainManager() && user?.branch_id ? user.branch_id : null) ||
-           (isMainManager() ? parseInt(searchParams.get('branch_id') || '0') || null : null);
+    return currentBranchId ||
+      (!isMainManager() && user?.branch_id ? user.branch_id : null) ||
+      (isMainManager() ? parseInt(searchParams.get('branch_id') || '0') || null : null);
   }, [currentBranchId, isMainManager, user, searchParams]);
 
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
     setPasswordError('');
-    
+
     if (!password.trim()) {
       setPasswordError('الرجاء إدخال كلمة المرور');
       return;
@@ -294,7 +295,7 @@ const Reports = () => {
     setFilters(prev => {
       const currentValues = prev[filterName] || [];
       const allSelected = allOptions.every(opt => currentValues.includes(opt));
-      
+
       if (allSelected) {
         // Deselect all
         return {
@@ -331,15 +332,15 @@ const Reports = () => {
     if (!selectedDocTypes || selectedDocTypes.length === 0) {
       return null;
     }
-    
+
     const missingInfo = {};
-    
+
     for (const employee of employees) {
       try {
         const docsResponse = await documentsAPI.getByEmployeeId(employee.id);
         const employeeDocs = docsResponse.data.success ? docsResponse.data.data : [];
         const employeeDocTypes = employeeDocs.map(doc => doc.document_type);
-        
+
         const missing = selectedDocTypes.filter(docType => !employeeDocTypes.includes(docType));
         if (missing.length > 0) {
           missingInfo[employee.id] = {
@@ -351,7 +352,7 @@ const Reports = () => {
         console.error(`Error checking documents for employee ${employee.id}:`, error);
       }
     }
-    
+
     return Object.keys(missingInfo).length > 0 ? missingInfo : null;
   };
 
@@ -359,37 +360,37 @@ const Reports = () => {
   const isReportFormValid = () => {
     // Check report title is provided
     if (!reportTitle.trim()) return false;
-    
+
     // Check at least one field is selected
     if (selectedFields.length === 0) return false;
-    
+
     // For main manager: check if branches are selected
     if (isMainManager()) {
       if (!selectAllBranches && selectedBranchIds.length === 0) return false;
     }
-    
+
     return true;
   };
 
   const handleGenerateReport = async (e) => {
     e.preventDefault();
-    
+
     if (!reportTitle.trim()) {
       showWarning('الرجاء إدخال عنوان التقرير');
       return;
     }
-    
+
     if (selectedFields.length === 0) {
       showWarning('الرجاء اختيار حقل واحد على الأقل للعرض');
       return;
     }
-    
+
     // If documents are selected, only PDF is allowed
     if (selectedDocuments.length > 0 && fileType === 'excel') {
       showWarning('عند اختيار المستندات، يجب أن يكون التقرير بصيغة PDF فقط');
       return;
     }
-    
+
     // For main manager: check if branches are selected
     if (isMainManager()) {
       if (!selectAllBranches && selectedBranchIds.length === 0) {
@@ -403,16 +404,16 @@ const Reports = () => {
         return;
       }
     }
-    
+
     // Main manager doesn't need password verification
     if (!isMainManager() && !isPasswordVerified) {
       setShowPasswordModal(true);
       return;
     }
-    
+
     try {
       setGenerating(true);
-      
+
       // Clean filters - remove empty arrays and empty strings
       const cleanFilters = {};
       Object.keys(filters).forEach(key => {
@@ -423,7 +424,7 @@ const Reports = () => {
           cleanFilters[key] = value;
         }
       });
-      
+
       // Convert age strings to numbers
       if (cleanFilters.min_age) {
         cleanFilters.min_age = parseInt(cleanFilters.min_age);
@@ -431,7 +432,7 @@ const Reports = () => {
       if (cleanFilters.max_age) {
         cleanFilters.max_age = parseInt(cleanFilters.max_age);
       }
-      
+
       // Prepare branch IDs for main manager
       let branchIds = null;
       if (isMainManager()) {
@@ -443,7 +444,7 @@ const Reports = () => {
       } else {
         branchIds = [getCurrentBranchId()];
       }
-      
+
       // Check for missing documents if documents are selected
       // We'll check this on the backend, but we can also check here for warning
       if (selectedDocuments.length > 0) {
@@ -454,7 +455,7 @@ const Reports = () => {
             branch_id: branchIds.length === 1 ? branchIds[0] : branchIds,
             is_active: true
           });
-          
+
           if (employeesResponse.data.success) {
             const employees = employeesResponse.data.data || [];
             const missingInfo = await checkMissingDocuments(employees, selectedDocuments);
@@ -470,7 +471,7 @@ const Reports = () => {
           // Continue anyway - backend will handle it
         }
       }
-      
+
       const response = await reportsAPI.generate({
         title: reportTitle,
         filters: cleanFilters,
@@ -482,16 +483,16 @@ const Reports = () => {
       }, {
         responseType: 'blob'
       });
-      
+
       // Create blob and download based on file type
-      const mimeType = fileType === 'excel' 
+      const mimeType = fileType === 'excel'
         ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         : 'application/pdf';
       const fileExtension = fileType === 'excel' ? 'xlsx' : 'pdf';
-      
+
       // response.data is already a blob when responseType is 'blob'
-      const blob = response.data instanceof Blob 
-        ? response.data 
+      const blob = response.data instanceof Blob
+        ? response.data
         : new Blob([response.data], { type: mimeType });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -501,9 +502,9 @@ const Reports = () => {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
+
       showSuccess('تم إنشاء التقرير بنجاح');
-      
+
     } catch (error) {
       console.error('Error generating report:', error);
       showError(error.response?.data?.message || 'فشل إنشاء التقرير');
@@ -511,16 +512,16 @@ const Reports = () => {
       setGenerating(false);
     }
   };
-  
+
   // Continue with missing documents
   const handleContinueWithMissing = async () => {
     setShowDocumentWarning(false);
     setMissingDocumentsInfo(null);
-    
+
     // Retry generation by calling handleGenerateReport directly
     try {
       setGenerating(true);
-      
+
       // Clean filters - remove empty arrays and empty strings
       const cleanFilters = {};
       Object.keys(filters).forEach(key => {
@@ -531,7 +532,7 @@ const Reports = () => {
           cleanFilters[key] = value;
         }
       });
-      
+
       // Convert age strings to numbers
       if (cleanFilters.min_age) {
         cleanFilters.min_age = parseInt(cleanFilters.min_age);
@@ -539,7 +540,7 @@ const Reports = () => {
       if (cleanFilters.max_age) {
         cleanFilters.max_age = parseInt(cleanFilters.max_age);
       }
-      
+
       // Prepare branch IDs for main manager
       let branchIds = null;
       if (isMainManager()) {
@@ -551,7 +552,7 @@ const Reports = () => {
       } else {
         branchIds = [getCurrentBranchId()];
       }
-      
+
       const response = await reportsAPI.generate({
         title: reportTitle,
         filters: cleanFilters,
@@ -563,16 +564,16 @@ const Reports = () => {
       }, {
         responseType: 'blob'
       });
-      
+
       // Create blob and download based on file type
-      const mimeType = fileType === 'excel' 
+      const mimeType = fileType === 'excel'
         ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         : 'application/pdf';
       const fileExtension = fileType === 'excel' ? 'xlsx' : 'pdf';
-      
+
       // response.data is already a blob when responseType is 'blob'
-      const blob = response.data instanceof Blob 
-        ? response.data 
+      const blob = response.data instanceof Blob
+        ? response.data
         : new Blob([response.data], { type: mimeType });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -582,9 +583,9 @@ const Reports = () => {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
+
       showSuccess('تم إنشاء التقرير بنجاح');
-      
+
     } catch (error) {
       console.error('Error generating report:', error);
       showError(error.response?.data?.message || 'فشل إنشاء التقرير');
@@ -643,7 +644,7 @@ const Reports = () => {
 
     // Set selected fields
     setSelectedFields(fieldsToSelect);
-    
+
     // Show success message
     showSuccess(`تم تطبيق ${template.title} بنجاح`);
   };
@@ -705,7 +706,7 @@ const Reports = () => {
       {isMainManager() && (
         <div className="form-section">
           <h2>اختيار الفروع</h2>
-          
+
           {/* Branch Type Filter */}
           <div className="branch-type-filter">
             <label className="filter-header-label">نوع الفرع:</label>
@@ -781,6 +782,7 @@ const Reports = () => {
                       setSearchParams({});
                     }}
                   />
+                  <BranchBadge branch={branch} />
                   <span>{branch.branch_name}</span>
                 </label>
               ))}
@@ -803,19 +805,19 @@ const Reports = () => {
               <p>الاسم، رقم الجوال، الإيميل، رقم الهوية/الإقامة</p>
             </div>
           </button>
-          
+
           <button
             type="button"
             className="template-button"
             onClick={() => applyTemplate('bankAccounts')}
           >
-           
+
             <div className="template-content">
               <h3>تقرير الحسابات البنكية</h3>
               <p>الاسم، رقم الآيبان، رقم الهوية، اسم البنك</p>
             </div>
           </button>
-          
+
           <button
             type="button"
             className="template-button"
@@ -1078,7 +1080,7 @@ const Reports = () => {
               />
               <span>PDF</span>
             </label>
-            <label className="file-type-radio-label" style={{ 
+            <label className="file-type-radio-label" style={{
               opacity: selectedDocuments.length > 0 ? 0.5 : 1,
               cursor: selectedDocuments.length > 0 ? 'not-allowed' : 'pointer'
             }}>
@@ -1158,16 +1160,16 @@ const Reports = () => {
               ))}
             </div>
             <div className="form-actions">
-              <button 
-                type="button" 
-                className="btn btn-primary" 
+              <button
+                type="button"
+                className="btn btn-primary"
                 onClick={handleContinueWithMissing}
               >
                 المتابعة مع المستندات المفقودة
               </button>
-              <button 
-                type="button" 
-                className="btn btn-secondary" 
+              <button
+                type="button"
+                className="btn btn-secondary"
                 onClick={() => {
                   setShowDocumentWarning(false);
                   setMissingDocumentsInfo(null);

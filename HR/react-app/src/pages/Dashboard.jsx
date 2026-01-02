@@ -7,9 +7,10 @@ import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, alertsAPI, clearCache } from '../utils/api';
-import { 
-  getRequiredBranchDocuments, 
+import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, clearCache } from '../utils/api';
+import BranchesOverallProgressChart from '../components/BranchesOverallProgressChart';
+import {
+  getRequiredBranchDocuments,
   getBranchTypeLabel,
   getMonthlyRequiredBranchDocuments,
   isMonthlyBranchDocument
@@ -56,11 +57,18 @@ const Dashboard = () => {
   const [documentsList, setDocumentsList] = useState([]);
 
   const loadStats = useCallback(async () => {
+    const loadStartTime = performance.now();
+    console.log('[Dashboard] ========== loadStats STARTED ==========');
+    console.log('[Dashboard] User:', { id: user?.id, branch_id: user?.branch_id, isMainManager: isMainManager() });
+    console.log('[Dashboard] Timestamp:', new Date().toISOString());
+
     try {
       // Clear cache to ensure fresh data (especially completion status)
+      console.log('[Dashboard] Clearing cache...');
       clearCache('/api/employees');
       clearCache('/api/branch-statistics');
-      
+      console.log('[Dashboard] Cache cleared');
+
       // Build filters based on user role
       const branchFilters = { is_active: true };
       const employeeFilters = { is_active: true };
@@ -71,204 +79,369 @@ const Dashboard = () => {
         branchFilters.id = user.branch_id;
         employeeFilters.branch_id = user.branch_id;
         documentFilters.branch_id = user.branch_id;
+        console.log('[Dashboard] Branch Manager mode - filters:', { branchFilters, employeeFilters, documentFilters });
+      } else {
+        console.log('[Dashboard] Main Manager mode - filters:', { branchFilters, employeeFilters, documentFilters });
       }
 
       // Performance Optimization: Batch all parallel API calls together
       // This reduces total loading time by making all requests simultaneously
+      const apiStartTime = performance.now();
+      console.log('[Dashboard] Building API promises array...');
+
       const apiPromises = [
         branchesAPI.getAll(branchFilters),
         employeesAPI.getAll(employeeFilters),
-        branchDocumentsAPI.getAll(documentFilters).catch(() => ({ data: { data: [] } })),
+        branchDocumentsAPI.getAll(documentFilters).catch((err) => {
+          console.warn('[Dashboard] branchDocumentsAPI.getAll failed:', err);
+          return { data: { data: [] } };
+        }),
       ];
+      console.log('[Dashboard] Base API promises created (branches, employees, documents)');
 
       // Add role-specific API calls to batch
       if (!isMainManager() && user?.branch_id) {
         // Branch manager specific calls
+        console.log('[Dashboard] Adding Branch Manager specific API calls...');
         apiPromises.push(
-          branchesAPI.getById(user.branch_id).catch(() => ({ data: { success: false } })),
-          notificationsAPI.getMyBranchNotifications().catch(() => ({ data: { success: false, data: [] } }))
+          branchesAPI.getById(user.branch_id).catch((err) => {
+            console.warn('[Dashboard] branchesAPI.getById failed:', err);
+            return { data: { success: false } };
+          }),
+          notificationsAPI.getMyBranchNotifications().catch((err) => {
+            console.warn('[Dashboard] notificationsAPI.getMyBranchNotifications failed:', err);
+            return { data: { success: false, data: [] } };
+          })
         );
+        console.log('[Dashboard] Branch Manager API promises:', apiPromises.length, 'total');
       } else if (isMainManager()) {
         // Main manager specific calls
+        console.log('[Dashboard] Adding Main Manager specific API calls...');
         apiPromises.push(
-          branchStatisticsAPI.getAll().catch(() => ({ data: { success: false } })),
-          notificationsAPI.getAll().catch(() => ({ data: { success: false, data: [] } })),
-          usersAPI.getAll({ is_active: true }).catch(() => ({ data: { success: false, data: [] } }))
+          branchStatisticsAPI.getAll().catch((err) => {
+            console.warn('[Dashboard] branchStatisticsAPI.getAll failed:', err);
+            return { data: { success: false } };
+          }),
+          notificationsAPI.getAll().catch((err) => {
+            console.warn('[Dashboard] notificationsAPI.getAll failed:', err);
+            return { data: { success: false, data: [] } };
+          }),
+          usersAPI.getAll({ is_active: true }).catch((err) => {
+            console.warn('[Dashboard] usersAPI.getAll failed:', err);
+            return { data: { success: false, data: [] } };
+          })
         );
+        console.log('[Dashboard] Main Manager API promises:', apiPromises.length, 'total');
       }
 
       // Execute all API calls in parallel
+      console.log('[Dashboard] Executing', apiPromises.length, 'API calls in parallel...');
       const results = await Promise.all(apiPromises);
+      const apiEndTime = performance.now();
+      console.log('[Dashboard] All API calls completed in', (apiEndTime - apiStartTime).toFixed(2), 'ms');
+      console.log('[Dashboard] API Results count:', results.length);
 
       // Extract results
       const branchesRes = results[0];
       const employeesRes = results[1];
       const documentsRes = results[2];
 
+      console.log('[Dashboard] Extracting results...');
+      console.log('[Dashboard] branchesRes:', {
+        success: branchesRes?.data?.success,
+        count: branchesRes?.data?.data?.length || 0
+      });
+      console.log('[Dashboard] employeesRes:', {
+        success: employeesRes?.data?.success,
+        count: employeesRes?.data?.data?.length || 0
+      });
+      console.log('[Dashboard] documentsRes:', {
+        hasData: !!documentsRes?.data?.data,
+        count: documentsRes?.data?.data?.length || 0
+      });
+
       // Store branches for display
       const branchesList = branchesRes.data.success ? (branchesRes.data.data || []) : [];
+      console.log('[Dashboard] Setting branches state:', branchesList.length, 'branches');
       setBranches(branchesList);
-      
+
       // Store employees and documents for progress component
       const employeesData = employeesRes.data.success ? (employeesRes.data.data || []) : [];
       const documentsData = documentsRes.data.data || [];
+      console.log('[Dashboard] Setting employees state:', employeesData.length, 'employees');
+      console.log('[Dashboard] Setting documents state:', documentsData.length, 'documents');
       setEmployeesList(employeesData);
       setDocumentsList(documentsData);
 
       // Process role-specific results
       if (!isMainManager() && user?.branch_id) {
+        console.log('[Dashboard] Processing Branch Manager results...');
         // Branch manager results
         const branchInfoRes = results[3];
         const notificationsRes = results[4];
 
+        console.log('[Dashboard] branchInfoRes:', {
+          success: branchInfoRes?.data?.success,
+          hasData: !!branchInfoRes?.data?.data
+        });
         if (branchInfoRes?.data?.success) {
+          console.log('[Dashboard] Setting branchInfo state');
           setBranchInfo(branchInfoRes.data.data);
         } else {
+          console.log('[Dashboard] branchInfoRes failed, setting branchInfo to null');
           setBranchInfo(null);
         }
 
+        console.log('[Dashboard] notificationsRes:', {
+          success: notificationsRes?.data?.success,
+          count: notificationsRes?.data?.data?.length || 0
+        });
         if (notificationsRes?.data?.success) {
+          console.log('[Dashboard] Setting notifications state:', notificationsRes.data.data?.length || 0, 'notifications');
           setNotifications(notificationsRes.data.data || []);
         } else {
+          console.log('[Dashboard] notificationsRes failed, setting notifications to empty array');
           setNotifications([]);
         }
 
         // First, recalculate completion status for all employees in the branch
         // This ensures the incomplete employees section always shows up-to-date data on each load
+        const completionStartTime = performance.now();
+        console.log('[Dashboard] Starting completion status recalculation...');
         try {
           // Get all active employees first (for branch managers, this is just their branch)
+          console.log('[Dashboard] Fetching all active employees for completion status update...');
           const allEmployeesRes = await employeesAPI.getAll({
             ...employeeFilters,
             is_active: true
-          }).catch(() => ({ data: { success: false, data: [] } }));
-          
+          }).catch((err) => {
+            console.error('[Dashboard] Failed to fetch employees for completion status:', err);
+            return { data: { success: false, data: [] } };
+          });
+
           if (allEmployeesRes.data.success && allEmployeesRes.data.data) {
-            const allEmployees = allEmployeesRes.data.data.filter(emp => 
+            const allEmployees = allEmployeesRes.data.data.filter(emp =>
               !emp.status || emp.status === 'active' || emp.status === 'pending'
             );
-            
+            console.log('[Dashboard] Found', allEmployees.length, 'employees to update completion status');
+
             // Update completion status for all employees in batches
             // Performance Optimization: Increased batch size from 5 to 25 and reduced delays
             // This improves performance from ~3-5s to ~1-2s (2-4x faster) for 100 employees
             const BATCH_SIZE = 25; // Increased from 5 for better performance
+            const totalBatches = Math.ceil(allEmployees.length / BATCH_SIZE);
+            console.log('[Dashboard] Processing', totalBatches, 'batches of', BATCH_SIZE, 'employees each');
+
             for (let i = 0; i < allEmployees.length; i += BATCH_SIZE) {
               const batch = allEmployees.slice(i, i + BATCH_SIZE);
+              const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+              console.log('[Dashboard] Processing batch', batchNum, 'of', totalBatches, '(', batch.length, 'employees)');
+
+              const batchStartTime = performance.now();
               await Promise.all(
-                batch.map(emp => 
+                batch.map(emp =>
                   employeesAPI.updateCompletionStatus(emp.id).catch(err => {
-                    console.warn(`Failed to update completion status for employee ${emp.id}:`, err);
+                    console.warn(`[Dashboard] Failed to update completion status for employee ${emp.id}:`, err);
                     return null;
                   })
                 )
               );
+              const batchEndTime = performance.now();
+              console.log('[Dashboard] Batch', batchNum, 'completed in', (batchEndTime - batchStartTime).toFixed(2), 'ms');
+
               // Reduced delay from 50ms to 10ms - minimal delay to prevent overwhelming server
               if (i + BATCH_SIZE < allEmployees.length) {
                 await new Promise(resolve => setTimeout(resolve, 10));
               }
             }
+            const completionEndTime = performance.now();
+            console.log('[Dashboard] Completion status recalculation finished in', (completionEndTime - completionStartTime).toFixed(2), 'ms');
+          } else {
+            console.warn('[Dashboard] No employees found or request failed for completion status update');
           }
         } catch (error) {
-          console.warn('Error recalculating completion status:', error);
+          console.error('[Dashboard] Error recalculating completion status:', error);
           // Continue even if recalculation fails - we'll use existing data
         }
-        
+
         // Clear cache for employees to ensure fresh data after status updates
+        console.log('[Dashboard] Clearing employees cache after completion status update...');
         clearCache('/api/employees');
-        
+
         // Now load incomplete employees with freshly calculated status
-        const incompleteFilters = { 
-          ...employeeFilters, 
+        const incompleteStartTime = performance.now();
+        console.log('[Dashboard] Loading incomplete and pending employees...');
+        const incompleteFilters = {
+          ...employeeFilters,
           data_completion_status: DATA_COMPLETION_STATUS.INCOMPLETE
         };
-        
+
         const [incompleteRes, pendingRes] = await Promise.all([
-          employeesAPI.getAll(incompleteFilters).catch(() => ({ data: { success: false, data: [] } })),
-          employeesAPI.getAll({ 
+          employeesAPI.getAll(incompleteFilters).catch((err) => {
+            console.error('[Dashboard] Failed to fetch incomplete employees:', err);
+            return { data: { success: false, data: [] } };
+          }),
+          employeesAPI.getAll({
             ...employeeFilters,
             status: 'pending'
-          }).catch(() => ({ data: { success: false, data: [] } }))
+          }).catch((err) => {
+            console.error('[Dashboard] Failed to fetch pending employees:', err);
+            return { data: { success: false, data: [] } };
+          })
         ]);
+        const incompleteEndTime = performance.now();
+        console.log('[Dashboard] Incomplete/pending employees loaded in', (incompleteEndTime - incompleteStartTime).toFixed(2), 'ms');
 
+        console.log('[Dashboard] incompleteRes:', {
+          success: incompleteRes.data.success,
+          count: incompleteRes.data.data?.length || 0
+        });
         if (incompleteRes.data.success) {
-          const filtered = (incompleteRes.data.data || []).filter(emp => 
+          const filtered = (incompleteRes.data.data || []).filter(emp =>
             !emp.status || emp.status === 'active' || emp.status === 'pending'
           );
+          console.log('[Dashboard] Setting incompleteEmployees state:', filtered.length, 'employees');
           setIncompleteEmployees(filtered);
         } else {
+          console.log('[Dashboard] incompleteRes failed, setting incompleteEmployees to empty array');
           setIncompleteEmployees([]);
         }
 
+        console.log('[Dashboard] pendingRes:', {
+          success: pendingRes.data.success,
+          count: pendingRes.data.data?.length || 0
+        });
         if (pendingRes.data.success) {
+          console.log('[Dashboard] Setting pendingEmployees state:', pendingRes.data.data.length, 'employees');
           setPendingEmployees(pendingRes.data.data || []);
         } else {
+          console.log('[Dashboard] pendingRes failed, setting pendingEmployees to empty array');
           setPendingEmployees([]);
         }
 
         // Check monthly documents and missing branch documents
         const allDocuments = documentsRes.data.data || [];
+        console.log('[Dashboard] Processing documents:', allDocuments.length, 'total documents');
+        const docProcessingStartTime = performance.now();
+
+        console.log('[Dashboard] Checking monthly documents...');
         checkMonthlyDocuments(allDocuments, branchesList);
+        console.log('[Dashboard] Monthly documents checked');
+
+        console.log('[Dashboard] Checking missing branch documents...');
         checkMissingBranchDocuments(allDocuments, branchesList);
-        
+        console.log('[Dashboard] Missing branch documents checked');
+
+        const docProcessingEndTime = performance.now();
+        console.log('[Dashboard] Document processing completed in', (docProcessingEndTime - docProcessingStartTime).toFixed(2), 'ms');
+
         // Progress calculation is now handled by DashboardProgress component (runs in parallel)
-        
+
         // Separate documents by expiry date (after branches are set)
+        console.log('[Dashboard] Scheduling separateDocumentsByExpiry (100ms delay)...');
         setTimeout(() => {
+          console.log('[Dashboard] Executing separateDocumentsByExpiry...');
           separateDocumentsByExpiry(allDocuments);
+          console.log('[Dashboard] separateDocumentsByExpiry completed');
         }, 100);
       } else if (isMainManager()) {
+        console.log('[Dashboard] Processing Main Manager results...');
         // Main manager results
         setLoadingStats(true);
         const statsRes = results[3];
         const notificationsRes = results[4];
         const usersRes = results[5];
 
+        console.log('[Dashboard] statsRes:', {
+          success: statsRes?.data?.success,
+          count: statsRes?.data?.data?.length || 0
+        });
         if (statsRes?.data?.success) {
+          console.log('[Dashboard] Setting branchStats state');
           setBranchStats(statsRes.data.data || []);
+        } else {
+          console.log('[Dashboard] statsRes failed');
         }
 
+        console.log('[Dashboard] notificationsRes:', {
+          success: notificationsRes?.data?.success,
+          count: notificationsRes?.data?.data?.length || 0
+        });
         if (notificationsRes?.data?.success) {
           const notificationsList = notificationsRes.data.data || [];
+          console.log('[Dashboard] Setting mainManagerNotifications state:', notificationsList.length, 'notifications');
           setMainManagerNotifications(notificationsList);
           // Check for new responses since last visit (async, don't await)
+          console.log('[Dashboard] Starting checkNewResponses (async)...');
           checkNewResponses(notificationsList);
+        } else {
+          console.log('[Dashboard] notificationsRes failed');
         }
 
-        setStats({
+        const statsData = {
           branches: branchesRes.data.data?.length || 0,
           employees: employeesRes.data.data?.length || 0,
           users: usersRes?.data?.data?.length || 0,
           documents: documentsRes.data.data?.length || 0,
           notifications: notificationsRes?.data?.data?.length || 0,
           loading: false,
-        });
+        };
+        console.log('[Dashboard] Setting stats state:', statsData);
+        setStats(statsData);
 
         // Check monthly documents for monitoring section
+        console.log('[Dashboard] Checking monthly documents for main manager...');
         checkMonthlyDocuments(documentsRes.data.data || [], branchesList);
+        console.log('[Dashboard] Monthly documents checked');
+
         // Clear branch manager specific alerts
+        console.log('[Dashboard] Clearing branch manager specific alerts...');
         setIncompleteEmployees([]);
         setMissingBranchDocumentAlerts([]);
         setDocumentsWithExpiry([]);
         setDocumentsWithoutExpiry([]);
         setLoadingStats(false);
+        console.log('[Dashboard] Main Manager processing completed');
       } else {
+        console.log('[Dashboard] Setting stats for branch manager...');
         // Set stats for branch managers (main manager stats set above)
-        setStats({
+        const branchStatsData = {
           branches: branchesRes.data.data?.length || 0,
           employees: employeesRes.data.data?.length || 0,
           users: 0, // Branch managers don't see users count
           documents: documentsRes.data.data?.length || 0,
           notifications: results[4]?.data?.data?.length || 0,
           loading: false,
-        });
+        };
+        console.log('[Dashboard] Setting stats state:', branchStatsData);
+        setStats(branchStatsData);
       }
+
+      const loadEndTime = performance.now();
+      const totalLoadTime = loadEndTime - loadStartTime;
+      console.log('[Dashboard] ========== loadStats COMPLETED ==========');
+      console.log('[Dashboard] Total load time:', totalLoadTime.toFixed(2), 'ms');
+      console.log('[Dashboard] Timestamp:', new Date().toISOString());
     } catch (error) {
-      console.error('Error loading stats:', error);
+      const loadEndTime = performance.now();
+      const totalLoadTime = loadEndTime - loadStartTime;
+      console.error('[Dashboard] ========== loadStats ERROR ==========');
+      console.error('[Dashboard] Error loading stats:', error);
+      console.error('[Dashboard] Error details:', {
+        message: error.message,
+        stack: error.stack,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      console.error('[Dashboard] Failed after', totalLoadTime.toFixed(2), 'ms');
       setStats((prev) => ({ ...prev, loading: false }));
     }
   }, [user, isMainManager]); // Dependencies: user and isMainManager from context
 
   // Load stats on mount and when navigating back to Dashboard
   useEffect(() => {
+    console.log('[Dashboard] useEffect triggered - pathname:', location.pathname);
+    console.log('[Dashboard] Calling loadStats...');
     loadStats();
   }, [location.pathname, loadStats]); // Reload when route changes (including returning to Dashboard)
 
@@ -276,22 +449,26 @@ const Dashboard = () => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
+        console.log('[Dashboard] Page became visible, reloading stats...');
         // Reload data when page becomes visible to ensure fresh data
         loadStats();
+      } else {
+        console.log('[Dashboard] Page became hidden');
       }
     };
 
     const handleFocus = () => {
+      console.log('[Dashboard] Window regained focus, reloading stats...');
       // Reload data when window regains focus
       loadStats();
     };
 
     // Listen for branch info updates from BranchInfo page
     const handleBranchInfoUpdate = () => {
+      console.log('[Dashboard] Branch info updated event received, reloading stats...');
       // Clear cache and reload when branch info is updated
       clearCache('/api/branches');
       clearCache('/api/branch-statistics');
-      clearCache('/api/alerts');
       loadStats();
     };
 
@@ -309,38 +486,53 @@ const Dashboard = () => {
   // Check for new responses since last visit
   // Performance Optimization: Limit to first 20 notifications to prevent N+1 query problem
   const checkNewResponses = useCallback(async (notificationsList) => {
+    const checkStartTime = performance.now();
+    console.log('[Dashboard] checkNewResponses STARTED');
+    console.log('[Dashboard] Notifications list length:', notificationsList.length);
     try {
       const lastVisitTime = localStorage.getItem('notifications_last_visit');
+      console.log('[Dashboard] Last visit time:', lastVisitTime);
       if (!lastVisitTime || notificationsList.length === 0) {
         // First time or no notifications, no new responses to show
+        console.log('[Dashboard] No last visit time or no notifications, setting count to 0');
         setNewResponsesCount(0);
         return;
       }
-      
+
       const lastVisit = new Date(lastVisitTime);
       let newCount = 0;
-      
+
       // Performance Optimization: Limit to first 20 notifications to prevent excessive API calls
       // Most recent notifications are more likely to have new responses
       const MAX_NOTIFICATIONS_TO_CHECK = 20;
       const notificationsToCheck = notificationsList.slice(0, MAX_NOTIFICATIONS_TO_CHECK);
-      
+      console.log('[Dashboard] Checking', notificationsToCheck.length, 'notifications (max', MAX_NOTIFICATIONS_TO_CHECK, ')');
+
       // Early return if no notifications to check
       if (notificationsToCheck.length === 0) {
+        console.log('[Dashboard] No notifications to check, setting count to 0');
         setNewResponsesCount(0);
         return;
       }
-      
+
       // Fetch details for limited notifications to get actual responses with timestamps
       // Use Promise.allSettled to handle individual failures gracefully
-      const notificationDetailsPromises = notificationsToCheck.map(notification => 
-        notificationsAPI.getById(notification.id).catch(() => null)
+      console.log('[Dashboard] Fetching notification details...');
+      const detailsStartTime = performance.now();
+      const notificationDetailsPromises = notificationsToCheck.map(notification =>
+        notificationsAPI.getById(notification.id).catch((err) => {
+          console.warn('[Dashboard] Failed to fetch notification', notification.id, ':', err);
+          return null;
+        })
       );
-      
+
       const detailsResults = await Promise.allSettled(notificationDetailsPromises);
-      
+      const detailsEndTime = performance.now();
+      console.log('[Dashboard] Notification details fetched in', (detailsEndTime - detailsStartTime).toFixed(2), 'ms');
+
       // Check each notification's responses for new ones
-      detailsResults.forEach((result) => {
+      console.log('[Dashboard] Checking responses for new ones...');
+      detailsResults.forEach((result, index) => {
         // Handle Promise.allSettled result structure
         const response = result.status === 'fulfilled' ? result.value : null;
         if (response && response.data && response.data.success && response.data.data) {
@@ -351,19 +543,24 @@ const Dashboard = () => {
                 const responseTime = new Date(responseItem.responded_at);
                 if (responseTime > lastVisit) {
                   newCount++;
+                  console.log('[Dashboard] Found new response for notification', notification.id, 'at', responseItem.responded_at);
                 }
               }
             });
           }
+        } else if (result.status === 'rejected') {
+          console.warn('[Dashboard] Notification', index, 'fetch was rejected:', result.reason);
         }
       });
-      
+
+      console.log('[Dashboard] Total new responses found:', newCount);
       setNewResponsesCount(newCount);
+      const checkEndTime = performance.now();
+      console.log('[Dashboard] checkNewResponses COMPLETED in', (checkEndTime - checkStartTime).toFixed(2), 'ms');
     } catch (error) {
-      // Error handling - don't log in production (will be removed by esbuild)
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('Error checking new responses:', error);
-      }
+      const checkEndTime = performance.now();
+      console.error('[Dashboard] checkNewResponses ERROR after', (checkEndTime - checkStartTime).toFixed(2), 'ms');
+      console.error('[Dashboard] Error checking new responses:', error);
       setNewResponsesCount(0);
     }
   }, []);
@@ -388,7 +585,7 @@ const Dashboard = () => {
     // Helper function to check if document was uploaded for current month
     const isUploadedForCurrentMonth = (uploadDate, currentDate) => {
       return uploadDate.getFullYear() === currentDate.getFullYear() &&
-             uploadDate.getMonth() === currentDate.getMonth();
+        uploadDate.getMonth() === currentDate.getMonth();
     };
 
     // Get current date info
@@ -399,8 +596,8 @@ const Dashboard = () => {
     const isDay25 = currentDay === 25;
 
     // Get branches to check
-    const branchesToCheck = isMainManager() 
-      ? branchesList 
+    const branchesToCheck = isMainManager()
+      ? branchesList
       : branchesList.filter(b => b.id === user?.branch_id);
 
     for (const branch of branchesToCheck) {
@@ -420,7 +617,7 @@ const Dashboard = () => {
             documentLabel: typeLabels[docType],
             status: status,
             lastUploadDate: null,
-            message: isLastDayOfMonth 
+            message: isLastDayOfMonth
               ? `تنبيه عاجل:  ${typeLabels[docType]} - يجب رفعه اليوم (آخر يوم في الشهر)`
               : ` ${typeLabels[docType]} - يجب رفعه`
           });
@@ -461,26 +658,26 @@ const Dashboard = () => {
               });
             } else if (currentDay > 25) {
               // After day 25 but not last day - must do
-            alerts.push({
-              branchId: branch.id,
-              branchName: branch.branch_name,
-              documentType: docType,
-              documentLabel: typeLabels[docType],
-              status: 'must_do',
-              lastUploadDate: uploadDate,
+              alerts.push({
+                branchId: branch.id,
+                branchName: branch.branch_name,
+                documentType: docType,
+                documentLabel: typeLabels[docType],
+                status: 'must_do',
+                lastUploadDate: uploadDate,
                 message: ` ${typeLabels[docType]} لم يتم رفعه لهذا الشهر - يجب رفعه قبل نهاية الشهر (آخر يوم: ${lastDayOfMonth})`
-            });
+              });
             } else {
               // Before day 25 - preferred
-            alerts.push({
-              branchId: branch.id,
-              branchName: branch.branch_name,
-              documentType: docType,
-              documentLabel: typeLabels[docType],
-              status: 'preferred',
-              lastUploadDate: uploadDate,
+              alerts.push({
+                branchId: branch.id,
+                branchName: branch.branch_name,
+                documentType: docType,
+                documentLabel: typeLabels[docType],
+                status: 'preferred',
+                lastUploadDate: uploadDate,
                 message: ` ${typeLabels[docType]} يجب رفعه قبل نهاية الشهر (آخر يوم: ${lastDayOfMonth})`
-            });
+              });
             }
           }
           // If uploaded for current month, no alert needed
@@ -507,7 +704,7 @@ const Dashboard = () => {
     if (monthlyTypes.includes(docType)) {
       return true;
     }
-    
+
     // Documents that typically require expiry dates
     const expiryRequiredTypes = [
       'license',           // الترخيص - usually has expiry
@@ -521,7 +718,7 @@ const Dashboard = () => {
       'security_contract', // عقد الامن و السالامة - usually has expiry
       'registration'      // السجل التجاري - may have expiry
     ];
-    
+
     return expiryRequiredTypes.includes(docType);
   };
 
@@ -529,7 +726,7 @@ const Dashboard = () => {
     const alertsWithExpiry = [];
     const alertsWithoutExpiry = [];
     const seenAlerts = new Set(); // To prevent duplicates
-    
+
     // Get document type labels from branch document type labels
     // This ensures consistency with the rule system
     const typeLabels = {
@@ -562,27 +759,27 @@ const Dashboard = () => {
     };
 
     // Get branches to check
-    const branchesToCheck = isMainManager() 
-      ? branchesList 
+    const branchesToCheck = isMainManager()
+      ? branchesList
       : branchesList.filter(b => b.id === user?.branch_id);
 
     for (const branch of branchesToCheck) {
       const branchType = branch.branch_type; // 'school' or 'healthcare_center'
-      
+
       // Use centralized helper function to get required documents (excluding monthly ones)
       const requiredDocTypes = getRequiredBranchDocuments(branchType);
       const monthlyTypes = getMonthlyRequiredBranchDocuments();
-      
+
       // Filter out monthly documents (they are handled separately)
       const nonMonthlyRequired = requiredDocTypes.filter(docType => !monthlyTypes.includes(docType));
-      
+
       for (const docType of nonMonthlyRequired) {
         // Create unique key to prevent duplicates
         const alertKey = `${branch.id}-${docType}`;
         if (seenAlerts.has(alertKey)) {
           continue; // Skip if already added
         }
-        
+
         // Check if this document type exists for this branch
         const branchDocs = documents.filter(
           doc => doc.branch_id === branch.id && doc.document_type === docType && doc.is_active !== false
@@ -598,14 +795,14 @@ const Dashboard = () => {
             documentLabel: typeLabels[docType] || docType,
             message: `مستند ${typeLabels[docType] || docType} مفقود - يجب رفعه`
           };
-          
+
           // Check if document requires expiry date
           if (requiresExpiryDate(docType)) {
             alertsWithExpiry.push(alert);
           } else {
             alertsWithoutExpiry.push(alert);
           }
-          
+
           seenAlerts.add(alertKey);
         }
       }
@@ -617,17 +814,17 @@ const Dashboard = () => {
         // Priority order: 1) Monthly (highest), 2) Student/Cadre, 3) Others
         const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
         const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
-        
+
         const aIsMonthly = monthlyTypes.includes(a.documentType);
         const bIsMonthly = monthlyTypes.includes(b.documentType);
         if (aIsMonthly && !bIsMonthly) return -1;
         if (!aIsMonthly && bIsMonthly) return 1;
-        
+
         const aIsStudentCadre = studentCadreTypes.includes(a.documentType);
         const bIsStudentCadre = studentCadreTypes.includes(b.documentType);
         if (aIsStudentCadre && !bIsStudentCadre) return -1;
         if (!aIsStudentCadre && bIsStudentCadre) return 1;
-        
+
         // Then sort by branch name, then by document type
         const branchCompare = a.branchName.localeCompare(b.branchName, 'ar');
         if (branchCompare !== 0) return branchCompare;
@@ -645,7 +842,7 @@ const Dashboard = () => {
   // Separate documents by expiry date
   const separateDocumentsByExpiry = useCallback((documents) => {
     if (isMainManager()) return;
-    
+
     const branchId = user?.branch_id;
     if (!branchId || branches.length === 0) return;
 
@@ -670,10 +867,10 @@ const Dashboard = () => {
         const expiryDate = new Date(doc.expiry_date);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        
+
         // Only show if expired or expiring soon (within 90 days)
         const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-        
+
         if (daysUntilExpiry <= 90) {
           const typeLabels = {
             license: 'الترخيص',
@@ -710,11 +907,11 @@ const Dashboard = () => {
             expiryDate: expiryDate,
             daysUntilExpiry: daysUntilExpiry,
             isExpired: daysUntilExpiry < 0,
-            message: daysUntilExpiry < 0 
+            message: daysUntilExpiry < 0
               ? `مستند ${typeLabels[doc.document_type] || doc.document_type} منتهي الصلاحية منذ ${Math.abs(daysUntilExpiry)} يوم`
               : daysUntilExpiry === 0
-              ? `مستند ${typeLabels[doc.document_type] || doc.document_type} ينتهي اليوم`
-              : `مستند ${typeLabels[doc.document_type] || doc.document_type} سينتهي خلال ${daysUntilExpiry} يوم`
+                ? `مستند ${typeLabels[doc.document_type] || doc.document_type} ينتهي اليوم`
+                : `مستند ${typeLabels[doc.document_type] || doc.document_type} سينتهي خلال ${daysUntilExpiry} يوم`
           });
         }
       } else {
@@ -824,7 +1021,7 @@ const Dashboard = () => {
     <div className="dashboard">
       <h1>لوحة التحكم</h1>
       <p className="welcome-message">
-        {isMainManager() 
+        {isMainManager()
           ? `مرحباً، ${user?.full_name || user?.username}!`
           : `${branches.find(b => b.id === user?.branch_id)?.branch_name || 'غير محدد'}`
         }
@@ -854,23 +1051,23 @@ const Dashboard = () => {
                 seen: { text: 'شوهد', color: '#9E9E9E' }
               };
               const currentResponse = responseLabels[notification.response_status] || null;
-              
+
               return (
-                <div 
-                  key={notification.id} 
+                <div
+                  key={notification.id}
                   className={`notification-item ${notification.response_status ? 'has-response' : 'no-response'}`}
                   style={{ borderRight: `4px solid ${importanceColors[notification.importance_level] || '#FF9800'}` }}
                 >
                   <div className="notification-header-dashboard">
                     <div className="notification-importance-dashboard">
-                      <span 
+                      <span
                         className="importance-badge-dashboard"
                         style={{ backgroundColor: importanceColors[notification.importance_level] || '#FF9800' }}
                       >
                         {importanceLabels[notification.importance_level] || 'هام و غير عاجل'}
                       </span>
                       {currentResponse && (
-                        <span 
+                        <span
                           className="response-badge-dashboard"
                           style={{ color: currentResponse.color }}
                         >
@@ -899,7 +1096,7 @@ const Dashboard = () => {
                         <span style={{ fontSize: '16px' }}>📎</span>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 'bold', marginBottom: '5px', fontSize: '14px' }}>
-                             مرفق: {notification.attachment_name || 'مرفق'}
+                            مرفق: {notification.attachment_name || 'مرفق'}
                           </div>
                           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                             <a
@@ -1019,7 +1216,7 @@ const Dashboard = () => {
 
       {/* Progress Bar - Only for branch managers */}
       {!isMainManager() && branchInfo && (
-        <DashboardProgress 
+        <DashboardProgress
           employees={employeesList}
           documents={documentsList}
           branch={branchInfo}
@@ -1039,11 +1236,11 @@ const Dashboard = () => {
             </div>
             <div className="alert-card-body">
               <p className="alert-message">
-                {!branchInfo.phone_number && !branchInfo.email 
+                {!branchInfo.phone_number && !branchInfo.email
                   ? 'يرجى إكمال معلومات الفرع (رقم الجوال والإيميل)'
-                  : !branchInfo.phone_number 
-                  ? 'يرجى إضافة رقم جوال الفرع'
-                  : 'يرجى إضافة إيميل الفرع'
+                  : !branchInfo.phone_number
+                    ? 'يرجى إضافة رقم جوال الفرع'
+                    : 'يرجى إضافة إيميل الفرع'
                 }
               </p>
             </div>
@@ -1061,7 +1258,7 @@ const Dashboard = () => {
         // Combine all documents that require expiry dates (no duplicates)
         const seenDocsWithExpiry = new Set();
         const allDocsWithExpiry = [];
-        
+
         // 1. Add uploaded documents that are expiring soon
         documentsWithExpiry.forEach(doc => {
           const key = `${doc.branchId}-${doc.documentType}`;
@@ -1074,7 +1271,7 @@ const Dashboard = () => {
             });
           }
         });
-        
+
         // 2. Add monthly document alerts (must be uploaded monthly)
         monthlyDocumentAlerts.forEach(alert => {
           const key = `${alert.branchId}-${alert.documentType}`;
@@ -1087,7 +1284,7 @@ const Dashboard = () => {
             });
           }
         });
-        
+
         // 3. Add missing documents that require expiry dates
         missingBranchDocumentAlertsWithExpiry.forEach(alert => {
           const key = `${alert.branchId}-${alert.documentType}`;
@@ -1100,7 +1297,7 @@ const Dashboard = () => {
             });
           }
         });
-        
+
         // Sort: critical first, then must_do, then preferred
         allDocsWithExpiry.sort((a, b) => {
           const statusOrder = { critical: 0, must_do: 1, preferred: 2 };
@@ -1109,9 +1306,9 @@ const Dashboard = () => {
           if (aOrder !== bOrder) return aOrder - bOrder;
           return (a.documentLabel || '').localeCompare((b.documentLabel || ''), 'ar');
         });
-        
+
         if (allDocsWithExpiry.length === 0) return null;
-        
+
         return (
           <div className="dashboard-alert-section priority-2">
             <h2 className="dashboard-section-title">
@@ -1122,7 +1319,7 @@ const Dashboard = () => {
             <p className="section-description" style={{ color: '#666', marginBottom: '15px', fontSize: '14px' }}>
               المستندات التي تتطلب تاريخ انتهاء أو تحديث شهري/سنوي
             </p>
-            
+
             {/* Critical notice for monthly documents if any are critical */}
             {allDocsWithExpiry.some(a => a.status === 'critical') && (
               <div className="critical-notice" style={{
@@ -1138,26 +1335,24 @@ const Dashboard = () => {
                 </strong>
               </div>
             )}
-            
+
             <div className="alerts-container">
               {allDocsWithExpiry.map((doc, index) => (
-                <div 
+                <div
                   key={`expiry-${doc.branchId || 'unknown'}-${doc.documentType}-${index}`}
-                  className={`alert-card ${
-                    doc.status === 'critical' ? 'alert-critical' : 
+                  className={`alert-card ${doc.status === 'critical' ? 'alert-critical' :
                     doc.status === 'must_do' ? 'alert-must-do' : 'alert-warning'
-                  }`}
+                    }`}
                 >
                   <div className="alert-header">
-                    <span className={`alert-badge ${
-                      doc.status === 'critical' ? 'badge-critical' : 
+                    <span className={`alert-badge ${doc.status === 'critical' ? 'badge-critical' :
                       doc.status === 'must_do' ? 'badge-danger' : 'badge-warning'
-                    }`}>
-                      {doc.alertType === 'expiring' 
+                      }`}>
+                      {doc.alertType === 'expiring'
                         ? (doc.isExpired ? 'منتهي الصلاحية' : 'ينتهي قريباً')
                         : doc.alertType === 'monthly'
-                        ? (doc.status === 'critical' ? 'عاجل جداً' : 'مطلوب شهرياً')
-                        : 'مستند مفقود'}
+                          ? (doc.status === 'critical' ? 'عاجل جداً' : 'مطلوب شهرياً')
+                          : 'مستند مفقود'}
                     </span>
                   </div>
                   <div className="alert-body">
@@ -1178,12 +1373,12 @@ const Dashboard = () => {
                     )}
                   </div>
                   <div className="alert-actions">
-                    <Link 
+                    <Link
                       to={`/branch-documents?branch_id=${doc.branchId}&document_type=${doc.documentType}`}
                       className={`btn-alert ${doc.status === 'critical' ? 'btn-critical' : 'btn-important'}`}
                     >
-                      {doc.alertType === 'expiring' && doc.isExpired ? 'تجديد المستند الآن' : 
-                       doc.alertType === 'missing' ? 'رفع المستند' : 'عرض المستند'}
+                      {doc.alertType === 'expiring' && doc.isExpired ? 'تجديد المستند الآن' :
+                        doc.alertType === 'missing' ? 'رفع المستند' : 'عرض المستند'}
                     </Link>
                   </div>
                 </div>
@@ -1222,7 +1417,7 @@ const Dashboard = () => {
                       </td>
                       <td>{employee.occupation || '-'}</td>
                       <td>
-                        <Link 
+                        <Link
                           to={`/employees/${employee.id}`}
                           className="btn-alert btn-important"
                           style={{ padding: '4px 10px', fontSize: '11px' }}
@@ -1237,9 +1432,9 @@ const Dashboard = () => {
             </table>
             {incompleteEmployees.length > 10 && (
               <div style={{ marginTop: '15px', textAlign: 'center' }}>
-                <Link 
-                  to={`/employees?data_completion_status=${DATA_COMPLETION_STATUS.INCOMPLETE}`} 
-                  className="btn-alert btn-important" 
+                <Link
+                  to={`/employees?data_completion_status=${DATA_COMPLETION_STATUS.INCOMPLETE}`}
+                  className="btn-alert btn-important"
                   style={{ padding: '8px 16px', fontSize: '13px' }}
                 >
                   عرض جميع الموظفين غير مكتملي البيانات ({incompleteEmployees.length})
@@ -1255,7 +1450,7 @@ const Dashboard = () => {
         // Only show documents that DON'T require expiry dates (static documents)
         const seenDocsWithoutExpiry = new Set();
         const allDocsWithoutExpiry = [];
-        
+
         // Add missing documents that don't require expiry dates
         missingBranchDocumentAlertsWithoutExpiry.forEach(alert => {
           const key = `${alert.branchId}-${alert.documentType}`;
@@ -1289,7 +1484,7 @@ const Dashboard = () => {
             {/* Unified documents container */}
             <div className="alerts-container">
               {allDocsWithoutExpiry.map((alert, index) => (
-                <div 
+                <div
                   key={`no-expiry-${alert.branchId || 'unknown'}-${alert.documentType || index}-${index}`}
                   className="alert-card alert-must-do"
                 >
@@ -1302,7 +1497,7 @@ const Dashboard = () => {
                     <p className="alert-message">{alert.message}</p>
                   </div>
                   <div className="alert-actions">
-                    <Link 
+                    <Link
                       to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
                       className="btn-alert btn-important"
                     >
@@ -1346,7 +1541,7 @@ const Dashboard = () => {
               <div className="stat-number" style={{ position: 'relative' }}>
                 {stats.notifications}
                 {newResponsesCount > 0 && (
-                  <span 
+                  <span
                     style={{
                       position: 'absolute',
                       top: '-8px',
@@ -1370,17 +1565,17 @@ const Dashboard = () => {
                 )}
               </div>
               {newResponsesCount > 0 && (
-                <div style={{ 
-                  fontSize: '12px', 
-                  color: '#F44336', 
+                <div style={{
+                  fontSize: '12px',
+                  color: '#F44336',
                   marginBottom: '8px',
                   fontWeight: '500'
                 }}>
                   {newResponsesCount} رد جديد منذ آخر زيارة
                 </div>
               )}
-              <Link 
-                to="/notify-branches" 
+              <Link
+                to="/notify-branches"
                 className="stat-link btn-stat-link"
                 onClick={() => {
                   // Update last visit time when clicking the link
@@ -1398,45 +1593,10 @@ const Dashboard = () => {
       {/* Branch Statistics Summary - Main Manager Only */}
       {isMainManager() && branchStats && branchStats.length > 0 && (
         <div className="branch-stats-summary">
-          <h2>ملخص إحصائيات الفروع</h2>
-          <div className="compact-stats-graph">
-            <div className="graph-item">
-              <div className="graph-label">الفروع النشطة</div>
-              <div className="graph-bar-container">
-                <div 
-                  className="graph-bar operational-bar"
-                  style={{ 
-                    width: `${(branchStats.filter(s => s.is_operational).length / branchStats.length) * 100}%` 
-                  }}
-                >
-                  <span className="graph-bar-value">
-                    {branchStats.filter(s => s.is_operational).length} / {branchStats.length}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="graph-item">
-              <div className="graph-label">متوسط نسبة الإكمال</div>
-              <div className="graph-bar-container">
-                <div 
-                  className="graph-bar completion-bar"
-                  style={{ 
-                    width: `${Math.round(
-                      branchStats.reduce((sum, s) => sum + s.completion_percentage, 0) /
-                        branchStats.length
-                    )}%` 
-                  }}
-                >
-                  <span className="graph-bar-value">
-                    {Math.round(
-                      branchStats.reduce((sum, s) => sum + s.completion_percentage, 0) /
-                        branchStats.length
-                    )}%
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <BranchesOverallProgressChart
+            statistics={branchStats}
+            documentsList={documentsList}
+          />
           <div style={{ marginTop: '15px' }}>
             <Link to="/branch-statistics" className="btn btn-primary">
               عرض التفاصيل الكاملة →

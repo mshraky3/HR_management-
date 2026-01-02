@@ -9,6 +9,7 @@ import { employeesAPI, branchesAPI, documentsAPI, clearCache } from '../utils/ap
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import HijriDatePicker from '../components/HijriDatePicker';
+import BranchBadge from '../components/BranchBadge';
 import NameInput from '../components/NameInput';
 import NationalitySelect from '../components/NationalitySelect';
 import ReligionSelect from '../components/ReligionSelect';
@@ -44,13 +45,14 @@ import {
   getJobTitlesByBranchType,
   DATA_COMPLETION_STATUS
 } from '../utils/employeeConstants';
-import { 
-  gregorianToHijri, 
-  hijriToGregorian, 
-  formatHijriToString 
+import {
+  gregorianToHijri,
+  hijriToGregorian,
+  formatHijriToString
 } from '../utils/dateConverters';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 // import './TablePage.css';
+import './Employees.css';
 
 const Employees = () => {
   const navigate = useNavigate();
@@ -68,6 +70,7 @@ const Employees = () => {
   const [formStep, setFormStep] = useState(1); // 1: branch type selection, 2: employee form
   const [selectedBranchType, setSelectedBranchType] = useState(null); // 'healthcare_center' or 'school'
   const [filterIncomplete, setFilterIncomplete] = useState(false); // Filter for incomplete employees
+  const [focusEmployee, setFocusEmployee] = useState(null); // Employee to highlight when navigated from other pages
   const [searchFilters, setSearchFilters] = useState({
     search_name: '',
     search_id: '',
@@ -178,6 +181,20 @@ const Employees = () => {
         console.error('Error loading employee for edit:', error);
       });
       // Clear the state
+      window.history.replaceState({}, document.title);
+    }
+
+    // Check if we need to focus (highlight) an employee from location state
+    if (location.state?.focusEmployeeId) {
+      const focusId = location.state.focusEmployeeId;
+      employeesAPI.getById(focusId).then(response => {
+        if (response.data.success) {
+          setFocusEmployee(response.data.data);
+        }
+      }).catch(error => {
+        console.error('Error loading employee for focus:', error);
+      });
+      // Clear the state so repeated navigation doesn't re-trigger
       window.history.replaceState({}, document.title);
     }
   }, []);
@@ -293,11 +310,11 @@ const Employees = () => {
   const loadEmployees = async () => {
     try {
       setLoading(true);
-      
+
       // Clear cache to ensure fresh data (especially completion status)
       // This ensures we always get the latest data from the backend without using cached responses
       clearCache('/api/employees');
-      
+
       const filters = { is_active: true };
 
       // Only show active or pending employees (archived employees should only appear in archive)
@@ -955,7 +972,7 @@ const Employees = () => {
 
         // Prepare uploads
         const uploadsToPerform = [];
-        
+
         Object.entries(documents).forEach(([documentType, fileOrFiles]) => {
           if (!fileOrFiles) return;
           if (Array.isArray(fileOrFiles) && fileOrFiles.length === 0) return;
@@ -1022,7 +1039,7 @@ const Employees = () => {
 
         // Prepare uploads
         const uploadsToPerform = [];
-        
+
         Object.entries(documents).forEach(([documentType, fileOrFiles]) => {
           if (!fileOrFiles) return;
           if (Array.isArray(fileOrFiles) && fileOrFiles.length === 0) return;
@@ -1128,10 +1145,10 @@ const Employees = () => {
     if (!existing || existing.length === 0) return null;
 
     return (
-      <div style={{ 
-        marginBottom: '12px', 
-        padding: '12px 14px', 
-        background: '#e7f3ff', 
+      <div style={{
+        marginBottom: '12px',
+        padding: '12px 14px',
+        background: '#e7f3ff',
         border: '1px solid #b3d9ff',
         borderRadius: '8px',
         fontSize: '13px',
@@ -1142,10 +1159,10 @@ const Employees = () => {
           <span>يوجد مستند مرفوع مسبقاً</span>
         </div>
         {existing.map((doc, idx) => (
-          <div key={doc.id || idx} style={{ 
-            marginTop: '6px', 
-            padding: '8px 10px', 
-            background: '#fff', 
+          <div key={doc.id || idx} style={{
+            marginTop: '6px',
+            padding: '8px 10px',
+            background: '#fff',
             borderRadius: '6px',
             border: '1px solid #d1ecf1',
             fontSize: '12px',
@@ -1213,15 +1230,15 @@ const Employees = () => {
       'speech_therapy_course', 'physical_therapy_course', 'medical_disclosure_form',
       'speech_therapy_70_hours_course', 'therapy_40_hours_course', 'medical_insurance'
     ];
-    
-    if (filesToCheck.length > 0 && 
-        singleFileDocumentTypes.includes(documentType) &&
-        existingDocuments[documentType] && 
-        existingDocuments[documentType].length > 0) {
+
+    if (filesToCheck.length > 0 &&
+      singleFileDocumentTypes.includes(documentType) &&
+      existingDocuments[documentType] &&
+      existingDocuments[documentType].length > 0) {
       const existingCount = existingDocuments[documentType].length;
       const message = `يوجد ${existingCount} مستند ${existingCount > 1 ? 'موجودة' : 'موجود'} مسبقاً لهذا النوع.\n\n` +
-                     `رفع مستند جديد سيحذف المستند(ات) الموجودة.\n\n` +
-                     `هل تريد المتابعة؟`;
+        `رفع مستند جديد سيحذف المستند(ات) الموجودة.\n\n` +
+        `هل تريد المتابعة؟`;
       if (!confirm(message)) {
         // Reset the file input
         if (inputElement) {
@@ -1236,7 +1253,7 @@ const Employees = () => {
     if (filesToCheck.length > 0) {
       for (const file of filesToCheck) {
         if (!file) continue;
-        
+
         // Validate file size (1MB max per file)
         const maxSize = 1 * 1024 * 1024; // 1MB in bytes
         if (file.size > maxSize) {
@@ -1283,19 +1300,19 @@ const Employees = () => {
     // Special handling for multiple file fields
     if (documentType === 'experience_certificate' || documentType === 'additional_courses') {
       const fileToAdd = isEvent ? filesToCheck[0] : fileOrFiles;
-      
+
       setDocuments(prev => {
         const currentFiles = Array.isArray(prev[documentType]) ? prev[documentType] : [];
-        
+
         // If fileOrFiles is null, it might mean clearing - but for arrays we usually remove specific items
         // If we want to add a new file:
         if (fileToAdd && !Array.isArray(fileToAdd)) {
           // Check limit (max 5)
           if (currentFiles.length >= 5) {
             showWarning('لا يمكن إضافة أكثر من 5 ملفات');
-             if (isEvent && inputElement) {
-                inputElement.value = '';
-             }
+            if (isEvent && inputElement) {
+              inputElement.value = '';
+            }
             return prev;
           }
           return {
@@ -1303,17 +1320,17 @@ const Employees = () => {
             [documentType]: [...currentFiles, fileToAdd]
           };
         }
-        
+
         // If passed an array (bulk set) -> replace
         if (Array.isArray(fileToAdd)) {
-           return {
+          return {
             ...prev,
             [documentType]: fileToAdd
           };
         }
 
         // If null/undefined -> do nothing or clear? Assuming we add via this function
-        return prev; 
+        return prev;
       });
       return;
     }
@@ -1326,15 +1343,15 @@ const Employees = () => {
   };
 
   const removeDocument = (documentType, index) => {
-     setDocuments(prev => {
-        const currentFiles = Array.isArray(prev[documentType]) ? prev[documentType] : [];
-        const newFiles = [...currentFiles];
-        newFiles.splice(index, 1);
-        return {
-          ...prev,
-          [documentType]: newFiles
-        };
-     });
+    setDocuments(prev => {
+      const currentFiles = Array.isArray(prev[documentType]) ? prev[documentType] : [];
+      const newFiles = [...currentFiles];
+      newFiles.splice(index, 1);
+      return {
+        ...prev,
+        [documentType]: newFiles
+      };
+    });
   };
 
   const handleEdit = useCallback((employee) => {
@@ -1743,7 +1760,7 @@ const Employees = () => {
                     .filter(b => b.is_active)
                     .map(branch => (
                       <option key={branch.id} value={branch.id}>
-                        {branch.branch_name}
+                        <BranchBadge branch={branch} /> {branch.branch_name}
                       </option>
                     ))}
                 </select>
@@ -1757,6 +1774,25 @@ const Employees = () => {
                   مسح البحث
                 </button>
               )}
+            </div>
+          )}
+
+          {focusEmployee && (
+            <div className="focus-employee-card">
+              <div className="focus-employee-info">
+                <div className="focus-employee-name">{focusEmployee.first_name} {focusEmployee.second_name} {focusEmployee.third_name} {focusEmployee.fourth_name}</div>
+                <div className="focus-employee-meta">رقم الهوية/الإقامة: {focusEmployee.id_or_residency_number || '-'}</div>
+                <div className="focus-employee-meta">الفرع: {branchesMap.get(focusEmployee.branch_id)?.branch_name || focusEmployee.branch_id}</div>
+              </div>
+
+              <div className="focus-employee-actions">
+                <button onClick={() => handleViewDetails(focusEmployee)} className="btn btn-primary btn-sm">عرض التفاصيل</button>
+                <button onClick={() => handleEdit(focusEmployee)} className="btn btn-primary btn-sm">تعديل</button>
+                {isMainManager() && (
+                  <button onClick={() => handleDelete(focusEmployee.id)} className="btn btn-danger btn-sm">حذف</button>
+                )}
+                <button onClick={() => setFocusEmployee(null)} className="btn btn-secondary btn-sm">إخفاء</button>
+              </div>
             </div>
           )}
 
@@ -1790,7 +1826,7 @@ const Employees = () => {
                         <td>{employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}</td>
                         <td>{employee.occupation || '-'}</td>
                         <td>{employee.nationality}</td>
-                        {isMainManager() && <td>{branch ? branch.branch_name : employee.branch_id}</td>}
+                        {isMainManager() && <td>{branch ? (<><BranchBadge branch={branch} /> {branch.branch_name}</>) : employee.branch_id}</td>}
                         <td>
                           <span className={`badge ${isComplete ? 'badge-success' : 'badge-warning'}`}>
                             {isComplete ? 'مكتمل' : 'غير مكتمل'}
@@ -2337,11 +2373,11 @@ const Employees = () => {
                           const newQualification = e.target.value;
                           const basicEducationLevels = ['ابتدائي', 'متوسط', 'ثانوي', 'غير متعلم'];
                           const isBasic = basicEducationLevels.includes(newQualification);
-                          
+
                           // If switching to basic education, clear specialization, graduation_year, and university_gpa
                           if (isBasic) {
-                            setFormData({ 
-                              ...formData, 
+                            setFormData({
+                              ...formData,
                               educational_qualification: newQualification,
                               specialization: '',
                               graduation_year: '',
@@ -2607,10 +2643,10 @@ const Employees = () => {
                             <div className="form-group col-3">
                               <label>شهادة الخبرة (يمكن إضافة حتى 5 ملفات)</label>
                               {existingDocuments.experience_certificate && existingDocuments.experience_certificate.length > 0 && (
-                                <div style={{ 
-                                  marginBottom: '12px', 
-                                  padding: '12px 14px', 
-                                  background: '#e7f3ff', 
+                                <div style={{
+                                  marginBottom: '12px',
+                                  padding: '12px 14px',
+                                  background: '#e7f3ff',
                                   border: '1px solid #b3d9ff',
                                   borderRadius: '8px',
                                   fontSize: '13px',
@@ -2621,10 +2657,10 @@ const Employees = () => {
                                     <span>يوجد {existingDocuments.experience_certificate.length} مستند مرفوع مسبقاً</span>
                                   </div>
                                   {existingDocuments.experience_certificate.map((doc, idx) => (
-                                    <div key={doc.id || idx} style={{ 
-                                      marginTop: '6px', 
-                                      padding: '8px 10px', 
-                                      background: '#fff', 
+                                    <div key={doc.id || idx} style={{
+                                      marginTop: '6px',
+                                      padding: '8px 10px',
+                                      background: '#fff',
                                       borderRadius: '6px',
                                       border: '1px solid #d1ecf1',
                                       fontSize: '12px',
@@ -2670,10 +2706,10 @@ const Employees = () => {
                           <div className="form-group col-3">
                             <label>الدورات الإضافية (يمكن إضافة حتى 5 ملفات)</label>
                             {existingDocuments.additional_courses && existingDocuments.additional_courses.length > 0 && (
-                              <div style={{ 
-                                marginBottom: '12px', 
-                                padding: '12px 14px', 
-                                background: '#e7f3ff', 
+                              <div style={{
+                                marginBottom: '12px',
+                                padding: '12px 14px',
+                                background: '#e7f3ff',
                                 border: '1px solid #b3d9ff',
                                 borderRadius: '8px',
                                 fontSize: '13px',
@@ -2684,10 +2720,10 @@ const Employees = () => {
                                   <span>يوجد {existingDocuments.additional_courses.length} مستند مرفوع مسبقاً</span>
                                 </div>
                                 {existingDocuments.additional_courses.map((doc, idx) => (
-                                  <div key={doc.id || idx} style={{ 
-                                    marginTop: '6px', 
-                                    padding: '8px 10px', 
-                                    background: '#fff', 
+                                  <div key={doc.id || idx} style={{
+                                    marginTop: '6px',
+                                    padding: '8px 10px',
+                                    background: '#fff',
                                     borderRadius: '6px',
                                     border: '1px solid #d1ecf1',
                                     fontSize: '12px',
@@ -2711,23 +2747,23 @@ const Employees = () => {
                               </div>
                             )}
                             {documents.additional_courses && Array.isArray(documents.additional_courses) && documents.additional_courses.map((file, idx) => (
-                                <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', background: '#f5f5f5', padding: '4px 8px', borderRadius: '4px', marginBottom: '4px' }}>
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '85%' }}>{file.name}</span>
-                                  <button type="button" onClick={() => removeDocument('additional_courses', idx)} style={{ color: '#d32f2f', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
-                                </div>
-                              ))}
-                              {(!documents.additional_courses || documents.additional_courses.length < 5) && (
-                                <input
-                                  type="file"
-                                  accept=".pdf,.jpg,.jpeg,.png"
-                                  onChange={(e) => {
-                                    if (e.target.files[0]) {
-                                      handleDocumentChange('additional_courses', e.target.files[0]);
-                                      e.target.value = '';
-                                    }
-                                  }}
-                                />
-                              )}
+                              <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', background: '#f5f5f5', padding: '4px 8px', borderRadius: '4px', marginBottom: '4px' }}>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '85%' }}>{file.name}</span>
+                                <button type="button" onClick={() => removeDocument('additional_courses', idx)} style={{ color: '#d32f2f', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+                              </div>
+                            ))}
+                            {(!documents.additional_courses || documents.additional_courses.length < 5) && (
+                              <input
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                onChange={(e) => {
+                                  if (e.target.files[0]) {
+                                    handleDocumentChange('additional_courses', e.target.files[0]);
+                                    e.target.value = '';
+                                  }
+                                }}
+                              />
+                            )}
                           </div>
                         </>
                       )}
@@ -2752,10 +2788,10 @@ const Employees = () => {
                             <div className="form-group col-3">
                               <label>شهادة الخبرة (يمكن إضافة حتى 5 ملفات)</label>
                               {existingDocuments.experience_certificate && existingDocuments.experience_certificate.length > 0 && (
-                                <div style={{ 
-                                  marginBottom: '12px', 
-                                  padding: '12px 14px', 
-                                  background: '#e7f3ff', 
+                                <div style={{
+                                  marginBottom: '12px',
+                                  padding: '12px 14px',
+                                  background: '#e7f3ff',
                                   border: '1px solid #b3d9ff',
                                   borderRadius: '8px',
                                   fontSize: '13px',
@@ -2766,10 +2802,10 @@ const Employees = () => {
                                     <span>يوجد {existingDocuments.experience_certificate.length} مستند مرفوع مسبقاً</span>
                                   </div>
                                   {existingDocuments.experience_certificate.map((doc, idx) => (
-                                    <div key={doc.id || idx} style={{ 
-                                      marginTop: '6px', 
-                                      padding: '8px 10px', 
-                                      background: '#fff', 
+                                    <div key={doc.id || idx} style={{
+                                      marginTop: '6px',
+                                      padding: '8px 10px',
+                                      background: '#fff',
                                       borderRadius: '6px',
                                       border: '1px solid #d1ecf1',
                                       fontSize: '12px',
@@ -2792,7 +2828,7 @@ const Employees = () => {
                                   </div>
                                 </div>
                               )}
-                             {documents.experience_certificate && Array.isArray(documents.experience_certificate) && documents.experience_certificate.map((file, idx) => (
+                              {documents.experience_certificate && Array.isArray(documents.experience_certificate) && documents.experience_certificate.map((file, idx) => (
                                 <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', background: '#f5f5f5', padding: '4px 8px', borderRadius: '4px', marginBottom: '4px' }}>
                                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '85%' }}>{file.name}</span>
                                   <button type="button" onClick={() => removeDocument('experience_certificate', idx)} style={{ color: '#d32f2f', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
@@ -2867,10 +2903,10 @@ const Employees = () => {
                           <div className="form-group col-3">
                             <label>الدورات الإضافية (يمكن إضافة حتى 5 ملفات)</label>
                             {existingDocuments.additional_courses && existingDocuments.additional_courses.length > 0 && (
-                              <div style={{ 
-                                marginBottom: '12px', 
-                                padding: '12px 14px', 
-                                background: '#e7f3ff', 
+                              <div style={{
+                                marginBottom: '12px',
+                                padding: '12px 14px',
+                                background: '#e7f3ff',
                                 border: '1px solid #b3d9ff',
                                 borderRadius: '8px',
                                 fontSize: '13px',
@@ -2881,10 +2917,10 @@ const Employees = () => {
                                   <span>يوجد {existingDocuments.additional_courses.length} مستند مرفوع مسبقاً</span>
                                 </div>
                                 {existingDocuments.additional_courses.map((doc, idx) => (
-                                  <div key={doc.id || idx} style={{ 
-                                    marginTop: '6px', 
-                                    padding: '8px 10px', 
-                                    background: '#fff', 
+                                  <div key={doc.id || idx} style={{
+                                    marginTop: '6px',
+                                    padding: '8px 10px',
+                                    background: '#fff',
                                     borderRadius: '6px',
                                     border: '1px solid #d1ecf1',
                                     fontSize: '12px',
@@ -2913,18 +2949,18 @@ const Employees = () => {
                                 <button type="button" onClick={() => removeDocument('additional_courses', idx)} style={{ color: '#d32f2f', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
                               </div>
                             ))}
-                              {(!documents.additional_courses || documents.additional_courses.length < 5) && (
-                                <input
-                                  type="file"
-                                  accept=".pdf,.jpg,.jpeg,.png"
-                                  onChange={(e) => {
-                                    if (e.target.files[0]) {
-                                      handleDocumentChange('additional_courses', e.target.files[0]);
-                                      e.target.value = '';
-                                    }
-                                  }}
-                                />
-                              )}
+                            {(!documents.additional_courses || documents.additional_courses.length < 5) && (
+                              <input
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                onChange={(e) => {
+                                  if (e.target.files[0]) {
+                                    handleDocumentChange('additional_courses', e.target.files[0]);
+                                    e.target.value = '';
+                                  }
+                                }}
+                              />
+                            )}
                           </div>
                         </>
                       )}

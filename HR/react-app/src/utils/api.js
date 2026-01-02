@@ -132,9 +132,6 @@ const getCacheTTL = (url) => {
   if (url.includes('/api/notifications')) {
     return CACHE_TTL.NONE; // Notifications must be real-time
   }
-  if (url.includes('/api/alerts')) {
-    return CACHE_TTL.NONE; // Alerts must be real-time
-  }
   
   // Employee data - short cache (changes frequently, but allow minimal caching)
   if (url.includes('/api/employees')) {
@@ -182,7 +179,6 @@ const clearRelatedCache = (url) => {
   const dashboardEndpoints = [
     '/api/branch-statistics',
     '/api/notifications',
-    '/api/alerts',
     '/api/employees', // Dashboard shows employee data
   ];
   
@@ -206,9 +202,6 @@ const clearRelatedCache = (url) => {
   } else if (url.includes('/api/notifications')) {
     clearCache('/api/notifications');
     // Notifications are already no-cache, but clear anyway
-  } else if (url.includes('/api/alerts')) {
-    clearCache('/api/alerts');
-    // Alerts are already no-cache, but clear anyway
   } else if (url.includes('/api/users')) {
     clearCache('/api/users');
   } else {
@@ -357,6 +350,23 @@ const getPasswordForRequest = (branchId) => {
 // Add token to requests if available
 api.interceptors.request.use(
   async (config) => {
+    const requestStartTime = performance.now();
+    const url = config.url || '';
+    const method = (config.method || 'get').toUpperCase();
+    
+    // Only log dashboard-related requests to avoid spam
+    const isDashboardRequest = url.includes('/api/branches') || 
+                               url.includes('/api/employees') || 
+                               url.includes('/api/branch-documents') || 
+                               url.includes('/api/branch-statistics') || 
+                               url.includes('/api/notifications') ||
+                               url.includes('/api/users');
+    
+    if (isDashboardRequest) {
+      console.log(`[API] ${method} ${url} - REQUEST START`);
+      console.log(`[API] Params:`, config.params);
+    }
+    
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -374,10 +384,10 @@ api.interceptors.request.use(
     }
     
     // Request Deduplication and Caching for GET requests
-    const method = (config.method || 'get').toLowerCase();
-    if (method === 'get') {
+    const methodLower = method.toLowerCase();
+    if (methodLower === 'get') {
       const requestKey = getRequestKey(config);
-      const cacheTTL = getCacheTTL(config.url || '');
+      const cacheTTL = getCacheTTL(url);
       
       // Skip caching entirely for endpoints with CACHE_TTL.NONE (dashboard/notifications)
       const shouldCache = cacheTTL !== CACHE_TTL.NONE;
@@ -385,9 +395,13 @@ api.interceptors.request.use(
       // Check for pending request (deduplication) - always enabled for performance
       const pendingRequest = pendingRequests.get(requestKey);
       if (pendingRequest) {
+        if (isDashboardRequest) {
+          console.log(`[API] ${method} ${url} - DEDUPLICATED (using pending request)`);
+        }
         // Attach metadata to config to handle in response interceptor
         config.__isDeduplicated = true;
         config.__pendingRequest = pendingRequest;
+        config.__requestStartTime = requestStartTime;
         return config;
       }
       
@@ -396,11 +410,20 @@ api.interceptors.request.use(
         const cacheKey = getCacheKey(config);
         const cacheEntry = apiCache.get(cacheKey);
         if (cacheEntry && isCacheValid(cacheEntry)) {
+          if (isDashboardRequest) {
+            const cacheAge = Date.now() - cacheEntry.timestamp;
+            console.log(`[API] ${method} ${url} - CACHE HIT (age: ${cacheAge}ms)`);
+          }
           // Attach cached response to config
           config.__isCached = true;
           config.__cachedResponse = cacheEntry.data;
+          config.__requestStartTime = requestStartTime;
           return config;
+        } else if (isDashboardRequest) {
+          console.log(`[API] ${method} ${url} - CACHE MISS`);
         }
+      } else if (isDashboardRequest) {
+        console.log(`[API] ${method} ${url} - NO CACHE (real-time endpoint)`);
       }
       
       // Store request promise for deduplication
@@ -411,6 +434,9 @@ api.interceptors.request.use(
       requestPromise.finally(() => {
         pendingRequests.delete(requestKey);
       });
+      
+      // Store start time for timing
+      config.__requestStartTime = requestStartTime;
     }
     
     return config;
@@ -422,22 +448,41 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => {
     const config = response.config;
+    const url = config?.url || '';
+    const method = (config?.method || 'get').toUpperCase();
+    const requestStartTime = config?.__requestStartTime;
+    
+    // Only log dashboard-related requests to avoid spam
+    const isDashboardRequest = url.includes('/api/branches') || 
+                               url.includes('/api/employees') || 
+                               url.includes('/api/branch-documents') || 
+                               url.includes('/api/branch-statistics') || 
+                               url.includes('/api/notifications') ||
+                               url.includes('/api/users');
     
     // Handle cached response
     if (config?.__isCached) {
+      if (isDashboardRequest && requestStartTime) {
+        const responseTime = performance.now() - requestStartTime;
+        console.log(`[API] ${method} ${url} - RESPONSE (CACHED) in ${responseTime.toFixed(2)}ms`);
+        console.log(`[API] Status: ${response.status}, Data count:`, response?.data?.data?.length || 'N/A');
+      }
       return config.__cachedResponse;
     }
     
     // Handle deduplicated request
     if (config?.__isDeduplicated) {
+      if (isDashboardRequest) {
+        console.log(`[API] ${method} ${url} - RESPONSE (DEDUPLICATED)`);
+      }
       return config.__pendingRequest;
     }
     
     // Cache successful GET requests (only if caching is enabled for this endpoint)
-    const method = (config?.method || 'get').toLowerCase();
+    const methodLower = method.toLowerCase();
     
-    if (method === 'get' && response.status === 200) {
-      const cacheTTL = getCacheTTL(config.url || '');
+    if (methodLower === 'get' && response.status === 200) {
+      const cacheTTL = getCacheTTL(url);
       
       // Only cache if TTL is not NONE (dashboard/notifications should never be cached)
       if (cacheTTL !== CACHE_TTL.NONE) {
@@ -448,6 +493,10 @@ api.interceptors.response.use(
           timestamp: Date.now(),
           expiry: cacheTTL,
         });
+        
+        if (isDashboardRequest) {
+          console.log(`[API] ${method} ${url} - CACHED (TTL: ${cacheTTL}ms)`);
+        }
         
         // Clean up old cache entries periodically (keep cache size manageable)
         if (apiCache.size > 100) {
@@ -461,18 +510,47 @@ api.interceptors.response.use(
       }
     }
     
+    // Log response timing for dashboard requests
+    if (isDashboardRequest && requestStartTime) {
+      const responseTime = performance.now() - requestStartTime;
+      console.log(`[API] ${method} ${url} - RESPONSE in ${responseTime.toFixed(2)}ms`);
+      console.log(`[API] Status: ${response.status}, Success: ${response?.data?.success || 'N/A'}, Data count:`, response?.data?.data?.length || 'N/A');
+    }
+    
     // Clear related cache on successful mutations
-    if (config && ['post', 'put', 'delete', 'patch'].includes(method)) {
-      clearRelatedCache(config.url || '');
+    if (config && ['post', 'put', 'delete', 'patch'].includes(methodLower)) {
+      clearRelatedCache(url);
+      if (isDashboardRequest) {
+        console.log(`[API] ${method} ${url} - Related cache cleared`);
+      }
     }
     
     return response;
   },
   (error) => {
+    const config = error.config;
+    const url = config?.url || '';
+    const method = (config?.method || 'get').toUpperCase();
+    const requestStartTime = config?.__requestStartTime;
+    
+    // Only log dashboard-related requests to avoid spam
+    const isDashboardRequest = url.includes('/api/branches') || 
+                               url.includes('/api/employees') || 
+                               url.includes('/api/branch-documents') || 
+                               url.includes('/api/branch-statistics') || 
+                               url.includes('/api/notifications') ||
+                               url.includes('/api/users');
+    
     // Remove from pending requests on error
     if (error.config) {
       const requestKey = getRequestKey(error.config);
       pendingRequests.delete(requestKey);
+    }
+
+    // Log error timing for dashboard requests
+    if (isDashboardRequest && requestStartTime) {
+      const responseTime = performance.now() - requestStartTime;
+      console.error(`[API] ${method} ${url} - ERROR after ${responseTime.toFixed(2)}ms`);
     }
 
     // Detect backend/database connection errors
@@ -480,20 +558,16 @@ api.interceptors.response.use(
     
     if (isBackendError) {
       // Console log full error details for debugging
-      console.error('Backend/Database Connection Error:', {
+      console.error('[API] Backend/Database Connection Error:', {
+        url: url,
+        method: method,
         message: error.message,
-        stack: error.stack,
         code: error.code,
         name: error.name,
         response: error.response ? {
           status: error.response.status,
           statusText: error.response.statusText,
           data: error.response.data,
-        } : null,
-        config: error.config ? {
-          url: error.config.url,
-          method: error.config.method,
-          baseURL: error.config.baseURL,
         } : null,
       });
 
@@ -946,63 +1020,6 @@ export const requestsAPI = {
     api.delete(`/api/requests/${id}`),
 };
 
-// Alerts API
-export const alertsAPI = {
-  getAll: (filters = {}) => {
-    const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
-      if (value !== null && value !== undefined && value !== '') {
-        acc[key] = value;
-      }
-      return acc;
-    }, {});
-    return api.get('/api/alerts', { params: cleanFilters });
-  },
-  
-  getById: (id) => 
-    api.get(`/api/alerts/${id}`),
-  
-  getUnreadCount: (filters = {}) => {
-    const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
-      if (value !== null && value !== undefined && value !== '') {
-        acc[key] = value;
-      }
-      return acc;
-    }, {});
-    return api.get('/api/alerts/unread-count', { params: cleanFilters });
-  },
-  
-  create: (data) => 
-    api.post('/api/alerts', data),
-  
-  update: (id, data) => 
-    api.put(`/api/alerts/${id}`, data),
-  
-  markAsRead: (id) => 
-    api.patch(`/api/alerts/${id}/read`),
-  
-  markAsResolved: (id) => 
-    api.patch(`/api/alerts/${id}/resolve`),
-  
-  markMultipleAsRead: (alertIds) => 
-    api.post('/api/alerts/mark-read', { alert_ids: alertIds }),
-  
-  delete: (id) => 
-    api.delete(`/api/alerts/${id}`),
-  
-  // Settings
-  getSettings: () => 
-    api.get('/api/alerts/settings'),
-  
-  updateSettings: (data) => 
-    api.put('/api/alerts/settings', data),
-  
-  // Scheduler (Main Manager only)
-  generate: () => 
-    api.post('/api/alerts/generate'),
-  
-  getSchedulerStatus: () => 
-    api.get('/api/alerts/scheduler/status'),
-};
 
 export default api;
 

@@ -313,6 +313,13 @@
   font-size: 0.875rem;
 }
 
+.show-employee-btn {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .manage-requests-container {

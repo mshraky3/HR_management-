@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { branchesAPI, clearCache } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import BranchBadge from '../components/BranchBadge';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 
 const Branches = () => {
@@ -37,7 +38,7 @@ const Branches = () => {
     }
 
     const searchTerm = query.toLowerCase().trim();
-    
+
     // Calculate relevance score for each branch
     const branchesWithScore = branchesList.map(branch => {
       let score = 0;
@@ -98,13 +99,13 @@ const Branches = () => {
       setLoading(true);
       // Send boolean true instead of string 'true' for better reliability
       const filters = { is_active: true };
-      
+
       // Branch managers only see their own branch
       // Main managers should see all active branches
       if (!isMainManager() && user?.branch_id) {
         filters.id = user.branch_id;
       }
-      
+
       const response = await branchesAPI.getAll(filters);
       if (response && response.data && response.data.success) {
         const branchesList = Array.isArray(response.data.data) ? response.data.data : [];
@@ -146,28 +147,27 @@ const Branches = () => {
         // Don't send branch_type when updating - it cannot be changed
         const updateData = { ...formData };
         delete updateData.branch_type;
-        
+
         // If password is empty or same as current, don't send it (backend will keep current)
         // Only send password if it's different from current
         if (updateData.password === '' || updateData.password === editingBranch.password) {
           delete updateData.password;
         }
-        
+
         response = await branchesAPI.update(editingBranch.id, updateData);
-        
+
         // Clear cache to ensure fresh data everywhere
         clearCache('/api/branches');
         clearCache('/api/branch-statistics');
         clearCache('/api/employees'); // Employee completion status may depend on branch info
-        clearCache('/api/alerts'); // Clear alerts cache so Dashboard shows updated alerts
-        
+
         // Immediately update local state to avoid lag
         if (response?.data?.success && response?.data?.data) {
           const updatedBranch = response.data.data;
-          setBranches(prevBranches => 
+          setBranches(prevBranches =>
             prevBranches.map(b => b.id === editingBranch.id ? updatedBranch : b)
           );
-          setAllBranches(prevBranches => 
+          setAllBranches(prevBranches =>
             prevBranches.map(b => b.id === editingBranch.id ? updatedBranch : b)
           );
         }
@@ -254,10 +254,10 @@ const Branches = () => {
       </div>
 
       {isMainManager() && (
-        <div style={{ 
-          marginBottom: '20px', 
-          padding: '15px', 
-          backgroundColor: '#f5f5f5', 
+        <div style={{
+          marginBottom: '20px',
+          padding: '15px',
+          backgroundColor: '#f5f5f5',
           borderRadius: '8px'
         }}>
           <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
@@ -268,10 +268,10 @@ const Branches = () => {
             value={searchQuery}
             onChange={handleSearchChange}
             placeholder="ابحث عن فرع بالاسم، الموقع، اسم المستخدم، أو أي معلومة أخرى..."
-            style={{ 
-              width: '100%', 
-              padding: '10px', 
-              borderRadius: '4px', 
+            style={{
+              width: '100%',
+              padding: '10px',
+              borderRadius: '4px',
               border: '1px solid #ddd',
               fontSize: '14px'
             }}
@@ -446,7 +446,7 @@ const Branches = () => {
             ) : (
               branches.map((branch) => (
                 <tr key={branch.id}>
-                  <td>{branch.branch_name}</td>
+                  <td><BranchBadge branch={branch} showName={true} /></td>
                   <td>{branch.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية'}</td>
                   <td>{branch.branch_location}</td>
                   <td>{branch.username}</td>

@@ -73,12 +73,6 @@ const BranchManagerLayout = ({ children }) => {
       items: [
         { path: '/branch-requests', label: 'طلبات' },
       ]
-    },
-    monitoring: {
-      label: 'المتابعة',
-      items: [
-        { path: '/alerts', label: 'التنبيهات الذكية' },
-      ]
     }
   };
 

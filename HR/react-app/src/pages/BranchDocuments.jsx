@@ -68,12 +68,12 @@ const BranchDocuments = () => {
   const loadBranches = async () => {
     try {
       const filters = { is_active: true };
-      
+
       // Branch managers only see their branch
       if (!isMainManager() && user?.branch_id) {
         filters.id = user.branch_id;
       }
-      
+
       const response = await branchesAPI.getAll(filters);
       if (response.data.success) {
         setBranches(response.data.data);
@@ -113,15 +113,15 @@ const BranchDocuments = () => {
 
   // Get current branch ID helper
   const getCurrentBranchId = useCallback(() => {
-    return currentBranchId || 
-           (!isMainManager() && user?.branch_id ? user.branch_id : null) ||
-           (isMainManager() ? parseInt(searchParams.get('branch_id') || '0') || null : null);
+    return currentBranchId ||
+      (!isMainManager() && user?.branch_id ? user.branch_id : null) ||
+      (isMainManager() ? parseInt(searchParams.get('branch_id') || '0') || null : null);
   }, [currentBranchId, isMainManager, user, searchParams]);
 
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
     setPasswordError('');
-    
+
     if (!password.trim()) {
       setPasswordError('الرجاء إدخال كلمة المرور');
       return;
@@ -162,7 +162,7 @@ const BranchDocuments = () => {
     try {
       setLoading(true);
       const filters = {};
-      
+
       // Handle branch filter from URL or user role
       const branchIdFromUrl = searchParams.get('branch_id');
       if (branchIdFromUrl) {
@@ -170,7 +170,7 @@ const BranchDocuments = () => {
       } else if (!isMainManager() && user?.branch_id) {
         filters.branch_id = user.branch_id;
       }
-      
+
       const response = await branchDocumentsAPI.getAll(filters);
       if (response.data.success) {
         const docs = response.data.data || [];
@@ -208,7 +208,7 @@ const BranchDocuments = () => {
   // Handle URL parameters for filtering (from Dashboard links)
   useEffect(() => {
     const branchId = searchParams.get('branch_id');
-    
+
     if (branchId) {
       setUploadData(prev => ({ ...prev, branch_id: branchId }));
     }
@@ -233,7 +233,7 @@ const BranchDocuments = () => {
 
   // Set all documents (no filtering needed since monthly documents are in separate page)
   useEffect(() => {
-      setDocuments(allDocuments);
+    setDocuments(allDocuments);
   }, [allDocuments]);
 
   const handleFileChange = (e) => {
@@ -333,11 +333,11 @@ const BranchDocuments = () => {
       formData.append('branch_id', uploadData.branch_id);
       formData.append('document_type', uploadData.document_type);
       if (uploadData.description) formData.append('description', uploadData.description);
-      
+
       // Check if document type requires default fields
       const selectedDocType = allBranchDocumentTypes.find(t => t.value === uploadData.document_type);
       const requiresDefaultFields = selectedDocType?.requiresDefaultFields !== false && uploadData.document_type !== 'iban_file';
-      
+
       // Date fields only for documents that require default fields
       if (requiresDefaultFields) {
         if (uploadData.document_number) formData.append('document_number', uploadData.document_number);
@@ -348,7 +348,7 @@ const BranchDocuments = () => {
         if (uploadData.expiry_date_hijri) formData.append('expiry_date_hijri', uploadData.expiry_date_hijri);
         if (uploadData.expiry_date_type) formData.append('expiry_date_type', uploadData.expiry_date_type);
       }
-      
+
       // IBAN fields only for IBAN documents
       if (uploadData.document_type === 'iban_file') {
         if (uploadData.iban_number) formData.append('iban_number', uploadData.iban_number);
@@ -458,7 +458,7 @@ const BranchDocuments = () => {
     try {
       setDownloading(id);
       const response = await branchDocumentsAPI.download(id);
-      
+
       // Get filename from response headers
       const contentDisposition = response.headers['content-disposition'];
       let filename = fileName || `document_${id}`;
@@ -468,7 +468,7 @@ const BranchDocuments = () => {
           filename = decodeURIComponent(filenameMatch[1].replace(/"/g, ''));
         }
       }
-      
+
       if (response.data instanceof Blob) {
         const blobUrl = window.URL.createObjectURL(response.data);
         const link = document.createElement('a');
@@ -495,7 +495,7 @@ const BranchDocuments = () => {
     // Determine date type based on which date exists
     const issueDateType = document.issue_date_hijri ? 'hijri' : 'gregorian';
     const expiryDateType = document.expiry_date_hijri ? 'hijri' : 'gregorian';
-    
+
     setEditData({
       description: document.description || '',
       document_number: document.document_number || '',
@@ -574,11 +574,11 @@ const BranchDocuments = () => {
         const formData = new FormData();
         formData.append('file', editData.file);
         if (editData.description) formData.append('description', editData.description);
-        
+
         // Check if document type requires default fields
         const selectedDocType = allBranchDocumentTypes.find(t => t.value === editingDocument.document_type);
         const requiresDefaultFields = selectedDocType?.requiresDefaultFields !== false && editingDocument.document_type !== 'iban_file';
-        
+
         // Date fields only for documents that require default fields
         if (requiresDefaultFields) {
           if (editData.document_number) formData.append('document_number', editData.document_number);
@@ -589,13 +589,13 @@ const BranchDocuments = () => {
           if (editData.expiry_date_hijri) formData.append('expiry_date_hijri', editData.expiry_date_hijri);
           if (editData.expiry_date_type) formData.append('expiry_date_type', editData.expiry_date_type);
         }
-        
+
         // IBAN fields only for IBAN documents
         if (editingDocument && editingDocument.document_type === 'iban_file') {
           if (editData.iban_number) formData.append('iban_number', editData.iban_number);
           if (editData.bank_name) formData.append('bank_name', editData.bank_name);
         }
-        
+
         // Use PUT with FormData to replace the file
         await branchDocumentsAPI.updateWithFile(editingDocument.id, formData);
       } else {
@@ -603,11 +603,11 @@ const BranchDocuments = () => {
         const updatePayload = {
           description: editData.description
         };
-        
+
         // Check if document type requires default fields
         const selectedDocType = allBranchDocumentTypes.find(t => t.value === editingDocument.document_type);
         const requiresDefaultFields = selectedDocType?.requiresDefaultFields !== false && editingDocument.document_type !== 'iban_file';
-        
+
         // Date fields only for documents that require default fields
         if (requiresDefaultFields) {
           updatePayload.document_number = editData.document_number || null;
@@ -618,16 +618,16 @@ const BranchDocuments = () => {
           updatePayload.expiry_date_hijri = editData.expiry_date_hijri || null;
           updatePayload.expiry_date_type = editData.expiry_date_type || 'gregorian';
         }
-        
+
         // IBAN fields only for IBAN documents
         if (editingDocument.document_type === 'iban_file') {
           updatePayload.iban_number = editData.iban_number || null;
           updatePayload.bank_name = editData.bank_name || null;
         }
-        
+
         await branchDocumentsAPI.update(editingDocument.id, updatePayload);
       }
-      
+
       setShowEditForm(false);
       setEditingDocument(null);
       setEditData({ description: '', document_number: '', issue_date: '', issue_date_hijri: '', expiry_date: '', expiry_date_hijri: '', issue_date_type: 'gregorian', expiry_date_type: 'gregorian', iban_number: '', bank_name: '', file: null });
@@ -710,7 +710,7 @@ const BranchDocuments = () => {
   // Use URL branch_id first, then currentBranchId, then user branch_id
   const currentBranchType = useMemo(() => {
     let branchId = null;
-    
+
     // Priority: URL > currentBranchId (from password) > user branch_id
     const branchIdFromUrl = searchParams.get('branch_id');
     if (branchIdFromUrl) {
@@ -720,7 +720,7 @@ const BranchDocuments = () => {
     } else if (!isMainManager() && user?.branch_id) {
       branchId = user.branch_id;
     }
-    
+
     if (!branchId) return null;
     const branch = branches.find(b => b.id === branchId);
     return branch?.branch_type || null;
@@ -748,7 +748,7 @@ const BranchDocuments = () => {
     if (!allDocuments || allDocuments.length === 0) {
       return { exists: false, document: null };
     }
-    
+
     // Get branch ID from URL first, then currentBranchId, then user branch_id
     let branchId = null;
     const branchIdFromUrl = searchParams.get('branch_id');
@@ -759,9 +759,9 @@ const BranchDocuments = () => {
     } else if (!isMainManager() && user?.branch_id) {
       branchId = user.branch_id;
     }
-    
-    const doc = allDocuments.find(d => 
-      d.document_type === docType && 
+
+    const doc = allDocuments.find(d =>
+      d.document_type === docType &&
       d.is_active !== false &&
       (!isMainManager() || d.branch_id === branchId)
     );
@@ -775,23 +775,23 @@ const BranchDocuments = () => {
   const sortDocumentCardsByPriority = useCallback((cards) => {
     const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
     const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
-    
+
     return [...cards].sort((a, b) => {
       const aType = a.value;
       const bType = b.value;
-      
+
       // Monthly documents first (highest priority)
       const aIsMonthly = monthlyTypes.includes(aType);
       const bIsMonthly = monthlyTypes.includes(bType);
       if (aIsMonthly && !bIsMonthly) return -1;
       if (!aIsMonthly && bIsMonthly) return 1;
-      
+
       // Student/Cadre documents second
       const aIsStudentCadre = studentCadreTypes.includes(aType);
       const bIsStudentCadre = studentCadreTypes.includes(bType);
       if (aIsStudentCadre && !bIsStudentCadre) return -1;
       if (!aIsStudentCadre && bIsStudentCadre) return 1;
-      
+
       // Others last
       return 0;
     });
@@ -800,7 +800,7 @@ const BranchDocuments = () => {
   // Prepare document cards data (must be before early returns)
   const documentCards = useMemo(() => {
     if (!currentBranchType) return [];
-    
+
     const cards = branchDocumentTypes.map(docType => {
       const status = getDocumentStatus(docType.value);
       return {
@@ -809,7 +809,7 @@ const BranchDocuments = () => {
         document: status.document
       };
     });
-    
+
     // Sort by priority
     return sortDocumentCardsByPriority(cards);
   }, [branchDocumentTypes, currentBranchType, getDocumentStatus, sortDocumentCardsByPriority]);
@@ -824,7 +824,7 @@ const BranchDocuments = () => {
         <div className="modal-content" style={{ maxWidth: '400px' }}>
           <h2>إدخال كلمة مرور مستندات الفرع</h2>
           <p style={{ marginBottom: '20px', color: '#666' }}>
-            {branch ? `الرجاء إدخال كلمة مرور مستندات الفرع: ${branch.branch_name}` : 'الرجاء إدخال كلمة مرور مستندات الفرع'}
+            {branch ? (<><BranchBadge branch={branch} /><span style={{ marginLeft: 8 }}>الرجاء إدخال كلمة مرور مستندات الفرع: {branch.branch_name}</span></>) : 'الرجاء إدخال كلمة مرور مستندات الفرع'}
           </p>
           <form onSubmit={handlePasswordSubmit}>
             <div className="form-group">
@@ -850,15 +850,15 @@ const BranchDocuments = () => {
               <button type="submit" className="btn-primary">
                 تأكيد
               </button>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => {
                   setShowPasswordModal(false);
                   setPassword('');
                   setPasswordError('');
                   // Navigate away from branch documents page
                   window.history.back();
-                }} 
+                }}
                 className="btn-secondary"
               >
                 إلغاء
@@ -889,9 +889,9 @@ const BranchDocuments = () => {
     return <div className="loading">جاري التحميل...</div>;
   }
 
-  if ((!isPasswordVerified && !showPasswordModal) && 
-      ((!isMainManager() && user?.branch_id) || 
-       (isMainManager() && searchParams.get('branch_id')))) {
+  if ((!isPasswordVerified && !showPasswordModal) &&
+    ((!isMainManager() && user?.branch_id) ||
+      (isMainManager() && searchParams.get('branch_id')))) {
     return <div className="loading">جاري التحميل...</div>;
   }
 
@@ -899,7 +899,7 @@ const BranchDocuments = () => {
     // Auto-select document type based on URL parameter
     const documentTypeFromUrl = searchParams.get('document_type');
     let selectedDocumentType = documentType || documentTypeFromUrl || '';
-    
+
     // Get branch_id from URL or user's branch
     const branchIdFromUrl = searchParams.get('branch_id');
     let branchId = '';
@@ -908,7 +908,7 @@ const BranchDocuments = () => {
     } else if (!isMainManager() && user?.branch_id) {
       branchId = user.branch_id;
     }
-    
+
     // Show alerts for specific document types
     setDocumentAlert(null);
     if (selectedDocumentType) {
@@ -932,7 +932,7 @@ const BranchDocuments = () => {
         }
       }
     }
-    
+
     setUploadData({
       branch_id: branchId,
       document_type: selectedDocumentType,
@@ -974,17 +974,17 @@ const BranchDocuments = () => {
 
       {/* Document Cards Grid */}
       <div className="document-cards-container">
-        <h2 style={{ 
-          marginBottom: '1.5rem', 
-          fontSize: '1.5rem', 
+        <h2 style={{
+          marginBottom: '1.5rem',
+          fontSize: '1.5rem',
           color: 'var(--text)',
           fontWeight: 600
         }}>
           مستندات الفرع
         </h2>
         {documentCards.length === 0 ? (
-          <div className="no-data" style={{ 
-            textAlign: 'center', 
+          <div className="no-data" style={{
+            textAlign: 'center',
             padding: '3rem',
             color: 'var(--text-secondary)'
           }}>
@@ -995,8 +995,8 @@ const BranchDocuments = () => {
             {documentCards.map((card) => {
               const docType = allBranchDocumentTypes.find(dt => dt.value === card.value);
               return (
-                <div 
-                  key={card.value} 
+                <div
+                  key={card.value}
                   className={`document-card ${card.exists ? 'document-exists' : 'document-missing'}`}
                 >
                   <div className="document-card-header">
@@ -1009,7 +1009,7 @@ const BranchDocuments = () => {
                     </div>
                     <h3 className="document-card-title">{card.label}</h3>
                   </div>
-                  
+
                   <div className="document-card-body">
                     {card.exists && card.document ? (
                       <div className="document-info">
@@ -1020,7 +1020,7 @@ const BranchDocuments = () => {
                         <div className="document-info-item">
                           <span className="info-label">تاريخ الرفع:</span>
                           <span className="info-value">
-                            {new Date(card.document.uploaded_at).toLocaleDateString('en-US', { 
+                            {new Date(card.document.uploaded_at).toLocaleDateString('en-US', {
                               calendar: 'gregory',
                               year: 'numeric',
                               month: 'long',
@@ -1032,7 +1032,7 @@ const BranchDocuments = () => {
                           <div className="document-info-item">
                             <span className="info-label">تاريخ الانتهاء:</span>
                             <span className="info-value">
-                              {new Date(card.document.expiry_date).toLocaleDateString('en-US', { 
+                              {new Date(card.document.expiry_date).toLocaleDateString('en-US', {
                                 calendar: 'gregory',
                                 year: 'numeric',
                                 month: 'long',
@@ -1171,7 +1171,7 @@ const BranchDocuments = () => {
                   onChange={(e) => {
                     const selectedType = e.target.value;
                     setUploadData({ ...uploadData, document_type: selectedType });
-                    
+
                     // Show alerts for specific document types
                     const selectedDocType = allBranchDocumentTypes.find(t => t.value === selectedType);
                     if (selectedDocType?.hasAlert) {
@@ -1290,8 +1290,8 @@ const BranchDocuments = () => {
                           onChange={(e) => {
                             const gregorian = e.target.value;
                             const hijriDate = gregorianToHijri(gregorian);
-                            setUploadData({ 
-                              ...uploadData, 
+                            setUploadData({
+                              ...uploadData,
                               issue_date: gregorian,
                               issue_date_hijri: hijriDate ? formatHijriToString(hijriDate) : ''
                             });
@@ -1300,8 +1300,8 @@ const BranchDocuments = () => {
                       )}
                       {uploadData.issue_date && uploadData.issue_date_hijri && (
                         <div style={{ marginTop: '5px', fontSize: '0.9em', color: '#666' }}>
-                          {uploadData.issue_date_type === 'gregorian' 
-                            ? `هجري: ${uploadData.issue_date_hijri}` 
+                          {uploadData.issue_date_type === 'gregorian'
+                            ? `هجري: ${uploadData.issue_date_hijri}`
                             : `ميلادي: ${uploadData.issue_date}`}
                         </div>
                       )}
@@ -1334,8 +1334,8 @@ const BranchDocuments = () => {
                           onChange={(e) => {
                             const gregorian = e.target.value;
                             const hijriDate = gregorianToHijri(gregorian);
-                            setUploadData({ 
-                              ...uploadData, 
+                            setUploadData({
+                              ...uploadData,
                               expiry_date: gregorian,
                               expiry_date_hijri: hijriDate ? formatHijriToString(hijriDate) : ''
                             });
@@ -1344,8 +1344,8 @@ const BranchDocuments = () => {
                       )}
                       {uploadData.expiry_date && uploadData.expiry_date_hijri && (
                         <div style={{ marginTop: '5px', fontSize: '0.9em', color: '#666' }}>
-                          {uploadData.expiry_date_type === 'gregorian' 
-                            ? `هجري: ${uploadData.expiry_date_hijri}` 
+                          {uploadData.expiry_date_type === 'gregorian'
+                            ? `هجري: ${uploadData.expiry_date_hijri}`
                             : `ميلادي: ${uploadData.expiry_date}`}
                         </div>
                       )}
@@ -1375,8 +1375,8 @@ const BranchDocuments = () => {
                 />
               </div>
               <div className="form-actions">
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="btn-primary"
                   disabled={uploading}
                 >
@@ -1387,8 +1387,8 @@ const BranchDocuments = () => {
                     </>
                   ) : 'رفع'}
                 </button>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => {
                     setShowUploadForm(false);
                     setUploadData({
@@ -1406,7 +1406,7 @@ const BranchDocuments = () => {
                       bank_name: '',
                       file: null,
                     });
-                  }} 
+                  }}
                   className="btn-secondary"
                   disabled={uploading}
                 >
@@ -1442,7 +1442,7 @@ const BranchDocuments = () => {
                   onChange={handleFileChangeEdit}
                 />
                 {editData.file && (
-                  <span className="file-name" style={{fontSize: '12px', color: '#4CAF50', display: 'block', marginTop: '5px'}}>
+                  <span className="file-name" style={{ fontSize: '12px', color: '#4CAF50', display: 'block', marginTop: '5px' }}>
                     ✓ {editData.file.name}
                   </span>
                 )}
@@ -1487,8 +1487,8 @@ const BranchDocuments = () => {
                         onChange={(e) => {
                           const gregorian = e.target.value;
                           const hijriDate = gregorianToHijri(gregorian);
-                          setEditData({ 
-                            ...editData, 
+                          setEditData({
+                            ...editData,
                             issue_date: gregorian,
                             issue_date_hijri: hijriDate ? formatHijriToString(hijriDate) : ''
                           });
@@ -1497,8 +1497,8 @@ const BranchDocuments = () => {
                     )}
                     {editData.issue_date && editData.issue_date_hijri && (
                       <div style={{ marginTop: '5px', fontSize: '0.9em', color: '#666' }}>
-                        {editData.issue_date_type === 'gregorian' 
-                          ? `هجري: ${editData.issue_date_hijri}` 
+                        {editData.issue_date_type === 'gregorian'
+                          ? `هجري: ${editData.issue_date_hijri}`
                           : `ميلادي: ${editData.issue_date}`}
                       </div>
                     )}
@@ -1531,8 +1531,8 @@ const BranchDocuments = () => {
                         onChange={(e) => {
                           const gregorian = e.target.value;
                           const hijriDate = gregorianToHijri(gregorian);
-                          setEditData({ 
-                            ...editData, 
+                          setEditData({
+                            ...editData,
                             expiry_date: gregorian,
                             expiry_date_hijri: hijriDate ? formatHijriToString(hijriDate) : ''
                           });
@@ -1541,8 +1541,8 @@ const BranchDocuments = () => {
                     )}
                     {editData.expiry_date && editData.expiry_date_hijri && (
                       <div style={{ marginTop: '5px', fontSize: '0.9em', color: '#666' }}>
-                        {editData.expiry_date_type === 'gregorian' 
-                          ? `هجري: ${editData.expiry_date_hijri}` 
+                        {editData.expiry_date_type === 'gregorian'
+                          ? `هجري: ${editData.expiry_date_hijri}`
                           : `ميلادي: ${editData.expiry_date}`}
                       </div>
                     )}
@@ -1572,13 +1572,13 @@ const BranchDocuments = () => {
               </div>
               <div className="form-actions">
                 <button type="submit" className="btn-primary">حفظ</button>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => {
                     setShowEditForm(false);
                     setEditingDocument(null);
                     setEditData({ description: '', document_number: '', issue_date: '', expiry_date: '', file: null });
-                  }} 
+                  }}
                   className="btn-secondary"
                 >
                   إلغاء
@@ -1604,7 +1604,7 @@ const BranchDocuments = () => {
           justifyContent: 'center',
           padding: '20px'
         }}
-        onClick={closePreview}
+          onClick={closePreview}
         >
           <div style={{ position: 'relative', maxWidth: '90%', maxHeight: '90%' }}>
             <button

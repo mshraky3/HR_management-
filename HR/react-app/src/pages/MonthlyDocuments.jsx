@@ -69,15 +69,15 @@ const MonthlyDocuments = () => {
   const isUploadedForCurrentMonth = (uploadDate) => {
     const now = new Date();
     return uploadDate.getFullYear() === now.getFullYear() &&
-           uploadDate.getMonth() === now.getMonth();
+      uploadDate.getMonth() === now.getMonth();
   };
 
   // Get document status for a branch and document type
   const getDocumentStatus = useCallback((branchId, docType) => {
     const branchDocs = allDocuments.filter(
-      doc => doc.branch_id === branchId && 
-             doc.document_type === docType && 
-             doc.is_active !== false
+      doc => doc.branch_id === branchId &&
+        doc.document_type === docType &&
+        doc.is_active !== false
     );
 
     if (branchDocs.length === 0) {
@@ -157,11 +157,11 @@ const MonthlyDocuments = () => {
   const loadBranches = async () => {
     try {
       const filters = { is_active: true };
-      
+
       if (!isMainManager() && user?.branch_id) {
         filters.id = user.branch_id;
       }
-      
+
       const response = await branchesAPI.getAll(filters);
       if (response.data.success) {
         setBranches(response.data.data);
@@ -178,7 +178,7 @@ const MonthlyDocuments = () => {
     try {
       setLoading(true);
       const filters = {};
-      
+
       let branchId = null;
       const branchIdFromUrl = searchParams.get('branch_id');
       if (branchIdFromUrl) {
@@ -188,7 +188,7 @@ const MonthlyDocuments = () => {
         branchId = user.branch_id;
         filters.branch_id = branchId;
       }
-      
+
       // For monthly documents, automatically get password from localStorage if available
       if (!isMainManager() && branchId) {
         try {
@@ -200,15 +200,15 @@ const MonthlyDocuments = () => {
           console.error('Error setting password:', error);
         }
       }
-      
+
       // Load all monthly documents for main managers
       const response = await branchDocumentsAPI.getAll(filters);
       if (response.data.success) {
         const docs = response.data.data || [];
         // Filter only monthly documents
-        const monthlyDocs = docs.filter(doc => 
-          doc.document_type === 'payroll_file' || 
-          doc.document_type === 'attendance_file' || 
+        const monthlyDocs = docs.filter(doc =>
+          doc.document_type === 'payroll_file' ||
+          doc.document_type === 'attendance_file' ||
           doc.document_type === 'salary_deposit_file'
         );
         setAllDocuments(monthlyDocs);
@@ -307,7 +307,7 @@ const MonthlyDocuments = () => {
     try {
       setPreviewLoading(document.id);
       setPreviewDocument(document);
-      
+
       if (document.mime_type && document.mime_type.startsWith('image/')) {
         try {
           const response = await branchDocumentsAPI.download(document.id);
@@ -362,7 +362,7 @@ const MonthlyDocuments = () => {
     try {
       setDownloading(id);
       const response = await branchDocumentsAPI.download(id);
-      
+
       const contentDisposition = response.headers['content-disposition'];
       let filename = fileName || `document_${id}`;
       if (contentDisposition) {
@@ -371,7 +371,7 @@ const MonthlyDocuments = () => {
           filename = decodeURIComponent(filenameMatch[1].replace(/"/g, ''));
         }
       }
-      
+
       if (response.data instanceof Blob) {
         const blobUrl = window.URL.createObjectURL(response.data);
         const link = document.createElement('a');
@@ -405,7 +405,7 @@ const MonthlyDocuments = () => {
   const handleOpenUploadForm = (branchId = null, docType = null) => {
     const finalBranchId = branchId || searchParams.get('branch_id') || (!isMainManager() && user?.branch_id ? user.branch_id : '');
     const finalDocType = docType || searchParams.get('document_type') || 'payroll_file';
-    
+
     setUploadData({
       branch_id: finalBranchId,
       document_type: finalDocType,
@@ -491,8 +491,8 @@ const MonthlyDocuments = () => {
 
       // Create blob and download
       // response.data is already a blob when responseType is 'blob'
-      const blob = response.data instanceof Blob 
-        ? response.data 
+      const blob = response.data instanceof Blob
+        ? response.data
         : new Blob([response.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -518,7 +518,7 @@ const MonthlyDocuments = () => {
   }
 
   // Get branches to display
-  const branchesToDisplay = isMainManager() 
+  const branchesToDisplay = isMainManager()
     ? branches
     : branches.filter(b => b.id === user?.branch_id);
 
@@ -534,7 +534,7 @@ const MonthlyDocuments = () => {
     // Get current month document for each type
     const getCurrentMonthDocument = (docType) => {
       const docs = branchDocuments.filter(doc => doc.document_type === docType.value);
-      const currentMonthDoc = docs.find(doc => 
+      const currentMonthDoc = docs.find(doc =>
         isUploadedForCurrentMonth(new Date(doc.uploaded_at))
       );
       return currentMonthDoc || null;
@@ -546,7 +546,7 @@ const MonthlyDocuments = () => {
           <button onClick={handleBackToBranches} className="btn-back">
             ← العودة للفروع
           </button>
-          <h1>{selectedBranch.branch_name}</h1>
+          <h1><BranchBadge branch={selectedBranch} /> {selectedBranch.branch_name}</h1>
         </div>
 
         {/* Branch Info */}
@@ -559,7 +559,7 @@ const MonthlyDocuments = () => {
           border: '1px solid var(--border-light)'
         }}>
           <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text)' }}>
-            {selectedBranch.branch_name}
+            <BranchBadge branch={selectedBranch} /> {selectedBranch.branch_name}
           </h2>
           <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
             نوع الفرع: {selectedBranch.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية'}
@@ -568,9 +568,9 @@ const MonthlyDocuments = () => {
 
         {/* Document Cards Grid */}
         <div className="document-cards-container">
-          <h2 style={{ 
-            marginBottom: '1.5rem', 
-            fontSize: '1.5rem', 
+          <h2 style={{
+            marginBottom: '1.5rem',
+            fontSize: '1.5rem',
             color: 'var(--text)',
             fontWeight: 600
           }}>
@@ -578,13 +578,13 @@ const MonthlyDocuments = () => {
           </h2>
           <div className="document-cards-grid">
             {monthlyDocumentTypes.map((docType) => {
-            const status = branchStatus.statuses.find(s => s.type === docType.value);
+              const status = branchStatus.statuses.find(s => s.type === docType.value);
               const currentDoc = getCurrentMonthDocument(docType);
               const exists = status.status === 'uploaded';
-            
-            return (
-                <div 
-                  key={docType.value} 
+
+              return (
+                <div
+                  key={docType.value}
                   className={`document-card ${exists ? 'document-exists' : 'document-missing'}`}
                 >
                   <div className="document-card-header">
@@ -593,24 +593,24 @@ const MonthlyDocuments = () => {
                         <span className="status-icon exists">✓</span>
                       ) : (
                         <span className="status-icon missing">✗</span>
-                        )}
-                      </div>
-                    <h3 className="document-card-title">{docType.label}</h3>
+                      )}
                     </div>
-                  
+                    <h3 className="document-card-title">{docType.label}</h3>
+                  </div>
+
                   <div className="document-card-body">
                     {exists && currentDoc ? (
                       <div className="document-info">
                         <div className="document-info-item">
                           <span className="info-label">اسم الملف:</span>
                           <span className="info-value">{currentDoc.file_name}</span>
-                  </div>
+                        </div>
                         <div className="document-info-item">
                           <span className="info-label">تاريخ الرفع:</span>
                           <span className="info-value">
                             {formatGregorianDate(currentDoc.uploaded_at)}
                           </span>
-                </div>
+                        </div>
                         <div className="document-info-item">
                           <span className="info-label">الحالة:</span>
                           <span className="verification-badge verified">
@@ -637,11 +637,11 @@ const MonthlyDocuments = () => {
                               {formatGregorianDate(status.deadlineDate)}
                               {status.daysUntilDeadline !== null && (
                                 <span style={{ marginRight: '5px' }}>
-                                  {status.daysUntilDeadline > 0 
-                                    ? ` (متبقي ${status.daysUntilDeadline} يوم)` 
+                                  {status.daysUntilDeadline > 0
+                                    ? ` (متبقي ${status.daysUntilDeadline} يوم)`
                                     : ' (اليوم هو الموعد النهائي)'}
                                 </span>
-                )}
+                              )}
                             </span>
                           </div>
                         )}
@@ -649,19 +649,19 @@ const MonthlyDocuments = () => {
                     ) : (
                       <div className="document-missing-message">
                         <p>المستند غير موجود</p>
-                {status.deadlineDate && (
+                        {status.deadlineDate && (
                           <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                    الموعد النهائي: {formatGregorianDate(status.deadlineDate)}
-                    {status.daysUntilDeadline !== null && (
-                      <span className={status.daysUntilDeadline <= 3 ? 'urgent' : ''}>
-                        {status.daysUntilDeadline > 0 
-                          ? ` (متبقي ${status.daysUntilDeadline} يوم)` 
-                          : ' (اليوم هو الموعد النهائي)'}
-                      </span>
-                    )}
-                  </p>
-                )}
-                          </div>
+                            الموعد النهائي: {formatGregorianDate(status.deadlineDate)}
+                            {status.daysUntilDeadline !== null && (
+                              <span className={status.daysUntilDeadline <= 3 ? 'urgent' : ''}>
+                                {status.daysUntilDeadline > 0
+                                  ? ` (متبقي ${status.daysUntilDeadline} يوم)`
+                                  : ' (اليوم هو الموعد النهائي)'}
+                              </span>
+                            )}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
 
@@ -669,31 +669,31 @@ const MonthlyDocuments = () => {
                     {exists && currentDoc ? (
                       <>
                         {currentDoc.mime_type && (currentDoc.mime_type.startsWith('image/') || currentDoc.mime_type === 'application/pdf') && (
-                              <button 
+                          <button
                             onClick={() => handlePreview(currentDoc)}
                             className="btn-card btn-preview"
                             disabled={previewLoading === currentDoc.id}
-                              >
+                          >
                             {previewLoading === currentDoc.id ? (
                               <span className="spinner" style={{ display: 'inline-block', width: '12px', height: '12px', marginLeft: '5px' }}></span>
-                                ) : (
+                            ) : (
                               <img src="https://img.icons8.com/?size=24&id=85028&format=png&color=000000" alt="معاينة" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
-                                )}
-                            معاينة
-                              </button>
                             )}
-                            <button 
+                            معاينة
+                          </button>
+                        )}
+                        <button
                           onClick={() => handleDownload(currentDoc.id, currentDoc.file_name)}
                           className="btn-card btn-download"
                           disabled={downloading === currentDoc.id}
-                            >
+                        >
                           {downloading === currentDoc.id ? (
                             <span className="spinner" style={{ display: 'inline-block', width: '12px', height: '12px', marginLeft: '5px' }}></span>
-                              ) : (
+                          ) : (
                             <img src="https://img.icons8.com/material-rounded/24/download--v1.png" alt="تحميل" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
-                              )}
+                          )}
                           تحميل
-                            </button>
+                        </button>
                         <button
                           onClick={() => handleOpenUploadForm(selectedBranch.id, docType.value)}
                           className="btn-card btn-update"
@@ -702,7 +702,7 @@ const MonthlyDocuments = () => {
                           تحديث
                         </button>
                       </>
-                ) : (
+                    ) : (
                       <button
                         onClick={() => handleOpenUploadForm(selectedBranch.id, docType.value)}
                         className="btn-card btn-upload"
@@ -712,9 +712,9 @@ const MonthlyDocuments = () => {
                       </button>
                     )}
                   </div>
-              </div>
-            );
-          })}
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -785,15 +785,15 @@ const MonthlyDocuments = () => {
                   />
                 </div>
                 <div className="form-actions">
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     className="btn-primary"
                     disabled={uploading}
                   >
                     {uploading ? 'جاري الرفع...' : 'رفع'}
                   </button>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => {
                       setShowUploadForm(false);
                       setUploadData({
@@ -802,7 +802,7 @@ const MonthlyDocuments = () => {
                         description: '',
                         file: null,
                       });
-                    }} 
+                    }}
                     className="btn-secondary"
                     disabled={uploading}
                   >
@@ -857,8 +857,8 @@ const MonthlyDocuments = () => {
             {schools.map(branch => {
               const branchStatus = getBranchStatus(branch.id);
               return (
-                <div 
-                  key={branch.id} 
+                <div
+                  key={branch.id}
                   className={`branch-card status-${branchStatus.overallStatus}`}
                   onClick={() => handleBranchClick(branch)}
                 >
@@ -872,7 +872,7 @@ const MonthlyDocuments = () => {
                       {branchStatus.overallStatus === 'missing' && '✗'}
                     </div>
                   </div>
-                  
+
                   <div className="branch-card-body">
                     {monthlyDocumentTypes.map(docType => {
                       const status = branchStatus.statuses.find(s => s.type === docType.value);
@@ -913,8 +913,8 @@ const MonthlyDocuments = () => {
             {healthcareCenters.map(branch => {
               const branchStatus = getBranchStatus(branch.id);
               return (
-                <div 
-                  key={branch.id} 
+                <div
+                  key={branch.id}
                   className={`branch-card status-${branchStatus.overallStatus}`}
                   onClick={() => handleBranchClick(branch)}
                 >
@@ -928,7 +928,7 @@ const MonthlyDocuments = () => {
                       {branchStatus.overallStatus === 'missing' && '✗'}
                     </div>
                   </div>
-                  
+
                   <div className="branch-card-body">
                     {monthlyDocumentTypes.map(docType => {
                       const status = branchStatus.statuses.find(s => s.type === docType.value);
@@ -997,15 +997,15 @@ const MonthlyDocuments = () => {
                 />
               </div>
               <div className="form-actions">
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="btn-primary"
                   disabled={uploading}
                 >
                   {uploading ? 'جاري الرفع...' : 'رفع'}
                 </button>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => {
                     setShowUploadForm(false);
                     setUploadData({
@@ -1014,7 +1014,7 @@ const MonthlyDocuments = () => {
                       description: '',
                       file: null,
                     });
-                  }} 
+                  }}
                   className="btn-secondary"
                   disabled={uploading}
                 >
@@ -1081,18 +1081,18 @@ const MonthlyDocuments = () => {
                     </button>
                   </div>
                 </div>
-                <div style={{ 
-                  maxHeight: '300px', 
-                  overflowY: 'auto', 
-                  border: '1px solid #ddd', 
+                <div style={{
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  border: '1px solid #ddd',
                   borderRadius: '4px',
                   padding: '10px'
                 }}>
                   {branches.map(branch => (
-                    <label 
-                      key={branch.id} 
-                      style={{ 
-                        display: 'block', 
+                    <label
+                      key={branch.id}
+                      style={{
+                        display: 'block',
                         padding: '6px',
                         cursor: 'pointer',
                         borderRadius: '4px',
@@ -1107,7 +1107,7 @@ const MonthlyDocuments = () => {
                         onChange={() => handleToggleBranch(branch.id)}
                         style={{ marginLeft: '8px' }}
                       />
-                      {branch.branch_name}
+                      <BranchBadge branch={branch} /> {branch.branch_name}
                     </label>
                   ))}
                 </div>
@@ -1119,22 +1119,22 @@ const MonthlyDocuments = () => {
               </div>
 
               <div className="form-actions">
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="btn-primary"
                   disabled={generatingReport || !printData.branch_ids || printData.branch_ids.length === 0}
                 >
                   {generatingReport ? 'جاري إنشاء التقرير...' : 'إنشاء التقرير'}
                 </button>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => {
                     setShowPrintForm(false);
                     setPrintData({
                       document_type: 'payroll_file',
                       branch_ids: []
                     });
-                  }} 
+                  }}
                   className="btn-secondary"
                   disabled={generatingReport}
                 >

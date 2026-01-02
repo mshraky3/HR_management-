@@ -7,8 +7,9 @@ import { useState, useEffect } from 'react';
 import { branchesAPI, employeesAPI, branchDocumentsAPI, clearCache } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import BranchBadge from '../components/BranchBadge';
 import { getRequiredBranchDocuments, getBranchTypeLabel, getMonthlyRequiredBranchDocuments } from '../utils/employeeHelpers';
-import { DATA_COMPLETION_STATUS } from '../utils/employeeConstants';
+import { calculateEmployeeCompletion } from '../utils/dataCompletionUtils';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 import './BranchesMonitoring.css';
 
@@ -59,12 +60,12 @@ const BranchesMonitoring = () => {
           branch_id: branch.id,
           is_active: true
         });
-        
+
         if (allEmployeesResponse.data.success && allEmployeesResponse.data.data) {
           const allEmployees = allEmployeesResponse.data.data.filter(emp =>
             !emp.status || emp.status === 'active' || emp.status === 'pending'
           );
-          
+
           // Update completion status in batches
           // Performance Optimization: Increased batch size from 5 to 25 and reduced delays
           // This improves performance from ~3-5s to ~1-2s (2-4x faster) for 100 employees
@@ -72,7 +73,7 @@ const BranchesMonitoring = () => {
           for (let i = 0; i < allEmployees.length; i += BATCH_SIZE) {
             const batch = allEmployees.slice(i, i + BATCH_SIZE);
             await Promise.all(
-              batch.map(emp => 
+              batch.map(emp =>
                 employeesAPI.updateCompletionStatus(emp.id).catch(err => {
                   console.warn(`Failed to update completion status for employee ${emp.id}:`, err);
                   return null;
@@ -105,17 +106,14 @@ const BranchesMonitoring = () => {
       }
       setBranchEmployees(employees);
 
-      // Calculate completion statistics
-      const total = employees.length;
-      const complete = employees.filter(emp => emp.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE).length;
-      const incomplete = employees.filter(emp => emp.data_completion_status === DATA_COMPLETION_STATUS.INCOMPLETE || !emp.data_completion_status).length;
-      const completionPercentage = total > 0 ? Math.round((complete / total) * 100) : 0;
+      // Calculate completion statistics using unified utility
+      const employeeMetrics = calculateEmployeeCompletion(employees, branch);
 
       setCompletionStats({
-        total,
-        complete,
-        incomplete,
-        completionPercentage
+        total: employeeMetrics.totalCount,
+        complete: employeeMetrics.completeCount,
+        incomplete: employeeMetrics.incompleteCount,
+        completionPercentage: employeeMetrics.percentage
       });
 
       // Load branch documents
@@ -170,23 +168,23 @@ const BranchesMonitoring = () => {
   const sortDocumentsByPriority = (docs) => {
     const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
     const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
-    
+
     return [...docs].sort((a, b) => {
       const aType = a.type;
       const bType = b.type;
-      
+
       // Monthly documents first (highest priority)
       const aIsMonthly = monthlyTypes.includes(aType);
       const bIsMonthly = monthlyTypes.includes(bType);
       if (aIsMonthly && !bIsMonthly) return -1;
       if (!aIsMonthly && bIsMonthly) return 1;
-      
+
       // Student/Cadre documents second
       const aIsStudentCadre = studentCadreTypes.includes(aType);
       const bIsStudentCadre = studentCadreTypes.includes(bType);
       if (aIsStudentCadre && !bIsStudentCadre) return -1;
       if (!aIsStudentCadre && bIsStudentCadre) return 1;
-      
+
       // Others last
       return 0;
     });
@@ -287,16 +285,16 @@ const BranchesMonitoring = () => {
                     <div className="stat-value">
                       <div className="percentage-display">
                         <div className="percentage-bar-container">
-                          <div 
+                          <div
                             className="percentage-bar"
-                            style={{ 
+                            style={{
                               width: `${completionStats.completionPercentage}%`,
-                              backgroundColor: 
-                                completionStats.completionPercentage >= 80 
-                                  ? '#4CAF50' 
-                                  : completionStats.completionPercentage >= 50 
-                                  ? '#FF9800' 
-                                  : '#F44336'
+                              backgroundColor:
+                                completionStats.completionPercentage >= 80
+                                  ? '#4CAF50'
+                                  : completionStats.completionPercentage >= 50
+                                    ? '#FF9800'
+                                    : '#F44336'
                             }}
                           />
                         </div>
@@ -334,19 +332,17 @@ const BranchesMonitoring = () => {
                           </td>
                           <td>{employee.occupation || '-'}</td>
                           <td>
-                            <span className={`completion-badge ${
-                              employee.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE ? 'complete' : 'incomplete'
-                            }`}>
+                            <span className={`completion-badge ${employee.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE ? 'complete' : 'incomplete'
+                              }`}>
                               {employee.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE ? 'مكتمل' : 'غير مكتمل'}
                             </span>
                           </td>
                           <td>
-                            <span className={`status-badge ${
-                              employee.status === 'active' ? 'active' : 
+                            <span className={`status-badge ${employee.status === 'active' ? 'active' :
                               employee.status === 'pending' ? 'pending' : 'archived'
-                            }`}>
-                              {employee.status === 'active' ? 'نشط' : 
-                               employee.status === 'pending' ? 'قيد الانتظار' : 'مؤرشف'}
+                              }`}>
+                              {employee.status === 'active' ? 'نشط' :
+                                employee.status === 'pending' ? 'قيد الانتظار' : 'مؤرشف'}
                             </span>
                           </td>
                         </tr>
@@ -362,7 +358,7 @@ const BranchesMonitoring = () => {
             {/* Branch Documents */}
             <div className="documents-section">
               <h2>مستندات الفرع</h2>
-              
+
               {/* Existing Documents */}
               {existingDocs.length > 0 && (
                 <div className="documents-group">
@@ -397,18 +393,18 @@ const BranchesMonitoring = () => {
                 const sortedMissingDocs = sortDocumentsByPriority(missingDocs);
                 const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
                 const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
-                
+
                 const monthlyMissing = sortedMissingDocs.filter(doc => monthlyTypes.includes(doc.type));
                 const studentCadreMissing = sortedMissingDocs.filter(doc => studentCadreTypes.includes(doc.type));
                 const otherMissing = sortedMissingDocs.filter(doc => !monthlyTypes.includes(doc.type) && !studentCadreTypes.includes(doc.type));
-                
+
                 return (
                   <div className="documents-group">
                     <h3 className="documents-group-title missing">
                       <span className="status-icon">✗</span>
                       المستندات الناقصة ({missingDocs.length})
                     </h3>
-                    
+
                     {/* Monthly Documents Section (Highest Priority) */}
                     {monthlyMissing.length > 0 && (
                       <div className="documents-priority-section priority-high">
@@ -428,7 +424,7 @@ const BranchesMonitoring = () => {
                         </div>
                       </div>
                     )}
-                    
+
                     {/* Student/Cadre Documents Section */}
                     {studentCadreMissing.length > 0 && (
                       <div className="documents-priority-section priority-medium">
@@ -448,7 +444,7 @@ const BranchesMonitoring = () => {
                         </div>
                       </div>
                     )}
-                    
+
                     {/* Other Documents Section */}
                     {otherMissing.length > 0 && (
                       <div className="documents-priority-section priority-low">
@@ -501,15 +497,15 @@ const BranchesMonitoring = () => {
           </h2>
           <div className="branches-grid">
             {schools.map(branch => (
-              <div 
-                key={branch.id} 
+              <div
+                key={branch.id}
                 className="branch-card"
               >
                 <div className="branch-card-header">
-                  <h3>{branch.branch_name}</h3>
+                  <h3><BranchBadge branch={branch} /> {branch.branch_name}</h3>
                 </div>
                 <div className="branch-card-footer">
-                  <button 
+                  <button
                     className="btn-view-details"
                     onClick={() => loadBranchDetails(branch)}
                   >
@@ -531,15 +527,15 @@ const BranchesMonitoring = () => {
           </h2>
           <div className="branches-grid">
             {healthcareCenters.map(branch => (
-              <div 
-                key={branch.id} 
+              <div
+                key={branch.id}
                 className="branch-card"
               >
                 <div className="branch-card-header">
                   <h3>{branch.branch_name}</h3>
                 </div>
                 <div className="branch-card-footer">
-                  <button 
+                  <button
                     className="btn-view-details"
                     onClick={() => loadBranchDetails(branch)}
                   >

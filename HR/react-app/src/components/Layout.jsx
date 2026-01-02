@@ -17,15 +17,15 @@ const Layout = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState(null);
   const [showNotificationSettings, setShowNotificationSettings] = useState(false);
-  
-  const { 
+
+  const {
     isSupported: notificationsSupported,
     permission: notificationPermission,
     isEnabled: notificationsEnabled,
     shouldPromptForPermission,
     requestPermission
   } = usePushNotifications();
-  
+
   // Prompt for notification permission on first load (if needed)
   useEffect(() => {
     if (shouldPromptForPermission()) {
@@ -74,13 +74,13 @@ const Layout = ({ children }) => {
         { path: '/employees', label: 'قائمة الموظفين' },
         { path: '/employee-file', label: 'ملف موظف' },
         { path: '/reports', label: 'إصدار التقارير' },
+        { path: '/payrolls', label: 'المسيرات' },
         { path: '/manage-requests', label: 'إدارة الطلبات' },
       ]
     },
     monitoring: {
       label: 'المتابعة والمراقبة',
       items: [
-        { path: '/alerts', label: 'التنبيهات الذكية' },
         { path: '/branches-monitoring', label: 'الفروع' },
         { path: '/monthly-documents', label: 'المستندات الشهرية' },
         { path: '/branch-statistics', label: 'إحصائيات الفروع' },
@@ -104,8 +104,8 @@ const Layout = ({ children }) => {
           <h2>نظام إدارة الموارد البشرية</h2>
           <span className="manager-badge">مدير رئيسي</span>
         </div>
-        <button 
-          className="mobile-menu-toggle" 
+        <button
+          className="mobile-menu-toggle"
           onClick={toggleMobileMenu}
           aria-label="تبديل القائمة"
         >
@@ -142,7 +142,7 @@ const Layout = ({ children }) => {
         <div className="nav-user">
           {/* Notification Bell */}
           {notificationsSupported && (
-            <button 
+            <button
               className={`notification-bell ${notificationPermission === 'default' ? 'prompt' : ''} ${notificationsEnabled ? 'enabled' : ''}`}
               onClick={() => setShowNotificationSettings(true)}
               title="إعدادات الإشعارات"
@@ -162,7 +162,7 @@ const Layout = ({ children }) => {
       <main className="main-content">
         {children}
       </main>
-      
+
       {/* Notification Settings Modal */}
       {showNotificationSettings && (
         <div className="notification-settings-modal" onClick={() => setShowNotificationSettings(false)}>

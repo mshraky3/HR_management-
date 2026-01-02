@@ -8,13 +8,14 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { branchStatisticsAPI, branchDocumentsAPI } from '../utils/api';
-import { getRequiredBranchDocuments } from '../utils/employeeHelpers';
+import { calculateOverallProgress, calculateDocumentsCompletion } from '../utils/dataCompletionUtils';
+import BranchesOverallProgressChart from '../components/BranchesOverallProgressChart';
 import './BranchStatistics.css';
 
 const BranchStatistics = () => {
   const { isMainManager } = useAuth();
   const { showError, showSuccess } = useNotification();
-  
+
   const [statistics, setStatistics] = useState([]);
   const [branchDocuments, setBranchDocuments] = useState({}); // { branchId: documents[] }
   const [loading, setLoading] = useState(true);
@@ -28,11 +29,11 @@ const BranchStatistics = () => {
     try {
       setLoading(true);
       const response = await branchStatisticsAPI.getAll();
-      
+
       if (response.data.success) {
         const stats = response.data.data || [];
         setStatistics(stats);
-        
+
         // Load documents for all branches to calculate overall progress
         const documentsMap = {};
         await Promise.all(
@@ -66,14 +67,14 @@ const BranchStatistics = () => {
     try {
       setGeneratingReport(true);
       const branchIds = statistics.map(s => s.branch_id);
-      
+
       const response = await branchStatisticsAPI.generatePerformanceReport({
         month: selectedMonth,
         year: selectedYear,
         branch_ids: branchIds,
         format: format
       });
-      
+
       if (format === 'excel') {
         // Download Excel file
         // Check if response.data is already a Blob
@@ -86,7 +87,7 @@ const BranchStatistics = () => {
           // If it's not a blob, it might be an error response
           throw new Error('تنسيق الاستجابة غير صحيح');
         }
-        
+
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -104,7 +105,7 @@ const BranchStatistics = () => {
       console.error('Error generating report:', error);
       // Handle error response
       let errorMessage = 'فشل إنشاء التقرير';
-      
+
       if (error.response) {
         // Check if error response is JSON (not blob)
         if (error.response.data && typeof error.response.data === 'object' && !(error.response.data instanceof Blob)) {
@@ -131,7 +132,7 @@ const BranchStatistics = () => {
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       showError(errorMessage);
     } finally {
       setGeneratingReport(false);
@@ -147,23 +148,15 @@ const BranchStatistics = () => {
   }, [isMainManager, selectedMonth, selectedYear]);
 
   // Calculate overall progress for each branch (employees + documents)
-  const calculateOverallProgress = (stat) => {
+  const calculateBranchOverallProgress = (stat) => {
     const employeesCompletion = stat.completion_percentage;
-    
-    // Calculate branch documents completion
+
+    // Calculate branch documents completion using unified utility
     const documents = branchDocuments[stat.branch_id] || [];
-    const requiredDocs = getRequiredBranchDocuments(stat.branch_type);
-    const uploadedDocs = documents.filter(doc => 
-      requiredDocs.includes(doc.document_type) && doc.is_active
-    );
-    const branchDocumentsCompletion = requiredDocs.length > 0
-      ? Math.round((uploadedDocs.length / requiredDocs.length) * 100)
-      : 0;
-    
+    const documentMetrics = calculateDocumentsCompletion(documents, stat.branch_type);
+
     // Overall progress = 50% employees + 50% documents
-    return Math.round(
-      (employeesCompletion * 0.5) + (branchDocumentsCompletion * 0.5)
-    );
+    return calculateOverallProgress(employeesCompletion, documentMetrics.percentage);
   };
 
   // Filter and sort statistics
@@ -179,7 +172,7 @@ const BranchStatistics = () => {
     .sort((a, b) => {
       switch (sortBy) {
         case 'completion':
-          return calculateOverallProgress(b) - calculateOverallProgress(a);
+          return calculateBranchOverallProgress(b) - calculateBranchOverallProgress(a);
         case 'logins':
           return b.login_days_this_month - a.login_days_this_month;
         case 'activity':
@@ -197,9 +190,9 @@ const BranchStatistics = () => {
   // Calculate overall progress across all branches
   const overallProgress = statistics.length > 0
     ? Math.round(
-        statistics.reduce((sum, s) => sum + calculateOverallProgress(s), 0) /
-          statistics.length
-      )
+      statistics.reduce((sum, s) => sum + calculateBranchOverallProgress(s), 0) /
+      statistics.length
+    )
     : 0;
 
   // Get progress color class based on percentage
@@ -232,7 +225,7 @@ const BranchStatistics = () => {
           >
             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => (
               <option key={month} value={month}>
-                {new Date(selectedYear, month - 1).toLocaleDateString('en-US', { 
+                {new Date(selectedYear, month - 1).toLocaleDateString('en-US', {
                   month: 'long',
                   calendar: 'gregory'
                 })}
@@ -279,118 +272,11 @@ const BranchStatistics = () => {
         </div>
       </div>
 
-      {/* Overall Progress Chart */}
-      {statistics.length > 0 && Object.keys(branchDocuments).length > 0 && (() => {
-        // Use all statistics that have documents loaded, not filtered ones
-        // Sort by progress (descending - highest first)
-        const branchesForChart = statistics
-          .filter(stat => branchDocuments[stat.branch_id])
-          .sort((a, b) => calculateOverallProgress(b) - calculateOverallProgress(a));
-        const yAxisMax = 100; // Always 0-100% for completion
-
-        // Generate colors for branches (same as login history chart)
-        const branchColors = [
-          '#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#F44336',
-          '#00BCD4', '#8BC34A', '#FFC107', '#E91E63', '#3F51B5',
-          '#009688', '#FF5722', '#795548', '#607D8B', '#9E9E9E'
-        ];
-
-        // Calculate statistics
-        const excellentCount = branchesForChart.filter(s => calculateOverallProgress(s) >= 90).length;
-        const goodCount = branchesForChart.filter(s => {
-          const p = calculateOverallProgress(s);
-          return p >= 70 && p < 90;
-        }).length;
-        const moderateCount = branchesForChart.filter(s => {
-          const p = calculateOverallProgress(s);
-          return p >= 50 && p < 70;
-        }).length;
-        const lowCount = branchesForChart.filter(s => {
-          const p = calculateOverallProgress(s);
-          return p >= 30 && p < 50;
-        }).length;
-        const criticalCount = branchesForChart.filter(s => calculateOverallProgress(s) < 30).length;
-
-        return (
-          <div className="chart-section">
-            <div className="chart-header-section">
-              <h2>التقدم الإجمالي لجميع الفروع</h2>
-              <div className="chart-summary-stats">
-                <div className="summary-stat-item">
-                  <span className="summary-stat-label">المتوسط:</span>
-                  <span className="summary-stat-value">{overallProgress}%</span>
-                </div>
-                <div className="summary-stat-item">
-                  <span className="summary-stat-label">إجمالي الفروع:</span>
-                  <span className="summary-stat-value">{branchesForChart.length}</span>
-                </div>
-              </div>
-            </div>
-            <div className="combined-chart-container">
-              {/* Legend */}
-              <div className="chart-legend">
-                {branchesForChart.map((stat, idx) => {
-                  const overallProgressValue = calculateOverallProgress(stat);
-                  return (
-                    <div key={stat.branch_id} className="legend-item">
-                      <div 
-                        className="legend-color" 
-                        style={{ backgroundColor: branchColors[idx % branchColors.length] }}
-                      ></div>
-                      <span className="legend-label">{stat.branch_name}</span>
-                      <span className="legend-total">
-                        ({overallProgressValue}%)
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Progress Chart */}
-              <div className="chart-wrapper progress-chart-wrapper">
-                <div className="chart-y-axis">
-                  {[0, 25, 50, 75, 100].map(val => (
-                    <div key={val} className="y-axis-label">
-                      <span className="y-axis-value">{val}%</span>
-                      {val > 0 && <div className="y-axis-line"></div>}
-                    </div>
-                  ))}
-                </div>
-                <div className="chart-bars-container">
-                  <div className="chart-bars combined-bars progress-bars">
-                    {branchesForChart.map((stat, idx) => {
-                      const overallProgressValue = calculateOverallProgress(stat);
-                      const branchColor = branchColors[idx % branchColors.length];
-
-                      return (
-                        <div key={stat.branch_id} className="chart-month-group progress-bar-group">
-                          <div className="month-bars-container">
-                            <div className="combined-bar-wrapper">
-                              <div
-                                className="combined-bar progress-bar-enhanced"
-                                style={{ 
-                                  height: `${Math.max(overallProgressValue, overallProgressValue > 0 ? 3 : 0)}%`,
-                                  backgroundColor: branchColor,
-                                  maxHeight: '100%'
-                                }}
-                                title={`${stat.branch_name}: التقدم الإجمالي ${overallProgressValue}%`}
-                              >
-                                {overallProgressValue > 5 && (
-                                  <span className="combined-bar-value">{overallProgressValue}%</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* Overall Progress Chart (re-usable component) */}
+      <BranchesOverallProgressChart
+        statistics={statistics}
+        branchDocumentsMap={branchDocuments}
+      />
 
       {/* Filters and Sort */}
       <div className="filters-section">
@@ -449,9 +335,8 @@ const BranchStatistics = () => {
                   </td>
                   <td>
                     <span
-                      className={`status-badge ${
-                        stat.is_operational ? 'operational' : 'inactive'
-                      }`}
+                      className={`status-badge ${stat.is_operational ? 'operational' : 'inactive'
+                        }`}
                     >
                       {stat.is_operational ? 'نشط' : 'غير نشط'}
                     </span>
@@ -474,12 +359,12 @@ const BranchStatistics = () => {
                   </td>
                   <td>
                     {stat.last_login
-                      ? new Date(stat.last_login).toLocaleDateString('en-US', { 
-                          calendar: 'gregory',
-                          year: 'numeric',
-                          month: '2-digit',
-                          day: '2-digit'
-                        })
+                      ? new Date(stat.last_login).toLocaleDateString('en-US', {
+                        calendar: 'gregory',
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit'
+                      })
                       : 'لا يوجد'}
                     {stat.days_since_last_login !== null && (
                       <div className="days-ago">
@@ -489,12 +374,12 @@ const BranchStatistics = () => {
                   </td>
                   <td>
                     {stat.last_activity
-                      ? new Date(stat.last_activity).toLocaleDateString('en-US', { 
-                          calendar: 'gregory',
-                          year: 'numeric',
-                          month: '2-digit',
-                          day: '2-digit'
-                        })
+                      ? new Date(stat.last_activity).toLocaleDateString('en-US', {
+                        calendar: 'gregory',
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit'
+                      })
                       : 'لا يوجد'}
                   </td>
                 </tr>
@@ -508,7 +393,7 @@ const BranchStatistics = () => {
       {statistics.length > 0 && (() => {
         // Get all branches with login history for the selected month
         const targetMonthKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
-        
+
         const branchesForLoginChart = statistics
           .filter(stat => {
             if (!stat.monthly_login_history || stat.monthly_login_history.length === 0) {
@@ -538,7 +423,7 @@ const BranchStatistics = () => {
         if (branchesForLoginChart.length === 0) {
           return (
             <div className="chart-section">
-              <h2>تسجيلات الدخول - {new Date(selectedYear, selectedMonth - 1).toLocaleDateString('ar-SA', { 
+              <h2>تسجيلات الدخول - {new Date(selectedYear, selectedMonth - 1).toLocaleDateString('ar-SA', {
                 month: 'long',
                 year: 'numeric',
                 calendar: 'gregory'
@@ -563,7 +448,7 @@ const BranchStatistics = () => {
           '#009688', '#FF5722', '#795548', '#607D8B', '#9E9E9E'
         ];
 
-        const monthName = new Date(selectedYear, selectedMonth - 1).toLocaleDateString('ar-SA', { 
+        const monthName = new Date(selectedYear, selectedMonth - 1).toLocaleDateString('ar-SA', {
           month: 'long',
           year: 'numeric',
           calendar: 'gregory'
@@ -581,7 +466,7 @@ const BranchStatistics = () => {
                 >
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => (
                     <option key={month} value={month}>
-                      {new Date(selectedYear, month - 1).toLocaleDateString('en-US', { 
+                      {new Date(selectedYear, month - 1).toLocaleDateString('en-US', {
                         month: 'long',
                         calendar: 'gregory'
                       })}
@@ -609,8 +494,8 @@ const BranchStatistics = () => {
               <div className="chart-legend">
                 {branchesForLoginChart.map((stat, idx) => (
                   <div key={stat.branch_id} className="legend-item">
-                    <div 
-                      className="legend-color" 
+                    <div
+                      className="legend-color"
                       style={{ backgroundColor: branchColors[idx % branchColors.length] }}
                     ></div>
                     <span className="legend-label">{stat.branch_name}</span>
@@ -659,7 +544,7 @@ const BranchStatistics = () => {
                             <div className="combined-bar-wrapper">
                               <div
                                 className="combined-bar progress-bar-enhanced"
-                                style={{ 
+                                style={{
                                   height: `${Math.max(height, loginDays > 0 ? 3 : 0)}%`,
                                   backgroundColor: branchColor,
                                   maxHeight: '100%'

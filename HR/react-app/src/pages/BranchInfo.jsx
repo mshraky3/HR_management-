@@ -37,8 +37,8 @@ const BranchInfo = () => {
         setFormData({
           phone_number: branchData.phone_number || '',
           email: branchData.email || '',
-          number_of_employees: branchData.number_of_employees !== null && branchData.number_of_employees !== undefined 
-            ? String(branchData.number_of_employees) 
+          number_of_employees: branchData.number_of_employees !== null && branchData.number_of_employees !== undefined
+            ? String(branchData.number_of_employees)
             : '',
         });
       } else {
@@ -59,7 +59,7 @@ const BranchInfo = () => {
       [name]: value
     }));
   };
-  
+
   const handleNumberChange = (e) => {
     const { name, value } = e.target;
     // For number inputs, allow empty string or valid numbers
@@ -73,26 +73,25 @@ const BranchInfo = () => {
     e.preventDefault();
     try {
       setSaving(true);
-      
+
       // Prepare update data - explicitly handle number_of_employees
       const updateData = {
         phone_number: formData.phone_number.trim() || null,
         email: formData.email.trim() || null,
       };
-      
+
       // Handle number_of_employees: always send it explicitly
       // If empty string or falsy, send null; if has value, send the string value (backend will parse as int)
       const numEmployeesStr = String(formData.number_of_employees || '').trim();
       updateData.number_of_employees = numEmployeesStr === '' ? null : numEmployeesStr;
-      
+
       const response = await branchesAPI.updateMyBranch(updateData);
-      
+
       // Aggressively clear all related cache to ensure fresh data everywhere
       clearCache('/api/branches');
       clearCache('/api/branch-statistics');
       clearCache('/api/employees'); // Employee completion status may depend on branch info
-      clearCache('/api/alerts'); // Clear alerts cache so Dashboard shows updated alerts
-      
+
       // Update state directly from response to avoid cache issues
       if (response && response.data && response.data.success && response.data.data) {
         const updatedBranch = response.data.data;
@@ -100,17 +99,17 @@ const BranchInfo = () => {
         setFormData({
           phone_number: updatedBranch.phone_number || '',
           email: updatedBranch.email || '',
-          number_of_employees: updatedBranch.number_of_employees !== null && updatedBranch.number_of_employees !== undefined 
-            ? String(updatedBranch.number_of_employees) 
+          number_of_employees: updatedBranch.number_of_employees !== null && updatedBranch.number_of_employees !== undefined
+            ? String(updatedBranch.number_of_employees)
             : '',
         });
       } else {
         // Fallback: reload from server if response format is unexpected
         await loadBranch();
       }
-      
+
       showSuccess('تم تحديث معلومات الفرع بنجاح');
-      
+
       // Trigger a custom event to notify Dashboard to refresh
       // This ensures Dashboard reloads when user navigates back
       window.dispatchEvent(new CustomEvent('branchInfoUpdated'));
@@ -146,7 +145,7 @@ const BranchInfo = () => {
     <div className="branch-info-container">
       <div className="branch-info-header">
         <h1>معلومات الفرع</h1>
-        <p className="branch-name">{branch.branch_name}</p>
+        <p className="branch-name"><BranchBadge branch={branch} /> {branch.branch_name}</p>
       </div>
 
       <div className="branch-info-form-container">

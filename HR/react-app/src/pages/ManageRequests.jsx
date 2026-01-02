@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { requestsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
@@ -12,6 +13,7 @@ import './ManageRequests.css';
 const ManageRequests = () => {
   const { isMainManager } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
+  const navigate = useNavigate();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -28,14 +30,10 @@ const ManageRequests = () => {
     if (!isMainManager()) {
       return;
     }
+    // Load requests once when the component mounts or when the status filter changes
     loadRequests();
-    
-    // Auto-refresh every 5 seconds
-    const interval = setInterval(() => {
-      loadRequests();
-    }, 5000);
-    
-    return () => clearInterval(interval);
+    // Note: Removed automatic polling to prevent unexpected page refreshes
+    // If you want to re-enable polling, add a toggle and a longer interval.
   }, [statusFilter]);
 
   const loadRequests = async () => {
@@ -77,7 +75,7 @@ const ManageRequests = () => {
 
     try {
       setSaving(true);
-      
+
       const formData = new FormData();
       formData.append('status', responseData.status);
       if (responseData.response_text) {
@@ -86,7 +84,7 @@ const ManageRequests = () => {
       if (responseAttachment) {
         formData.append('file', responseAttachment);
       }
-      
+
       const response = await requestsAPI.respond(selectedRequest.id, formData);
       if (response.data.success) {
         showSuccess('تم الرد على الطلب بنجاح');
@@ -102,6 +100,12 @@ const ManageRequests = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const navigateToEmployee = (employeeId) => {
+    if (!employeeId) return;
+    // Navigate to the Employees search page and request that it focuses the given employee
+    navigate('/employees', { state: { focusEmployeeId: employeeId } });
   };
 
   const getStatusLabel = (status) => {
@@ -229,8 +233,8 @@ const ManageRequests = () => {
                 {responseAttachment && (
                   <div className="file-info">
                     <span>الملف المحدد: {responseAttachment.name}</span>
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       className="btn-remove-file"
                       onClick={() => setResponseAttachment(null)}
                     >
@@ -295,7 +299,18 @@ const ManageRequests = () => {
                       {request.employee_name && (
                         <div className="detail-item">
                           <span className="detail-label">الموظف المعني:</span>
-                          <span className="detail-value">{request.employee_name}</span>
+                          <span className="detail-value">
+                            {request.employee_name}
+                            {request.employee_id && (
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm show-employee-btn"
+                                onClick={() => navigateToEmployee(request.employee_id)}
+                              >
+                                عرض الموظف
+                              </button>
+                            )}
+                          </span>
                         </div>
                       )}
 
@@ -325,9 +340,9 @@ const ManageRequests = () => {
                           {request.response_attachment_name && (
                             <div className="detail-item">
                               <span className="detail-label">المرفق مع الرد:</span>
-                              <a 
-                                href={request.response_attachment_url} 
-                                target="_blank" 
+                              <a
+                                href={request.response_attachment_url}
+                                target="_blank"
                                 rel="noopener noreferrer"
                                 className="attachment-link"
                               >

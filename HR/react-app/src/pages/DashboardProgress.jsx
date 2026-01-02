@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { DATA_COMPLETION_STATUS } from '../utils/employeeConstants';
+import { calculateDataCompletion } from '../utils/dataCompletionUtils';
 
 const DashboardProgress = ({ employees, documents, branch }) => {
   const [progressLoading, setProgressLoading] = useState(false);
@@ -17,56 +17,67 @@ const DashboardProgress = ({ employees, documents, branch }) => {
 
   // Calculate overall progress for branch manager
   const calculateProgress = async (employees, documents, branch) => {
-    if (!branch) return;
+    const calcStartTime = performance.now();
+    console.log('[DashboardProgress] ========== calculateProgress STARTED ==========');
+    console.log('[DashboardProgress] Branch:', branch?.id, branch?.branch_name);
+    console.log('[DashboardProgress] Employees count:', employees?.length || 0);
+    console.log('[DashboardProgress] Documents count:', documents?.length || 0);
+    
+    if (!branch) {
+      console.log('[DashboardProgress] No branch provided, aborting calculation');
+      return;
+    }
     
     setProgressLoading(true);
     try {
-      // 1. Calculate employees data completion
-      // Use branch.number_of_employees if set, otherwise use actual employees count
-      // This provides more accurate percentage when branch has expected number of employees
-      const expectedEmployeeCount = branch.number_of_employees && branch.number_of_employees > 0 
-        ? branch.number_of_employees 
-        : employees.length;
-      const completeEmployees = employees.filter(emp => emp.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE).length;
-      const employeesCompletion = expectedEmployeeCount > 0 
-        ? Math.round((completeEmployees / expectedEmployeeCount) * 100) 
-        : 0;
+      // Use unified calculation utility
+      console.log('[DashboardProgress] Calculating progress using unified utility...');
+      const completionData = calculateDataCompletion(employees, documents, branch);
       
-      // 2. Calculate branch documents completion
-      const { getRequiredBranchDocuments } = await import('../utils/employeeHelpers');
-      const requiredDocs = getRequiredBranchDocuments(branch.branch_type);
-      const uploadedDocs = documents.filter(doc => 
-        requiredDocs.includes(doc.document_type) && doc.is_active
-      );
-      const branchDocumentsCompletion = requiredDocs.length > 0
-        ? Math.round((uploadedDocs.length / requiredDocs.length) * 100)
-        : 0;
+      console.log('[DashboardProgress] Employees completion:', completionData.employeesCompletion + '%');
+      console.log('[DashboardProgress] Documents completion:', completionData.branchDocumentsCompletion + '%');
+      console.log('[DashboardProgress] Overall progress:', completionData.overallProgress + '%');
       
-      // 3. Calculate overall progress (weighted average)
-      // Employees: 50%, Documents: 50%
-      const overallProgress = Math.round(
-        (employeesCompletion * 0.5) + 
-        (branchDocumentsCompletion * 0.5)
-      );
-      
-      setProgressData({
-        employeesCompletion,
-        branchDocumentsCompletion,
+      const progressDataResult = {
+        employeesCompletion: completionData.employeesCompletion,
+        branchDocumentsCompletion: completionData.branchDocumentsCompletion,
         alertsResolved: 0, // Not used anymore
-        overallProgress
-      });
+        overallProgress: completionData.overallProgress
+      };
+      console.log('[DashboardProgress] Setting progress data:', progressDataResult);
+      setProgressData(progressDataResult);
+      
+      const calcEndTime = performance.now();
+      console.log('[DashboardProgress] ========== calculateProgress COMPLETED ==========');
+      console.log('[DashboardProgress] Calculation time:', (calcEndTime - calcStartTime).toFixed(2), 'ms');
     } catch (error) {
-      console.error('Error calculating progress:', error);
+      const calcEndTime = performance.now();
+      console.error('[DashboardProgress] ========== calculateProgress ERROR ==========');
+      console.error('[DashboardProgress] Error calculating progress:', error);
+      console.error('[DashboardProgress] Error after', (calcEndTime - calcStartTime).toFixed(2), 'ms');
+      console.error('[DashboardProgress] Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
     } finally {
       setProgressLoading(false);
+      console.log('[DashboardProgress] Progress loading set to false');
     }
   };
 
   // Calculate progress when data changes (run in parallel, non-blocking)
   useEffect(() => {
+    console.log('[DashboardProgress] useEffect triggered');
+    console.log('[DashboardProgress] Branch:', branch?.id, 'Employees:', employees?.length, 'Documents:', documents?.length);
     if (branch && employees && Array.isArray(employees) && documents && Array.isArray(documents)) {
+      console.log('[DashboardProgress] All data available, calling calculateProgress...');
       // Run calculation in parallel without blocking
       calculateProgress(employees, documents, branch);
+    } else {
+      console.log('[DashboardProgress] Missing data, skipping calculation');
+      console.log('[DashboardProgress] Branch exists:', !!branch);
+      console.log('[DashboardProgress] Employees is array:', Array.isArray(employees));
+      console.log('[DashboardProgress] Documents is array:', Array.isArray(documents));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branch?.id, employees?.length, documents?.length]);

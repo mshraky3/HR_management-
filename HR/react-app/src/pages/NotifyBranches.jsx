@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
 import { notificationsAPI, branchesAPI } from "../utils/api";
+import BranchBadge from '../components/BranchBadge';
 import "./NotifyBranches.css";
 
 const NotifyBranches = () => {
@@ -76,16 +77,16 @@ const NotifyBranches = () => {
 
     try {
       setSaving(true);
-      
+
       // Create FormData for file upload
       const formDataToSend = new FormData();
       formDataToSend.append('message', formData.message.trim());
       formDataToSend.append('importance_level', parseInt(formData.importance_level));
-      
+
       // Append branch_ids as JSON string to ensure proper parsing on server
       // This is more reliable than multiple append() calls with same key
       formDataToSend.append('branch_ids', JSON.stringify(formData.branch_ids.map(id => parseInt(id))));
-      
+
       // Add file if selected
       if (attachmentFile) {
         formDataToSend.append('file', attachmentFile);
@@ -308,6 +309,7 @@ const NotifyBranches = () => {
                       checked={formData.branch_ids.includes(branch.id)}
                       onChange={() => toggleBranchSelection(branch.id)}
                     />
+                    <BranchBadge branch={branch} />
                     <span>{branch.branch_name}</span>
                     <span className="branch-type-badge">
                       {branch.branch_type === "school" ? "مدرسة" : "مركز رعاية نهارية"}
@@ -331,15 +333,15 @@ const NotifyBranches = () => {
               <button
                 type="button"
                 className="btn btn-secondary"
-                  onClick={() => {
-                    setShowCreateForm(false);
-                    setFormData({
-                      message: "",
-                      importance_level: 2,
-                      branch_ids: [],
-                    });
-                    setAttachmentFile(null);
-                  }}
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setFormData({
+                    message: "",
+                    importance_level: 2,
+                    branch_ids: [],
+                  });
+                  setAttachmentFile(null);
+                }}
               >
                 إلغاء
               </button>
@@ -371,9 +373,8 @@ const NotifyBranches = () => {
                   key={notification.id}
                   className="notification-card"
                   style={{
-                    borderRight: `4px solid ${
-                      importanceColors[notification.importance_level]
-                    }`,
+                    borderRight: `4px solid ${importanceColors[notification.importance_level]
+                      }`,
                   }}
                 >
                   <div className="notification-card-header">
@@ -534,7 +535,7 @@ const NotifyBranches = () => {
                                     (response) => {
                                       const statusInfo =
                                         responseStatusLabels[
-                                          response.response_status
+                                        response.response_status
                                         ] || {};
                                       return (
                                         <div

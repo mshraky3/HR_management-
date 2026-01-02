@@ -26,24 +26,24 @@ import Login from './pages/Login';
 // Loading component for Suspense fallback
 // This is shown while lazy-loaded components are being fetched
 const PageLoading = () => (
-  <div style={{ 
-    display: 'flex', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
+  <div style={{
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
     minHeight: '60vh',
     flexDirection: 'column',
     gap: '20px',
     padding: '40px'
   }}>
-    <div 
-      className="spinner-large" 
-      style={{ 
+    <div
+      className="spinner-large"
+      style={{
         border: '4px solid rgba(185, 210, 207, 0.3)',
         borderTop: '4px solid var(--primary, #b9d2cf)'
       }}
     ></div>
-    <div style={{ 
-      color: 'var(--text-secondary, #334155)', 
+    <div style={{
+      color: 'var(--text-secondary, #334155)',
       fontSize: '16px',
       fontWeight: '500'
     }}>
@@ -62,6 +62,7 @@ const EmployeeDetails = lazy(() => import('./pages/EmployeeDetails/index.jsx'));
 const BranchDocuments = lazy(() => import('./pages/BranchDocuments'));
 const MonthlyDocuments = lazy(() => import('./pages/MonthlyDocuments'));
 const Reports = lazy(() => import('./pages/Reports'));
+const Payrolls = lazy(() => import('./pages/Payrolls'));
 const EmployeeFile = lazy(() => import('./pages/EmployeeFile'));
 const NotifyBranches = lazy(() => import('./pages/NotifyBranches'));
 const Archive = lazy(() => import('./pages/Archive'));
@@ -72,7 +73,6 @@ const BranchInfo = lazy(() => import('./pages/BranchInfo'));
 const DirectContact = lazy(() => import('./pages/DirectContact'));
 const BranchRequests = lazy(() => import('./pages/BranchRequests'));
 const ManageRequests = lazy(() => import('./pages/ManageRequests'));
-const Alerts = lazy(() => import('./pages/Alerts'));
 
 // Wrapper component to choose layout based on role
 const RoleBasedLayout = ({ children }) => {
@@ -171,6 +171,16 @@ const AppContent = () => {
               <RoleBasedLayout>
                 <Reports />
               </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/payrolls"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <Payrolls />
+              </Layout>
             </ProtectedRoute>
           }
         />
@@ -275,18 +285,8 @@ const AppContent = () => {
           }
         />
         <Route
-          path="/alerts"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <Alerts />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route 
-          path="/" 
-          element={<Navigate to="/login" replace />} 
+          path="/"
+          element={<Navigate to="/login" replace />}
         />
       </Routes>
     </Suspense>
@@ -296,15 +296,15 @@ const AppContent = () => {
 // Root redirect component - handles authentication check before redirecting
 const RootRedirect = () => {
   const { isAuthenticated, loading } = useAuth();
-  
+
   if (loading) {
     return <PageLoading />;
   }
-  
+
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
   }
-  
+
   return <Navigate to="/login" replace />;
 };
 
