@@ -164,7 +164,12 @@ export const httpLogger = (req, res, next) => {
     if (res.statusCode >= 500) {
       logger.error(message, metadata);
     } else if (res.statusCode >= 400) {
-      logger.warn(message, metadata);
+      // Skip warning logs for intentional 404 handlers (like /me redirect)
+      if (req.path === '/me' && res.statusCode === 404) {
+        // Silently ignore - this is an intentional handler for incorrect requests
+      } else {
+        logger.warn(message, metadata);
+      }
     } else if (process.env.NODE_ENV === 'development') {
       // Only log successful requests in development
       logger.http(message, metadata);

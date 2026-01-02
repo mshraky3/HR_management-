@@ -7,6 +7,7 @@ import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { requireMainManager } from '../middleware/authorization.js';
 import sql from '../config/database.js';
+import { calculateEmployeeCompletion } from '../utils/dataCompletionUtils.js';
 
 const router = express.Router();
 
@@ -28,9 +29,9 @@ router.get('/', async (req, res) => {
     const firstDayOfMonth = new Date(currentYear, currentMonth - 1, 1).toISOString().split('T')[0];
     const lastDayOfMonth = new Date(currentYear, currentMonth, 0).toISOString().split('T')[0];
     
-    // Get all branches
+    // Get all branches (including number_of_employees for accurate completion calculation)
     const branches = await sql`
-      SELECT id, branch_name, branch_type, username, is_active
+      SELECT id, branch_name, branch_type, username, is_active, number_of_employees
       FROM branches
       WHERE is_active = true
       ORDER BY branch_name
@@ -151,9 +152,10 @@ router.get('/', async (req, res) => {
           pending_employees: 0
         };
         
-        const completionPercentage = stats.total_employees > 0
-          ? Math.round((stats.complete_employees / stats.total_employees) * 100)
-          : 0;
+        // Use unified utility to calculate completion percentage
+        // This ensures consistent calculation using branch.number_of_employees when available
+        const employeeMetrics = calculateEmployeeCompletion(stats, branch);
+        const completionPercentage = employeeMetrics.percentage;
         
         const totalActivities = 
           parseInt(employeeUpdates[0]?.update_count || 0, 10) +
@@ -324,9 +326,10 @@ router.post('/performance-report', async (req, res) => {
           active_employees: 0
         };
         
-        const completionPercentage = stats.total_employees > 0
-          ? Math.round((stats.complete_employees / stats.total_employees) * 100)
-          : 0;
+        // Use unified utility to calculate completion percentage
+        // This ensures consistent calculation using branch.number_of_employees when available
+        const employeeMetrics = calculateEmployeeCompletion(stats, branch);
+        const completionPercentage = employeeMetrics.percentage;
         
         const daysSinceLastLogin = lastLogin[0]?.last_login 
           ? Math.floor((new Date() - new Date(lastLogin[0].last_login)) / (1000 * 60 * 60 * 24))
