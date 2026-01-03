@@ -8,6 +8,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
 import { notificationsAPI, branchesAPI } from "../utils/api";
 import BranchBadge from '../components/BranchBadge';
+import { formatDate } from '../utils/dateConverters';
 import "./NotifyBranches.css";
 
 const NotifyBranches = () => {
@@ -20,12 +21,15 @@ const NotifyBranches = () => {
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [notificationDetails, setNotificationDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
 
   // Create form state
   const [formData, setFormData] = useState({
     message: "",
     importance_level: 2,
     branch_ids: [],
+    duration_days: 7,
+    one_time: false,
   });
   const [attachmentFile, setAttachmentFile] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -39,11 +43,19 @@ const NotifyBranches = () => {
     localStorage.setItem('notifications_last_visit', new Date().toISOString());
   }, [isMainManager]);
 
+  // Reload data when showInactive changes
+  useEffect(() => {
+    if (!isMainManager()) {
+      return;
+    }
+    loadData();
+  }, [showInactive]);
+
   const loadData = async () => {
     try {
       setLoading(true);
       const [notificationsRes, branchesRes] = await Promise.all([
-        notificationsAPI.getAll(),
+        notificationsAPI.getAll({ include_inactive: showInactive }),
         branchesAPI.getAll({ is_active: true }),
       ]);
 
@@ -82,6 +94,8 @@ const NotifyBranches = () => {
       const formDataToSend = new FormData();
       formDataToSend.append('message', formData.message.trim());
       formDataToSend.append('importance_level', parseInt(formData.importance_level));
+      formDataToSend.append('duration_days', parseInt(formData.duration_days) || 7);
+      formDataToSend.append('one_time', formData.one_time ? 'true' : 'false');
 
       // Append branch_ids as JSON string to ensure proper parsing on server
       // This is more reliable than multiple append() calls with same key
@@ -100,6 +114,8 @@ const NotifyBranches = () => {
           message: "",
           importance_level: 2,
           branch_ids: [],
+          duration_days: 7,
+          one_time: false,
         });
         setAttachmentFile(null);
         setShowCreateForm(false);
@@ -157,6 +173,19 @@ const NotifyBranches = () => {
     }
   };
 
+  const handleToggleActive = async (notificationId) => {
+    try {
+      const response = await notificationsAPI.toggleActive(notificationId);
+      if (response.data.success) {
+        showSuccess(response.data.message);
+        loadData();
+      }
+    } catch (error) {
+      console.error("Error toggling notification status:", error);
+      showError(error.response?.data?.message || "فشل تحديث حالة الإشعار");
+    }
+  };
+
   const toggleBranchSelection = (branchId) => {
     setFormData((prev) => ({
       ...prev,
@@ -185,6 +214,7 @@ const NotifyBranches = () => {
     2: "#FF9800", // Medium - Orange
     3: "#F44336", // High - Red
     4: "#2196F3", // Circular - Blue
+    5: "#9C27B0", // One-time - Purple
   };
 
   const importanceLabels = {
@@ -192,6 +222,7 @@ const NotifyBranches = () => {
     2: "هام و غير عاجل",
     3: "هام و عاجل",
     4: "تعميم",
+    5: "تنبيه لمرة واحدة",
   };
 
   const responseStatusLabels = {
@@ -213,137 +244,227 @@ const NotifyBranches = () => {
     <div className="notify-branches-page">
       <div className="page-header">
         <h1>إشعارات الفروع</h1>
-        <button
-          className="btn btn-primary"
-          onClick={() => setShowCreateForm(!showCreateForm)}
-        >
-          {showCreateForm ? "إلغاء" : "إرسال إشعار جديد"}
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <label className="modern-toggle" style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
+            <div className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => {
+                  setShowInactive(e.target.checked);
+                }}
+                className="toggle-input"
+              />
+              <span className="toggle-slider"></span>
+            </div>
+            <span style={{ userSelect: 'none', fontWeight: '500', fontSize: '14px' }}>عرض الإشعارات غير النشطة</span>
+          </label>
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowCreateForm(!showCreateForm)}
+          >
+            {showCreateForm ? "إلغاء" : "إرسال إشعار جديد"}
+          </button>
+        </div>
       </div>
 
       {/* Create Notification Form */}
       {showCreateForm && (
-        <div className="create-notification-form">
-          <h2>إرسال إشعار جديد</h2>
-          <form onSubmit={handleCreateNotification}>
-            <div className="form-group">
-              <label htmlFor="message">الرسالة *</label>
-              <textarea
-                id="message"
-                value={formData.message}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, message: e.target.value }))
-                }
-                rows="5"
-                required
-                placeholder="اكتب الرسالة هنا..."
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="importance_level">مستوى الأهمية *</label>
-              <select
-                id="importance_level"
-                value={formData.importance_level}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    importance_level: parseInt(e.target.value),
-                  }))
-                }
-                required
-              >
-                <option value={1}>تنبيه</option>
-                <option value={2}>هام و غير عاجل</option>
-                <option value={3}>هام و عاجل</option>
-                <option value={4}>تعميم</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="attachment">إرفاق ملف أو صورة (اختياري)</label>
-              <input
-                id="attachment"
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.gif"
-                onChange={(e) => setAttachmentFile(e.target.files[0] || null)}
-              />
-              {attachmentFile && (
-                <div style={{ marginTop: '8px', fontSize: '14px', color: '#666' }}>
-                  <span>✓ الملف المحدد: {attachmentFile.name}</span>
-                  <span style={{ marginLeft: '10px', color: '#999' }}>
-                    ({(attachmentFile.size / 1024 / 1024).toFixed(2)} ميجابايت)
-                  </span>
-                </div>
-              )}
-              <p style={{ marginTop: '5px', fontSize: '12px', color: '#999' }}>
-                الحد الأقصى لحجم الملف: 10 ميجابايت. أنواع الملفات المدعومة: PDF, JPG, PNG, GIF
-              </p>
-            </div>
-
-            <div className="form-group">
-              <div className="branches-selection-header">
-                <label>اختر الفروع *</label>
-                <div className="selection-actions">
-                  <button
-                    type="button"
-                    className="btn-link"
-                    onClick={selectAllBranches}
-                  >
-                    تحديد الكل
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-link"
-                    onClick={deselectAllBranches}
-                  >
-                    إلغاء التحديد
-                  </button>
-                </div>
+        <div className="create-notification-form modern-form">
+          <div className="form-header">
+            <h2>إرسال إشعار جديد</h2>
+          </div>
+          
+          <form onSubmit={handleCreateNotification} className="modern-form-content">
+            <div className="form-row">
+              <div className="form-group form-group-full">
+                <label htmlFor="message" className="form-label">
+                  <span className="label-text">الرسالة</span>
+                  <span className="required-badge">*</span>
+                </label>
+                <textarea
+                  id="message"
+                  className="form-textarea"
+                  value={formData.message}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, message: e.target.value }))
+                  }
+                  rows="5"
+                  required
+                  placeholder="اكتب الرسالة هنا..."
+                />
               </div>
-              <div className="branches-checkbox-grid">
-                {branches.map((branch) => (
-                  <label key={branch.id} className="branch-checkbox-item">
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="importance_level" className="form-label">
+                  <span className="label-text">مستوى الأهمية</span>
+                  <span className="required-badge">*</span>
+                </label>
+                <select
+                  id="importance_level"
+                  className="form-select"
+                  value={formData.importance_level}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      importance_level: parseInt(e.target.value),
+                    }))
+                  }
+                  required
+                >
+                  <option value={1}>تنبيه</option>
+                  <option value={2}>هام و غير عاجل</option>
+                  <option value={3}>هام و عاجل</option>
+                  <option value={4}>تعميم</option>
+                  <option value={5}>تنبيه لمرة واحدة</option>
+                </select>
+              </div>
+
+              <div className="form-group form-group-small">
+                <label htmlFor="duration_days" className="form-label">
+                  <span className="label-text">مدة الإشعار (أيام)</span>
+                </label>
+                <input
+                  type="number"
+                  id="duration_days"
+                  className="form-input form-input-small"
+                  min="1"
+                  max="365"
+                  value={formData.duration_days}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, duration_days: parseInt(e.target.value) || 7 }))}
+                  placeholder="7"
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group form-group-full">
+                <label className="modern-toggle" style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
+                  <div className="toggle-switch">
                     <input
                       type="checkbox"
-                      checked={formData.branch_ids.includes(branch.id)}
-                      onChange={() => toggleBranchSelection(branch.id)}
+                      id="one_time"
+                      checked={formData.one_time}
+                      onChange={(e) => {
+                        const isOneTime = e.target.checked;
+                        setFormData((prev) => ({
+                          ...prev,
+                          one_time: isOneTime,
+                          // Automatically set importance level to 5 if one-time is checked
+                          importance_level: isOneTime ? 5 : (prev.importance_level === 5 ? 2 : prev.importance_level)
+                        }));
+                      }}
+                      className="toggle-input"
                     />
-                    <BranchBadge branch={branch} />
-                    <span>{branch.branch_name}</span>
-                    <span className="branch-type-badge">
-                      {branch.branch_type === "school" ? "مدرسة" : "مركز رعاية نهارية"}
-                    </span>
-                  </label>
-                ))}
+                    <span className="toggle-slider"></span>
+                  </div>
+                  <span style={{ userSelect: 'none', fontWeight: '500', fontSize: '14px' }}>إشعار لمرة واحدة فقط</span>
+                </label>
               </div>
-              {formData.branch_ids.length === 0 && (
-                <p className="form-error">يجب اختيار فرع واحد على الأقل</p>
-              )}
             </div>
 
-            <div className="form-actions">
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={saving || formData.branch_ids.length === 0}
-              >
-                {saving ? "جاري الإرسال..." : "إرسال الإشعار"}
-              </button>
+            <div className="form-row">
+              <div className="form-group form-group-full">
+                <label htmlFor="attachment" className="form-label">
+                  <span className="label-text">إرفاق ملف أو صورة</span>
+                  <span className="optional-badge">(اختياري)</span>
+                </label>
+                <div className="file-upload-container">
+                  <input
+                    id="attachment"
+                    type="file"
+                    className="file-input"
+                    accept=".pdf,.jpg,.jpeg,.png,.gif"
+                    onChange={(e) => setAttachmentFile(e.target.files[0] || null)}
+                  />
+                  {attachmentFile && (
+                    <div className="file-selected">
+                      <span className="file-icon">📎</span>
+                      <div className="file-info">
+                        <span className="file-name">{attachmentFile.name}</span>
+                        <span className="file-size">
+                          ({(attachmentFile.size / 1024 / 1024).toFixed(2)} ميجابايت)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="remove-file-btn"
+                        onClick={() => setAttachmentFile(null)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group form-group-full">
+                <div className="branches-selection-header modern-header">
+                  <label className="form-label">
+                    <span className="label-text">اختر الفروع</span>
+                    <span className="required-badge">*</span>
+                  </label>
+                  <div className="selection-actions">
+                    <button
+                      type="button"
+                      className="action-link-btn"
+                      onClick={selectAllBranches}
+                    >
+                      تحديد الكل
+                    </button>
+                    <button
+                      type="button"
+                      className="action-link-btn"
+                      onClick={deselectAllBranches}
+                    >
+                      إلغاء التحديد
+                    </button>
+                  </div>
+                </div>
+              <div className="branches-button-grid">
+                {branches.map((branch) => (
+                  <button
+                    key={branch.id}
+                    type="button"
+                    className={`branch-select-button ${formData.branch_ids.includes(branch.id) ? 'selected' : ''}`}
+                    onClick={() => toggleBranchSelection(branch.id)}
+                  >
+                    <BranchBadge branch={branch} />
+                    <span className="branch-name-text">{branch.branch_name}</span>
+                  </button>
+                ))}
+              </div>
+              </div>
+            </div>
+
+            <div className="form-actions modern-actions">
               <button
                 type="button"
-                className="btn btn-secondary"
+                className="btn btn-secondary modern-btn-secondary"
                 onClick={() => {
                   setShowCreateForm(false);
                   setFormData({
                     message: "",
                     importance_level: 2,
                     branch_ids: [],
+                    duration_days: 7,
+                    one_time: false,
                   });
                   setAttachmentFile(null);
                 }}
               >
                 إلغاء
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary modern-btn-primary"
+                disabled={saving || formData.branch_ids.length === 0}
+              >
+                {saving ? "جاري الإرسال..." : "إرسال الإشعار"}
               </button>
             </div>
           </form>
@@ -355,7 +476,7 @@ const NotifyBranches = () => {
         <div className="loading">جاري التحميل...</div>
       ) : (
         <div className="notifications-list">
-          <h2>الإشعارات المرسلة ({notifications.length})</h2>
+          <h2>{showInactive ? 'جميع الإشعارات' : 'الإشعارات النشطة'} ({notifications.length})</h2>
 
           {notifications.length === 0 ? (
             <div className="empty-state">
@@ -375,6 +496,7 @@ const NotifyBranches = () => {
                   style={{
                     borderRight: `4px solid ${importanceColors[notification.importance_level]
                       }`,
+                    opacity: notification.is_active ? 1 : 0.7,
                   }}
                 >
                   <div className="notification-card-header">
@@ -389,16 +511,7 @@ const NotifyBranches = () => {
                         {importanceLabels[notification.importance_level]}
                       </span>
                       <span className="notification-date">
-                        {new Date(notification.created_at).toLocaleDateString(
-                          "en-GB",
-                          {
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          }
-                        )}
+                        {formatDate(notification.created_at)}
                       </span>
                       {notification.created_by_name && (
                         <span className="notification-creator">
@@ -416,10 +529,18 @@ const NotifyBranches = () => {
                           : "عرض التفاصيل"}
                       </button>
                       <button
+                        className={`btn btn-sm ${notification.is_active ? 'btn-warning' : 'btn-success'}`}
+                        onClick={() => handleToggleActive(notification.id)}
+                        title={notification.is_active ? 'إلغاء التفعيل' : 'تفعيل'}
+                      >
+                        {notification.is_active ? 'إلغاء التفعيل' : 'تفعيل'}
+                      </button>
+                      <button
                         className="btn btn-sm btn-danger"
                         onClick={() =>
                           handleDeleteNotification(notification.id)
                         }
+                        style={{ marginLeft: '8px' }}
                       >
                         حذف
                       </button>
@@ -491,6 +612,12 @@ const NotifyBranches = () => {
                       <span className="stat-label">لم يرد:</span>
                       <span className="stat-value">{noResponseCount}</span>
                     </div>
+                    {notification.one_time && stats.seen_branches_count > 0 && (
+                      <div className="stat-item stat-info">
+                        <span className="stat-label">تم المشاهدة:</span>
+                        <span className="stat-value">{stats.seen_branches_count}</span>
+                      </div>
+                    )}
                     {stats.done_count > 0 && (
                       <div className="stat-item stat-done">
                         <span className="stat-label">تم:</span>
@@ -563,15 +690,7 @@ const NotifyBranches = () => {
                                             </div>
                                           )}
                                           <div className="response-date">
-                                            {new Date(
-                                              response.responded_at
-                                            ).toLocaleDateString("en-GB", {
-                                              year: "numeric",
-                                              month: "long",
-                                              day: "numeric",
-                                              hour: "2-digit",
-                                              minute: "2-digit",
-                                            })}
+                                            {formatDate(response.responded_at)}
                                           </div>
                                         </div>
                                       );

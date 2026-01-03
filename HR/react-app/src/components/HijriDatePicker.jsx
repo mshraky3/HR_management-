@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { gregorianToHijri, hijriToGregorian, formatHijriToString, parseHijriString } from '../utils/dateConverters';
+import { gregorianToHijri, hijriToGregorian, formatHijriToString, parseHijriString, formatDate } from '../utils/dateConverters';
 import './HijriDatePicker.css';
 
 const HijriDatePicker = ({ 
@@ -18,6 +18,7 @@ const HijriDatePicker = ({
 }) => {
   const [activeCalendar, setActiveCalendar] = useState(defaultCalendarType);
   const [hijriParts, setHijriParts] = useState({ day: '', month: '', year: '' });
+  const [gregorianParts, setGregorianParts] = useState({ day: '', month: '', year: '' });
   
   // Sync internal state when external values change
   useEffect(() => {
@@ -32,6 +33,20 @@ const HijriDatePicker = ({
       }
     } else if (!hijriValue && !gregorianValue) {
       setHijriParts({ day: '', month: '', year: '' });
+    }
+    
+    // Sync Gregorian parts when gregorianValue changes
+    if (gregorianValue) {
+      const date = new Date(gregorianValue);
+      if (!isNaN(date.getTime())) {
+        setGregorianParts({
+          day: date.getDate().toString().padStart(2, '0'),
+          month: (date.getMonth() + 1).toString().padStart(2, '0'),
+          year: date.getFullYear().toString()
+        });
+      }
+    } else if (!gregorianValue && !hijriValue) {
+      setGregorianParts({ day: '', month: '', year: '' });
     }
   }, [hijriValue, gregorianValue]);
 
@@ -68,19 +83,29 @@ const HijriDatePicker = ({
     }
   };
 
-  const handleGregorianChange = (val) => {
-    // val is YYYY-MM-DD
-    const gregorianStr = val;
-    let hijriStr = '';
-    
-    if (gregorianStr) {
-      const hijriDate = gregorianToHijri(gregorianStr);
-      if (hijriDate) {
-        hijriStr = formatHijriToString(hijriDate);
-      }
-    }
+  const handleGregorianChange = (field, val) => {
+    const newParts = { ...gregorianParts, [field]: val };
+    setGregorianParts(newParts);
 
-    onChange(hijriStr, gregorianStr);
+    // If we have a complete Gregorian date, convert and notify parent
+    if (newParts.day && newParts.month && newParts.year && 
+        newParts.year.length === 4) {
+      
+      // Format as YYYY-MM-DD for storage
+      const day = parseInt(newParts.day);
+      const month = parseInt(newParts.month);
+      const year = parseInt(newParts.year);
+      
+      if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 1000 && year <= 2500) {
+        const gregorianStr = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+        const hijriDate = gregorianToHijri(gregorianStr);
+        const hijriStr = hijriDate ? formatHijriToString(hijriDate) : '';
+        
+        onChange(hijriStr, gregorianStr);
+      }
+    } else {
+      if (!val) onChange('', ''); 
+    }
   };
 
   return (
@@ -151,19 +176,47 @@ const HijriDatePicker = ({
       )}
       
       {activeCalendar === 'gregorian' && (
-        <input
-          type="date"
-          value={gregorianValue || ''}
-          onChange={(e) => handleGregorianChange(e.target.value)}
-          required={required && activeCalendar === 'gregorian'}
-        />
+        <div className="gregorian-inputs">
+          <input
+            type="number"
+            placeholder="اليوم"
+            min="1"
+            max="31"
+            value={gregorianParts.day}
+            onChange={(e) => handleGregorianChange('day', e.target.value)}
+            required={required && activeCalendar === 'gregorian'}
+            className="gregorian-day"
+          />
+          <span>/</span>
+          <input
+            type="number"
+            placeholder="الشهر"
+            min="1"
+            max="12"
+            value={gregorianParts.month}
+            onChange={(e) => handleGregorianChange('month', e.target.value)}
+            required={required && activeCalendar === 'gregorian'}
+            className="gregorian-month"
+          />
+          <span>/</span>
+          <input
+            type="number"
+            placeholder="السنة"
+            min="1000"
+            max="2500"
+            value={gregorianParts.year}
+            onChange={(e) => handleGregorianChange('year', e.target.value)}
+            required={required && activeCalendar === 'gregorian'}
+            className="gregorian-year"
+          />
+        </div>
       )}
 
       {/* Display the converted value for reference */}
       <div className="converted-date-display">
         {activeCalendar === 'hijri' && gregorianValue && (
           <span className="converted-date">
-            <strong>الموافق ميلادي:</strong> {gregorianValue}
+            <strong>الموافق ميلادي:</strong> {formatDate(gregorianValue)}
           </span>
         )}
         {activeCalendar === 'gregorian' && hijriValue && (

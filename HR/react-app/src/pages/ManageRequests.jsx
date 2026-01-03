@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { requestsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { formatDate } from '../utils/dateConverters';
 import './ManageRequests.css';
 
 const ManageRequests = () => {
@@ -119,18 +120,6 @@ const ManageRequests = () => {
     return labels[status] || { text: status, color: '#757575' };
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      calendar: 'gregory',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
 
   if (!isMainManager()) {
     return (

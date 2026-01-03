@@ -86,6 +86,7 @@ const Layout = ({ children }) => {
         { path: '/branch-statistics', label: 'إحصائيات الفروع' },
         { path: '/notify-branches', label: 'إشعار الفروع' },
         { path: '/direct-contact', label: 'التواصل المباشر' },
+        { path: '/fix-missing-dates', label: 'البيانات غير الدقيقة' },
         { path: '/archive', label: 'الأرشيف' },
       ]
     },

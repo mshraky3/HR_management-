@@ -56,7 +56,7 @@ const detectBackendError = (error) => {
   const code = error.code || '';
   const errno = error.errno || '';
   const message = (error.message || '').toLowerCase();
-  
+
   // Connection closed errors (CONNECTION_CLOSED)
   if (
     code === 'CONNECTION_CLOSED' ||
@@ -132,27 +132,27 @@ const getCacheTTL = (url) => {
   if (url.includes('/api/notifications')) {
     return CACHE_TTL.NONE; // Notifications must be real-time
   }
-  
+
   // Employee data - short cache (changes frequently, but allow minimal caching)
   if (url.includes('/api/employees')) {
     return CACHE_TTL.SHORT; // 5 seconds
   }
-  
+
   // Documents - short cache
   if (url.includes('/api/documents') || url.includes('/api/branch-documents')) {
     return CACHE_TTL.SHORT; // 5 seconds
   }
-  
+
   // Branches - medium cache (reduced from very long)
   if (url.includes('/api/branches')) {
     return CACHE_TTL.MEDIUM; // 10 seconds
   }
-  
+
   // User data - medium cache
   if (url.includes('/api/users')) {
     return CACHE_TTL.MEDIUM; // 10 seconds
   }
-  
+
   // Default - short cache for maximum freshness
   return CACHE_TTL.SHORT;
 };
@@ -181,7 +181,7 @@ const clearRelatedCache = (url) => {
     '/api/notifications',
     '/api/employees', // Dashboard shows employee data
   ];
-  
+
   // Clear related cache entries when data is modified
   if (url.includes('/api/employees')) {
     clearCache('/api/employees');
@@ -253,20 +253,20 @@ const extractBranchId = (config) => {
   if (config.params?.branch_id) {
     return config.params.branch_id;
   }
-  
+
   // Check URL path params (e.g., /api/branch-documents/:id)
   const urlMatch = config.url?.match(/\/api\/branch-documents\/(\d+)/);
   if (urlMatch) {
     const documentId = urlMatch[1];
     const branchId = getDocumentBranchMapping(documentId);
     if (branchId) return branchId;
-    
+
     // Fallback: use first available password (assuming single branch access)
     if (branchDocumentsPasswords.size > 0) {
       return branchDocumentsPasswords.keys().next().value;
     }
   }
-  
+
   // Check URL path params for employee-file generate-single (e.g., /api/employee-file/generate-single/:employee_id)
   const employeeFileMatch = config.url?.match(/\/api\/employee-file\/generate-single\/(\d+)/);
   if (employeeFileMatch) {
@@ -279,7 +279,7 @@ const extractBranchId = (config) => {
       return branchDocumentsPasswords.keys().next().value;
     }
   }
-  
+
   // Check request data (for POST/PUT)
   if (config.data) {
     if (config.data instanceof FormData) {
@@ -303,7 +303,7 @@ const extractBranchId = (config) => {
       }
     }
   }
-  
+
   // For reports API, try to get branch_id from URL query if available
   if (config.url?.includes('/api/reports')) {
     const url = new URL(config.url, window.location.origin);
@@ -312,12 +312,12 @@ const extractBranchId = (config) => {
       return branchIdParam;
     }
   }
-  
+
   // Fallback: use first available password (assuming single branch access)
   if (branchDocumentsPasswords.size > 0) {
     return branchDocumentsPasswords.keys().next().value;
   }
-  
+
   return null;
 };
 
@@ -326,7 +326,7 @@ const getPasswordForRequest = (branchId) => {
   if (branchId) {
     const password = getBranchDocumentsPassword(branchId);
     if (password) return password;
-    
+
     // Try to get from localStorage as fallback (for monthly documents page)
     try {
       const storedPassword = localStorage.getItem(`branch_documents_password_${branchId}`);
@@ -353,45 +353,45 @@ api.interceptors.request.use(
     const requestStartTime = performance.now();
     const url = config.url || '';
     const method = (config.method || 'get').toUpperCase();
-    
+
     // Only log dashboard-related requests to avoid spam
-    const isDashboardRequest = url.includes('/api/branches') || 
-                               url.includes('/api/employees') || 
-                               url.includes('/api/branch-documents') || 
-                               url.includes('/api/branch-statistics') || 
-                               url.includes('/api/notifications') ||
-                               url.includes('/api/users');
-    
+    const isDashboardRequest = url.includes('/api/branches') ||
+      url.includes('/api/employees') ||
+      url.includes('/api/branch-documents') ||
+      url.includes('/api/branch-statistics') ||
+      url.includes('/api/notifications') ||
+      url.includes('/api/users');
+
     if (isDashboardRequest) {
       console.log(`[API] ${method} ${url} - REQUEST START`);
       console.log(`[API] Params:`, config.params);
     }
-    
+
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    
+
     // Add branch documents password for branch documents, reports, and employee-file API calls
-    if (config.url?.includes('/api/branch-documents') || 
-        config.url?.includes('/api/reports') || 
-        config.url?.includes('/api/employee-file/generate-single')) {
+    if (config.url?.includes('/api/branch-documents') ||
+      config.url?.includes('/api/reports') ||
+      config.url?.includes('/api/employee-file/generate-single')) {
       const branchId = extractBranchId(config);
       const password = getPasswordForRequest(branchId);
       if (password) {
         config.headers['X-Branch-Documents-Password'] = password;
       }
     }
-    
+
     // Request Deduplication and Caching for GET requests
     const methodLower = method.toLowerCase();
     if (methodLower === 'get') {
       const requestKey = getRequestKey(config);
       const cacheTTL = getCacheTTL(url);
-      
+
       // Skip caching entirely for endpoints with CACHE_TTL.NONE (dashboard/notifications)
       const shouldCache = cacheTTL !== CACHE_TTL.NONE;
-      
+
       // Check for pending request (deduplication) - always enabled for performance
       const pendingRequest = pendingRequests.get(requestKey);
       if (pendingRequest) {
@@ -404,7 +404,7 @@ api.interceptors.request.use(
         config.__requestStartTime = requestStartTime;
         return config;
       }
-      
+
       // Check cache only if caching is enabled for this endpoint
       if (shouldCache) {
         const cacheKey = getCacheKey(config);
@@ -425,20 +425,20 @@ api.interceptors.request.use(
       } else if (isDashboardRequest) {
         console.log(`[API] ${method} ${url} - NO CACHE (real-time endpoint)`);
       }
-      
+
       // Store request promise for deduplication
       const requestPromise = axios(config);
       pendingRequests.set(requestKey, requestPromise);
-      
+
       // Clean up after request completes
       requestPromise.finally(() => {
         pendingRequests.delete(requestKey);
       });
-      
+
       // Store start time for timing
       config.__requestStartTime = requestStartTime;
     }
-    
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -451,15 +451,15 @@ api.interceptors.response.use(
     const url = config?.url || '';
     const method = (config?.method || 'get').toUpperCase();
     const requestStartTime = config?.__requestStartTime;
-    
+
     // Only log dashboard-related requests to avoid spam
-    const isDashboardRequest = url.includes('/api/branches') || 
-                               url.includes('/api/employees') || 
-                               url.includes('/api/branch-documents') || 
-                               url.includes('/api/branch-statistics') || 
-                               url.includes('/api/notifications') ||
-                               url.includes('/api/users');
-    
+    const isDashboardRequest = url.includes('/api/branches') ||
+      url.includes('/api/employees') ||
+      url.includes('/api/branch-documents') ||
+      url.includes('/api/branch-statistics') ||
+      url.includes('/api/notifications') ||
+      url.includes('/api/users');
+
     // Handle cached response
     if (config?.__isCached) {
       if (isDashboardRequest && requestStartTime) {
@@ -469,7 +469,7 @@ api.interceptors.response.use(
       }
       return config.__cachedResponse;
     }
-    
+
     // Handle deduplicated request
     if (config?.__isDeduplicated) {
       if (isDashboardRequest) {
@@ -477,27 +477,27 @@ api.interceptors.response.use(
       }
       return config.__pendingRequest;
     }
-    
+
     // Cache successful GET requests (only if caching is enabled for this endpoint)
     const methodLower = method.toLowerCase();
-    
+
     if (methodLower === 'get' && response.status === 200) {
       const cacheTTL = getCacheTTL(url);
-      
+
       // Only cache if TTL is not NONE (dashboard/notifications should never be cached)
       if (cacheTTL !== CACHE_TTL.NONE) {
         const cacheKey = getCacheKey(config);
-        
+
         apiCache.set(cacheKey, {
           data: response,
           timestamp: Date.now(),
           expiry: cacheTTL,
         });
-        
+
         if (isDashboardRequest) {
           console.log(`[API] ${method} ${url} - CACHED (TTL: ${cacheTTL}ms)`);
         }
-        
+
         // Clean up old cache entries periodically (keep cache size manageable)
         if (apiCache.size > 100) {
           // Remove expired entries
@@ -509,14 +509,14 @@ api.interceptors.response.use(
         }
       }
     }
-    
+
     // Log response timing for dashboard requests
     if (isDashboardRequest && requestStartTime) {
       const responseTime = performance.now() - requestStartTime;
       console.log(`[API] ${method} ${url} - RESPONSE in ${responseTime.toFixed(2)}ms`);
       console.log(`[API] Status: ${response.status}, Success: ${response?.data?.success || 'N/A'}, Data count:`, response?.data?.data?.length || 'N/A');
     }
-    
+
     // Clear related cache on successful mutations
     if (config && ['post', 'put', 'delete', 'patch'].includes(methodLower)) {
       clearRelatedCache(url);
@@ -524,7 +524,7 @@ api.interceptors.response.use(
         console.log(`[API] ${method} ${url} - Related cache cleared`);
       }
     }
-    
+
     return response;
   },
   (error) => {
@@ -532,15 +532,15 @@ api.interceptors.response.use(
     const url = config?.url || '';
     const method = (config?.method || 'get').toUpperCase();
     const requestStartTime = config?.__requestStartTime;
-    
+
     // Only log dashboard-related requests to avoid spam
-    const isDashboardRequest = url.includes('/api/branches') || 
-                               url.includes('/api/employees') || 
-                               url.includes('/api/branch-documents') || 
-                               url.includes('/api/branch-statistics') || 
-                               url.includes('/api/notifications') ||
-                               url.includes('/api/users');
-    
+    const isDashboardRequest = url.includes('/api/branches') ||
+      url.includes('/api/employees') ||
+      url.includes('/api/branch-documents') ||
+      url.includes('/api/branch-statistics') ||
+      url.includes('/api/notifications') ||
+      url.includes('/api/users');
+
     // Remove from pending requests on error
     if (error.config) {
       const requestKey = getRequestKey(error.config);
@@ -555,7 +555,7 @@ api.interceptors.response.use(
 
     // Detect backend/database connection errors
     const isBackendError = detectBackendError(error);
-    
+
     if (isBackendError) {
       // Console log full error details for debugging
       console.error('[API] Backend/Database Connection Error:', {
@@ -575,7 +575,7 @@ api.interceptors.response.use(
       if (window.setBackendError) {
         window.setBackendError(error);
       }
-      
+
       // Don't show individual error notifications for backend errors (prevent spam)
       // The maintenance page will be shown instead
       return Promise.reject(error);
@@ -586,17 +586,17 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       const url = error.config?.url || '';
       const errorMessage = error.response?.data?.message || '';
-      
+
       // Check if this is a business logic error (not authentication error)
-      const isBusinessLogicError = 
+      const isBusinessLogicError =
         errorMessage.includes('password') ||
         errorMessage.includes('Password') ||
         errorMessage.includes('Branch documents password') ||
         errorMessage.includes('Invalid branch documents password') ||
         url.includes('/branch-documents/verify-password');
-      
+
       // Check if this is an authentication error
-      const isAuthError = 
+      const isAuthError =
         errorMessage.includes('token') ||
         errorMessage.includes('Token') ||
         errorMessage.includes('Authentication required') ||
@@ -604,7 +604,7 @@ api.interceptors.response.use(
         errorMessage.includes('Invalid token') ||
         errorMessage.includes('Token has expired') ||
         errorMessage.includes('Please login');
-      
+
       // Only redirect if it's an authentication error, not a business logic error
       if (isAuthError && !isBusinessLogicError) {
         localStorage.removeItem('token');
@@ -618,91 +618,94 @@ api.interceptors.response.use(
 
 // Auth API
 export const authAPI = {
-  login: (username, password) => 
+  login: (username, password) =>
     api.post('/api/auth/login', { username, password }),
-  
-  logout: () => 
+
+  logout: () =>
     api.post('/api/auth/logout'),
-  
-  getMe: () => 
+
+  getMe: () =>
     api.get('/api/auth/me'),
 };
 
 // Users API
 export const usersAPI = {
-  getAll: (filters = {}) => 
+  getAll: (filters = {}) =>
     api.get('/api/users', { params: filters }),
-  
-  getById: (id) => 
+
+  getById: (id) =>
     api.get(`/api/users/${id}`),
-  
-  create: (data) => 
+
+  create: (data) =>
     api.post('/api/users', data),
-  
-  update: (id, data) => 
+
+  update: (id, data) =>
     api.put(`/api/users/${id}`, data),
-  
-  delete: (id) => 
+
+  delete: (id) =>
     api.delete(`/api/users/${id}`),
 };
 
 // Branches API
 export const branchesAPI = {
-  getAll: (filters = {}) => 
+  getAll: (filters = {}) =>
     api.get('/api/branches', { params: filters }),
-  
-  getById: (id) => 
+
+  getById: (id) =>
     api.get(`/api/branches/${id}`),
-  
-  create: (data) => 
+
+  create: (data) =>
     api.post('/api/branches', data),
-  
-  update: (id, data) => 
+
+  update: (id, data) =>
     api.put(`/api/branches/${id}`, data),
-  
-  updateMyBranch: (data) => 
+
+  updateMyBranch: (data) =>
     api.put('/api/branches/my-branch', data),
-  
-  delete: (id) => 
+
+  delete: (id) =>
     api.delete(`/api/branches/${id}`),
 };
 
 // Employees API
 export const employeesAPI = {
-  getAll: (filters = {}) => 
+  getAll: (filters = {}) =>
     api.get('/api/employees', { params: filters }),
-  
+
   // Server-side pagination - optimized for large datasets
-  getPaginated: (params = {}) => 
+  getPaginated: (params = {}) =>
     api.get('/api/employees/paginated', { params }),
-  
-  getById: (id) => 
+
+  getById: (id) =>
     api.get(`/api/employees/${id}`),
-  
-  create: (data) => 
+
+  checkDuplicate: (data) =>
+    api.post('/api/employees/check-duplicate', data),
+
+  create: (data) =>
     api.post('/api/employees', data),
-  
-  update: (id, data) => 
+
+  update: (id, data) =>
     api.put(`/api/employees/${id}`, data),
-  
-  delete: (id) => 
+
+  delete: (id) =>
     api.delete(`/api/employees/${id}`),
-  
-  getDocuments: (id, filters = {}) => 
+
+  getDocuments: (id, filters = {}) =>
     api.get(`/api/employees/${id}/documents`, { params: filters }),
-  
-  getMissingData: (id) => 
+
+  getMissingData: (id) =>
     api.get(`/api/employees/${id}/missing-data`),
-  
-  updateCompletionStatus: (id) => 
+
+  updateCompletionStatus: (id) =>
     api.post(`/api/employees/${id}/update-completion-status`),
-  
+
   generateEmployeeFile: (data, config = {}) =>
     api.post('/api/employee-file/generate', data, {
       ...config,
       responseType: config.responseType || 'blob',
     }),
-  
+
   generateSingleEmployeeFile: (employeeId, config = {}) => {
     const { branch_id, ...restConfig } = config;
     const params = branch_id ? { branch_id } : {};
@@ -712,14 +715,14 @@ export const employeesAPI = {
       responseType: config.responseType || 'blob',
     });
   },
-  
-  updateStatus: (id, data) => 
+
+  updateStatus: (id, data) =>
     api.put(`/api/employees/${id}/status`, data),
-  
-  renew: (id) => 
+
+  renew: (id) =>
     api.post(`/api/employees/${id}/renew`),
-  
-  nonRenewal: (id, data) => 
+
+  nonRenewal: (id, data) =>
     api.post(`/api/employees/${id}/non-renewal`, data),
 };
 
@@ -735,44 +738,44 @@ export const documentsAPI = {
     }, {});
     return api.get('/api/documents', { params: cleanFilters });
   },
-  
-  getById: (id) => 
+
+  getById: (id) =>
     api.get(`/api/documents/${id}`),
-  
-  upload: (formData) => 
+
+  upload: (formData) =>
     api.post('/api/documents', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  
-  download: (id) => 
+
+  download: (id) =>
     api.get(`/api/documents/${id}/download`, { responseType: 'blob' }),
-  
-  preview: (id) => 
+
+  preview: (id) =>
     api.get(`/api/documents/${id}/preview`),
-  
-  update: (id, data) => 
+
+  update: (id, data) =>
     api.put(`/api/documents/${id}`, data),
-  
-  verify: (id) => 
+
+  verify: (id) =>
     api.post(`/api/documents/${id}/verify`),
-  
-  delete: (id, deleteFile = false) => 
+
+  delete: (id, deleteFile = false) =>
     api.delete(`/api/documents/${id}`, { params: { deleteFile } }),
-  
-  search: (searchTerm, employeeId = null) => 
-    api.get('/api/documents', { 
-      params: { search: searchTerm, employee_id: employeeId } 
+
+  search: (searchTerm, employeeId = null) =>
+    api.get('/api/documents', {
+      params: { search: searchTerm, employee_id: employeeId }
     }),
-  
-  getExpiring: (days = 30) => 
+
+  getExpiring: (days = 30) =>
     api.get('/api/documents', { params: { expiring: true, days } }),
-  
-  getUnverified: (employeeId = null) => 
-    api.get('/api/documents', { 
-      params: { unverified: true, employee_id: employeeId } 
+
+  getUnverified: (employeeId = null) =>
+    api.get('/api/documents', {
+      params: { unverified: true, employee_id: employeeId }
     }),
-  
-  getByEmployeeId: (employeeId) => 
+
+  getByEmployeeId: (employeeId) =>
     api.get(`/api/employees/${employeeId}/documents`),
 };
 
@@ -787,38 +790,38 @@ export const branchDocumentsAPI = {
     }, {});
     return api.get('/api/branch-documents', { params: cleanFilters });
   },
-  
-  getById: (id) => 
+
+  getById: (id) =>
     api.get(`/api/branch-documents/${id}`),
-  
+
   verifyPassword: (branchId, password) =>
     api.post('/api/branch-documents/verify-password', { branch_id: branchId, password }),
-  
-  upload: (formData) => 
+
+  upload: (formData) =>
     api.post('/api/branch-documents', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  
-  download: (id) => 
+
+  download: (id) =>
     api.get(`/api/branch-documents/${id}/download`, { responseType: 'blob' }),
-  
-  preview: (id) => 
+
+  preview: (id) =>
     api.get(`/api/branch-documents/${id}/preview`),
-  
-  update: (id, data) => 
+
+  update: (id, data) =>
     api.put(`/api/branch-documents/${id}`, data),
-  
-  updateWithFile: (id, formData) => 
+
+  updateWithFile: (id, formData) =>
     api.put(`/api/branch-documents/${id}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  
-  verify: (id) => 
+
+  verify: (id) =>
     api.post(`/api/branch-documents/${id}/verify`),
-  
-  delete: (id) => 
+
+  delete: (id) =>
     api.delete(`/api/branch-documents/${id}`),
-  
+
   generatePayrollReport: (data) =>
     api.post('/api/branch-documents/generate-payroll-report', data, {
       responseType: 'blob'
@@ -827,25 +830,25 @@ export const branchDocumentsAPI = {
 
 // Reports API
 export const reportsAPI = {
-  generate: (data, config = {}) => 
+  generate: (data, config = {}) =>
     api.post('/api/reports/generate', data, {
       ...config,
       responseType: config.responseType || 'blob',
     }),
-  
-  preview: (filename) => 
+
+  preview: (filename) =>
     api.get(`/api/reports/preview/${filename}`, { responseType: 'blob' }),
 };
 
 // Notifications API
 export const notificationsAPI = {
   // Main Manager APIs
-  getAll: (filters = {}) => 
+  getAll: (filters = {}) =>
     api.get('/api/notifications', { params: filters }),
-  
-  getById: (id) => 
+
+  getById: (id) =>
     api.get(`/api/notifications/${id}`),
-  
+
   create: (data) => {
     // If data is FormData, set proper headers
     if (data instanceof FormData) {
@@ -857,103 +860,109 @@ export const notificationsAPI = {
     }
     return api.post('/api/notifications', data);
   },
-  
-  update: (id, data) => 
+
+  update: (id, data) =>
     api.put(`/api/notifications/${id}`, data),
-  
-  delete: (id) => 
+
+  delete: (id) =>
     api.delete(`/api/notifications/${id}`),
-  
+
+  toggleActive: (id) =>
+    api.patch(`/api/notifications/${id}/toggle-active`),
+
+  markViewed: (id) =>
+    api.post(`/api/notifications/${id}/mark-viewed`),
+
   // Branch Manager APIs
-  getMyBranchNotifications: (filters = {}) => 
+  getMyBranchNotifications: (filters = {}) =>
     api.get('/api/notifications/my-branch/notifications', { params: filters }),
-  
-  getBranchNotifications: (branchId, filters = {}) => 
+
+  getBranchNotifications: (branchId, filters = {}) =>
     api.get(`/api/notifications/branch/${branchId}`, { params: filters }),
-  
-  respond: (notificationId, data) => 
+
+  respond: (notificationId, data) =>
     api.post(`/api/notifications/${notificationId}/respond`, data),
 };
 
 // Terms API
 export const termsAPI = {
-  getAll: (filters = {}) => 
+  getAll: (filters = {}) =>
     api.get('/api/terms', { params: filters }),
-  
-  getById: (id) => 
+
+  getById: (id) =>
     api.get(`/api/terms/${id}`),
-  
-  create: (data) => 
+
+  create: (data) =>
     api.post('/api/terms', data),
-  
-  createAcademicYear: (data) => 
+
+  createAcademicYear: (data) =>
     api.post('/api/terms/create-academic-year', data),
-  
-  update: (id, data) => 
+
+  update: (id, data) =>
     api.put(`/api/terms/${id}`, data),
-  
-  delete: (id) => 
+
+  delete: (id) =>
     api.delete(`/api/terms/${id}`),
-  
-  getCurrent: (branchType) => 
+
+  getCurrent: (branchType) =>
     api.get(`/api/terms/current/${branchType}`),
 };
 
 // Academic Years API
 export const academicYearsAPI = {
-  getAll: (filters = {}) => 
+  getAll: (filters = {}) =>
     api.get('/api/academic-years', { params: filters }),
-  
-  getById: (id) => 
+
+  getById: (id) =>
     api.get(`/api/academic-years/${id}`),
-  
-  getCurrent: (branchType) => 
+
+  getCurrent: (branchType) =>
     api.get(`/api/academic-years/current/${branchType}`),
-  
-  create: (data) => 
+
+  create: (data) =>
     api.post('/api/academic-years', data),
-  
-  update: (id, data) => 
+
+  update: (id, data) =>
     api.put(`/api/academic-years/${id}`, data),
-  
-  endYear: (yearId, branchType) => 
+
+  endYear: (yearId, branchType) =>
     api.post(`/api/academic-years/${yearId}/end-year`, { branch_type: branchType }),
-  
-  completeYear: (id) => 
+
+  completeYear: (id) =>
     api.post(`/api/academic-years/${id}/complete`),
 };
 
 // Archive API
 export const archiveAPI = {
-  getAll: (filters = {}) => 
+  getAll: (filters = {}) =>
     api.get('/api/archive', { params: filters }),
-  
-  getById: (id) => 
+
+  getById: (id) =>
     api.get(`/api/archive/${id}`),
-  
-  getStatistics: (filters = {}) => 
+
+  getStatistics: (filters = {}) =>
     api.get('/api/archive/statistics', { params: filters }),
-  
-  updateStatus: (id, data) => 
+
+  updateStatus: (id, data) =>
     api.put(`/api/archive/${id}/status`, data),
-  
-  restore: (id, data) => 
+
+  restore: (id, data) =>
     api.post(`/api/archive/${id}/restore`, data),
-  
-  getArchivedBranchDocuments: (filters = {}) => 
+
+  getArchivedBranchDocuments: (filters = {}) =>
     api.get('/api/archive/branch-documents/all', { params: filters }),
-  
-  getArchivedBranchDocumentById: (id) => 
+
+  getArchivedBranchDocumentById: (id) =>
     api.get(`/api/archive/branch-documents/${id}`),
-  
-  getArchivedEmployeeDocuments: (filters = {}) => 
+
+  getArchivedEmployeeDocuments: (filters = {}) =>
     api.get('/api/archive/employee-documents/all', { params: filters }),
-  
-  permanentDeleteEmployeeDocument: (id) => 
+
+  permanentDeleteEmployeeDocument: (id) =>
     api.delete(`/api/archive/employee-documents/${id}`),
-  
-  export: (filters = {}, format = 'excel') => 
-    api.get('/api/archive/export', { 
+
+  export: (filters = {}, format = 'excel') =>
+    api.get('/api/archive/export', {
       params: { ...filters, format },
       responseType: format === 'csv' ? 'blob' : 'arraybuffer'
     }),
@@ -961,12 +970,12 @@ export const archiveAPI = {
 
 // Branch Statistics API
 export const branchStatisticsAPI = {
-  getAll: () => 
+  getAll: () =>
     api.get('/api/branch-statistics'),
-  
+
   generatePerformanceReport: async (data) => {
     try {
-      return await api.post('/api/branch-statistics/performance-report', data, { 
+      return await api.post('/api/branch-statistics/performance-report', data, {
         responseType: 'blob'
       });
     } catch (error) {
@@ -988,6 +997,52 @@ export const branchStatisticsAPI = {
   },
 };
 
+// Dashboard API (lightweight cached summary)
+export const dashboardAPI = {
+  getSummary: (params = {}) =>
+    api.get('/api/dashboard/summary', { params }),
+};
+
+// Utils API
+export const utilsAPI = {
+  convertDate: (date, calendarType, dateType = 'general') =>
+    api.post('/api/utils/convert-date', {
+      date,
+      calendar_type: calendarType,
+      date_type: dateType
+    }),
+};
+
+// Admin API
+export const adminAPI = {
+  getEmployeesWithMissingDates: (limit = 100, offset = 0) =>
+    api.get('/api/admin/employees-missing-dates', { 
+      params: { limit, offset } 
+    }),
+
+  getEmployeesWithInvalidData: (limit = 100, offset = 0) =>
+    api.get('/api/admin/employees-invalid-data', { 
+      params: { limit, offset } 
+    }),
+
+  fixEmployeeDate: (employeeId, action) =>
+    api.post('/api/admin/fix-employee-date', {
+      employee_id: employeeId,
+      action
+    }),
+
+  notifyBranchInvalidData: (employeeId) =>
+    api.post('/api/admin/notify-branch-invalid-data', {
+      employee_id: employeeId
+    }),
+
+  recalculateBranch: (data) =>
+    api.post('/api/admin/recalculate-branch', data),
+
+  batchFixAllEmployeeDates: (options = {}) =>
+    api.post('/api/admin/fix-all-employee-dates', options),
+};
+
 // Requests API
 export const requestsAPI = {
   getAll: (filters = {}) => {
@@ -999,24 +1054,24 @@ export const requestsAPI = {
     }, {});
     return api.get('/api/requests', { params: cleanFilters });
   },
-  
-  getById: (id) => 
+
+  getById: (id) =>
     api.get(`/api/requests/${id}`),
-  
-  getMainManagers: () => 
+
+  getMainManagers: () =>
     api.get('/api/requests/main-managers'),
-  
-  create: (formData) => 
+
+  create: (formData) =>
     api.post('/api/requests', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  
-  respond: (id, formData) => 
+
+  respond: (id, formData) =>
     api.put(`/api/requests/${id}/respond`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  
-  delete: (id) => 
+
+  delete: (id) =>
     api.delete(`/api/requests/${id}`),
 };
 

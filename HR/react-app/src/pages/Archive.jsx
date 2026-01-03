@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { archiveAPI, branchesAPI, documentsAPI, branchDocumentsAPI } from '../utils/api';
 import { getDocumentTypeLabel, getBranchDocumentTypeLabel } from '../utils/employeeConstants';
+import { formatDate } from '../utils/dateConverters';
 import './Archive.css';
 
 const Archive = () => {
@@ -805,12 +806,12 @@ const Archive = () => {
                       </td>
                       <td>
                         {employee.created_at
-                          ? new Date(employee.created_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                          ? formatDate(employee.created_at)
                           : '-'}
                       </td>
                       <td>
                         {employee.status_changed_at
-                          ? new Date(employee.status_changed_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                          ? formatDate(employee.status_changed_at)
                           : '-'}
                       </td>
                       <td>
@@ -931,7 +932,7 @@ const Archive = () => {
                     <div><strong>الفرع:</strong> {employeeDetails.branch_name || '-'}</div>
                     <div><strong>الحالة:</strong> {statusLabels[employeeDetails.status] || employeeDetails.status}</div>
                     <div><strong>سبب تغيير الحالة:</strong> {employeeDetails.status_change_reason || '-'}</div>
-                    <div><strong>تاريخ تغيير الحالة:</strong> {employeeDetails.status_changed_at ? new Date(employeeDetails.status_changed_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '-'}</div>
+                    <div><strong>تاريخ تغيير الحالة:</strong> {employeeDetails.status_changed_at ? formatDate(employeeDetails.status_changed_at) : '-'}</div>
                   </div>
 
                   {/* Documents */}
@@ -945,7 +946,7 @@ const Archive = () => {
                               <strong>{getDocumentTypeLabel(doc.document_type) || doc.document_type}</strong>
                               <span className="document-name">{doc.file_name}</span>
                               <span className="document-date">
-                                {new Date(doc.uploaded_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                                {formatDate(doc.uploaded_at)}
                               </span>
                             </div>
                             <div className="document-actions">
@@ -1035,7 +1036,7 @@ const Archive = () => {
                     <span className="document-name">{doc.file_name}</span>
                     <span className="document-branch">{doc.branch_name}</span>
                     <span className="document-date">
-                      {new Date(doc.uploaded_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                      {formatDate(doc.uploaded_at)}
                     </span>
                     {doc.version && <span className="document-version">الإصدار: {doc.version}</span>}
                   </div>
@@ -1146,12 +1147,12 @@ const Archive = () => {
                       <td>{doc.file_name}</td>
                       <td>
                         {doc.uploaded_at
-                          ? new Date(doc.uploaded_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                          ? formatDate(doc.uploaded_at)
                           : '-'}
                       </td>
                       <td>
                         {doc.updated_at
-                          ? new Date(doc.updated_at).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                          ? formatDate(doc.updated_at)
                           : '-'}
                       </td>
                       <td>

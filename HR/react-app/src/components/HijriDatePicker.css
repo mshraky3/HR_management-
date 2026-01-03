@@ -33,18 +33,41 @@
   border-color: var(--primary);
 }
 
-.hijri-inputs {
+.hijri-inputs,
+.gregorian-inputs {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
 }
 
-.hijri-inputs input {
+.hijri-inputs input,
+.gregorian-inputs input {
   flex: 1;
   text-align: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-base);
+  min-height: 42px;
+  height: auto;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition-base);
+  line-height: 1.5;
+  overflow: visible;
+  background: var(--bg);
+  color: var(--text);
 }
 
-.hijri-inputs span {
+.hijri-inputs input:focus,
+.gregorian-inputs input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+.hijri-inputs span,
+.gregorian-inputs span {
   color: var(--text-light);
   font-weight: 600;
 }

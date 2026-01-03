@@ -9,6 +9,7 @@ import { employeesAPI, documentsAPI, branchesAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { getDocumentTypeLabel } from '../utils/employeeConstants';
+import { formatDate } from '../utils/dateConverters';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 import './EmployeeFile.css';
 
@@ -498,7 +499,7 @@ const EmployeeFile = () => {
                         )}
                         {doc.expiry_date && (
                           <span className="document-expiry">
-                            {' '}- تاريخ الانتهاء: {new Date(doc.expiry_date).toLocaleDateString('en-US')}
+                            {' '}- تاريخ الانتهاء: {formatDate(doc.expiry_date)}
                           </span>
                         )}
                       </div>

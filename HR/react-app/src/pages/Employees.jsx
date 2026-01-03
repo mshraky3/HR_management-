@@ -8,7 +8,7 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { employeesAPI, branchesAPI, documentsAPI, clearCache } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import HijriDatePicker from '../components/HijriDatePicker';
+import UnifiedDatePicker from '../components/UnifiedDatePicker';
 import BranchBadge from '../components/BranchBadge';
 import NameInput from '../components/NameInput';
 import NationalitySelect from '../components/NationalitySelect';
@@ -47,6 +47,7 @@ import {
 } from '../utils/employeeConstants';
 import {
   gregorianToHijri,
+  formatDate,
   hijriToGregorian,
   formatHijriToString
 } from '../utils/dateConverters';
@@ -1175,7 +1176,7 @@ const Employees = () => {
             </div>
             {doc.uploaded_at && (
               <span style={{ fontSize: '11px', color: '#666' }}>
-                تم الرفع: {new Date(doc.uploaded_at).toLocaleDateString('ar-SA')}
+                تم الرفع: {formatDate(doc.uploaded_at)}
               </span>
             )}
           </div>
@@ -2099,12 +2100,13 @@ const Employees = () => {
                     {/* تاريخ انتهاء الهوية/الإقامة - مطلوب فقط لغير السعوديين */}
                     {isNonSaudi(formData.nationality) && (
                       <div className="form-group col-3">
-                        <HijriDatePicker
+                        <UnifiedDatePicker
                           label="تاريخ انتهاء الهوية/الإقامة *"
                           hijriValue={formData.id_expiry_date_hijri}
                           gregorianValue={formData.id_expiry_date_gregorian}
                           onChange={handleIdExpiryChange}
                           defaultCalendarType="gregorian"
+                          dateType="general"
                           required={true}
                         />
                       </div>
@@ -2118,12 +2120,13 @@ const Employees = () => {
 
                     {/* تاريخ الميلاد - مطلوب للجميع */}
                     <div className="form-group col-3">
-                      <HijriDatePicker
+                      <UnifiedDatePicker
                         label="تاريخ الميلاد *"
                         hijriValue={formData.date_of_birth_hijri}
                         gregorianValue={formData.date_of_birth_gregorian}
                         onChange={handleDateOfBirthChange}
                         defaultCalendarType={isSaudi() ? 'hijri' : 'gregorian'} // Set initial view preference
+                        dateType="birth_date"
                         required
                       />
                     </div>
@@ -2673,7 +2676,7 @@ const Employees = () => {
                                       </div>
                                       {doc.uploaded_at && (
                                         <span style={{ fontSize: '11px', color: '#666' }}>
-                                          تم الرفع: {new Date(doc.uploaded_at).toLocaleDateString('ar-SA')}
+                                          تم الرفع: {formatDate(doc.uploaded_at)}
                                         </span>
                                       )}
                                     </div>
@@ -2736,7 +2739,7 @@ const Employees = () => {
                                     </div>
                                     {doc.uploaded_at && (
                                       <span style={{ fontSize: '11px', color: '#666' }}>
-                                        تم الرفع: {new Date(doc.uploaded_at).toLocaleDateString('ar-SA')}
+                                        تم الرفع: {formatDate(doc.uploaded_at)}
                                       </span>
                                     )}
                                   </div>
@@ -2818,7 +2821,7 @@ const Employees = () => {
                                       </div>
                                       {doc.uploaded_at && (
                                         <span style={{ fontSize: '11px', color: '#666' }}>
-                                          تم الرفع: {new Date(doc.uploaded_at).toLocaleDateString('ar-SA')}
+                                          تم الرفع: {formatDate(doc.uploaded_at)}
                                         </span>
                                       )}
                                     </div>
@@ -2933,7 +2936,7 @@ const Employees = () => {
                                     </div>
                                     {doc.uploaded_at && (
                                       <span style={{ fontSize: '11px', color: '#666' }}>
-                                        تم الرفع: {new Date(doc.uploaded_at).toLocaleDateString('ar-SA')}
+                                        تم الرفع: {formatDate(doc.uploaded_at)}
                                       </span>
                                     )}
                                   </div>

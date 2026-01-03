@@ -1,4 +1,5 @@
 import { isSaudi } from '../../../utils/employeeHelpers';
+import { formatDate } from '../../../utils/dateConverters';
 
 // Religion translation mapping
 const getReligionLabel = (religion) => {
@@ -62,11 +63,7 @@ const EmployeeInfoSections = ({ employee, branches }) => (
             <tr>
               <th>تاريخ الميلاد</th>
               <td colSpan="3">
-                {new Date(employee.date_of_birth_gregorian).toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: '2-digit',
-                  day: '2-digit',
-                })}
+                {formatDate(employee.date_of_birth_gregorian)}
               </td>
             </tr>
           )}
@@ -81,7 +78,7 @@ const EmployeeInfoSections = ({ employee, branches }) => (
               {employee.id_expiry_date_gregorian && (
                 <>
                   <th>انتهاء الهوية (ميلادي)</th>
-                  <td>{new Date(employee.id_expiry_date_gregorian).toLocaleDateString('en-US')}</td>
+                  <td>{formatDate(employee.id_expiry_date_gregorian)}</td>
                 </>
               )}
             </tr>

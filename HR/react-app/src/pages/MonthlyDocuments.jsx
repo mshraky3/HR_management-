@@ -9,6 +9,7 @@ import { useSearchParams } from 'react-router-dom';
 import { branchDocumentsAPI, branchesAPI, setDocumentBranchMapping, setBranchDocumentsPassword } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { formatDate } from '../utils/dateConverters';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 import './MonthlyDocuments.css';
 
@@ -45,18 +46,8 @@ const MonthlyDocuments = () => {
     { value: 'salary_deposit_file', label: 'ملف ايداع الرواتب (التحويلات البنكية)', icon: 'https://img.icons8.com/?size=100&id=47743&format=png&color=000000' }
   ];
 
-  // Helper function to format date in Gregorian calendar only
-  const formatGregorianDate = (date) => {
-    const d = new Date(date);
-    const months = [
-      'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-      'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
-    ];
-    const day = d.getDate();
-    const month = months[d.getMonth()];
-    const year = d.getFullYear();
-    return `${day} ${month} ${year}`;
-  };
+  // Use unified formatDate function for consistent dd/mm/yyyy format
+  const formatGregorianDate = formatDate;
 
   // Helper to get last day of month
   const getLastDayOfMonth = (date) => {

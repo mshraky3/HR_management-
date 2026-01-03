@@ -73,6 +73,7 @@ const BranchInfo = lazy(() => import('./pages/BranchInfo'));
 const DirectContact = lazy(() => import('./pages/DirectContact'));
 const BranchRequests = lazy(() => import('./pages/BranchRequests'));
 const ManageRequests = lazy(() => import('./pages/ManageRequests'));
+const FixMissingDates = lazy(() => import('./pages/FixMissingDates'));
 
 // Wrapper component to choose layout based on role
 const RoleBasedLayout = ({ children }) => {
@@ -280,6 +281,16 @@ const AppContent = () => {
             <ProtectedRoute requireMainManager>
               <Layout>
                 <ManageRequests />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/fix-missing-dates"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <FixMissingDates />
               </Layout>
             </ProtectedRoute>
           }

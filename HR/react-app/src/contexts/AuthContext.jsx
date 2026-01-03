@@ -3,7 +3,7 @@
  * Manages authentication state across the app
  */
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { authAPI } from '../utils/api';
 
 const AuthContext = createContext(null);
@@ -20,6 +20,165 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token'));
+  const logoutInProgressRef = useRef(false);
+
+  // Inactivity auto-logout configuration
+  const getEnv = (name, fallback) => {
+    // Support Vite's import.meta.env (VITE_*) and legacy REACT_APP_* names; fallback to process.env if available
+    const viteName = name.startsWith('REACT_APP_') ? name.replace(/^REACT_APP_/, 'VITE_') : name;
+    // Safely access import.meta.env using try/catch to avoid parser errors in environments that don't support it
+    let metaEnv;
+    try {
+      metaEnv = import.meta?.env;
+    } catch (e) {
+      metaEnv = undefined;
+    }
+
+    if (metaEnv) {
+      const v = metaEnv[viteName] ?? metaEnv[name];
+      if (v !== undefined) return v;
+    }
+    if (typeof process !== 'undefined' && process.env && process.env[name] !== undefined) {
+      return process.env[name];
+    }
+    return fallback;
+  };
+
+  const IDLE_TIMEOUT_MS = parseInt(getEnv('REACT_APP_IDLE_TIMEOUT_MS', String(10 * 60 * 1000)), 10); // default 10 minutes
+  const WARNING_MS = parseInt(getEnv('REACT_APP_IDLE_WARNING_MS', String(1 * 60 * 1000)), 10); // default 1 minute warning
+
+  const IS_DEV = (import.meta?.env?.MODE === 'development') || (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development');
+
+  // Idle UI state
+  const [idleWarningVisible, setIdleWarningVisible] = useState(false);
+  const [idleCountdownSeconds, setIdleCountdownSeconds] = useState(Math.ceil(WARNING_MS / 1000));
+
+  // Timer refs
+  const warningTimerRef = useRef(null);
+  const logoutTimerRef = useRef(null);
+  const countdownIntervalRef = useRef(null);
+
+  const setLastActivity = useCallback((ts = Date.now()) => {
+    try {
+      localStorage.setItem('lastActivity', String(ts));
+      // Write a separate signal key to ensure storage events fire across tabs
+      localStorage.setItem('activitySignal', String(ts));
+    } catch (err) {
+      // ignore storage errors (e.g., private mode)
+    }
+  }, []);
+
+  const clearTimers = useCallback(() => {
+    if (warningTimerRef.current) {
+      clearTimeout(warningTimerRef.current);
+      warningTimerRef.current = null;
+    }
+    if (logoutTimerRef.current) {
+      clearTimeout(logoutTimerRef.current);
+      logoutTimerRef.current = null;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+  }, []);
+
+  const scheduleTimers = useCallback(() => {
+    clearTimers();
+
+    const last = parseInt(localStorage.getItem('lastActivity') || String(Date.now()), 10);
+    const elapsed = Date.now() - last;
+    const remaining = Math.max(0, IDLE_TIMEOUT_MS - elapsed);
+
+    const warningDelay = Math.max(0, remaining - WARNING_MS);
+
+    warningTimerRef.current = setTimeout(() => {
+      // Show warning and countdown
+      setIdleWarningVisible(true);
+      let remainingSeconds = Math.ceil(WARNING_MS / 1000);
+      setIdleCountdownSeconds(remainingSeconds);
+      countdownIntervalRef.current = setInterval(() => {
+        remainingSeconds -= 1;
+        setIdleCountdownSeconds(remainingSeconds);
+        if (remainingSeconds <= 0 && countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+        }
+      }, 1000);
+    }, warningDelay);
+
+    logoutTimerRef.current = setTimeout(async () => {
+      // Force logout
+      setIdleWarningVisible(false);
+      try {
+        await logout();
+      } catch (err) {
+        // ignore
+      }
+      // broadcast force logout to other tabs
+      try {
+        localStorage.setItem('forceLogout', String(Date.now()));
+      } catch (err) { }
+    }, remaining + 50); // small buffer
+  }, [IDLE_TIMEOUT_MS, WARNING_MS, clearTimers]);
+
+  const userActivityHandler = useCallback(() => {
+    // On any user activity, reset timers and hide warning
+    setIdleWarningVisible(false);
+    setIdleCountdownSeconds(Math.ceil(WARNING_MS / 1000));
+    setLastActivity();
+    scheduleTimers();
+  }, [setLastActivity, scheduleTimers, WARNING_MS]);
+
+  // Listen for cross-tab activity signals and force logout signals
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (!e.key) return;
+      if (e.key === 'activitySignal' || e.key === 'lastActivity') {
+        // Another tab registered activity - reset timers
+        setIdleWarningVisible(false);
+        setIdleCountdownSeconds(Math.ceil(WARNING_MS / 1000));
+        scheduleTimers();
+      }
+      if (e.key === 'forceLogout') {
+        // Another tab forced logout
+        logout();
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [scheduleTimers, WARNING_MS]);
+
+  // Set up activity listeners on mount
+  useEffect(() => {
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+    for (const ev of events) {
+      window.addEventListener(ev, userActivityHandler, { passive: true });
+    }
+
+    // Also track visibility change
+    const onVisibility = () => {
+      if (!document.hidden) {
+        userActivityHandler();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    // Initialize lastActivity and schedules
+    if (!localStorage.getItem('lastActivity')) {
+      setLastActivity();
+    }
+    scheduleTimers();
+
+    return () => {
+      for (const ev of events) {
+        window.removeEventListener(ev, userActivityHandler);
+      }
+      document.removeEventListener('visibilitychange', onVisibility);
+      clearTimers();
+    };
+  }, [userActivityHandler, scheduleTimers, clearTimers, setLastActivity]);
 
   // Load user on mount if token exists
   useEffect(() => {
@@ -43,7 +202,7 @@ export const AuthProvider = ({ children }) => {
           // Check if it's an authentication error (401) vs network error
           const isAuthError = error.response?.status === 401;
           const isNetworkError = !error.response; // No response = network issue
-          
+
           if (isAuthError) {
             // Token is invalid or expired - clear it
             localStorage.removeItem('token');
@@ -59,7 +218,7 @@ export const AuthProvider = ({ children }) => {
                 setUser(parsedUser);
                 setToken(storedToken);
                 // Log warning in development
-                if (process.env.NODE_ENV === 'development') {
+                if (IS_DEV) {
                   console.warn('Network error loading user, using stored data:', error);
                 }
               } else {
@@ -69,7 +228,7 @@ export const AuthProvider = ({ children }) => {
             } catch (parseError) {
               // Stored user data is invalid, but keep token for retry
               setToken(storedToken);
-              if (process.env.NODE_ENV === 'development') {
+              if (IS_DEV) {
                 console.warn('Could not parse stored user data:', parseError);
               }
             }
@@ -87,7 +246,7 @@ export const AuthProvider = ({ children }) => {
             } catch (parseError) {
               setToken(storedToken);
             }
-            if (process.env.NODE_ENV === 'development') {
+            if (IS_DEV) {
               console.warn('Failed to load user, but keeping session:', error);
             }
           }
@@ -122,17 +281,38 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    // Prevent multiple simultaneous logout calls
+    if (logoutInProgressRef.current) {
+      return;
+    }
+    logoutInProgressRef.current = true;
+
     try {
       await authAPI.logout();
     } catch (error) {
-      console.error('Logout error:', error);
+      // Silently handle logout errors (token might be expired, which is fine)
+      // Only log in development
+      if (IS_DEV) {
+        console.error('Logout error:', error);
+      }
     } finally {
+      try { localStorage.setItem('forceLogout', String(Date.now())); } catch (err) { }
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       setToken(null);
       setUser(null);
+      logoutInProgressRef.current = false;
     }
   };
+
+  // Keep-alive helper to mark activity (useful for API calls)
+  const markActivity = useCallback(() => {
+    try {
+      localStorage.setItem('lastActivity', String(Date.now()));
+      localStorage.setItem('activitySignal', String(Date.now()));
+    } catch (err) { }
+  }, []);
+
 
   const isMainManager = () => {
     return user?.role === 'main_manager';
@@ -148,11 +328,29 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     logout,
+    markActivity,
     isMainManager,
     isBranchManager,
     isAuthenticated: !!token,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      {/* Idle warning modal */}
+      {idleWarningVisible && (
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, zIndex: 9999 }}>
+          <div className="modal-content" style={{ maxWidth: 420, margin: '10% auto', padding: 20 }}>
+            <h3>سيتم تسجيل الخروج لعدم النشاط</h3>
+            <p>سيتم تسجيل الخروج خلال <strong>{idleCountdownSeconds}</strong> ثانية إن لم تقم بأي نشاط.</p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+              <button onClick={() => { userActivityHandler(); }} className="btn">ابق مسجلاً</button>
+              <button onClick={() => { logout(); }} className="btn btn-danger">تسجيل الخروج الآن</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AuthContext.Provider>
+  );
 };
 

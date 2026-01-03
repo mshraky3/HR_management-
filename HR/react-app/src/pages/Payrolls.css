@@ -38,6 +38,7 @@
     transition: box-shadow 0.3s ease;
     width: 100%;
     box-sizing: border-box;
+    position: relative;
 }
 
 .payrolls-page .form-section:hover {
@@ -51,6 +52,7 @@
     margin: 0 0 var(--spacing-lg) 0;
     padding-bottom: var(--spacing-sm);
     border-bottom: 2px solid var(--primary-light);
+    left: unset;
 }
 
 /* Selection Row - Branch and Fields side by side */
@@ -60,6 +62,8 @@
     align-items: flex-start;
     margin-bottom: var(--spacing-xl);
     flex-wrap: wrap;
+    position: relative;
+    width: 100%;
 }
 
 .branch-select-wrapper {
@@ -68,6 +72,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
+    position: relative;
 }
 
 .branch-select-wrapper label {
@@ -80,6 +85,7 @@
 .branch-dropdown {
     width: 100%;
     max-width: 100%;
+    position: relative;
 }
 
 .branch-toggle {
@@ -114,18 +120,16 @@
 }
 
 .branches-dropdown {
-    width: 100%;
-    margin-top: var(--spacing-md);
+    position: absolute;
     background: var(--bg);
     border: 2px solid var(--border);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-md);
     padding: var(--spacing-md);
-    max-height: 400px;
-    overflow: hidden;
     display: flex;
     flex-direction: column;
     animation: expandDown 0.3s ease-out;
+    z-index: 1000;
 }
 
 @keyframes expandDown {
@@ -168,28 +172,10 @@
 
 .branches-list {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: wrap;
     gap: var(--spacing-xs);
-    overflow-y: auto;
     padding-right: 2px;
-}
-
-.branches-list::-webkit-scrollbar {
-    width: 8px;
-}
-
-.branches-list::-webkit-scrollbar-track {
-    background: var(--bg-secondary);
-    border-radius: var(--radius-full);
-}
-
-.branches-list::-webkit-scrollbar-thumb {
-    background: var(--border-dark);
-    border-radius: var(--radius-full);
-}
-
-.branches-list::-webkit-scrollbar-thumb:hover {
-    background: var(--text-light);
 }
 
 .branch-item {
@@ -237,6 +223,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
+    position: relative;
 }
 
 .fields-toggle {
@@ -268,14 +255,14 @@
 }
 
 .fields-dropdown {
-    width: 100%;
-    margin-top: var(--spacing-md);
+    position: absolute;
     background: var(--bg);
     border: 2px solid var(--border);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-md);
     padding: var(--spacing-md);
     animation: expandDown 0.3s ease-out;
+    z-index: 1000;
 }
 
 .fields-actions {
@@ -308,27 +295,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--spacing-sm);
-    max-height: 320px;
-    overflow-y: auto;
     padding-right: 2px;
-}
-
-.fields-grid::-webkit-scrollbar {
-    width: 8px;
-}
-
-.fields-grid::-webkit-scrollbar-track {
-    background: var(--bg-secondary);
-    border-radius: var(--radius-full);
-}
-
-.fields-grid::-webkit-scrollbar-thumb {
-    background: var(--border-dark);
-    border-radius: var(--radius-full);
-}
-
-.fields-grid::-webkit-scrollbar-thumb:hover {
-    background: var(--text-light);
 }
 
 .field-btn {
@@ -369,6 +336,175 @@
     box-shadow: 0 0 0 3px rgba(185, 210, 207, 0.3);
 }
 
+/* Filters Selection Section */
+.filters-compact {
+    flex: 1;
+    min-width: 300px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    position: relative;
+}
+
+.filters-toggle {
+    padding: 0.875rem 1.125rem;
+    border-radius: var(--radius-lg);
+    background: var(--bg-secondary);
+    border: 2px solid var(--border);
+    width: 100%;
+    cursor: pointer;
+    font-size: var(--font-size-base);
+    font-weight: 500;
+    color: var(--text);
+    transition: all 0.2s ease;
+    text-align: right;
+    box-shadow: var(--shadow-sm);
+}
+
+.filters-toggle:hover {
+    border-color: var(--primary);
+    background: var(--bg);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+}
+
+.filters-toggle:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(185, 210, 207, 0.2);
+}
+
+.filters-dropdown {
+    position: absolute;
+    background: var(--bg);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: var(--spacing-md);
+    animation: expandDown 0.3s ease-out;
+    z-index: 1000;
+}
+
+.filters-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    padding-right: 2px;
+}
+
+.filters-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    justify-content: flex-start;
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 1px solid var(--border-light);
+}
+
+.filters-actions .btn-link {
+    padding: 0.5rem 0.875rem;
+    font-size: var(--font-size-sm);
+    color: var(--primary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    transition: all 0.2s ease;
+}
+
+.filters-actions .btn-link:hover {
+    background: var(--primary-light);
+    color: var(--primary-dark);
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-sm);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-light);
+    min-width: 180px;
+    max-width: 250px;
+    flex: 0 1 auto;
+}
+
+.filter-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-xs);
+    font-weight: 600;
+    color: var(--text);
+    font-size: var(--font-size-sm);
+    padding-bottom: var(--spacing-xs);
+    border-bottom: 1px solid var(--border-light);
+}
+
+.filter-group-header .btn-link {
+    padding: 0.25rem 0.5rem;
+    font-size: var(--font-size-xs);
+    color: var(--primary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    transition: all 0.2s ease;
+}
+
+.filter-group-header .btn-link:hover {
+    background: var(--primary-light);
+    color: var(--primary-dark);
+}
+
+.filter-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    padding-right: 2px;
+}
+
+.filter-btn {
+    padding: 0.625rem 1.125rem;
+    border-radius: var(--radius-full);
+    border: 2px solid var(--border);
+    background: var(--bg-secondary);
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--text);
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.filter-btn:hover {
+    border-color: var(--primary);
+    background: var(--primary-light);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+}
+
+.filter-btn.selected {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #ffffff;
+    border-color: var(--primary-dark);
+    box-shadow: 0 4px 12px rgba(185, 210, 207, 0.4);
+    font-weight: 600;
+}
+
+.filter-btn.selected:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(185, 210, 207, 0.5);
+}
+
+.filter-btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(185, 210, 207, 0.3);
+}
+
 /* Action Buttons Section */
 .actions-section {
     display: flex;
@@ -396,7 +532,7 @@
 
 .preview-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: flex-start;
     gap: var(--spacing-lg);
     margin-bottom: var(--spacing-lg);
@@ -408,15 +544,18 @@
     font-size: var(--font-size-xl);
     font-weight: 700;
     color: var(--text);
+    left: unset;
+    
 }
 
 .branch-info {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
     gap: var(--spacing-sm);
     background: var(--bg-secondary);
-    padding: var(--spacing-md) var(--spacing-lg);
+    padding: var(--spacing-md) 208px;
     border-radius: var(--radius-lg);
     border: 1px solid var(--border-light);
 }
@@ -717,7 +856,8 @@
     }
 
     .branch-select-wrapper,
-    .fields-compact {
+    .fields-compact,
+    .filters-compact {
         min-width: 100%;
     }
 

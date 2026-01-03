@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { termsAPI, academicYearsAPI } from '../utils/api';
+import { formatDate } from '../utils/dateConverters';
 import './TermManagement.css';
 
 const TermManagement = () => {
@@ -371,10 +372,6 @@ const TermManagement = () => {
 
 // Academic Year Card Component
 const AcademicYearCard = ({ year, onComplete }) => {
-  const formatDate = (date) => {
-    if (!date) return '-';
-    return new Date(date).toLocaleDateString('en-US');
-  };
 
   return (
     <div className={`academic-year-card ${year.is_current ? 'current' : ''} ${year.is_completed ? 'completed' : ''}`}>

@@ -1,0 +1,211 @@
+.unified-date-picker {
+  position: relative;
+  margin-bottom: var(--spacing-md, 1rem);
+}
+
+.unified-date-picker label {
+  display: block;
+  margin-bottom: var(--spacing-xs, 0.5rem);
+  font-weight: 500;
+  color: var(--text-primary, #333);
+}
+
+.unified-date-picker .required {
+  color: var(--error, #dc3545);
+}
+
+.date-input-container {
+  display: flex;
+  gap: var(--spacing-sm, 0.5rem);
+  align-items: center;
+}
+
+.date-input-button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm, 0.5rem) var(--spacing-md, 1rem);
+  border: 1px solid var(--border, #ddd);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--bg-primary, #fff);
+  cursor: pointer;
+  font-size: var(--font-size-base, 1rem);
+  transition: border-color var(--transition-base, 0.2s);
+  min-height: 42px;
+}
+
+.date-input-button:hover {
+  border-color: var(--primary, #007bff);
+}
+
+.date-input-button:focus {
+  outline: none;
+  border-color: var(--primary, #007bff);
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.date-display {
+  flex: 1;
+  text-align: right;
+  color: var(--text-primary, #333);
+}
+
+.calendar-icon {
+  font-size: 1.2em;
+  opacity: 0.6;
+}
+
+.calendar-type-toggle {
+  display: flex;
+  gap: 2px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: var(--radius-sm, 4px);
+  overflow: hidden;
+}
+
+.calendar-type-toggle button {
+  padding: var(--spacing-xs, 0.5rem) var(--spacing-sm, 0.75rem);
+  border: none;
+  background: var(--bg-secondary, #f8f9fa);
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  font-size: var(--font-size-sm, 0.875rem);
+  transition: all var(--transition-base, 0.2s);
+}
+
+.calendar-type-toggle button:hover {
+  background: var(--bg-hover, #e9ecef);
+}
+
+.calendar-type-toggle button.active {
+  background: var(--primary, #007bff);
+  color: white;
+}
+
+.calendar-popup {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: var(--spacing-xs, 0.5rem);
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border, #ddd);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  padding: var(--spacing-md, 1rem);
+}
+
+.calendar-grid {
+  width: 100%;
+}
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md, 1rem);
+  padding-bottom: var(--spacing-sm, 0.5rem);
+  border-bottom: 1px solid var(--border, #ddd);
+}
+
+.calendar-header button {
+  background: none;
+  border: none;
+  font-size: 1.5em;
+  cursor: pointer;
+  color: var(--text-primary, #333);
+  padding: 0 var(--spacing-sm, 0.5rem);
+  transition: color var(--transition-base, 0.2s);
+}
+
+.calendar-header button:hover {
+  color: var(--primary, #007bff);
+}
+
+.calendar-header span {
+  font-weight: 600;
+  font-size: var(--font-size-lg, 1.125rem);
+}
+
+.calendar-days-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--spacing-xs, 0.5rem);
+  margin-bottom: var(--spacing-xs, 0.5rem);
+}
+
+.day-header {
+  text-align: center;
+  font-weight: 600;
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--text-secondary, #666);
+  padding: var(--spacing-xs, 0.5rem);
+}
+
+.calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--spacing-xs, 0.5rem);
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #333);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 4px);
+  transition: all var(--transition-base, 0.2s);
+  font-size: var(--font-size-base, 1rem);
+}
+
+.calendar-day:hover:not(.empty):not(:disabled) {
+  background: var(--bg-hover, #e9ecef);
+  border-color: var(--border, #ddd);
+}
+
+.calendar-day.selected {
+  background: var(--primary, #007bff);
+  color: white;
+  border-color: var(--primary, #007bff);
+}
+
+.calendar-day.empty {
+  cursor: default;
+  visibility: hidden;
+}
+
+.calendar-day:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hijri-calendar-placeholder {
+  text-align: center;
+  padding: var(--spacing-lg, 2rem);
+  color: var(--text-secondary, #666);
+}
+
+.converted-date-display {
+  margin-top: var(--spacing-xs, 0.5rem);
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--text-secondary, #666);
+}
+
+.converted-date {
+  display: block;
+}
+
+.validation-error {
+  margin-top: var(--spacing-sm, 0.5rem);
+  padding: var(--spacing-xs, 0.5rem);
+  background: var(--error-light, #f8d7da);
+  color: var(--error, #dc3545);
+  border-radius: var(--radius-sm, 4px);
+  font-size: var(--font-size-sm, 0.875rem);
+}

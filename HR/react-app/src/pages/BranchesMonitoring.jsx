@@ -10,6 +10,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import BranchBadge from '../components/BranchBadge';
 import { getRequiredBranchDocuments, getBranchTypeLabel, getMonthlyRequiredBranchDocuments } from '../utils/employeeHelpers';
 import { calculateEmployeeCompletion } from '../utils/dataCompletionUtils';
+import { formatDate } from '../utils/dateConverters';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 import './BranchesMonitoring.css';
 
@@ -378,7 +379,7 @@ const BranchesMonitoring = () => {
                         <div className="document-dates">
                           {doc.documents.map((d, idx) => (
                             <span key={idx} className="document-date">
-                              {new Date(d.uploaded_at).toLocaleDateString('en-US', { calendar: 'gregory' })}
+                              {formatDate(d.uploaded_at)}
                             </span>
                           ))}
                         </div>

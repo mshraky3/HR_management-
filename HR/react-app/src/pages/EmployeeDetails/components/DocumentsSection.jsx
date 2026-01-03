@@ -1,4 +1,5 @@
 import { getDocumentTypeLabel } from '../../../utils/employeeConstants';
+import { formatDate } from '../../../utils/dateConverters';
 
 const DocumentsSection = ({ documents, onPreview, onDownload, previewLoading, downloading }) => (
   <div className="documents-section">
@@ -35,11 +36,7 @@ const DocumentsSection = ({ documents, onPreview, onDownload, previewLoading, do
               <div className="document-info-item">
                 <span className="document-info-label">تاريخ الرفع</span>
                 <span className="document-info-value">
-                  {new Date(doc.uploaded_at).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                  })}
+                  {formatDate(doc.uploaded_at)}
                 </span>
               </div>
               <div className="document-info-item">
@@ -52,11 +49,7 @@ const DocumentsSection = ({ documents, onPreview, onDownload, previewLoading, do
                 <div className="document-info-item">
                   <span className="document-info-label">تاريخ الانتهاء</span>
                   <span className="document-info-value">
-                    {new Date(doc.expiry_date).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                    })}
+                    {formatDate(doc.expiry_date)}
                   </span>
                 </div>
               )}

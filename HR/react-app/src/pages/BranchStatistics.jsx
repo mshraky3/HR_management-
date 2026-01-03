@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { branchStatisticsAPI, branchDocumentsAPI } from '../utils/api';
 import { calculateOverallProgress, calculateDocumentsCompletion } from '../utils/dataCompletionUtils';
+import { formatDate } from '../utils/dateConverters';
 import BranchesOverallProgressChart from '../components/BranchesOverallProgressChart';
 import './BranchStatistics.css';
 
@@ -359,12 +360,7 @@ const BranchStatistics = () => {
                   </td>
                   <td>
                     {stat.last_login
-                      ? new Date(stat.last_login).toLocaleDateString('en-US', {
-                        calendar: 'gregory',
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit'
-                      })
+                      ? formatDate(stat.last_login)
                       : 'لا يوجد'}
                     {stat.days_since_last_login !== null && (
                       <div className="days-ago">
@@ -374,12 +370,7 @@ const BranchStatistics = () => {
                   </td>
                   <td>
                     {stat.last_activity
-                      ? new Date(stat.last_activity).toLocaleDateString('en-US', {
-                        calendar: 'gregory',
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit'
-                      })
+                      ? formatDate(stat.last_activity)
                       : 'لا يوجد'}
                   </td>
                 </tr>

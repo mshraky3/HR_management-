@@ -3,11 +3,11 @@
  * Overview of all tables and statistics
  */
 
-import { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, clearCache } from '../utils/api';
+import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, dashboardAPI, adminAPI, clearCache } from '../utils/api';
 import BranchesOverallProgressChart from '../components/BranchesOverallProgressChart';
 import {
   getRequiredBranchDocuments,
@@ -17,6 +17,7 @@ import {
 } from '../utils/employeeHelpers';
 import { getBranchTypeRules } from '../utils/employeeRules';
 import { DATA_COMPLETION_STATUS } from '../utils/employeeConstants';
+import { formatDate } from '../utils/dateConverters';
 import DashboardProgress from './DashboardProgress';
 import './Dashboard.css';
 
@@ -204,108 +205,33 @@ const Dashboard = () => {
           setNotifications([]);
         }
 
-        // First, recalculate completion status for all employees in the branch
-        // This ensures the incomplete employees section always shows up-to-date data on each load
-        const completionStartTime = performance.now();
-        console.log('[Dashboard] Starting completion status recalculation...');
+        // Use cached dashboard summary endpoint to get current incomplete employees and totals
         try {
-          // Get all active employees first (for branch managers, this is just their branch)
-          console.log('[Dashboard] Fetching all active employees for completion status update...');
-          const allEmployeesRes = await employeesAPI.getAll({
-            ...employeeFilters,
-            is_active: true
-          }).catch((err) => {
-            console.error('[Dashboard] Failed to fetch employees for completion status:', err);
-            return { data: { success: false, data: [] } };
-          });
-
-          if (allEmployeesRes.data.success && allEmployeesRes.data.data) {
-            const allEmployees = allEmployeesRes.data.data.filter(emp =>
+          const summaryRes = await dashboardAPI.getSummary({ branch_id: user?.branch_id });
+          if (summaryRes?.data?.success) {
+            const summary = summaryRes.data.data;
+            const filtered = (summary.incompleteEmployees || []).filter(emp =>
               !emp.status || emp.status === 'active' || emp.status === 'pending'
             );
-            console.log('[Dashboard] Found', allEmployees.length, 'employees to update completion status');
-
-            // Update completion status for all employees in batches
-            // Performance Optimization: Increased batch size from 5 to 25 and reduced delays
-            // This improves performance from ~3-5s to ~1-2s (2-4x faster) for 100 employees
-            const BATCH_SIZE = 25; // Increased from 5 for better performance
-            const totalBatches = Math.ceil(allEmployees.length / BATCH_SIZE);
-            console.log('[Dashboard] Processing', totalBatches, 'batches of', BATCH_SIZE, 'employees each');
-
-            for (let i = 0; i < allEmployees.length; i += BATCH_SIZE) {
-              const batch = allEmployees.slice(i, i + BATCH_SIZE);
-              const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-              console.log('[Dashboard] Processing batch', batchNum, 'of', totalBatches, '(', batch.length, 'employees)');
-
-              const batchStartTime = performance.now();
-              await Promise.all(
-                batch.map(emp =>
-                  employeesAPI.updateCompletionStatus(emp.id).catch(err => {
-                    console.warn(`[Dashboard] Failed to update completion status for employee ${emp.id}:`, err);
-                    return null;
-                  })
-                )
-              );
-              const batchEndTime = performance.now();
-              console.log('[Dashboard] Batch', batchNum, 'completed in', (batchEndTime - batchStartTime).toFixed(2), 'ms');
-
-              // Reduced delay from 50ms to 10ms - minimal delay to prevent overwhelming server
-              if (i + BATCH_SIZE < allEmployees.length) {
-                await new Promise(resolve => setTimeout(resolve, 10));
-              }
-            }
-            const completionEndTime = performance.now();
-            console.log('[Dashboard] Completion status recalculation finished in', (completionEndTime - completionStartTime).toFixed(2), 'ms');
+            console.log('[Dashboard] Setting incompleteEmployees state from summary:', filtered.length, 'employees');
+            setIncompleteEmployees(filtered);
+            setBranchStats(prev => ({ ...prev, completionPercentage: summary.completionPercentage }));
           } else {
-            console.warn('[Dashboard] No employees found or request failed for completion status update');
+            setIncompleteEmployees([]);
           }
-        } catch (error) {
-          console.error('[Dashboard] Error recalculating completion status:', error);
-          // Continue even if recalculation fails - we'll use existing data
-        }
-
-        // Clear cache for employees to ensure fresh data after status updates
-        console.log('[Dashboard] Clearing employees cache after completion status update...');
-        clearCache('/api/employees');
-
-        // Now load incomplete employees with freshly calculated status
-        const incompleteStartTime = performance.now();
-        console.log('[Dashboard] Loading incomplete and pending employees...');
-        const incompleteFilters = {
-          ...employeeFilters,
-          data_completion_status: DATA_COMPLETION_STATUS.INCOMPLETE
-        };
-
-        const [incompleteRes, pendingRes] = await Promise.all([
-          employeesAPI.getAll(incompleteFilters).catch((err) => {
-            console.error('[Dashboard] Failed to fetch incomplete employees:', err);
-            return { data: { success: false, data: [] } };
-          }),
-          employeesAPI.getAll({
-            ...employeeFilters,
-            status: 'pending'
-          }).catch((err) => {
-            console.error('[Dashboard] Failed to fetch pending employees:', err);
-            return { data: { success: false, data: [] } };
-          })
-        ]);
-        const incompleteEndTime = performance.now();
-        console.log('[Dashboard] Incomplete/pending employees loaded in', (incompleteEndTime - incompleteStartTime).toFixed(2), 'ms');
-
-        console.log('[Dashboard] incompleteRes:', {
-          success: incompleteRes.data.success,
-          count: incompleteRes.data.data?.length || 0
-        });
-        if (incompleteRes.data.success) {
-          const filtered = (incompleteRes.data.data || []).filter(emp =>
-            !emp.status || emp.status === 'active' || emp.status === 'pending'
-          );
-          console.log('[Dashboard] Setting incompleteEmployees state:', filtered.length, 'employees');
-          setIncompleteEmployees(filtered);
-        } else {
-          console.log('[Dashboard] incompleteRes failed, setting incompleteEmployees to empty array');
+        } catch (err) {
+          console.warn('[Dashboard] Failed to load dashboard summary:', err);
           setIncompleteEmployees([]);
         }
+
+        // Load pending employees (still needed for pending list)
+        const pendingRes = await employeesAPI.getAll({
+          ...employeeFilters,
+          status: 'pending'
+        }).catch((err) => {
+          console.error('[Dashboard] Failed to fetch pending employees:', err);
+          return { data: { success: false, data: [] } };
+        });
 
         console.log('[Dashboard] pendingRes:', {
           success: pendingRes.data.success,
@@ -482,6 +408,47 @@ const Dashboard = () => {
       window.removeEventListener('branchInfoUpdated', handleBranchInfoUpdate);
     };
   }, [loadStats]); // Include loadStats in dependencies
+
+  // Track which one-time notifications have been marked as viewed in this session
+  const markedAsViewedRef = useRef(new Set());
+
+  // Mark one-time notifications as viewed when they are actually displayed to the user
+  // Only mark if they haven't been viewed yet (viewed === false) and haven't been marked in this session
+  useEffect(() => {
+    if (!notifications || notifications.length === 0 || !user?.id) {
+      return;
+    }
+
+    // Filter one-time notifications that:
+    // 1. Are one-time notifications
+    // 2. Haven't been viewed yet (viewed === false)
+    // 3. Haven't been marked in this session yet
+    const oneTimeNotifications = notifications.filter(
+      (notification) =>
+        notification.one_time &&
+        !notification.viewed &&
+        !markedAsViewedRef.current.has(notification.id)
+    );
+
+    if (oneTimeNotifications.length === 0) {
+      return;
+    }
+
+    // Mark each one-time notification as viewed
+    oneTimeNotifications.forEach((notification) => {
+      // Add to ref immediately to prevent duplicate calls
+      markedAsViewedRef.current.add(notification.id);
+
+      // Call API to mark as viewed
+      notificationsAPI
+        .markViewed(notification.id)
+        .catch((err) => {
+          // Remove from ref on error so it can be retried
+          markedAsViewedRef.current.delete(notification.id);
+          // Silently handle errors - don't log warnings
+        });
+    });
+  }, [notifications, user?.id]);
 
   // Check for new responses since last visit
   // Performance Optimization: Limit to first 20 notifications to prevent N+1 query problem
@@ -1076,7 +1043,7 @@ const Dashboard = () => {
                       )}
                     </div>
                     <span className="notification-date-dashboard">
-                      {new Date(notification.created_at).toLocaleDateString('en-US', { calendar: 'gregory' })}
+                      {formatDate(notification.created_at)}
                     </span>
                   </div>
                   <div className="notification-message-dashboard">
@@ -1359,16 +1326,12 @@ const Dashboard = () => {
                     <p className="alert-message">{doc.message}</p>
                     {doc.expiryDate && (
                       <p className="alert-date">
-                        تاريخ الانتهاء: {new Date(doc.expiryDate).toLocaleDateString('ar-SA', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
+                        تاريخ الانتهاء: {formatDate(doc.expiryDate)}
                       </p>
                     )}
                     {doc.lastUploadDate && (
                       <p className="alert-date" style={{ fontSize: '12px', color: '#888', marginTop: '5px' }}>
-                        آخر تحديث: {new Date(doc.lastUploadDate).toLocaleDateString('ar-SA')}
+                        آخر تحديث: {formatDate(doc.lastUploadDate)}
                       </p>
                     )}
                   </div>

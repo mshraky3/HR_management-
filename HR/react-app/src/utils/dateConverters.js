@@ -85,78 +85,90 @@ function approximateGregorianToHijri(date) {
 
 /**
  * Kuwaiti Algorithm for Hijri to Gregorian
+ * Convert Hijri date to Gregorian using Julian Day Number calculation
+ * This is the corrected version matching the backend algorithm
  */
 function kuwaitiHijriToGregorian(day, month, year) {
   const iYear = parseInt(year);
-  const iMonth = parseInt(month) - 1; // 0-indexed
+  const iMonth = parseInt(month); // 1-indexed
   const iDay = parseInt(day);
 
-  const islamicEpoch = 227014;
-  let z = iYear;
+  if (iYear < 1 || iYear > 1500 || iMonth < 1 || iMonth > 12 || iDay < 1 || iDay > 30) {
+    return null;
+  }
+
+  // Hijri epoch: July 16, 622 CE = Julian Day 1948439.5
+  const hijriEpoch = 1948439.5;
   
-  // Cycle number
-  let cycle = Math.floor(z / 30);
+  // Calculate days from start of Hijri year
+  // Determine if it's a leap year (11 leap years in 30-year cycle: 2, 5, 7, 10, 13, 16, 18, 21, 24, 26, 29)
+  const cycleYear = (iYear - 1) % 30;
+  const leapYears = [2, 5, 7, 10, 13, 16, 18, 21, 24, 26, 29];
+  const isLeapYear = leapYears.includes(cycleYear);
   
-  // Year within cycle
-  let yearInCycle = z % 30;
-  
-  let dayInYear = iDay;
-  
-  // Add days for past months
-  // Alternate 30 and 29 days
-  for (let m = 0; m < iMonth; m++) {
-    // Months are 30, 29, 30, 29...
-    // Except 12th month in leap years
-    if (m % 2 === 0) {
-      dayInYear += 30;
-    } else {
-      dayInYear += 29;
-    }
+  // Hijri month lengths (standard pattern: 30, 29, 30, 29...)
+  const monthLengths = [30, 29, 30, 29, 30, 29, 30, 29, 30, 29, 30, 29];
+  if (isLeapYear) {
+    monthLengths[11] = 30; // Last month (Dhu al-Hijjah) is 30 days in leap year
   }
   
-  // Calculate days since epoch
-  // 354 days in normal year, 355 in leap year
-  // 11 leap years in 30-year cycle: 2, 5, 7, 10, 13, 16, 18, 21, 24, 26, 29
-  // (Using Kuwaiti Algo leap years)
+  // Calculate days from start of year
+  let daysFromYearStart = iDay - 1; // -1 because we count from 0
+  for (let m = 0; m < iMonth - 1; m++) {
+    daysFromYearStart += monthLengths[m];
+  }
   
-  let daysSinceEpoch = 
-    islamicEpoch + 
-    cycle * 10631 + // 10631 days in 30 years
-    (yearInCycle - 1) * 354 + 
-    Math.floor((3 + (11 * yearInCycle)) / 30) + 
-    dayInYear - 1; // -1 because epoch is day 1
-
-  // Convert Julian Day to Gregorian Date
-  // Simplified JD to Gregorian
-  // We can use the Date object by calculating milliseconds from 1970-01-01
-  // JD for 1970-01-01 is 2440588
-  // Islamic Epoch (JD) is actually ~1948439.5, our calculation above is a simplified offset
+  // Calculate total days since Hijri epoch
+  // 30-year cycle has 11 leap years, so 354*19 + 355*11 = 10631 days
+  const cycles = Math.floor((iYear - 1) / 30);
+  const yearInCycle = (iYear - 1) % 30;
   
-  // Let's use a more direct JD conversion to be safe
-  // Re-implementing JD conversion to be self-contained
+  // Calculate days from completed cycles
+  const daysFromCycles = cycles * 10631;
   
-  let jd = daysSinceEpoch + 1948440 - 1; // Adjust to astronomial JD
+  // Calculate days from completed years in current cycle
+  let daysFromYears = 0;
+  for (let y = 0; y < yearInCycle; y++) {
+    const yCycleYear = y % 30;
+    const yIsLeap = leapYears.includes(yCycleYear);
+    daysFromYears += yIsLeap ? 355 : 354;
+  }
   
-  let l = jd + 68569;
-  let n = Math.floor((4 * l) / 146097);
-  l = l - Math.floor((146097 * n + 3) / 4);
-  let i = Math.floor((4000 * (l + 1)) / 1461001);
-  l = l - Math.floor((1461 * i) / 4) + 31;
-  let j = Math.floor((80 * l) / 2447);
-  let d = l - Math.floor((2447 * j) / 80);
-  l = Math.floor(j / 11);
-  let m = j + 2 - 12 * l;
-  let y = 100 * (n - 49) + i + l;
+  // Calculate Julian Day Number
+  const jd = hijriEpoch + daysFromCycles + daysFromYears + daysFromYearStart;
+  
+  // Convert Julian Day Number to Gregorian Date
+  // Algorithm from "Astronomical Algorithms" by Jean Meeus
+  const j = Math.floor(jd) + 0.5;
+  const z = Math.floor(j);
+  const w = Math.floor((z - 1867216.25) / 36524.25);
+  const x = Math.floor(w / 4);
+  const a = z + 1 + w - x;
+  const b = a + 1524;
+  const c = Math.floor((b - 122.1) / 365.25);
+  const d = Math.floor(365.25 * c);
+  const e = Math.floor((b - d) / 30.6001);
+  const f = Math.floor(30.6001 * e);
+  
+  let gDay = b - d - f;
+  let gMonth = e < 14 ? e - 1 : e - 13;
+  let gYear = gMonth > 2 ? c - 4716 : c - 4715;
 
   // Format YYYY-MM-DD
   const pad = (n) => n.toString().padStart(2, '0');
   
-  // Verify date validity roughly
-  if (y < 1900 || y > 2100) {
-      // Fallback or error? Let's just return what we have, but formatted
+  // Validate the resulting date - expanded range to handle historical dates
+  if (gYear < 1000 || gYear > 2500) {
+    console.warn(`Hijri to Gregorian conversion resulted in year ${gYear} (outside 1000-2500 range) for input: ${day}/${month}/${year}`);
+    return null;
+  }
+  
+  if (gMonth < 1 || gMonth > 12 || gDay < 1 || gDay > 31) {
+    console.warn(`Hijri to Gregorian conversion resulted in invalid date: ${gYear}-${gMonth}-${gDay} for input: ${day}/${month}/${year}`);
+    return null;
   }
 
-  return `${y}-${pad(m)}-${pad(d)}`;
+  return `${gYear}-${pad(gMonth)}-${pad(gDay)}`;
 }
 
 /**
@@ -180,4 +192,39 @@ export const parseHijriString = (dateString) => {
     month: parseInt(parts[1]),
     year: parseInt(parts[2])
   };
+};
+
+/**
+ * Unified date formatting function - formats dates as dd/mm/yyyy
+ * @param {string|Date} date - Date string or Date object
+ * @returns {string} Formatted date string in dd/mm/yyyy format, or '-' if invalid
+ */
+export const formatDate = (date) => {
+  if (!date) return '-';
+  
+  let d;
+  if (typeof date === 'string') {
+    // Handle ISO string dates (e.g., "1993-05-24T00:00:00.000Z" or "1993-05-24")
+    if (date.includes('T')) {
+      // Parse ISO string properly to handle timezone
+      d = new Date(date);
+    } else if (date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      // Handle YYYY-MM-DD format
+      d = new Date(date + 'T00:00:00');
+    } else {
+      d = new Date(date);
+    }
+  } else {
+    d = new Date(date);
+  }
+  
+  // Check if date is valid
+  if (isNaN(d.getTime())) return '-';
+  
+  // Format as dd/mm/yyyy
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  
+  return `${day}/${month}/${year}`;
 };
