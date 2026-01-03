@@ -291,18 +291,32 @@ export async function initializeDatabase() {
       'Created index on branch_documents.file_name'
     );
 
-    // Add Hijri date columns to branch_documents if they don't exist
+    // Add issue_date and Hijri date columns to branch_documents if they don't exist
     try {
+      // Check if issue_date column exists, if not add it
+      const issueDateExists = await sql`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'branch_documents' AND column_name = 'issue_date'
+      `;
+      if (!issueDateExists || issueDateExists.length === 0) {
+        await executeQuery(
+          'ALTER TABLE branch_documents ADD COLUMN issue_date DATE',
+          'Added issue_date column to branch_documents'
+        );
+      }
+      
+      // Add Hijri columns
       await executeQuery(
-        'ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS issue_date_hijri VARCHAR(20)',
+        'ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS issue_date_hijri VARCHAR(50)',
         'Added issue_date_hijri column to branch_documents'
       );
       await executeQuery(
-        'ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(20)',
+        'ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)',
         'Added expiry_date_hijri column to branch_documents'
       );
     } catch (error) {
-      // Silent error handling
+      // Silent error handling - columns may already exist
     }
 
     // 7. Create employee_professional_classifications table
@@ -361,11 +375,14 @@ export async function initializeDatabase() {
     await createTable('notifications', `
       id SERIAL PRIMARY KEY,
       message TEXT NOT NULL,
-      importance_level INTEGER NOT NULL CHECK (importance_level IN (1, 2, 3)),
+      importance_level INTEGER NOT NULL CHECK (importance_level IN (1, 2, 3, 4, 5)),
       created_by INTEGER NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       is_active BOOLEAN DEFAULT true,
+      expires_at TIMESTAMP,
+      one_time BOOLEAN DEFAULT false,
+      seen_by_branches INTEGER[] DEFAULT ARRAY[]::INTEGER[],
       FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
     `);
 
@@ -385,6 +402,10 @@ export async function initializeDatabase() {
     await executeQuery(
       'CREATE INDEX IF NOT EXISTS idx_notifications_is_active ON notifications(is_active)',
       'Created index on notifications.is_active'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_notifications_expires_at ON notifications(expires_at)',
+      'Created index on notifications.expires_at'
     );
 
     // 10. Create notification_branches table (many-to-many relationship)
@@ -436,7 +457,28 @@ export async function initializeDatabase() {
       'Created index on notification_responses.response_status'
     );
 
-    // 12. Create terms table
+    // 12. Create notification_views table (for one-time notifications)
+    await createTable('notification_views', `
+      id SERIAL PRIMARY KEY,
+      notification_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(notification_id, user_id)
+    `);
+
+    // Create indexes for notification_views
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_notification_views_notification_id ON notification_views(notification_id)',
+      'Created index on notification_views.notification_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_notification_views_user_id ON notification_views(user_id)',
+      'Created index on notification_views.user_id'
+    );
+
+    // 13. Create terms table
     await createTable('terms', `
       id SERIAL PRIMARY KEY,
       branch_type VARCHAR(50) NOT NULL CHECK (branch_type IN ('school', 'healthcare_center')),
@@ -549,79 +591,6 @@ export async function initializeDatabase() {
       'Created index on requests.created_at'
     );
 
-    // 15. Create alerts table (Smart Alerts System)
-    await createTable('alerts', `
-      id SERIAL PRIMARY KEY,
-      alert_type VARCHAR(50) NOT NULL CHECK (alert_type IN ('id_expiry', 'missing_document', 'incomplete_data', 'custom')),
-      priority VARCHAR(20) NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
-      title VARCHAR(255) NOT NULL,
-      message TEXT NOT NULL,
-      branch_id INTEGER,
-      employee_id INTEGER,
-      related_entity_type VARCHAR(50),
-      related_entity_id INTEGER,
-      alert_data JSONB,
-      is_read BOOLEAN DEFAULT false,
-      is_resolved BOOLEAN DEFAULT false,
-      resolved_at TIMESTAMP,
-      resolved_by INTEGER,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      expires_at TIMESTAMP,
-      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
-      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
-      FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL
-    `);
-
-    // Create indexes for alerts
-    await executeQuery(
-      'CREATE INDEX IF NOT EXISTS idx_alerts_type ON alerts(alert_type)',
-      'Created index on alerts.alert_type'
-    );
-    await executeQuery(
-      'CREATE INDEX IF NOT EXISTS idx_alerts_branch_id ON alerts(branch_id)',
-      'Created index on alerts.branch_id'
-    );
-    await executeQuery(
-      'CREATE INDEX IF NOT EXISTS idx_alerts_employee_id ON alerts(employee_id)',
-      'Created index on alerts.employee_id'
-    );
-    await executeQuery(
-      'CREATE INDEX IF NOT EXISTS idx_alerts_is_read ON alerts(is_read)',
-      'Created index on alerts.is_read'
-    );
-    await executeQuery(
-      'CREATE INDEX IF NOT EXISTS idx_alerts_is_resolved ON alerts(is_resolved)',
-      'Created index on alerts.is_resolved'
-    );
-    await executeQuery(
-      'CREATE INDEX IF NOT EXISTS idx_alerts_priority ON alerts(priority)',
-      'Created index on alerts.priority'
-    );
-    await executeQuery(
-      'CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at DESC)',
-      'Created index on alerts.created_at'
-    );
-
-    // 16. Create alert_settings table (User notification preferences)
-    await createTable('alert_settings', `
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL UNIQUE,
-      id_expiry_enabled BOOLEAN DEFAULT true,
-      id_expiry_days_before INTEGER DEFAULT 30,
-      missing_document_enabled BOOLEAN DEFAULT true,
-      incomplete_data_enabled BOOLEAN DEFAULT true,
-      email_notifications_enabled BOOLEAN DEFAULT false,
-      sms_notifications_enabled BOOLEAN DEFAULT false,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    `);
-
-    // Create index for alert_settings
-    await executeQuery(
-      'CREATE INDEX IF NOT EXISTS idx_alert_settings_user_id ON alert_settings(user_id)',
-      'Created index on alert_settings.user_id'
-    );
 
     // ========== PERFORMANCE OPTIMIZATION: Additional Indexes for Employees ==========
     // These indexes significantly improve query performance for common operations
@@ -792,6 +761,107 @@ export async function initializeDatabase() {
       }
     } catch (error) {
       // Silent error handling
+    }
+
+    // Add Hijri date columns for all date fields that don't have them
+    // employee_documents.expiry_date_hijri
+    try {
+      await executeQuery(
+        'ALTER TABLE employee_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)',
+        'Added expiry_date_hijri column to employee_documents'
+      );
+    } catch (error) {
+      // Silent error handling - column may already exist
+    }
+
+    // Note: passport_issue_date, passport_expiry_date, residency_issue_date, graduation_year
+    // are currently stored as VARCHAR fields (not DATE), so we don't need Hijri columns for them
+    // as they're likely stored as strings already. If they need dual format support in the future,
+    // we can add _hijri columns for them as well.
+
+    // notifications.expires_at
+    try {
+      await executeQuery(
+        'ALTER TABLE notifications ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP',
+        'Added expires_at column to notifications'
+      );
+    } catch (error) {
+      console.error('Error adding expires_at column to notifications:', error.message);
+    }
+
+    // notifications.one_time
+    try {
+      await executeQuery(
+        'ALTER TABLE notifications ADD COLUMN IF NOT EXISTS one_time BOOLEAN DEFAULT false',
+        'Added one_time column to notifications'
+      );
+    } catch (error) {
+      console.error('Error adding one_time column to notifications:', error.message);
+    }
+
+    // Add seen_by_branches column to existing notifications table if it doesn't exist
+    try {
+      await executeQuery(
+        `DO $$ 
+        BEGIN 
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'notifications' AND column_name = 'seen_by_branches'
+          ) THEN
+            ALTER TABLE notifications ADD COLUMN seen_by_branches INTEGER[] DEFAULT ARRAY[]::INTEGER[];
+          END IF;
+        END $$;`,
+        'Added seen_by_branches column to notifications table'
+      );
+    } catch (error) {
+      console.error('Error adding seen_by_branches column to notifications:', error.message);
+    }
+
+    // Update importance_level constraint to allow level 5
+    try {
+      await executeQuery(
+        `DO $$ 
+        BEGIN 
+          IF EXISTS (
+            SELECT 1 FROM information_schema.constraint_column_usage 
+            WHERE table_name = 'notifications' 
+            AND constraint_name = 'notifications_importance_level_check'
+          ) THEN
+            ALTER TABLE notifications DROP CONSTRAINT notifications_importance_level_check;
+          END IF;
+        END $$;
+        ALTER TABLE notifications ADD CONSTRAINT notifications_importance_level_check 
+        CHECK (importance_level IN (1, 2, 3, 4, 5))`,
+        'Updated importance_level constraint to allow level 5'
+      );
+    } catch (error) {
+      console.error('Error updating importance_level constraint:', error.message);
+    }
+
+    // notification_views table (for one-time notifications)
+    try {
+      await executeQuery(
+        `CREATE TABLE IF NOT EXISTS notification_views (
+          id SERIAL PRIMARY KEY,
+          notification_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(notification_id, user_id)
+        )`,
+        'Created notification_views table'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_notification_views_notification_id ON notification_views(notification_id)',
+        'Created index on notification_views.notification_id'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_notification_views_user_id ON notification_views(user_id)',
+        'Created index on notification_views.user_id'
+      );
+    } catch (error) {
+      console.error('Error creating notification_views table:', error.message);
     }
 
     return { success: true, message: 'Database initialization completed successfully' };

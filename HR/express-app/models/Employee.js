@@ -11,6 +11,7 @@ export const Employee = {
    * Find employee by ID
    * Note: Removed is_active filter to allow viewing archived employees
    * Access control should be handled at the route level if needed
+   * Includes all associated branches in the response
    */
   async findById(id) {
     try {
@@ -18,7 +19,43 @@ export const Employee = {
         SELECT * FROM employees 
         WHERE id = ${id}
       `;
-      return employee || null;
+      
+      if (!employee) {
+        return null;
+      }
+      
+      // Get all branches associated with this employee
+      try {
+        const branches = await sql`
+          SELECT 
+            eb.branch_id,
+            eb.is_primary,
+            eb.added_at,
+            b.branch_name,
+            b.branch_type
+          FROM employee_branches eb
+          INNER JOIN branches b ON eb.branch_id = b.id
+          WHERE eb.employee_id = ${id}
+          ORDER BY eb.is_primary DESC, eb.added_at ASC
+        `;
+        
+        return {
+          ...employee,
+          branches: branches.map(b => ({
+            branch_id: b.branch_id,
+            branch_name: b.branch_name,
+            branch_type: b.branch_type,
+            is_primary: b.is_primary,
+            added_at: b.added_at
+          }))
+        };
+      } catch (branchError) {
+        // If employee_branches table doesn't exist yet (migration not run), return employee without branches
+        if (branchError.message && branchError.message.includes('does not exist')) {
+          return employee;
+        }
+        throw branchError;
+      }
     } catch (error) {
       log.error('Error finding employee by ID', { error: error.message });
       throw error;
@@ -112,8 +149,51 @@ export const Employee = {
       }
       
       if (filters.data_completion_status) {
-        conditions.push(`data_completion_status = $${paramIndex++}`);
-        params.push(filters.data_completion_status);
+        if (Array.isArray(filters.data_completion_status) && filters.data_completion_status.length > 0) {
+          const placeholders = filters.data_completion_status.map(() => `$${paramIndex++}`).join(', ');
+          conditions.push(`data_completion_status IN (${placeholders})`);
+          params.push(...filters.data_completion_status);
+        } else if (!Array.isArray(filters.data_completion_status)) {
+          conditions.push(`data_completion_status = $${paramIndex++}`);
+          params.push(filters.data_completion_status);
+        }
+      }
+
+      // Array filters for payrolls
+      if (filters.nationality && Array.isArray(filters.nationality) && filters.nationality.length > 0) {
+        const placeholders = filters.nationality.map(() => `$${paramIndex++}`).join(', ');
+        conditions.push(`nationality IN (${placeholders})`);
+        params.push(...filters.nationality);
+      }
+
+      if (filters.job_title && Array.isArray(filters.job_title) && filters.job_title.length > 0) {
+        const placeholders = filters.job_title.map(() => `$${paramIndex++}`).join(', ');
+        conditions.push(`job_title IN (${placeholders})`);
+        params.push(...filters.job_title);
+      }
+
+      if (filters.gender && Array.isArray(filters.gender) && filters.gender.length > 0) {
+        const placeholders = filters.gender.map(() => `$${paramIndex++}`).join(', ');
+        conditions.push(`gender IN (${placeholders})`);
+        params.push(...filters.gender);
+      }
+
+      if (filters.marital_status && Array.isArray(filters.marital_status) && filters.marital_status.length > 0) {
+        const placeholders = filters.marital_status.map(() => `$${paramIndex++}`).join(', ');
+        conditions.push(`marital_status IN (${placeholders})`);
+        params.push(...filters.marital_status);
+      }
+
+      if (filters.educational_qualification && Array.isArray(filters.educational_qualification) && filters.educational_qualification.length > 0) {
+        const placeholders = filters.educational_qualification.map(() => `$${paramIndex++}`).join(', ');
+        conditions.push(`educational_qualification IN (${placeholders})`);
+        params.push(...filters.educational_qualification);
+      }
+
+      if (filters.contract_type && Array.isArray(filters.contract_type) && filters.contract_type.length > 0) {
+        const placeholders = filters.contract_type.map(() => `$${paramIndex++}`).join(', ');
+        conditions.push(`contract_type IN (${placeholders})`);
+        params.push(...filters.contract_type);
       }
       
       // Search by name (partial match on any name field)
@@ -148,7 +228,10 @@ export const Employee = {
       const limit = filters.limit ? parseInt(filters.limit, 10) : null;
       const offset = filters.offset ? parseInt(filters.offset, 10) : null;
       
-      let queryString = `SELECT * FROM employees WHERE ${whereClause} ORDER BY created_at DESC`;
+      // Order by full name alphabetically (construct full name from name fields)
+      // Note: full_name is not a column, it's computed from first_name, second_name, third_name, fourth_name
+      let queryString = `SELECT * FROM employees WHERE ${whereClause} ORDER BY 
+        TRIM(COALESCE(first_name, '') || ' ' || COALESCE(second_name, '') || ' ' || COALESCE(third_name, '') || ' ' || COALESCE(fourth_name, '')) ASC`;
       
       // Add LIMIT and OFFSET if provided (for pagination support)
       if (limit && limit > 0 && limit <= 10000) {
@@ -691,6 +774,150 @@ export const Employee = {
       return employee;
     } catch (error) {
       log.error('Error renewing employee', { error: error.message });
+      throw error;
+    }
+  },
+
+  /**
+   * Check for duplicate employees by ID/residency number and date of birth
+   * Used to detect if an employee already exists in another branch
+   * @param {string} idOrResidencyNumber - ID or residency number
+   * @param {string} dateOfBirthHijri - Date of birth in Hijri format
+   * @param {Date} dateOfBirthGregorian - Date of birth in Gregorian format
+   * @param {number} excludeEmployeeId - Employee ID to exclude from search (optional)
+   * @returns {Promise<Array>} - Array of matching employees
+   */
+  async findDuplicates(idOrResidencyNumber, dateOfBirthHijri = null, dateOfBirthGregorian = null, excludeEmployeeId = null) {
+    try {
+      const conditions = [];
+      const params = [];
+      let paramIndex = 1;
+
+      // Match by ID/residency number (required)
+      conditions.push(`id_or_residency_number = $${paramIndex++}`);
+      params.push(idOrResidencyNumber);
+
+      // Match by date of birth (if provided)
+      if (dateOfBirthHijri) {
+        conditions.push(`date_of_birth_hijri = $${paramIndex++}`);
+        params.push(dateOfBirthHijri);
+      } else if (dateOfBirthGregorian) {
+        conditions.push(`date_of_birth_gregorian = $${paramIndex++}`);
+        params.push(dateOfBirthGregorian);
+      }
+
+      // Exclude specific employee ID if provided
+      if (excludeEmployeeId) {
+        conditions.push(`id != $${paramIndex++}`);
+        params.push(excludeEmployeeId);
+      }
+
+      const whereClause = conditions.join(' AND ');
+      const queryString = `
+        SELECT 
+          e.*,
+          b.branch_name,
+          b.branch_type
+        FROM employees e
+        INNER JOIN branches b ON e.branch_id = b.id
+        WHERE ${whereClause}
+        ORDER BY e.created_at DESC
+      `;
+
+      const employees = await sql.unsafe(queryString, params);
+
+      // Get all branches for each employee
+      const employeesWithBranches = await Promise.all(
+        employees.map(async (emp) => {
+          const branches = await sql`
+            SELECT 
+              eb.branch_id,
+              eb.is_primary,
+              eb.added_at,
+              b.branch_name,
+              b.branch_type
+            FROM employee_branches eb
+            INNER JOIN branches b ON eb.branch_id = b.id
+            WHERE eb.employee_id = ${emp.id}
+            ORDER BY eb.is_primary DESC, eb.added_at ASC
+          `;
+          
+          return {
+            ...emp,
+            branches: branches.map(b => ({
+              branch_id: b.branch_id,
+              branch_name: b.branch_name,
+              branch_type: b.branch_type,
+              is_primary: b.is_primary,
+              added_at: b.added_at
+            }))
+          };
+        })
+      );
+
+      return employeesWithBranches;
+    } catch (error) {
+      log.error('Error finding duplicate employees', { error: error.message });
+      throw error;
+    }
+  },
+
+  /**
+   * Link employee to an additional branch
+   * @param {number} employeeId - Employee ID
+   * @param {number} branchId - Branch ID to link
+   * @param {number} addedBy - User/branch ID who added the link
+   * @returns {Promise<Object>} - The created employee_branches record
+   */
+  async linkToBranch(employeeId, branchId, addedBy = null) {
+    try {
+      // Check if link already exists
+      const [existing] = await sql`
+        SELECT * FROM employee_branches
+        WHERE employee_id = ${employeeId} AND branch_id = ${branchId}
+      `;
+
+      if (existing) {
+        return existing; // Already linked, return existing record
+      }
+
+      // Check if this will be the first branch (make it primary)
+      const [firstBranch] = await sql`
+        SELECT COUNT(*) as count FROM employee_branches
+        WHERE employee_id = ${employeeId}
+      `;
+
+      const isPrimary = parseInt(firstBranch.count) === 0;
+
+      // Create the link
+      const [link] = await sql`
+        INSERT INTO employee_branches (employee_id, branch_id, is_primary, added_by)
+        VALUES (${employeeId}, ${branchId}, ${isPrimary}, ${addedBy})
+        RETURNING *
+      `;
+
+      return link;
+    } catch (error) {
+      log.error('Error linking employee to branch', { error: error.message });
+      throw error;
+    }
+  },
+
+  /**
+   * Get all branch IDs for an employee
+   * @param {number} employeeId - Employee ID
+   * @returns {Promise<Array<number>>} - Array of branch IDs
+   */
+  async getBranchIds(employeeId) {
+    try {
+      const branches = await sql`
+        SELECT branch_id FROM employee_branches
+        WHERE employee_id = ${employeeId}
+        ORDER BY is_primary DESC, added_at ASC
+      `;
+      return branches.map(b => b.branch_id);
+    } catch (error) {
+      log.error('Error getting employee branch IDs', { error: error.message });
       throw error;
     }
   }

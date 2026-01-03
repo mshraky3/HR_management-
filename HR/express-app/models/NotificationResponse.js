@@ -63,6 +63,42 @@ export const NotificationResponse = {
   },
 
   /**
+   * Mark a response as seen by the manager (sets manager_seen_at)
+   */
+  async markSeenById(id) {
+    try {
+      const [updated] = await sql`
+        UPDATE notification_responses
+        SET manager_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ${id}
+        RETURNING *
+      `;
+      return updated || null;
+    } catch (error) {
+      console.error('Error marking response as seen:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Mark all responses for a notification as seen by the manager
+   */
+  async markAllByNotification(notificationId) {
+    try {
+      await sql`
+        UPDATE notification_responses
+        SET manager_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE notification_id = ${notificationId}
+      `;
+      return true;
+    } catch (error) {
+      console.error('Error marking all responses as seen:', error);
+      throw error;
+    }
+  },
+
+
+  /**
    * Create or update response
    */
   async createOrUpdate(notificationId, branchId, responseData) {
@@ -102,6 +138,7 @@ export const NotificationResponse = {
    */
   async getStatistics(notificationId) {
     try {
+      // Get response statistics
       const stats = await sql`
         SELECT 
           COUNT(*) as total_branches,
@@ -116,14 +153,24 @@ export const NotificationResponse = {
         WHERE nb.notification_id = ${notificationId}
       `;
       
-      return stats[0] || {
-        total_branches: 0,
-        responded_count: 0,
-        done_count: 0,
-        working_on_it_count: 0,
+      // Get count of branches that have seen the notification (for one-time notifications)
+      const [seenCount] = await sql`
+        SELECT array_length(COALESCE(seen_by_branches, ARRAY[]::INTEGER[]), 1) as seen_branches_count
+        FROM notifications
+        WHERE id = ${notificationId}
+      `;
+      
+      return {
+        ...(stats[0] || {
+          total_branches: 0,
+          responded_count: 0,
+          done_count: 0,
+          working_on_it_count: 0,
         seen_count: 0,
         no_response_count: 0
-      };
+      }),
+      seen_branches_count: seenCount?.seen_branches_count || 0
+    };
     } catch (error) {
       console.error('Error getting response statistics:', error);
       throw error;
