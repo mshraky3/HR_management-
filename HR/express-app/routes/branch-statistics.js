@@ -8,6 +8,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requireMainManager } from '../middleware/authorization.js';
 import sql from '../config/database.js';
 import { calculateEmployeeCompletion } from '../utils/dataCompletionUtils.js';
+import { formatDate } from '../utils/dateConverter.js';
 
 const router = express.Router();
 
@@ -381,15 +382,7 @@ router.post('/performance-report', async (req, res) => {
         { header: 'حالة التشغيل', key: 'is_operational', width: 15 }
       ];
       
-      // Helper function to format date with English numbers
-      const formatDateEnglish = (date) => {
-        if (!date) return 'لا يوجد';
-        const d = new Date(date);
-        const day = String(d.getDate()).padStart(2, '0');
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const year = d.getFullYear();
-        return `${day}/${month}/${year}`;
-      };
+      // Use unified formatDate function for consistent dd/mm/yyyy format
       
       // Helper function to format numbers (ensure English)
       const formatNumber = (value) => {
@@ -408,7 +401,7 @@ router.post('/performance-report', async (req, res) => {
           completion_percentage: formatNumber(stat.completion_percentage),
           employee_updates: formatNumber(stat.activities_last_30_days.employee_updates),
           document_uploads: formatNumber(stat.activities_last_30_days.document_uploads),
-          last_login: formatDateEnglish(stat.last_login),
+          last_login: formatDate(stat.last_login) || 'لا يوجد',
           days_since_last_login: formatNumber(stat.days_since_last_login),
           is_operational: stat.is_operational ? 'نشط' : 'غير نشط'
         });

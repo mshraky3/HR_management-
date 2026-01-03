@@ -6,9 +6,11 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { checkBranchAccess } from '../middleware/authorization.js';
-import { validateRequired, validateEmployeeName, validateDate, validateEmail } from '../middleware/validation.js';
+import { validateRequired, validateEmployeeName, validateEmail } from '../middleware/validation.js';
+import { validateDateFields } from '../middleware/dateValidation.js';
 import { Document } from '../models/Document.js';
 import { log } from '../utils/logger.js';
+import { clearByPrefix } from '../utils/simpleCache.js';
 
 const router = express.Router();
 
@@ -89,12 +91,29 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // Helper to parse array filters from query params
+    const parseArrayFilter = (value) => {
+      if (!value) return undefined;
+      if (Array.isArray(value)) return value;
+      if (typeof value === 'string' && value.includes(',')) {
+        return value.split(',').map(v => v.trim()).filter(v => v);
+      }
+      return [value];
+    };
+
     const filters = {
       branch_id: branchId,
       occupation: req.query.occupation,
       is_active: req.query.is_active !== undefined ? req.query.is_active === 'true' : undefined,
-      data_completion_status: req.query.data_completion_status,
+      data_completion_status: parseArrayFilter(req.query.data_completion_status),
       status: req.query.status,
+      // Array filters for payrolls
+      nationality: parseArrayFilter(req.query.nationality),
+      job_title: parseArrayFilter(req.query.job_title),
+      gender: parseArrayFilter(req.query.gender),
+      marital_status: parseArrayFilter(req.query.marital_status),
+      educational_qualification: parseArrayFilter(req.query.educational_qualification),
+      contract_type: parseArrayFilter(req.query.contract_type),
       // Search filters (only for main manager)
       search_name: req.query.search_name,
       search_id: req.query.search_id,
@@ -105,34 +124,11 @@ router.get('/', async (req, res) => {
     };
 
     const employees = await Employee.findAll(filters);
-    
-    // Recalculate completion status for all employees on each load
-    // This ensures data states are always up-to-date
-    try {
-      const recalculationPromises = employees.map(async (employee) => {
-        try {
-          await updateEmployeeCompletionStatus(employee.id);
-          // Reload employee to get updated status
-          return await Employee.findById(employee.id);
-        } catch (error) {
-          log.warn('Error recalculating completion status for employee', { 
-            employeeId: employee.id, 
-            error: error.message 
-          });
-          // Return original employee if recalculation fails
-          return employee;
-        }
-      });
-      
-      // Wait for all recalculations to complete (with parallel execution)
-      const updatedEmployees = await Promise.all(recalculationPromises);
-      
-      res.json({ success: true, data: updatedEmployees });
-    } catch (recalcError) {
-      log.error('Error during batch completion status recalculation', { error: recalcError.message });
-      // If batch recalculation fails, return original employees
-      res.json({ success: true, data: employees });
-    }
+
+    // NOTE: On-read completion recalculation is disabled for performance.
+    // Use admin endpoint POST /api/admin/recalculate-branch (main manager) to schedule background recalculation,
+    // or POST /api/employees/:id/update-completion-status for single employee updates.
+    res.json({ success: true, data: employees });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -264,12 +260,28 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    // Check branch access
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
-      return res.status(403).json({
-        success: false,
-        message: 'تم رفض الوصول'
-      });
+    // Check branch access (check if employee is linked to user's branch)
+    if (req.user.role === 'branch_manager') {
+      let branchIds = [];
+      try {
+        branchIds = await Employee.getBranchIds(employee.id);
+        // Fallback to primary branch_id if getBranchIds fails or returns empty
+        if (branchIds.length === 0 && employee.branch_id) {
+          branchIds = [employee.branch_id];
+        }
+      } catch (error) {
+        // If employee_branches table doesn't exist, use branch_id
+        if (employee.branch_id) {
+          branchIds = [employee.branch_id];
+        }
+      }
+      
+      if (!branchIds.includes(req.user.branch_id)) {
+        return res.status(403).json({
+          success: false,
+          message: 'تم رفض الوصول'
+        });
+      }
     }
 
     res.json({ success: true, data: employee });
@@ -277,6 +289,40 @@ router.get('/:id', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'فشل جلب الموظف',
+      error: error.message
+    });
+  }
+});
+
+// Check for duplicate employees (before creating)
+router.post('/check-duplicate', async (req, res) => {
+  try {
+    const { Employee } = await import('../models/Employee.js');
+    const { id_or_residency_number, date_of_birth_hijri, date_of_birth_gregorian } = req.body;
+
+    if (!id_or_residency_number) {
+      return res.status(400).json({
+        success: false,
+        message: 'رقم الهوية أو الإقامة مطلوب'
+      });
+    }
+
+    const duplicates = await Employee.findDuplicates(
+      id_or_residency_number,
+      date_of_birth_hijri,
+      date_of_birth_gregorian
+    );
+
+    res.json({
+      success: true,
+      hasDuplicates: duplicates.length > 0,
+      duplicates: duplicates
+    });
+  } catch (error) {
+    log.error('Error checking for duplicates', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'فشل التحقق من التكرار',
       error: error.message
     });
   }
@@ -291,30 +337,17 @@ router.post('/',
   ]),
   validateEmployeeName,
   validateEmail,
-  validateDate('date_of_birth_gregorian'),
-  validateDate('date_of_birth_hijri'),
-  validateDate('id_expiry_date_gregorian'),
-  validateDate('id_expiry_date_hijri'),
+  validateDateFields({
+    'date_of_birth_hijri': { calendarType: 'hijri', dateType: 'birth_date', required: true },
+    'id_expiry_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false }
+  }),
   async (req, res) => {
     try {
       const { Employee } = await import('../models/Employee.js');
       const { updateEmployeeCompletionStatus } = await import('../utils/employeeDataCompletion.js');
       const { isSaudi } = await import('../utils/employeeHelpers.js');
 
-      // Validate date of birth is provided and correct type based on nationality
-      const hasHijriDate = req.body.date_of_birth_hijri && req.body.date_of_birth_hijri.trim() !== '';
-      const hasGregorianDate = req.body.date_of_birth_gregorian && req.body.date_of_birth_gregorian.trim() !== '';
-
-      // Date of birth is REQUIRED for all employees
-      // Date of birth is REQUIRED for all employees
-      // Relaxed validation: Require at least one date format to be present
-      // We no longer restrict by nationality or clear the other date type
-      if (!hasHijriDate && !hasGregorianDate) {
-        return res.status(400).json({
-          success: false,
-          message: 'تاريخ الميلاد مطلوب. الرجاء إدخال تاريخ الميلاد (هجري أو ميلادي).'
-        });
-      }
+      // Date validation is handled by validateDateFields middleware
 
       // For branch managers, force branch_id to their branch (prevent manipulation)
       if (req.user.role === 'branch_manager') {
@@ -328,7 +361,7 @@ router.post('/',
         req.body.branch_id = req.user.branch_id;
       }
 
-      // Ensure date fields are properly set (already handled above based on nationality)
+      // Date normalization is handled by validateDateFields middleware
 
       // Validate field lengths before insertion
       const fieldLengths = {
@@ -377,6 +410,28 @@ router.post('/',
         });
       }
 
+      // Check if this is linking to an existing employee (via existing_employee_id)
+      if (req.body.existing_employee_id && req.body.link_to_branch) {
+        const existingEmployeeId = parseInt(req.body.existing_employee_id);
+        const linkBranchId = req.body.link_to_branch === 'true' ? createdByBranchId : null;
+
+        if (linkBranchId) {
+          try {
+            await Employee.linkToBranch(existingEmployeeId, linkBranchId, createdByBranchId);
+            const updatedEmployee = await Employee.findById(existingEmployeeId);
+            clearByPrefix(`dashboard:summary:${linkBranchId}`);
+            clearByPrefix('branch-statistics');
+            return res.status(200).json({ 
+              success: true, 
+              data: updatedEmployee,
+              message: 'تم ربط الموظف بالفرع الجديد بنجاح'
+            });
+          } catch (linkError) {
+            log.warn('Could not link employee to branch (table may not exist)', { error: linkError.message });
+          }
+        }
+      }
+
       const employee = await Employee.create({
         ...req.body,
         created_by: createdByBranchId,
@@ -384,14 +439,27 @@ router.post('/',
         data_completion_status: 'incomplete' // Default to incomplete
       });
 
+      // Link employee to branch in employee_branches table
+      try {
+        await Employee.linkToBranch(employee.id, createdByBranchId, createdByBranchId);
+      } catch (linkError) {
+        log.warn('Could not link employee to branch (table may not exist yet)', { error: linkError.message });
+      }
+
       // Check and update completion status
       try {
         await updateEmployeeCompletionStatus(employee.id);
         // Reload employee to get updated status
         const updatedEmployee = await Employee.findById(employee.id);
+        // Invalidate caches for this branch and branch statistics
+        clearByPrefix(`dashboard:summary:${updatedEmployee.branch_id}`);
+        clearByPrefix('branch-statistics');
         res.status(201).json({ success: true, data: updatedEmployee });
       } catch (completionError) {
         log.warn('Error checking completion status', { error: completionError.message });
+        // Invalidate caches for safety
+        clearByPrefix(`dashboard:summary:${createdByBranchId}`);
+        clearByPrefix('branch-statistics');
         // Still return success, but with original employee data
         res.status(201).json({ success: true, data: employee });
       }
@@ -408,10 +476,10 @@ router.post('/',
 // Update employee
 router.put('/:id',
   validateEmployeeName,
-  validateDate('date_of_birth_gregorian'),
-  validateDate('date_of_birth_hijri'),
-  validateDate('id_expiry_date_gregorian'),
-  validateDate('id_expiry_date_hijri'),
+  validateDateFields({
+    'date_of_birth_hijri': { calendarType: 'hijri', dateType: 'birth_date', required: true },
+    'id_expiry_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false }
+  }),
   async (req, res) => {
     try {
       const { Employee } = await import('../models/Employee.js');
@@ -462,6 +530,8 @@ router.put('/:id',
         });
       }
 
+      // Date normalization is handled by validateDateFields middleware
+
       const employee = await Employee.update(
         parseInt(req.params.id),
         req.body,
@@ -474,9 +544,15 @@ router.put('/:id',
         await updateEmployeeCompletionStatus(employee.id);
         // Reload employee to get updated status
         const updatedEmployee = await Employee.findById(employee.id);
+        // Invalidate caches for this branch and branch statistics
+        clearByPrefix(`dashboard:summary:${updatedEmployee.branch_id}`);
+        clearByPrefix('branch-statistics');
         res.json({ success: true, data: updatedEmployee });
       } catch (completionError) {
         log.warn('Error checking completion status', { error: completionError.message });
+        // Invalidate caches for safety
+        clearByPrefix(`dashboard:summary:${req.body.branch_id || existingEmployee.branch_id}`);
+        clearByPrefix('branch-statistics');
         // Still return success, but with original employee data
         res.json({ success: true, data: employee });
       }
@@ -522,6 +598,10 @@ router.delete('/:id', async (req, res) => {
       employee.branch_id,
       'تم إلغاء التفعيل'
     );
+
+    // Invalidate dashboard & branch statistics caches for this branch
+    clearByPrefix(`dashboard:summary:${employee.branch_id}`);
+    clearByPrefix('branch-statistics');
 
     res.json({
       success: true,

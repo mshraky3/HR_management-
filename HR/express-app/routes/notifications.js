@@ -28,7 +28,7 @@ router.use(authenticate);
  */
 router.post('/', requireMainManager, uploadSingle, async (req, res) => {
   try {
-    const { message, importance_level } = req.body;
+    const { message, importance_level, duration_days, one_time } = req.body;
     
     // Handle branch_ids from FormData
     // When using FormData with JSON.stringify, it comes as a string that needs parsing
@@ -89,6 +89,31 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
         message: 'يجب اختيار فرع واحد على الأقل'
       });
     }
+
+    // Validate and calculate expires_at
+    let expires_at = null;
+    let durationDays = duration_days !== undefined && duration_days !== null && duration_days !== '' 
+      ? parseInt(duration_days) 
+      : 7; // Default to 7 days
+    
+    if (isNaN(durationDays) || durationDays < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'مدة الإشعار يجب أن تكون رقمًا صحيحًا أكبر من أو يساوي 1'
+      });
+    }
+    
+    if (durationDays > 365) {
+      return res.status(400).json({
+        success: false,
+        message: 'مدة الإشعار لا يمكن أن تتجاوز 365 يومًا'
+      });
+    }
+    
+    // Calculate expires_at: created_at + duration_days
+    const now = new Date();
+    expires_at = new Date(now);
+    expires_at.setDate(expires_at.getDate() + durationDays);
     
     // Validate branch IDs exist and are active
     const validBranchIds = branch_ids.map(id => parseInt(id)).filter(id => !isNaN(id));
@@ -151,7 +176,9 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
       branch_ids: validBranchIds,
       attachment_url: null,
       attachment_name: null,
-      attachment_type: null
+      attachment_type: null,
+      expires_at: expires_at,
+      one_time: one_time === 'true' || one_time === true
     });
 
     // Upload file if provided (now we have notification ID)
@@ -210,7 +237,8 @@ router.get('/', requireMainManager, async (req, res) => {
   try {
     const filters = {
       importance_level: req.query.importance_level ? parseInt(req.query.importance_level) : undefined,
-      created_by: req.query.created_by ? parseInt(req.query.created_by) : undefined
+      created_by: req.query.created_by ? parseInt(req.query.created_by) : undefined,
+      include_inactive: req.query.include_inactive === 'true'
     };
     
     const notifications = await Notification.findAll(filters);
@@ -296,7 +324,7 @@ router.get('/branch/:branchId', async (req, res) => {
       response_status: req.query.response_status
     };
     
-    const notifications = await Notification.findByBranchId(branchId, filters);
+    const notifications = await Notification.findByBranchId(branchId, filters, req.user.id);
     
     res.json({
       success: true,
@@ -330,7 +358,7 @@ router.get('/my-branch/notifications', async (req, res) => {
       response_status: req.query.response_status
     };
     
-    const notifications = await Notification.findByBranchId(req.user.branch_id, filters);
+    const notifications = await Notification.findByBranchId(req.user.branch_id, filters, req.user.id);
     
     res.json({
       success: true,
@@ -474,11 +502,11 @@ router.put('/:id', requireMainManager, async (req, res) => {
 
 /**
  * DELETE /api/notifications/:id
- * Soft delete notification (Main Manager only)
+ * Hard delete notification (permanently remove from database) (Main Manager only)
  */
 router.delete('/:id', requireMainManager, async (req, res) => {
   try {
-    const notification = await Notification.softDelete(parseInt(req.params.id));
+    const notification = await Notification.delete(parseInt(req.params.id));
     
     if (!notification) {
       return res.status(404).json({
@@ -489,7 +517,7 @@ router.delete('/:id', requireMainManager, async (req, res) => {
     
     res.json({
       success: true,
-      message: 'تم حذف الإشعار بنجاح',
+      message: 'تم حذف الإشعار نهائياً من قاعدة البيانات',
       data: notification
     });
   } catch (error) {
@@ -497,6 +525,111 @@ router.delete('/:id', requireMainManager, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'فشل حذف الإشعار',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/notifications/:id/mark-viewed
+ * Mark a one-time notification as seen by the current user's branch
+ */
+router.post('/:id/mark-viewed', async (req, res) => {
+  try {
+    const notificationId = parseInt(req.params.id);
+    
+    // Check if notification exists and is one-time
+    const notification = await Notification.findById(notificationId);
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: 'الإشعار غير موجود'
+      });
+    }
+
+    if (!notification.one_time) {
+      return res.status(400).json({
+        success: false,
+        message: 'هذا الإشعار ليس إشعارًا لمرة واحدة'
+      });
+    }
+
+    // Get the user's branch ID
+    const branchId = req.user.branch_id;
+    if (!branchId) {
+      return res.status(400).json({
+        success: false,
+        message: 'المستخدم غير مرتبط بفرع'
+      });
+    }
+
+    // Verify the notification is assigned to this branch
+    const sql = (await import('../config/database.js')).default;
+    const [assignment] = await sql`
+      SELECT * FROM notification_branches 
+      WHERE notification_id = ${notificationId} AND branch_id = ${branchId}
+    `;
+    
+    if (!assignment) {
+      return res.status(403).json({
+        success: false,
+        message: 'هذا الإشعار غير مخصص لفرعك'
+      });
+    }
+
+    // Mark the branch as having seen this notification
+    const result = await Notification.markBranchAsSeen(notificationId, branchId);
+    
+    if (!result) {
+      return res.status(500).json({
+        success: false,
+        message: 'فشل تمييز الإشعار كمقروء'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'تم تمييز الإشعار كمقروء',
+      data: {
+        seen_by_branches: result.seen_by_branches
+      }
+    });
+  } catch (error) {
+    console.error('Error marking notification as viewed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل تمييز الإشعار كمقروء',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * PATCH /api/notifications/:id/toggle-active
+ * Toggle notification active status (activate/deactivate)
+ * Main Manager only
+ */
+router.patch('/:id/toggle-active', requireMainManager, async (req, res) => {
+  try {
+    const notification = await Notification.toggleActive(parseInt(req.params.id));
+    
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: 'الإشعار غير موجود'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: notification.is_active ? 'تم تفعيل الإشعار بنجاح' : 'تم إلغاء تفعيل الإشعار بنجاح',
+      data: notification
+    });
+  } catch (error) {
+    console.error('Error toggling notification active status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل تحديث حالة الإشعار',
       error: error.message
     });
   }

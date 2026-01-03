@@ -25,6 +25,7 @@
     "dotenv": "^17.2.3",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
+    "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "pdf-lib": "^1.17.1",
@@ -32,5 +33,6 @@
     "pdfmake": "^0.2.20",
     "postgres": "^3.4.7",
     "winston": "^3.19.0"
-  }
+  },
+  "devDependencies": {}
 }

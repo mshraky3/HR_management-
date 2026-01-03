@@ -4,7 +4,7 @@
  */
 
 import express from 'express';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, optionalAuth } from '../middleware/auth.js';
 import { User } from '../models/User.js';
 import { Branch } from '../models/Branch.js';
 import { generateToken } from '../utils/jwt.js';
@@ -217,11 +217,13 @@ router.get('/me', authenticate, async (req, res) => {
 });
 
 // Logout endpoint
-router.post('/logout', authenticate, (req, res) => {
+// Use optionalAuth instead of authenticate to allow logout even with expired tokens
+router.post('/logout', optionalAuth, (req, res) => {
   // TODO: Implement token blacklisting if needed
+  // Logout should work even if token is expired/invalid
   res.json({
     success: true,
-      message: 'تم تسجيل الخروج بنجاح'
+    message: 'تم تسجيل الخروج بنجاح'
   });
 });
 

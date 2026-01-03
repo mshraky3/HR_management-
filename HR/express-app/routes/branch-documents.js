@@ -17,7 +17,9 @@ import { BranchDocument } from '../models/BranchDocument.js';
 import { Branch } from '../models/Branch.js';
 import { getExtensionFromMimeType, fixFilenameEncoding } from '../utils/fileUpload.js';
 import { uploadBranchDocumentToBlob, deleteFromBlob, fetchFromBlob } from '../utils/blobStorage.js';
-import { gregorianToHijri, hijriToGregorian, formatHijriToString, parseHijriString } from '../utils/dateConverter.js';
+import { clearByPrefix } from '../utils/simpleCache.js';
+import { formatDate } from '../utils/dateConverter.js';
+import { validateDateFields } from '../middleware/dateValidation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,7 +66,7 @@ if (hasArabicFont) {
   const regularFont = path.join(notoSansStatic, 'NotoSansArabic-Regular.ttf');
   const boldFont = path.join(notoSansStatic, 'NotoSansArabic-Bold.ttf');
   const mediumFont = path.join(notoSansStatic, 'NotoSansArabic-Medium.ttf');
-  
+
   // Use available fonts, fallback to regular if others don't exist
   // Wrap fs.existsSync in try-catch for Vercel compatibility
   const fontExists = (fontPath) => {
@@ -74,7 +76,7 @@ if (hasArabicFont) {
       return false;
     }
   };
-  
+
   fonts = {
     Roboto: {
       normal: fontExists(regularFont) ? regularFont : arabicFontPath,
@@ -89,7 +91,7 @@ if (hasArabicFont) {
       bolditalics: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath)
     }
   };
-  
+
   console.log('Using Noto Sans Arabic font for PDF generation');
 } else {
   // Fallback to Helvetica (limited Arabic support)
@@ -118,7 +120,7 @@ const router = express.Router();
  */
 const getUploadedByUserId = async (userId) => {
   if (!userId) return null;
-  
+
   try {
     const sql = (await import('../config/database.js')).default;
     const [user] = await sql`SELECT id FROM users WHERE id = ${userId}`;
@@ -126,7 +128,7 @@ const getUploadedByUserId = async (userId) => {
   } catch (error) {
     console.error('Error verifying user:', error);
   }
-  
+
   // Fallback: find first active user
   try {
     const sql = (await import('../config/database.js')).default;
@@ -134,7 +136,7 @@ const getUploadedByUserId = async (userId) => {
       SELECT id FROM users WHERE is_active = true ORDER BY id ASC LIMIT 1
     `;
     if (fallbackUser?.id) return fallbackUser.id;
-    
+
     // Last resort: find any user
     const [anyUser] = await sql`SELECT id FROM users ORDER BY id ASC LIMIT 1`;
     return anyUser?.id || null;
@@ -161,29 +163,29 @@ const parseDocumentId = (req) => {
  */
 const resolveFilePath = (filePath) => {
   if (!filePath) return null;
-  
+
   // If it's already a URL (Blob Storage), return null (handled elsewhere)
   if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
     return null;
   }
-  
+
   // If absolute path, use as is
   if (path.isAbsolute(filePath)) {
     return fs.existsSync(filePath) ? filePath : null;
   }
-  
+
   // Try different relative path combinations (for legacy files only)
   const alternatives = [
     path.join(__dirname, '..', filePath),
     path.join(__dirname, '..', filePath.replace(/^express-app\//, '')),
   ];
-  
+
   for (const altPath of alternatives) {
     if (fs.existsSync(altPath)) {
       return altPath;
     }
   }
-  
+
   return null;
 };
 
@@ -251,14 +253,14 @@ router.post('/verify-password', async (req, res) => {
  */
 const buildFilters = (query) => {
   const filters = {};
-  
+
   if (query.branch_id) filters.branch_id = parseInt(query.branch_id);
   if (query.document_type) filters.document_type = query.document_type;
   if (query.mime_type) filters.mime_type = query.mime_type;
   if (query.is_verified !== undefined) {
     filters.is_verified = query.is_verified === 'true';
   }
-  
+
   return filters;
 };
 
@@ -296,9 +298,17 @@ router.get('/', verifyBranchDocumentsPassword, async (req, res) => {
  * Form data: branch_id, document_type, file, description (optional), expiry_date (optional)
  * Requires: X-Branch-Documents-Password header or branch_documents_password in form data
  */
-router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFile, async (req, res) => {
+router.post('/', 
+  verifyBranchDocumentsPassword, 
+  uploadSingle, 
+  validateUploadedFile,
+  validateDateFields({
+    'issue_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false },
+    'expiry_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false }
+  }),
+  async (req, res) => {
   try {
-    const { branch_id, document_type, description, document_number, issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, issue_date_type, expiry_date_type, iban_number, bank_name } = req.body;
+    const { branch_id, document_type, description, document_number, issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, iban_number, bank_name } = req.body;
 
     if (!branch_id || !document_type || !req.file) {
       return res.status(400).json({
@@ -326,9 +336,9 @@ router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFi
 
     // Validate healthcare-specific documents can only be uploaded to healthcare centers
     const healthcareOnlyDocuments = [
-      'operational_plan', 
-      'decision_obligation', 
-      'decision_commitment', 
+      'operational_plan',
+      'decision_obligation',
+      'decision_commitment',
       'staff_cadre',
       'owner_civil_id_copy',
       'disclosure_commitment',
@@ -373,71 +383,13 @@ router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFi
 
     // Use the fixed filename for database record
     const fileName = fixedFileName;
-    
-    // Handle date conversion for issue_date
-    let finalIssueDate = issue_date || null;
-    let finalIssueDateHijri = issue_date_hijri || null;
-    
-    if (issue_date_type === 'hijri' && issue_date_hijri) {
-      // User provided Hijri date, convert to Gregorian
-      const hijriDate = parseHijriString(issue_date_hijri);
-      if (hijriDate) {
-        finalIssueDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
-        finalIssueDateHijri = issue_date_hijri; // Store the provided Hijri date
-      }
-    } else if (issue_date_type === 'gregorian' && issue_date) {
-      // User provided Gregorian date, convert to Hijri
-      const hijriDate = gregorianToHijri(issue_date);
-      if (hijriDate) {
-        finalIssueDateHijri = formatHijriToString(hijriDate);
-        finalIssueDate = issue_date; // Store the provided Gregorian date
-      }
-    } else if (issue_date && !issue_date_hijri) {
-      // Legacy: only Gregorian provided, convert to Hijri
-      const hijriDate = gregorianToHijri(issue_date);
-      if (hijriDate) {
-        finalIssueDateHijri = formatHijriToString(hijriDate);
-      }
-    } else if (issue_date_hijri && !issue_date) {
-      // Legacy: only Hijri provided, convert to Gregorian
-      const hijriDate = parseHijriString(issue_date_hijri);
-      if (hijriDate) {
-        finalIssueDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
-      }
-    }
-    
-    // Handle date conversion for expiry_date
-    let finalExpiryDate = expiry_date || null;
-    let finalExpiryDateHijri = expiry_date_hijri || null;
-    
-    if (expiry_date_type === 'hijri' && expiry_date_hijri) {
-      // User provided Hijri date, convert to Gregorian
-      const hijriDate = parseHijriString(expiry_date_hijri);
-      if (hijriDate) {
-        finalExpiryDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
-        finalExpiryDateHijri = expiry_date_hijri; // Store the provided Hijri date
-      }
-    } else if (expiry_date_type === 'gregorian' && expiry_date) {
-      // User provided Gregorian date, convert to Hijri
-      const hijriDate = gregorianToHijri(expiry_date);
-      if (hijriDate) {
-        finalExpiryDateHijri = formatHijriToString(hijriDate);
-        finalExpiryDate = expiry_date; // Store the provided Gregorian date
-      }
-    } else if (expiry_date && !expiry_date_hijri) {
-      // Legacy: only Gregorian provided, convert to Hijri
-      const hijriDate = gregorianToHijri(expiry_date);
-      if (hijriDate) {
-        finalExpiryDateHijri = formatHijriToString(hijriDate);
-      }
-    } else if (expiry_date_hijri && !expiry_date) {
-      // Legacy: only Hijri provided, convert to Gregorian
-      const hijriDate = parseHijriString(expiry_date_hijri);
-      if (hijriDate) {
-        finalExpiryDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
-      }
-    }
-    
+
+    // Date conversion and validation is handled by validateDateFields middleware
+    const finalIssueDate = issue_date || null;
+    const finalIssueDateHijri = issue_date_hijri || null;
+    const finalExpiryDate = expiry_date || null;
+    const finalExpiryDateHijri = expiry_date_hijri || null;
+
     // Create document record - store blob URL
     const document = await BranchDocument.create({
       branch_id: parseInt(branch_id),
@@ -457,6 +409,10 @@ router.post('/', verifyBranchDocumentsPassword, uploadSingle, validateUploadedFi
       bank_name: bank_name || null,
       uploaded_by: uploadedById // Always set - either user.id or branch_id
     });
+
+    // Invalidate dashboard & branch statistics caches for this branch
+    clearByPrefix(`dashboard:summary:${branch_id}`);
+    clearByPrefix('branch-statistics');
 
     res.status(201).json({
       success: true,
@@ -485,9 +441,9 @@ router.get('/:id/download', verifyBranchDocumentsPassword, async (req, res) => {
     if (idResult.error) {
       return res.status(400).json({ success: false, message: idResult.error });
     }
-    
+
     const document = await BranchDocument.findById(idResult.documentId);
-    
+
     if (!document) {
       return res.status(404).json({
         success: false,
@@ -615,8 +571,8 @@ router.get('/:id/preview', verifyBranchDocumentsPassword, async (req, res) => {
         file_name: document.file_name,
         mime_type: document.mime_type,
         download_url: `/api/branch-documents/${document.id}/download`,
-        file_url: document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) 
-          ? document.file_path 
+        file_url: document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))
+          ? document.file_path
           : null
       }
     });
@@ -724,9 +680,16 @@ router.post('/:id/verify', verifyBranchDocumentsPassword, async (req, res) => {
  * If file is provided, it will replace the old file and deactivate old documents of same type
  * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.put('/:id', verifyBranchDocumentsPassword, uploadSingle, async (req, res) => {
-  try {
-    const idResult = parseDocumentId(req);
+router.put('/:id', 
+  verifyBranchDocumentsPassword, 
+  uploadSingle,
+  validateDateFields({
+    'issue_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false },
+    'expiry_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false }
+  }),
+  async (req, res) => {
+    try {
+      const idResult = parseDocumentId(req);
     if (idResult.error) {
       return res.status(400).json({ success: false, message: idResult.error });
     }
@@ -753,7 +716,7 @@ router.put('/:id', verifyBranchDocumentsPassword, uploadSingle, async (req, res)
     if (req.file) {
       // Validate file if provided
       const { isValidMimeType, isValidFileSize } = await import('../utils/validators.js');
-      
+
       if (!isValidMimeType(req.file.mimetype)) {
         return res.status(400).json({
           success: false,
@@ -803,64 +766,13 @@ router.put('/:id', verifyBranchDocumentsPassword, uploadSingle, async (req, res)
 
       // Use the fixed filename for database record
       const fileName = fixedFileName;
-      
-      // Handle date conversion for issue_date
-      const { issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, issue_date_type, expiry_date_type } = req.body;
-      let finalIssueDate = req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date;
-      let finalIssueDateHijri = req.body.issue_date_hijri !== undefined ? req.body.issue_date_hijri : document.issue_date_hijri;
-      
-      if (issue_date_type === 'hijri' && issue_date_hijri) {
-        const hijriDate = parseHijriString(issue_date_hijri);
-        if (hijriDate) {
-          finalIssueDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
-          finalIssueDateHijri = issue_date_hijri;
-        }
-      } else if (issue_date_type === 'gregorian' && issue_date) {
-        const hijriDate = gregorianToHijri(issue_date);
-        if (hijriDate) {
-          finalIssueDateHijri = formatHijriToString(hijriDate);
-          finalIssueDate = issue_date;
-        }
-      } else if (issue_date && !issue_date_hijri && req.body.issue_date !== undefined) {
-        const hijriDate = gregorianToHijri(issue_date);
-        if (hijriDate) {
-          finalIssueDateHijri = formatHijriToString(hijriDate);
-        }
-      } else if (issue_date_hijri && !issue_date && req.body.issue_date_hijri !== undefined) {
-        const hijriDate = parseHijriString(issue_date_hijri);
-        if (hijriDate) {
-          finalIssueDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
-        }
-      }
-      
-      // Handle date conversion for expiry_date
-      let finalExpiryDate = req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date;
-      let finalExpiryDateHijri = req.body.expiry_date_hijri !== undefined ? req.body.expiry_date_hijri : document.expiry_date_hijri;
-      
-      if (expiry_date_type === 'hijri' && expiry_date_hijri) {
-        const hijriDate = parseHijriString(expiry_date_hijri);
-        if (hijriDate) {
-          finalExpiryDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
-          finalExpiryDateHijri = expiry_date_hijri;
-        }
-      } else if (expiry_date_type === 'gregorian' && expiry_date) {
-        const hijriDate = gregorianToHijri(expiry_date);
-        if (hijriDate) {
-          finalExpiryDateHijri = formatHijriToString(hijriDate);
-          finalExpiryDate = expiry_date;
-        }
-      } else if (expiry_date && !expiry_date_hijri && req.body.expiry_date !== undefined) {
-        const hijriDate = gregorianToHijri(expiry_date);
-        if (hijriDate) {
-          finalExpiryDateHijri = formatHijriToString(hijriDate);
-        }
-      } else if (expiry_date_hijri && !expiry_date && req.body.expiry_date_hijri !== undefined) {
-        const hijriDate = parseHijriString(expiry_date_hijri);
-        if (hijriDate) {
-          finalExpiryDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
-        }
-      }
-      
+
+      // Date conversion and validation is handled by validateDateFields middleware
+      const finalIssueDate = req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date;
+      const finalIssueDateHijri = req.body.issue_date_hijri !== undefined ? req.body.issue_date_hijri : document.issue_date_hijri;
+      const finalExpiryDate = req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date;
+      const finalExpiryDateHijri = req.body.expiry_date_hijri !== undefined ? req.body.expiry_date_hijri : document.expiry_date_hijri;
+
       // Update document with new file
       updatedDocument = await BranchDocument.updateFile(
         idResult.documentId,
@@ -882,63 +794,12 @@ router.put('/:id', verifyBranchDocumentsPassword, uploadSingle, async (req, res)
       );
     } else {
       // Just update metadata
-      // Handle date conversion for issue_date
-      const { issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, issue_date_type, expiry_date_type } = req.body;
-      let finalIssueDate = req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date;
-      let finalIssueDateHijri = req.body.issue_date_hijri !== undefined ? req.body.issue_date_hijri : document.issue_date_hijri;
-      
-      if (issue_date_type === 'hijri' && issue_date_hijri) {
-        const hijriDate = parseHijriString(issue_date_hijri);
-        if (hijriDate) {
-          finalIssueDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
-          finalIssueDateHijri = issue_date_hijri;
-        }
-      } else if (issue_date_type === 'gregorian' && issue_date) {
-        const hijriDate = gregorianToHijri(issue_date);
-        if (hijriDate) {
-          finalIssueDateHijri = formatHijriToString(hijriDate);
-          finalIssueDate = issue_date;
-        }
-      } else if (issue_date && !issue_date_hijri && req.body.issue_date !== undefined) {
-        const hijriDate = gregorianToHijri(issue_date);
-        if (hijriDate) {
-          finalIssueDateHijri = formatHijriToString(hijriDate);
-        }
-      } else if (issue_date_hijri && !issue_date && req.body.issue_date_hijri !== undefined) {
-        const hijriDate = parseHijriString(issue_date_hijri);
-        if (hijriDate) {
-          finalIssueDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
-        }
-      }
-      
-      // Handle date conversion for expiry_date
-      let finalExpiryDate = req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date;
-      let finalExpiryDateHijri = req.body.expiry_date_hijri !== undefined ? req.body.expiry_date_hijri : document.expiry_date_hijri;
-      
-      if (expiry_date_type === 'hijri' && expiry_date_hijri) {
-        const hijriDate = parseHijriString(expiry_date_hijri);
-        if (hijriDate) {
-          finalExpiryDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
-          finalExpiryDateHijri = expiry_date_hijri;
-        }
-      } else if (expiry_date_type === 'gregorian' && expiry_date) {
-        const hijriDate = gregorianToHijri(expiry_date);
-        if (hijriDate) {
-          finalExpiryDateHijri = formatHijriToString(hijriDate);
-          finalExpiryDate = expiry_date;
-        }
-      } else if (expiry_date && !expiry_date_hijri && req.body.expiry_date !== undefined) {
-        const hijriDate = gregorianToHijri(expiry_date);
-        if (hijriDate) {
-          finalExpiryDateHijri = formatHijriToString(hijriDate);
-        }
-      } else if (expiry_date_hijri && !expiry_date && req.body.expiry_date_hijri !== undefined) {
-        const hijriDate = parseHijriString(expiry_date_hijri);
-        if (hijriDate) {
-          finalExpiryDate = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
-        }
-      }
-      
+      // Date conversion and validation is handled by validateDateFields middleware
+      const finalIssueDate = req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date;
+      const finalIssueDateHijri = req.body.issue_date_hijri !== undefined ? req.body.issue_date_hijri : document.issue_date_hijri;
+      const finalExpiryDate = req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date;
+      const finalExpiryDateHijri = req.body.expiry_date_hijri !== undefined ? req.body.expiry_date_hijri : document.expiry_date_hijri;
+
       updatedDocument = await BranchDocument.update(idResult.documentId, {
         description: req.body.description,
         document_number: req.body.document_number,
@@ -1081,8 +942,8 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
     // Filter documents for current month
     const currentMonthDocuments = allDocuments.filter(doc => {
       const uploadDate = new Date(doc.uploaded_at);
-      return uploadDate.getMonth() === currentMonth && 
-             uploadDate.getFullYear() === currentYear;
+      return uploadDate.getMonth() === currentMonth &&
+        uploadDate.getFullYear() === currentYear;
     });
 
     // Create a map of branch_id to document
@@ -1094,16 +955,16 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
     // Load all document files and convert to base64 for embedding
     const documentFilesMap = {}; // Map of document_id -> {base64, mimeType, buffer}
     const images = {}; // Images object for pdfmake
-    
+
     for (const doc of currentMonthDocuments) {
       try {
         if (!doc.file_path) {
           console.warn(`Document ${doc.id} has no file_path`);
           continue;
         }
-        
+
         let fileBuffer;
-        
+
         // If file_path is a URL (Blob Storage)
         if (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://')) {
           try {
@@ -1120,7 +981,7 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
             console.warn(`Document ${doc.id} uses local file path which is not accessible on Vercel: ${doc.file_path}`);
             continue;
           }
-          
+
           let filePath;
           if (path.isAbsolute(doc.file_path)) {
             filePath = doc.file_path;
@@ -1131,18 +992,18 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
             }
             filePath = path.join(__dirname, '..', relativePath);
           }
-          
+
           if (!fs.existsSync(filePath)) {
             const altPath = doc.file_path.replace(/^express-app\//, '');
             const altFilePath = path.join(__dirname, '..', altPath);
             filePath = fs.existsSync(altFilePath) ? altFilePath : filePath;
           }
-          
+
           if (!fs.existsSync(filePath)) {
             console.warn(`File not found for document ${doc.id}: ${doc.file_path}`);
             continue;
           }
-          
+
           try {
             fileBuffer = fs.readFileSync(filePath);
           } catch (readError) {
@@ -1150,23 +1011,23 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
             continue;
           }
         }
-        
+
         if (!fileBuffer || fileBuffer.length === 0) {
           console.warn(`Empty file buffer for document ${doc.id}`);
           continue;
         }
-        
+
         // Convert to base64
         const base64 = fileBuffer.toString('base64');
         const mimeType = doc.mime_type || 'application/octet-stream';
-        
+
         documentFilesMap[doc.id] = {
           base64: base64,
           base64DataUri: `data:${mimeType};base64,${base64}`,
           mimeType: mimeType,
           buffer: fileBuffer
         };
-        
+
         // Register image if it's an image type
         if (mimeType.startsWith('image/')) {
           const imageKey = `doc_${doc.id}`;
@@ -1185,18 +1046,7 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
       return text.replace(/[()]/g, '');
     };
 
-    // Helper function to format date
-    const formatDate = (date) => {
-      const d = new Date(date);
-      const months = [
-        'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
-        'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
-      ];
-      const day = d.getDate();
-      const month = months[d.getMonth()];
-      const year = d.getFullYear();
-      return `${day} ${month} ${year}`;
-    };
+    // Use unified formatDate function for consistent dd/mm/yyyy format
 
     // Prepare PDF content (header only - title and info)
     const reportDate = formatDate(now);
@@ -1300,12 +1150,12 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
               style: 'documentInfo',
               margin: [0, 0, 0, 10]
             });
-            
+
             // Embed document file if available
             const docFileData = documentFilesMap[document.id];
             if (docFileData) {
               const mimeType = docFileData.mimeType;
-              
+
               // Check if it's an image
               if (mimeType.startsWith('image/')) {
                 try {
@@ -1389,20 +1239,20 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
 
           const branchPdfDoc = printer.createPdfKitDocument(branchDocDefinition);
           const chunks = [];
-          
+
           branchPdfDoc.on('data', (chunk) => {
             chunks.push(chunk);
           });
-          
+
           branchPdfDoc.on('end', () => {
             const buffer = Buffer.concat(chunks);
             resolve(buffer);
           });
-          
+
           branchPdfDoc.on('error', (error) => {
             reject(error);
           });
-          
+
           branchPdfDoc.end();
         } catch (error) {
           reject(error);
@@ -1415,22 +1265,22 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
       try {
         // Load header PDF (title and info)
         const finalPdf = await PDFDocument.load(headerPdfBuffer);
-        
+
         // For each branch, create its PDF and merge it
         for (const branch of branches) {
           const document = branchDocumentMap.get(branch.id);
-          
+
           try {
             // Create PDF for this branch
             const branchPdfBuffer = await createBranchPdf(branch, document);
             const branchPdf = await PDFDocument.load(branchPdfBuffer);
-            
+
             // Copy all pages from branch PDF to final PDF
             const pages = await finalPdf.copyPages(branchPdf, branchPdf.getPageIndices());
             pages.forEach((page) => {
               finalPdf.addPage(page);
             });
-            
+
             // If branch has a PDF document, merge it too
             if (document) {
               const docFileData = documentFilesMap[document.id];
@@ -1451,7 +1301,7 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
             // Continue with other branches even if one fails
           }
         }
-        
+
         // Save the merged PDF
         const mergedPdfBytes = await finalPdf.save();
         return Buffer.from(mergedPdfBytes);
@@ -1464,7 +1314,7 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
     // Generate PDF
     return new Promise((resolve, reject) => {
       let responseSent = false;
-      
+
       const sendError = (error) => {
         if (!responseSent) {
           responseSent = true;
@@ -1486,18 +1336,18 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
 
       try {
         const pdfDoc = printer.createPdfKitDocument(docDefinition);
-        
+
         const chunks = [];
         pdfDoc.on('data', (chunk) => {
           chunks.push(chunk);
         });
-        
+
         pdfDoc.on('end', async () => {
           if (!responseSent) {
             responseSent = true;
             try {
               const mainPdfBuffer = Buffer.concat(chunks);
-              
+
               // Merge PDF documents into main PDF
               let finalPdfBuffer;
               try {
@@ -1507,7 +1357,7 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
                 // If merging fails, return main PDF without merged documents
                 finalPdfBuffer = mainPdfBuffer;
               }
-              
+
               if (!res.headersSent) {
                 res.setHeader('Content-Type', 'application/pdf');
                 res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(documentLabel)}.pdf"`);
@@ -1520,11 +1370,11 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
             }
           }
         });
-        
+
         pdfDoc.on('error', (error) => {
           sendError(error);
         });
-        
+
         pdfDoc.end();
       } catch (error) {
         sendError(error);

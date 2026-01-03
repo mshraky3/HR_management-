@@ -3,28 +3,20 @@
  * 
  * Use these functions to perform database operations that will be automatically logged.
  * Import this file and use the functions instead of direct SQL queries.
+ * 
+ * IMPORTANT: Uses shared database connection from config/database.js to prevent
+ * duplicate connection pools that exhaust database connection limits.
  */
 
-import postgres from 'postgres';
-import dotenv from 'dotenv';
+// Use shared database connection to prevent duplicate connection pools
+import sql from './config/database.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-dotenv.config();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const MIGRATION_LOG_FILE = path.join(__dirname, 'database_migrations.txt');
-
-// Database connection
-const sql = postgres({
-  host: process.env.DATABASE_HOST,
-  database: process.env.DATABASE_NAME,
-  username: process.env.DATABASE_USER,
-  password: process.env.DATABASE_PASSWORD,
-  ssl: 'require',
-});
 
 // Log database changes to migration file
 function logDatabaseChange(action, details, sqlQuery = '') {
@@ -39,9 +31,49 @@ function logDatabaseChange(action, details, sqlQuery = '') {
   
   try {
     fs.appendFileSync(MIGRATION_LOG_FILE, logEntry, 'utf8');
-    console.log(`Database change logged: ${action} - ${details}`);
+    // Removed console.log to suppress logs
   } catch (error) {
-    console.error('Error writing to migration log:', error);
+    // Silent error handling
+  }
+}
+
+/**
+ * Check if a table exists
+ * @param {string} tableName - Name of the table to check
+ * @returns {Promise<boolean>} - True if table exists, false otherwise
+ */
+async function tableExists(tableName) {
+  try {
+    const result = await sql`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = ${tableName}
+      );
+    `;
+    return result[0]?.exists || false;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * Check if an index exists
+ * @param {string} indexName - Name of the index to check
+ * @returns {Promise<boolean>} - True if index exists, false otherwise
+ */
+async function indexExists(indexName) {
+  try {
+    const result = await sql`
+      SELECT EXISTS (
+        SELECT FROM pg_indexes 
+        WHERE schemaname = 'public' 
+        AND indexname = ${indexName}
+      );
+    `;
+    return result[0]?.exists || false;
+  } catch (error) {
+    return false;
   }
 }
 
@@ -51,16 +83,15 @@ function logDatabaseChange(action, details, sqlQuery = '') {
  * @param {string} columns - Column definitions (e.g., "id SERIAL PRIMARY KEY, name VARCHAR(255)")
  */
 export async function createTable(tableName, columns) {
-  const sqlQuery = `CREATE TABLE IF NOT EXISTS ${tableName} (${columns})`;
+  const exists = await tableExists(tableName);
   
-  try {
-    await sql.unsafe(sqlQuery);
-    logDatabaseChange('CREATE TABLE', `Created table: ${tableName}`, sqlQuery);
-    return { success: true, message: `Table ${tableName} created successfully` };
-  } catch (error) {
-    logDatabaseChange('CREATE TABLE - FAILED', `Failed to create table: ${tableName} - ${error.message}`, sqlQuery);
-    throw error;
+  if (!exists) {
+    console.log(`[MISSING TABLE] Table "${tableName}" does not exist`);
+    return { success: false, message: `Table ${tableName} does not exist` };
   }
+  
+  // Table exists, no action needed
+  return { success: true, message: `Table ${tableName} exists` };
 }
 
 /**
@@ -141,6 +172,22 @@ export async function dropTable(tableName) {
  * @param {string} description - Description of what the query does
  */
 export async function executeQuery(sqlQuery, description) {
+  // Check if this is a CREATE INDEX query
+  const indexMatch = sqlQuery.match(/CREATE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/i);
+  if (indexMatch) {
+    const indexName = indexMatch[1];
+    const exists = await indexExists(indexName);
+    
+    if (!exists) {
+      console.log(`[MISSING INDEX] Index "${indexName}" does not exist - ${description}`);
+      return { success: false, message: `Index ${indexName} does not exist` };
+    }
+    
+    // Index exists, no action needed
+    return { success: true, data: null };
+  }
+  
+  // For other queries, execute normally but don't log to console
   try {
     const result = await sql.unsafe(sqlQuery);
     logDatabaseChange('CUSTOM QUERY', description, sqlQuery);

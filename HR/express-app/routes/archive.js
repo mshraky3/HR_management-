@@ -9,6 +9,7 @@ import { requireMainManager } from '../middleware/authorization.js';
 import { Employee } from '../models/Employee.js';
 import { Branch } from '../models/Branch.js';
 import sql from '../config/database.js';
+import { formatDate } from '../utils/dateConverter.js';
 
 const router = express.Router();
 
@@ -678,8 +679,8 @@ router.get('/export', async (req, res) => {
         emp.branch_type || '',
         statusLabels[emp.status] || emp.status || '',
         emp.academic_year || '',
-        emp.created_at ? new Date(emp.created_at).toLocaleDateString('en-GB') : '',
-        emp.status_changed_at ? new Date(emp.status_changed_at).toLocaleDateString('en-GB') : '',
+        emp.created_at ? formatDate(emp.created_at) : '',
+        emp.status_changed_at ? formatDate(emp.status_changed_at) : '',
         emp.status_change_reason || ''
       ]);
       
@@ -735,8 +736,8 @@ router.get('/export', async (req, res) => {
         branch_type: emp.branch_type === 'school' ? 'مدرسة' : emp.branch_type === 'daycare' ? 'مركز رعاية نهارية' : emp.branch_type || '',
         status: statusLabels[emp.status] || emp.status || '',
         academic_year: emp.academic_year || '',
-        created_at: emp.created_at ? new Date(emp.created_at).toLocaleDateString('en-GB') : '',
-        status_changed_at: emp.status_changed_at ? new Date(emp.status_changed_at).toLocaleDateString('en-GB') : '',
+        created_at: emp.created_at ? formatDate(emp.created_at) : '',
+        status_changed_at: emp.status_changed_at ? formatDate(emp.status_changed_at) : '',
         status_change_reason: emp.status_change_reason || ''
       });
     });

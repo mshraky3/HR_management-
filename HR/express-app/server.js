@@ -9,7 +9,6 @@ import path from 'path';
 import apiRoutes from './routes/index.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { testConnection } from './config/database.js';
-import { startScheduler } from './utils/alertScheduler.js';
 import logger, { httpLogger, log } from './utils/logger.js';
 
 dotenv.config();
@@ -58,10 +57,12 @@ async function testDbConnection() {
 async function testBlobStorage() {
   try {
     const { isBlobStorageConfigured } = await import('./utils/blobStorage.js');
+    const { getBlobStoreName } = await import('./config/blobStorage.js');
     if (isBlobStorageConfigured()) {
-      log.info('Blob Storage is configured (BLOB_READ_WRITE_TOKEN found)');
+      const activeStore = getBlobStoreName();
+      log.info(`Blob Storage is configured - using ${activeStore} blob store`);
     } else {
-      log.warn('BLOB_READ_WRITE_TOKEN is not set - file uploads will not work');
+      log.warn('Blob Storage is not configured - file uploads will not work. Please set BLOB_READ_WRITE_TOKEN or SPARE_BLOB_READ_WRITE_TOKEN');
     }
   } catch (error) {
     log.warn('Could not check Blob Storage configuration', { error: error.message });
@@ -118,19 +119,40 @@ startup().catch(err => {
 });
 
 // Performance Optimization: Add caching headers for static data
-// Cache static API responses for better performance
+// Reduced cache times for better data freshness, especially for dashboard data
 app.use('/api', (req, res, next) => {
   // Add cache headers for GET requests (except sensitive data)
   if (req.method === 'GET' && !req.path.includes('/auth') && !req.path.includes('/me')) {
-    // Cache static data for 5 minutes
-    if (req.path.includes('/branches') || req.path.includes('/terms') || req.path.includes('/academic-years')) {
-      res.set('Cache-Control', 'public, max-age=300'); // 5 minutes
+    // Dashboard-related endpoints - NO CACHE (must always be fresh)
+    if (req.path.includes('/branch-statistics') || 
+        req.path.includes('/notifications')) {
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+    } else if (req.path.includes('/employees')) {
+      // Employee data - very short cache (5 seconds)
+      res.set('Cache-Control', 'public, max-age=5');
+    } else if (req.path.includes('/documents') || req.path.includes('/branch-documents')) {
+      // Documents - very short cache (5 seconds)
+      res.set('Cache-Control', 'public, max-age=5');
+    } else if (req.path.includes('/branches') || req.path.includes('/terms') || req.path.includes('/academic-years')) {
+      // Static data - reduced from 5 minutes to 10 seconds
+      res.set('Cache-Control', 'public, max-age=10');
     } else {
-      // Cache other GET requests for 1 minute
-      res.set('Cache-Control', 'public, max-age=60'); // 1 minute
+      // Other GET requests - very short cache (5 seconds)
+      res.set('Cache-Control', 'public, max-age=5');
     }
   }
   next();
+});
+
+// Handle incorrect /me requests (should be /api/auth/me)
+app.get('/me', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Endpoint not found. Use /api/auth/me instead.',
+    correctEndpoint: '/api/auth/me'
+  });
 });
 
 // API Routes
@@ -141,7 +163,7 @@ app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'Server is running' });
 });
 
-// Root endpoint
+// Root endpoint (no authentication required)
 app.get('/', (req, res) => {
   res.json({ 
     success: true, 
@@ -161,16 +183,6 @@ app.get('/', (req, res) => {
 app.use(notFound);
 app.use(errorHandler);
 
-// Start alert scheduler (runs every 24 hours)
-// Only start in production or if explicitly enabled
-if (process.env.NODE_ENV === 'production' || process.env.ENABLE_ALERT_SCHEDULER === 'true') {
-  try {
-    startScheduler(1440); // Run every 24 hours (1440 minutes)
-    log.info('Alert scheduler started successfully');
-  } catch (error) {
-    log.error('Failed to start alert scheduler', { error: error.message });
-  }
-}
 
 // Only listen if not in Vercel environment
 if (process.env.VERCEL !== '1') {

@@ -13,6 +13,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { fetchFromBlob } from '../utils/blobStorage.js';
 import { PDFDocument } from 'pdf-lib';
+import { formatDate, gregorianToHijri as convertGregorianToHijri, formatHijriToString } from '../utils/dateConverter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -146,125 +147,17 @@ const calculateAge = (dateOfBirth) => {
 /**
  * Helper function to convert Gregorian date to Hijri date
  * Returns date in format: dd/mm/yyyy (English numbers)
- * Uses accurate conversion algorithm
+ * Uses centralized conversion algorithm from dateConverter.js
  */
 const gregorianToHijri = (date) => {
   if (!date) return '-';
   
-  const d = new Date(date);
-  const year = d.getFullYear();
-  const month = d.getMonth() + 1;
-  const day = d.getDate();
+  // Use centralized conversion function
+  const hijriDate = convertGregorianToHijri(date);
+  if (!hijriDate) return '-';
   
-  // Convert Gregorian to Julian Day Number
-  let jd;
-  if (year > 1582 || (year === 1582 && month > 10) || (year === 1582 && month === 10 && day > 14)) {
-    // Gregorian calendar
-    const a = Math.floor((14 - month) / 12);
-    const y = year + 4800 - a;
-    const m = month + 12 * a - 3;
-    jd = day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) - 32045;
-  } else {
-    // Julian calendar
-    const a = Math.floor((14 - month) / 12);
-    const y = year + 4800 - a;
-    const m = month + 12 * a - 3;
-    jd = day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - 32083;
-  }
-  
-  // Convert Julian Day Number to Hijri
-  // Hijri epoch: July 16, 622 CE = Julian Day 1948439.5
-  const hijriEpoch = 1948439.5;
-  const daysSinceEpoch = jd - hijriEpoch;
-  
-  // Calculate Hijri year using accurate formula
-  // Average Hijri year = 354.36667 days
-  const hijriYear = Math.floor((daysSinceEpoch - 1) / 354.36667) + 1;
-  
-  // Calculate days from start of Hijri year
-  const yearStartDays = Math.floor((hijriYear - 1) * 354) + Math.floor((11 * (hijriYear - 1) + 3) / 30);
-  let daysFromYearStart = daysSinceEpoch - yearStartDays;
-  
-  // Ensure positive days
-  if (daysFromYearStart < 0) {
-    daysFromYearStart = 0;
-  }
-  
-  // Determine if it's a leap year (11 leap years in 30-year cycle)
-  const cycleYear = (hijriYear - 1) % 30;
-  const leapYears = [2, 5, 7, 10, 13, 16, 18, 21, 24, 26, 29];
-  const isLeapYear = leapYears.includes(cycleYear);
-  
-  // Hijri month lengths (standard pattern)
-  const monthLengths = [30, 29, 30, 29, 30, 29, 30, 29, 30, 29, 30, 29];
-  if (isLeapYear) {
-    monthLengths[11] = 30; // Last month is 30 days in leap year
-  }
-  
-  // Find the month
-  let hijriMonth = 1;
-  let daysRemaining = daysFromYearStart;
-  
-  for (let i = 0; i < 12; i++) {
-    if (daysRemaining < monthLengths[i]) {
-      hijriMonth = i + 1;
-      break;
-    }
-    daysRemaining -= monthLengths[i];
-  }
-  
-  // Calculate Hijri day
-  let hijriDay = Math.floor(daysRemaining) + 1;
-  
-  // Validate and adjust if needed
-  if (hijriDay < 1) hijriDay = 1;
-  if (hijriDay > monthLengths[hijriMonth - 1]) {
-    hijriDay = monthLengths[hijriMonth - 1];
-  }
-  if (hijriMonth < 1) hijriMonth = 1;
-  if (hijriMonth > 12) hijriMonth = 12;
-  if (hijriYear < 1 || hijriYear > 1500) {
-    // Fallback: return today's date in Gregorian format
-    const today = new Date();
-    const d = String(today.getDate()).padStart(2, '0');
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    const y = today.getFullYear();
-    return `${d}/${m}/${y}`;
-  }
-  
-  // Format as dd/mm/yyyy (English numbers)
-  const formattedDay = String(hijriDay).padStart(2, '0');
-  const formattedMonth = String(hijriMonth).padStart(2, '0');
-  const formattedYear = String(hijriYear);
-  
-  return `${formattedDay}/${formattedMonth}/${formattedYear}`;
-};
-
-/**
- * Helper function to format date for display (day/month/year only, no time)
- */
-const formatDate = (date) => {
-  if (!date) return '-';
-  // Handle string dates (YYYY-MM-DD format)
-  let d;
-  if (typeof date === 'string') {
-    // If it's a date string, parse it
-    if (date.includes('T')) {
-      // Remove time part if present
-      d = new Date(date.split('T')[0]);
-    } else {
-      d = new Date(date);
-    }
-  } else {
-    d = new Date(date);
-  }
-  
-  // Format as DD/MM/YYYY (English numbers)
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const year = d.getFullYear();
-  
-  return `${day}/${month}/${year}`;
+  // Format as dd/mm/yyyy
+  return formatHijriToString(hijriDate);
 };
 
 /**
