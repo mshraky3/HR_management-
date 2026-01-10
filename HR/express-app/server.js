@@ -8,6 +8,7 @@ import path from 'path';
 // Import routes and middleware
 import apiRoutes from './routes/index.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
+import { optionalAuth } from './middleware/auth.js';
 import { testConnection } from './config/database.js';
 import logger, { httpLogger, log } from './utils/logger.js';
 
@@ -82,6 +83,7 @@ async function initDatabase() {
   }
 }
 
+
 // Initialize database and test connection on startup
 // Note: On Vercel serverless, this runs on cold start
 // Database initialization is idempotent (safe to run multiple times)
@@ -111,6 +113,7 @@ async function startup() {
       log.warn('Database initialization had issues (tables may already exist)', { error: error.message });
     }
   }
+  
 }
 
 // Run startup asynchronously (don't block server start)
@@ -163,8 +166,8 @@ app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'Server is running' });
 });
 
-// Root endpoint (no authentication required)
-app.get('/', (req, res) => {
+// Root endpoint (no authentication required, but accepts optional auth for logging)
+app.get('/', optionalAuth, (req, res) => {
   res.json({ 
     success: true, 
     message: 'HRM API is running',
@@ -182,6 +185,7 @@ app.get('/', (req, res) => {
 // Error handling middleware (must be last)
 app.use(notFound);
 app.use(errorHandler);
+
 
 
 // Only listen if not in Vercel environment

@@ -1,0 +1,134 @@
+[2026-01-10T00:54:25.581Z] - CUSTOM QUERY - Added issue_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS issue_date_hijri VARCHAR(50)
+---
+
+[2026-01-10T00:54:25.827Z] - CUSTOM QUERY - Added expiry_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-01-10T00:54:33.125Z] - CUSTOM QUERY - Added expiry_date_hijri column to employee_documents
+SQL Query: ALTER TABLE employee_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-01-10T00:54:33.369Z] - CUSTOM QUERY - Added expires_at column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP
+---
+
+[2026-01-10T00:54:33.618Z] - CUSTOM QUERY - Added one_time column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS one_time BOOLEAN DEFAULT false
+---
+
+[2026-01-10T00:54:33.730Z] - CUSTOM QUERY - Added seen_by_branches column to notifications table
+SQL Query: DO $$ 
+        BEGIN 
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'notifications' AND column_name = 'seen_by_branches'
+          ) THEN
+            ALTER TABLE notifications ADD COLUMN seen_by_branches INTEGER[] DEFAULT ARRAY[]::INTEGER[];
+          END IF;
+        END $$;
+---
+
+[2026-01-10T00:54:33.856Z] - CUSTOM QUERY - Updated importance_level constraint to allow level 5
+SQL Query: DO $$ 
+        BEGIN 
+          IF EXISTS (
+            SELECT 1 FROM information_schema.constraint_column_usage 
+            WHERE table_name = 'notifications' 
+            AND constraint_name = 'notifications_importance_level_check'
+          ) THEN
+            ALTER TABLE notifications DROP CONSTRAINT notifications_importance_level_check;
+          END IF;
+        END $$;
+        ALTER TABLE notifications ADD CONSTRAINT notifications_importance_level_check 
+        CHECK (importance_level IN (1, 2, 3, 4, 5))
+---
+
+[2026-01-10T00:54:34.106Z] - CUSTOM QUERY - Created notification_views table
+SQL Query: CREATE TABLE IF NOT EXISTS notification_views (
+          id SERIAL PRIMARY KEY,
+          notification_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(notification_id, user_id)
+        )
+---
+
+[2026-01-10T00:54:35.759Z] - CUSTOM QUERY - Add excused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS excused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-01-10T00:54:36.007Z] - CUSTOM QUERY - Add unexcused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS unexcused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-01-10T01:41:27.047Z] - CUSTOM QUERY - Added issue_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS issue_date_hijri VARCHAR(50)
+---
+
+[2026-01-10T01:41:27.319Z] - CUSTOM QUERY - Added expiry_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-01-10T01:41:33.558Z] - CUSTOM QUERY - Added expiry_date_hijri column to employee_documents
+SQL Query: ALTER TABLE employee_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-01-10T01:41:33.805Z] - CUSTOM QUERY - Added expires_at column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP
+---
+
+[2026-01-10T01:41:34.053Z] - CUSTOM QUERY - Added one_time column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS one_time BOOLEAN DEFAULT false
+---
+
+[2026-01-10T01:41:34.167Z] - CUSTOM QUERY - Added seen_by_branches column to notifications table
+SQL Query: DO $$ 
+        BEGIN 
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'notifications' AND column_name = 'seen_by_branches'
+          ) THEN
+            ALTER TABLE notifications ADD COLUMN seen_by_branches INTEGER[] DEFAULT ARRAY[]::INTEGER[];
+          END IF;
+        END $$;
+---
+
+[2026-01-10T01:41:34.297Z] - CUSTOM QUERY - Updated importance_level constraint to allow level 5
+SQL Query: DO $$ 
+        BEGIN 
+          IF EXISTS (
+            SELECT 1 FROM information_schema.constraint_column_usage 
+            WHERE table_name = 'notifications' 
+            AND constraint_name = 'notifications_importance_level_check'
+          ) THEN
+            ALTER TABLE notifications DROP CONSTRAINT notifications_importance_level_check;
+          END IF;
+        END $$;
+        ALTER TABLE notifications ADD CONSTRAINT notifications_importance_level_check 
+        CHECK (importance_level IN (1, 2, 3, 4, 5))
+---
+
+[2026-01-10T01:41:34.544Z] - CUSTOM QUERY - Created notification_views table
+SQL Query: CREATE TABLE IF NOT EXISTS notification_views (
+          id SERIAL PRIMARY KEY,
+          notification_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(notification_id, user_id)
+        )
+---
+
+[2026-01-10T01:41:35.952Z] - CUSTOM QUERY - Add excused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS excused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-01-10T01:41:36.200Z] - CUSTOM QUERY - Add unexcused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS unexcused_absences INTEGER NOT NULL DEFAULT 0
+---
+

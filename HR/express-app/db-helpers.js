@@ -87,7 +87,17 @@ export async function createTable(tableName, columns) {
   
   if (!exists) {
     console.log(`[MISSING TABLE] Table "${tableName}" does not exist`);
-    return { success: false, message: `Table ${tableName} does not exist` };
+    try {
+      const sqlQuery = `CREATE TABLE IF NOT EXISTS ${tableName} (${columns})`;
+      await sql.unsafe(sqlQuery);
+      logDatabaseChange('CREATE TABLE', `Created table: ${tableName}`, sqlQuery);
+      console.log(`[CREATED TABLE] Table "${tableName}" created successfully`);
+      return { success: true, message: `Table ${tableName} created successfully` };
+    } catch (error) {
+      logDatabaseChange('CREATE TABLE - FAILED', `Failed to create table: ${tableName} - ${error.message}`);
+      console.error(`[ERROR] Failed to create table "${tableName}":`, error.message);
+      throw error;
+    }
   }
   
   // Table exists, no action needed
@@ -180,7 +190,16 @@ export async function executeQuery(sqlQuery, description) {
     
     if (!exists) {
       console.log(`[MISSING INDEX] Index "${indexName}" does not exist - ${description}`);
-      return { success: false, message: `Index ${indexName} does not exist` };
+      try {
+        await sql.unsafe(sqlQuery);
+        logDatabaseChange('CREATE INDEX', description, sqlQuery);
+        console.log(`[CREATED INDEX] Index "${indexName}" created successfully`);
+        return { success: true, message: `Index ${indexName} created successfully` };
+      } catch (error) {
+        logDatabaseChange('CREATE INDEX - FAILED', `${description} - ${error.message}`, sqlQuery);
+        console.error(`[ERROR] Failed to create index "${indexName}":`, error.message);
+        throw error;
+      }
     }
     
     // Index exists, no action needed
