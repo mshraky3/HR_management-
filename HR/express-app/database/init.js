@@ -120,6 +120,10 @@ export async function initializeDatabase() {
       phone_number VARCHAR(50),
       national_address VARCHAR(8),
       contract_type VARCHAR(100),
+      contract_start_date_hijri VARCHAR(50),
+      contract_start_date_gregorian DATE,
+      contract_end_date_hijri VARCHAR(50),
+      contract_end_date_gregorian DATE,
       years_of_experience_in_same_institution INTEGER DEFAULT 0,
       years_of_experience_in_company INTEGER DEFAULT 0,
       salary DECIMAL(10,2),
@@ -171,6 +175,25 @@ export async function initializeDatabase() {
     await executeQuery(
       'CREATE INDEX IF NOT EXISTS idx_employees_data_completion_status ON employees(data_completion_status)',
       'Created index on employees.data_completion_status'
+    );
+
+    // 5b. Employee branches (many-to-many between employees and branches)
+    await createTable('employee_branches', `
+      id SERIAL PRIMARY KEY,
+      employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+      is_primary BOOLEAN DEFAULT FALSE,
+      added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      added_by INTEGER,
+      UNIQUE (employee_id, branch_id)
+    `);
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_employee_branches_employee ON employee_branches(employee_id)',
+      'Index employee_branches.employee_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_employee_branches_branch ON employee_branches(branch_id)',
+      'Index employee_branches.branch_id'
     );
 
     // 6. Create employee_documents table
@@ -319,7 +342,8 @@ export async function initializeDatabase() {
       // Silent error handling - columns may already exist
     }
 
-    // 7. Create employee_professional_classifications table
+
+    // 8. Create employee_professional_classifications table
     await createTable('employee_professional_classifications', `
       id SERIAL PRIMARY KEY,
       employee_id INTEGER NOT NULL,
@@ -862,6 +886,100 @@ export async function initializeDatabase() {
       );
     } catch (error) {
       console.error('Error creating notification_views table:', error.message);
+    }
+
+    // Payroll absence feature tables
+    try {
+      await createTable('absence_cycles', `
+        id SERIAL PRIMARY KEY,
+        month_start DATE UNIQUE NOT NULL,
+        month_end DATE NOT NULL,
+        auto_open_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      `);
+
+      await createTable('branch_absence_windows', `
+        id SERIAL PRIMARY KEY,
+        cycle_id INTEGER NOT NULL REFERENCES absence_cycles(id) ON DELETE CASCADE,
+        branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        status VARCHAR(30) NOT NULL DEFAULT 'countdown' CHECK (status IN ('countdown','entry_open','view_only','closed')),
+        entry_open_at TIMESTAMP NOT NULL,
+        view_until TIMESTAMP,
+        submission_count INTEGER NOT NULL DEFAULT 0,
+        last_submission_at TIMESTAMP,
+        manual_opened BOOLEAN DEFAULT FALSE,
+        manual_opened_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        manual_opened_at TIMESTAMP,
+        manual_expires_at TIMESTAMP,
+        manual_note TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(cycle_id, branch_id)
+      `);
+
+      await createTable('branch_absence_submissions', `
+        id SERIAL PRIMARY KEY,
+        cycle_id INTEGER NOT NULL REFERENCES absence_cycles(id) ON DELETE CASCADE,
+        branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        submission_number INTEGER NOT NULL DEFAULT 1,
+        submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        submitted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        total_absences INTEGER NOT NULL DEFAULT 0,
+        note TEXT,
+        manual_reopen BOOLEAN DEFAULT FALSE,
+        is_superseded BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      `);
+
+      await createTable('employee_absences', `
+        id SERIAL PRIMARY KEY,
+        submission_id INTEGER NOT NULL REFERENCES branch_absence_submissions(id) ON DELETE CASCADE,
+        cycle_id INTEGER NOT NULL REFERENCES absence_cycles(id) ON DELETE CASCADE,
+        branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        absences INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      `);
+
+      // Helpful indexes
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_branch_absence_windows_cycle_branch ON branch_absence_windows(cycle_id, branch_id)',
+        'Created index on branch_absence_windows for cycle/branch lookups'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_branch_absence_windows_status ON branch_absence_windows(status)',
+        'Created index on branch_absence_windows status'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_branch_absence_submissions_cycle_branch ON branch_absence_submissions(cycle_id, branch_id)',
+        'Created index on branch_absence_submissions for cycle/branch lookups'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_employee_absences_cycle_branch ON employee_absences(cycle_id, branch_id)',
+        'Created index on employee_absences for cycle/branch lookups'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_employee_absences_employee ON employee_absences(employee_id)',
+        'Created index on employee_absences employee_id'
+      );
+    } catch (error) {
+      console.error('Error creating payroll absence tables:', error.message);
+    }
+
+    // Excused/unexcused absences columns
+    try {
+      await executeQuery(
+        `ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS excused_absences INTEGER NOT NULL DEFAULT 0`,
+        'Add excused_absences to employee_absences'
+      );
+      await executeQuery(
+        `ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS unexcused_absences INTEGER NOT NULL DEFAULT 0`,
+        'Add unexcused_absences to employee_absences'
+      );
+    } catch (error) {
+      console.error('Error adding excused/unexcused absences columns:', error.message);
     }
 
     return { success: true, message: 'Database initialization completed successfully' };

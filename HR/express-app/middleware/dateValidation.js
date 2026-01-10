@@ -14,6 +14,8 @@ import { validateDate } from '../utils/unifiedDateValidator.js';
 export const validateDateFields = (dateFields) => {
   return async (req, res, next) => {
     try {
+      console.log('[DATE VALIDATION] Starting date field validation');
+      console.log('[DATE VALIDATION] Fields to validate:', Object.keys(dateFields));
       const errors = [];
       
       for (const [fieldName, config] of Object.entries(dateFields)) {
@@ -24,14 +26,22 @@ export const validateDateFields = (dateFields) => {
         const hijriValue = req.body[hijriField];
         const gregorianValue = req.body[gregorianField];
         
+        console.log(`[DATE VALIDATION] Validating ${fieldName}:`, {
+          hijri: hijriValue ? hijriValue.substring(0, 20) + '...' : null,
+          gregorian: gregorianValue ? gregorianValue.substring(0, 20) + '...' : null,
+          required
+        });
+        
         // Check if at least one is provided (if required)
         if (required && !hijriValue && !gregorianValue) {
+          console.log(`[DATE VALIDATION] ERROR: ${fieldName} is required but not provided`);
           errors.push(`${fieldName} is required (provide either Hijri or Gregorian date)`);
           continue;
         }
         
         // If neither is provided and not required, skip validation
         if (!hijriValue && !gregorianValue) {
+          console.log(`[DATE VALIDATION] Skipping ${fieldName} (not required, not provided)`);
           continue;
         }
         
@@ -54,11 +64,14 @@ export const validateDateFields = (dateFields) => {
         }
         
         if (valueToValidate && calendarTypeToUse) {
+          console.log(`[DATE VALIDATION] Validating ${fieldName} as ${calendarTypeToUse}:`, valueToValidate);
           const result = validateDate(valueToValidate, calendarTypeToUse, dateType);
           
           if (!result.valid) {
+            console.log(`[DATE VALIDATION] ERROR: ${fieldName} validation failed:`, result.errors);
             errors.push(...result.errors.map(err => `${fieldName}: ${err}`));
           } else {
+            console.log(`[DATE VALIDATION] ${fieldName} validated successfully`);
             // Update request body with validated and normalized dates
             req.body[hijriField] = result.hijri;
             req.body[gregorianField] = result.gregorian;
@@ -67,6 +80,7 @@ export const validateDateFields = (dateFields) => {
       }
       
       if (errors.length > 0) {
+        console.log('[DATE VALIDATION] Validation failed with errors:', errors);
         return res.status(400).json({
           success: false,
           message: 'Date validation failed',
@@ -74,9 +88,11 @@ export const validateDateFields = (dateFields) => {
         });
       }
       
+      console.log('[DATE VALIDATION] All date fields validated successfully');
       next();
     } catch (error) {
-      console.error('Error in date validation middleware:', error);
+      console.error('[DATE VALIDATION] ERROR in date validation middleware:', error.message);
+      console.error('[DATE VALIDATION] Error stack:', error.stack);
       return res.status(500).json({
         success: false,
         message: 'Date validation error',
