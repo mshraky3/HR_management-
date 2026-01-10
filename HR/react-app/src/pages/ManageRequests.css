@@ -45,7 +45,7 @@
 
 .filter-group select:focus {
   outline: none;
-  border-color: var(--primary, #b9d2cf);
+  border-color: var(--primary, #4988C4);
 }
 
 .loading-container,
@@ -136,7 +136,7 @@
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: var(--primary, #b9d2cf);
+  border-color: var(--primary, #4988C4);
 }
 
 .form-group textarea {
@@ -265,7 +265,7 @@
 }
 
 .attachment-link {
-  color: var(--primary, #b9d2cf);
+  color: var(--primary, #4988C4);
   text-decoration: none;
   font-weight: 600;
 }

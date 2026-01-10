@@ -167,7 +167,7 @@ const BranchesMonitoring = () => {
 
   // Sort documents by priority: 1) Monthly (highest), 2) Student/Cadre, 3) Others
   const sortDocumentsByPriority = (docs) => {
-    const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
+    const monthlyTypes = ['payroll_file', 'salary_deposit_file'];
     const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
 
     return [...docs].sort((a, b) => {
@@ -216,9 +216,8 @@ const BranchesMonitoring = () => {
     dropped_students: 'الطلاب المنقطعين',
     free_seats: 'المقاعد المتاحة',
     acceptance_notifications: 'إشعارات القبول',
-    payroll_file: 'ملف مسيرات الرواتب',
-    attendance_file: 'ملف الحضور و الانصراف',
-    salary_deposit_file: 'ملف ايداع الرواتب (التحويلات البنكية)'
+      payroll_file: 'ملف مسيرات الرواتب',
+      salary_deposit_file: 'ملف ايداع الرواتب (التحويلات البنكية)'
   };
 
   if (!isMainManager()) {
@@ -392,7 +391,7 @@ const BranchesMonitoring = () => {
               {/* Missing Documents - Sorted by Priority */}
               {missingDocs.length > 0 && (() => {
                 const sortedMissingDocs = sortDocumentsByPriority(missingDocs);
-                const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
+                const monthlyTypes = ['payroll_file', 'salary_deposit_file'];
                 const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
 
                 const monthlyMissing = sortedMissingDocs.filter(doc => monthlyTypes.includes(doc.type));

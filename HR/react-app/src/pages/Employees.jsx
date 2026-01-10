@@ -64,6 +64,8 @@ const Employees = () => {
   const [employees, setEmployees] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [tableLoading, setTableLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadingDocuments, setUploadingDocuments] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -89,6 +91,23 @@ const Employees = () => {
 
   // Ref to track which input was focused before update
   const focusedInputRef = useRef(null);
+
+  // State for searchable branch select
+  const [branchSearchTerm, setBranchSearchTerm] = useState('');
+  const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
+  const branchDropdownRef = useRef(null);
+
+  // Get selected branch name for display
+  const selectedBranchName = useMemo(() => {
+    if (isBranchDropdownOpen && branchSearchTerm) {
+      return branchSearchTerm;
+    }
+    if (searchFilters.search_branch) {
+      const branch = branches.find(b => b.id === parseInt(searchFilters.search_branch));
+      return branch?.branch_name || '';
+    }
+    return branchSearchTerm;
+  }, [searchFilters.search_branch, branches, branchSearchTerm, isBranchDropdownOpen]);
   const [formData, setFormData] = useState({
     employee_id_number: '',
     branch_id: user?.branch_id || '',
@@ -143,6 +162,8 @@ const Employees = () => {
     const basicEducationLevels = ['ابتدائي', 'متوسط', 'ثانوي', 'غير متعلم'];
     return formData.educational_qualification && basicEducationLevels.includes(formData.educational_qualification);
   };
+  const requiresPrimaryQualificationDoc = () => !isBasicEducation();
+  const requiresMedicalInsuranceDoc = () => formData.contract_type !== 'ورقي';
 
   // Document uploads state
   const [documents, setDocuments] = useState({
@@ -294,6 +315,18 @@ const Employees = () => {
     }
   }, [searchFilters.search_branch]);
 
+  // Handle click outside to close branch dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (branchDropdownRef.current && !branchDropdownRef.current.contains(event.target)) {
+        setIsBranchDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const loadBranches = async () => {
     try {
       // Load ALL branches (active and inactive) to ensure we can resolve branch details 
@@ -310,7 +343,12 @@ const Employees = () => {
 
   const loadEmployees = async () => {
     try {
-      setLoading(true);
+      // Use tableLoading for subsequent loads, initialLoading for first load
+      if (initialLoading) {
+        setLoading(true);
+      } else {
+        setTableLoading(true);
+      }
 
       // Clear cache to ensure fresh data (especially completion status)
       // This ensures we always get the latest data from the backend without using cached responses
@@ -365,7 +403,12 @@ const Employees = () => {
       console.error('Error loading employees:', error);
       showError('فشل تحميل الموظفين');
     } finally {
-      setLoading(false);
+      if (initialLoading) {
+        setLoading(false);
+        setInitialLoading(false);
+      } else {
+        setTableLoading(false);
+      }
     }
   };
 
@@ -1652,7 +1695,8 @@ const Employees = () => {
     setCurrentPage(1);
   }, [filterIncomplete, searchFilters.search_name, searchFilters.search_id, searchFilters.search_phone, searchFilters.search_branch]);
 
-  if (loading) {
+  // Show full page loading only on initial load
+  if (initialLoading && loading) {
     return <div className="loading">جاري تحميل الموظفين...</div>;
   }
 
@@ -1749,22 +1793,95 @@ const Employees = () => {
                   style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
                 />
               </div>
-              <div style={{ flex: '1', minWidth: '200px' }}>
+              <div style={{ flex: '1', minWidth: '200px', position: 'relative' }} ref={branchDropdownRef}>
                 <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>فلتر الفرع:</label>
-                <select
-                  value={searchFilters.search_branch}
-                  onChange={(e) => setSearchFilters({ ...searchFilters, search_branch: e.target.value })}
+                <input
+                  type="text"
+                  value={selectedBranchName}
+                  onChange={(e) => {
+                    const term = e.target.value;
+                    setBranchSearchTerm(term);
+                    setIsBranchDropdownOpen(true);
+                    if (!term) {
+                      setSearchFilters({ ...searchFilters, search_branch: '' });
+                    }
+                  }}
+                  onFocus={() => {
+                    setIsBranchDropdownOpen(true);
+                    if (searchFilters.search_branch) {
+                      const branch = branches.find(b => b.id === parseInt(searchFilters.search_branch));
+                      setBranchSearchTerm(branch?.branch_name || '');
+                    }
+                  }}
+                  placeholder="ابحث عن فرع أو اختر من القائمة..."
                   style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd', backgroundColor: 'white' }}
-                >
-                  <option value="">جميع الفروع</option>
-                  {branches
-                    .filter(b => b.is_active)
-                    .map(branch => (
-                      <option key={branch.id} value={branch.id}>
-                        <BranchBadge branch={branch} /> {branch.branch_name}
-                      </option>
-                    ))}
-                </select>
+                  autoComplete="off"
+                />
+                {isBranchDropdownOpen && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    maxHeight: '300px',
+                    overflowY: 'auto',
+                    backgroundColor: 'white',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                    zIndex: 1000,
+                    marginTop: '4px'
+                  }}>
+                    <div
+                      style={{
+                        padding: '8px 12px',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid #f0f0f0',
+                        backgroundColor: !searchFilters.search_branch ? '#f0f9ff' : 'white'
+                      }}
+                      onClick={() => {
+                        setSearchFilters({ ...searchFilters, search_branch: '' });
+                        setBranchSearchTerm('');
+                        setIsBranchDropdownOpen(false);
+                      }}
+                      onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f9ff'}
+                      onMouseLeave={(e) => e.target.style.backgroundColor = !searchFilters.search_branch ? '#f0f9ff' : 'white'}
+                    >
+                      جميع الفروع
+                    </div>
+                    {branches
+                      .filter(b => b.is_active && (!branchSearchTerm || b.branch_name.toLowerCase().includes(branchSearchTerm.toLowerCase()) || b.branch_location?.toLowerCase().includes(branchSearchTerm.toLowerCase())))
+                      .map(branch => (
+                        <div
+                          key={branch.id}
+                          style={{
+                            padding: '8px 12px',
+                            cursor: 'pointer',
+                            borderBottom: '1px solid #f0f0f0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            backgroundColor: searchFilters.search_branch === String(branch.id) ? '#f0f9ff' : 'white'
+                          }}
+                          onClick={() => {
+                            setSearchFilters({ ...searchFilters, search_branch: String(branch.id) });
+                            setBranchSearchTerm('');
+                            setIsBranchDropdownOpen(false);
+                          }}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f9ff'}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = searchFilters.search_branch === String(branch.id) ? '#f0f9ff' : 'white'}
+                        >
+                          <BranchBadge branch={branch} />
+                          <span>{branch.branch_name}</span>
+                        </div>
+                      ))}
+                    {branches.filter(b => b.is_active && (!branchSearchTerm || b.branch_name.toLowerCase().includes(branchSearchTerm.toLowerCase()) || b.branch_location?.toLowerCase().includes(branchSearchTerm.toLowerCase()))).length === 0 && (
+                      <div style={{ padding: '12px', textAlign: 'center', color: '#666' }}>
+                        لا توجد فروع مطابقة
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               {(searchFilters.search_name || searchFilters.search_id || searchFilters.search_phone || searchFilters.search_branch) && (
                 <button
@@ -1797,7 +1914,41 @@ const Employees = () => {
             </div>
           )}
 
-          <div className="table-container">
+          <div className="table-container" style={{ position: 'relative' }}>
+            {tableLoading && (
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10,
+                borderRadius: 'var(--radius-xl)'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '12px',
+                  color: 'var(--primary)',
+                  fontWeight: 600
+                }}>
+                  <div className="table-loading-spinner" style={{
+                    width: '40px',
+                    height: '40px',
+                    border: '4px solid var(--primary-light)',
+                    borderTop: '4px solid var(--primary)',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite'
+                  }}></div>
+                  <span>جاري تحديث البيانات...</span>
+                </div>
+              </div>
+            )}
             <table className="data-table">
               <thead>
                 <tr>
@@ -1812,7 +1963,7 @@ const Employees = () => {
                 </tr>
               </thead>
               <tbody>
-                {employees.length === 0 ? (
+                {employees.length === 0 && !tableLoading ? (
                   <tr>
                     <td colSpan={isMainManager() ? "8" : "7"} style={{ textAlign: 'center' }}>لا يوجد موظفين</td>
                   </tr>
@@ -1855,7 +2006,7 @@ const Employees = () => {
                           })()}
                         </td>
                         <td>
-                          <button onClick={() => handleViewDetails(employee)} className="btn btn-primary btn-sm">عرض التفاصيل</button>
+                          <button onClick={() => handleViewDetails(employee)} className="btn btn-primary btn-sm"> التفاصيل</button>
                           <button onClick={() => handleEdit(employee)} className="btn-sm btn-edit">تعديل</button>
                           {isMainManager() && (
                             <button onClick={() => handleDelete(employee.id)} className="btn-sm btn-delete">حذف</button>
@@ -2573,16 +2724,18 @@ const Employees = () => {
                         />
                         {renderNewFileIndicator(documents.bank_iban)}
                       </div>
-                      <div className="form-group col-3">
-                        <label>المؤهل الأساسي</label>
-                        {renderExistingDocumentsWarning('primary_qualification')}
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) => handleDocumentChange('primary_qualification', e)}
-                        />
-                        {renderNewFileIndicator(documents.primary_qualification)}
-                      </div>
+                      {requiresPrimaryQualificationDoc() && (
+                        <div className="form-group col-3">
+                          <label>المؤهل الأساسي</label>
+                          {renderExistingDocumentsWarning('primary_qualification')}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={(e) => handleDocumentChange('primary_qualification', e)}
+                          />
+                          {renderNewFileIndicator(documents.primary_qualification)}
+                        </div>
+                      )}
                       <div className="form-group col-3">
                         <label>عقد العمل</label>
                         {renderExistingDocumentsWarning('employment_contract')}
@@ -2604,17 +2757,19 @@ const Employees = () => {
                         />
                         {renderNewFileIndicator(documents.medical_disclosure_form)}
                       </div>
-                      {/* Medical insurance - optional for all employees */}
-                      <div className="form-group col-3">
-                        <label>التأمين الطبي</label>
-                        {renderExistingDocumentsWarning('medical_insurance')}
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) => handleDocumentChange('medical_insurance', e)}
-                        />
-                        {renderNewFileIndicator(documents.medical_insurance)}
-                      </div>
+                      {/* Medical insurance - hide for paper contracts */}
+                      {requiresMedicalInsuranceDoc() && (
+                        <div className="form-group col-3">
+                          <label>التأمين الطبي</label>
+                          {renderExistingDocumentsWarning('medical_insurance')}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={(e) => handleDocumentChange('medical_insurance', e)}
+                          />
+                          {renderNewFileIndicator(documents.medical_insurance)}
+                        </div>
+                      )}
                       {isNonSaudi(formData.nationality) && (
                         <div className="form-group col-3">
                           <label>جواز السفر</label>

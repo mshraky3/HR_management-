@@ -191,9 +191,9 @@
 }
 
 .badge-success {
-  background: rgba(16, 185, 129, 0.1);
-  color: var(--success);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background: rgba(73, 136, 196, 0.1);
+  color: var(--primary);
+  border: 1px solid rgba(73, 136, 196, 0.2);
 }
 
 .badge-warning {
@@ -523,7 +523,7 @@
 .password-input-group input:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(185, 210, 207, 0.2);
+  box-shadow: 0 0 0 3px rgba(73, 136, 196, 0.15);
 }
 
 .password-error {

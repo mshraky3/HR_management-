@@ -41,6 +41,9 @@ const EmployeeProfileCard = ({
   onOpenEdit,
   children,
 }) => {
+  const branches = Array.isArray(employee.branches) ? employee.branches : [];
+  const isMultiBranch = branches.length > 1;
+
   return (
     <div className="employee-profile-card">
       <div className="employee-profile-header">
@@ -55,6 +58,20 @@ const EmployeeProfileCard = ({
           <span className={`employee-status-badge ${getStatusBadgeClass(employee.status || 'active')}`}>
             {getStatusLabel(employee.status || 'active')}
           </span>
+          {branches.length > 0 && (
+            <div className="employee-branches">
+              <span className="badge badge-info" style={{ marginLeft: '8px' }}>
+                {isMultiBranch ? 'يعمل في عدة فروع' : 'فرع واحد'}
+              </span>
+              <div className="branches-list">
+                {branches.map((b) => (
+                  <span key={b.branch_id} className="branch-chip">
+                    {b.branch_name || `فرع ${b.branch_id}`}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

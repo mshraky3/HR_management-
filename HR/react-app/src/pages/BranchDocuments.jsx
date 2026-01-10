@@ -760,7 +760,7 @@ const BranchDocuments = () => {
 
   // Sort documents by priority: 1) Monthly (highest), 2) Student/Cadre, 3) Others
   const sortDocumentCardsByPriority = useCallback((cards) => {
-    const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
+    const monthlyTypes = ['payroll_file', 'salary_deposit_file'];
     const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
 
     return [...cards].sort((a, b) => {

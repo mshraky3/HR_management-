@@ -19,7 +19,7 @@
 }
 
 .maintenance-icon {
-  color: var(--primary, #b9d2cf);
+  color: var(--primary, #4988C4);
   margin-bottom: 30px;
   display: flex;
   justify-content: center;
@@ -65,7 +65,7 @@
 }
 
 .maintenance-retry-button {
-  background: var(--primary, #b9d2cf);
+  background: var(--primary, #4988C4);
   color: white;
   border: none;
   padding: 14px 32px;
@@ -74,13 +74,13 @@
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(185, 210, 207, 0.3);
+  box-shadow: 0 4px 12px rgba(73, 136, 196, 0.3);
 }
 
 .maintenance-retry-button:hover {
   background: var(--primary-dark, #9bb5b2);
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(185, 210, 207, 0.4);
+  box-shadow: 0 6px 16px rgba(73, 136, 196, 0.4);
 }
 
 .maintenance-retry-button:active {

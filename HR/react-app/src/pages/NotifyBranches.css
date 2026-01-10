@@ -138,20 +138,20 @@
 
 .branch-select-button:hover {
   background: var(--bg-hover, #f8fafc);
-  border-color: var(--primary, #b9d2cf);
+  border-color: var(--primary, #4988C4);
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.1));
 }
 
 .branch-select-button.selected {
-  background: var(--primary, #b9d2cf);
-  border-color: var(--primary, #b9d2cf);
+  background: var(--primary, #4988C4);
+  border-color: var(--primary, #4988C4);
   color: var(--text, #0f172a);
 }
 
 .branch-select-button.selected:hover {
-  background: var(--primary-hover, #9bb8b4);
-  border-color: var(--primary-hover, #9bb8b4);
+  background: var(--primary-hover, #3a73a8);
+  border-color: var(--primary-hover, #3a73a8);
   box-shadow: var(--shadow-md, 0 4px 6px rgba(0, 0, 0, 0.1));
 }
 

@@ -247,7 +247,7 @@ const Branches = () => {
       <div className="page-header">
         <h1>{isMainManager() ? 'إدارة الفروع' : 'فرعي'}</h1>
         {isMainManager() && (
-          <button onClick={() => { setShowForm(true); resetForm(); setEditingBranch(null); }} className="btn-primary">
+          <button onClick={() => { setShowForm(true); resetForm(); setEditingBranch(null); }} className="btn-primary btn-lg">
             إضافة فرع جديد
           </button>
         )}
@@ -321,22 +321,22 @@ const Branches = () => {
                       disabled
                       style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
                     />
-                    <small style={{ color: '#666', fontSize: '12px', marginTop: '5px', display: 'block' }}>
+                    <small>
                       نوع الفرع لا يمكن تغييره بعد الإنشاء
                     </small>
                   </div>
                 )}
               </div>
-              <div className="form-group">
-                <label>موقع الفرع *</label>
-                <input
-                  type="text"
-                  value={formData.branch_location}
-                  onChange={(e) => setFormData({ ...formData, branch_location: e.target.value })}
-                  required
-                />
-              </div>
               <div className="form-row">
+                <div className="form-group">
+                  <label>موقع الفرع *</label>
+                  <input
+                    type="text"
+                    value={formData.branch_location}
+                    onChange={(e) => setFormData({ ...formData, branch_location: e.target.value })}
+                    required
+                  />
+                </div>
                 <div className="form-group">
                   <label>اسم المستخدم *</label>
                   <input
@@ -346,6 +346,8 @@ const Branches = () => {
                     required
                   />
                 </div>
+              </div>
+              <div className="form-row">
                 <div className="form-group">
                   <label>كلمة المرور {!editingBranch && '*'}</label>
                   <input
@@ -356,31 +358,29 @@ const Branches = () => {
                     placeholder={editingBranch ? 'اتركه فارغاً للاحتفاظ بالقيمة الحالية' : ''}
                   />
                   {editingBranch && (
-                    <small style={{ color: '#666', fontSize: '12px', marginTop: '5px', display: 'block' }}>
-                      القيمة الحالية معروضة أعلاه. اتركه فارغاً للاحتفاظ بالقيمة الحالية أو أدخل قيمة جديدة.
+                    <small>
+                      اتركه فارغاً للاحتفاظ بالقيمة الحالية
                     </small>
                   )}
                 </div>
-              </div>
-              <div className="form-group">
-                <label>كلمة مرور مستندات الفرع *</label>
-                <input
-                  type="password"
-                  value={formData.branch_documents_password}
-                  onChange={(e) => setFormData({ ...formData, branch_documents_password: e.target.value })}
-                  required
-                  placeholder="كلمة المرور للوصول إلى مستندات الفرع"
-                />
-                <small style={{ color: '#666', fontSize: '12px', marginTop: '5px', display: 'block' }}>
-                  هذه كلمة المرور المطلوبة للوصول إلى مستندات الفرع. القيمة الافتراضية: test
-                </small>
+                <div className="form-group">
+                  <label>كلمة مرور المستندات *</label>
+                  <input
+                    type="text"
+                    value={formData.branch_documents_password}
+                    onChange={(e) => setFormData({ ...formData, branch_documents_password: e.target.value })}
+                    required
+                    placeholder="كلمة مرور المستندات"
+                  />
+                  <small>
+                    القيمة الافتراضية: test
+                  </small>
+                </div>
               </div>
 
               {/* معلومات الفرع */}
-              <h3 style={{ marginTop: '20px', marginBottom: '15px', padding: '10px', background: '#e3f2fd', borderRadius: '6px', fontWeight: 'bold', fontSize: '16px' }}>
-                معلومات الفرع
-              </h3>
-              <div className="form-row">
+              <h3>معلومات الفرع</h3>
+              <div className="form-row three-columns">
                 <div className="form-group">
                   <label>رقم جوال الفرع</label>
                   <input
@@ -408,15 +408,15 @@ const Branches = () => {
                     placeholder="مثال: 50"
                     min="0"
                   />
-                  <small style={{ display: 'block', marginTop: '5px', color: '#666', fontSize: '12px' }}>
+                  <small>
                     يستخدم هذا العدد لحساب نسبة اكتمال بيانات الموظفين بدقة أكبر في لوحة التحكم
                   </small>
                 </div>
               </div>
 
               <div className="form-actions">
-                <button type="submit" className="btn-primary">حفظ</button>
-                <button type="button" onClick={() => { setShowForm(false); resetForm(); setEditingBranch(null); }} className="btn-secondary">
+                <button type="submit" className="btn-primary btn-lg">حفظ</button>
+                <button type="button" onClick={() => { setShowForm(false); resetForm(); setEditingBranch(null); }} className="btn-secondary btn-lg">
                   إلغاء
                 </button>
               </div>
@@ -434,6 +434,7 @@ const Branches = () => {
               <th>الموقع</th>
               <th>اسم المستخدم</th>
               <th>كلمة المرور</th>
+              <th>كلمة مرور المستندات</th>
               <th>معلومات الفرع</th>
               {isMainManager() && <th>الإجراءات</th>}
             </tr>
@@ -441,7 +442,7 @@ const Branches = () => {
           <tbody>
             {branches.length === 0 ? (
               <tr>
-                <td colSpan={isMainManager() ? "7" : "6"} style={{ textAlign: 'center' }}>لم يتم العثور على فروع</td>
+                <td colSpan={isMainManager() ? "8" : "7"} style={{ textAlign: 'center' }}>لم يتم العثور على فروع</td>
               </tr>
             ) : (
               branches.map((branch) => (
@@ -451,22 +452,21 @@ const Branches = () => {
                   <td>{branch.branch_location}</td>
                   <td>{branch.username}</td>
                   <td>{branch.password || '-'}</td>
-                  <td>
-                    <div style={{ fontSize: '13px' }}>
-                      {branch.phone_number && (
-                        <div style={{ marginBottom: '4px' }}>
-                          <strong>جوال:</strong> {branch.phone_number}
-                        </div>
-                      )}
-                      {branch.email && (
-                        <div>
-                          <strong>إيميل:</strong> {branch.email}
-                        </div>
-                      )}
-                      {!branch.phone_number && !branch.email && (
-                        <span style={{ color: '#999' }}>-</span>
-                      )}
-                    </div>
+                  <td>{branch.branch_documents_password || '-'}</td>
+                  <td style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {branch.phone_number && (
+                      <div style={{ fontSize: '13px' }}>
+                        <strong>جوال:</strong> {branch.phone_number}
+                      </div>
+                    )}
+                    {branch.email && (
+                      <div style={{ fontSize: '13px' }}>
+                        <strong>إيميل:</strong> {branch.email}
+                      </div>
+                    )}
+                    {!branch.phone_number && !branch.email && (
+                      <span style={{ color: '#999', fontSize: '13px' }}>-</span>
+                    )}
                   </td>
                   {isMainManager() && (
                     <td>

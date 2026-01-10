@@ -13,6 +13,12 @@ import { formatDate } from '../utils/dateConverters';
 import BranchesOverallProgressChart from '../components/BranchesOverallProgressChart';
 import './BranchStatistics.css';
 
+const formatMonthLabel = (month, year) => {
+  if (!month || !year) return '';
+  const m = String(month).padStart(2, '0');
+  return `${m}/${year}`;
+};
+
 const BranchStatistics = () => {
   const { isMainManager } = useAuth();
   const { showError, showSuccess } = useNotification();
@@ -226,10 +232,7 @@ const BranchStatistics = () => {
           >
             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => (
               <option key={month} value={month}>
-                {new Date(selectedYear, month - 1).toLocaleDateString('en-US', {
-                  month: 'long',
-                  calendar: 'gregory'
-                })}
+                {formatMonthLabel(month, selectedYear)}
               </option>
             ))}
           </select>
@@ -414,11 +417,7 @@ const BranchStatistics = () => {
         if (branchesForLoginChart.length === 0) {
           return (
             <div className="chart-section">
-              <h2>تسجيلات الدخول - {new Date(selectedYear, selectedMonth - 1).toLocaleDateString('ar-SA', {
-                month: 'long',
-                year: 'numeric',
-                calendar: 'gregory'
-              })}</h2>
+              <h2>تسجيلات الدخول - {formatMonthLabel(selectedMonth, selectedYear)}</h2>
               <div className="no-chart-data">
                 لا توجد بيانات تسجيل دخول متاحة لهذا الشهر
               </div>
@@ -439,11 +438,7 @@ const BranchStatistics = () => {
           '#009688', '#FF5722', '#795548', '#607D8B', '#9E9E9E'
         ];
 
-        const monthName = new Date(selectedYear, selectedMonth - 1).toLocaleDateString('ar-SA', {
-          month: 'long',
-          year: 'numeric',
-          calendar: 'gregory'
-        });
+        const monthName = formatMonthLabel(selectedMonth, selectedYear);
 
         return (
           <div className="chart-section">
@@ -457,10 +452,7 @@ const BranchStatistics = () => {
                 >
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => (
                     <option key={month} value={month}>
-                      {new Date(selectedYear, month - 1).toLocaleDateString('en-US', {
-                        month: 'long',
-                        calendar: 'gregory'
-                      })}
+                      {formatMonthLabel(month, selectedYear)}
                     </option>
                   ))}
                 </select>

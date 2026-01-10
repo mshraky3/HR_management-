@@ -38,8 +38,8 @@ const PageLoading = () => (
     <div
       className="spinner-large"
       style={{
-        border: '4px solid rgba(185, 210, 207, 0.3)',
-        borderTop: '4px solid var(--primary, #b9d2cf)'
+        border: '4px solid rgba(73, 136, 196, 0.3)',
+        borderTop: '4px solid var(--primary, #4988C4)'
       }}
     ></div>
     <div style={{
@@ -60,7 +60,6 @@ const Branches = lazy(() => import('./pages/Branches'));
 const Employees = lazy(() => import('./pages/Employees'));
 const EmployeeDetails = lazy(() => import('./pages/EmployeeDetails/index.jsx'));
 const BranchDocuments = lazy(() => import('./pages/BranchDocuments'));
-const MonthlyDocuments = lazy(() => import('./pages/MonthlyDocuments'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Payrolls = lazy(() => import('./pages/Payrolls'));
 const EmployeeFile = lazy(() => import('./pages/EmployeeFile'));
@@ -74,6 +73,7 @@ const DirectContact = lazy(() => import('./pages/DirectContact'));
 const BranchRequests = lazy(() => import('./pages/BranchRequests'));
 const ManageRequests = lazy(() => import('./pages/ManageRequests'));
 const FixMissingDates = lazy(() => import('./pages/FixMissingDates'));
+const PayrollAbsenceAdmin = lazy(() => import('./pages/PayrollAbsenceAdmin'));
 
 // Wrapper component to choose layout based on role
 const RoleBasedLayout = ({ children }) => {
@@ -151,16 +151,6 @@ const AppContent = () => {
             <ProtectedRoute>
               <RoleBasedLayout>
                 <BranchDocuments />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/monthly-documents"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <MonthlyDocuments />
               </RoleBasedLayout>
             </ProtectedRoute>
           }
@@ -291,6 +281,16 @@ const AppContent = () => {
             <ProtectedRoute requireMainManager>
               <Layout>
                 <FixMissingDates />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/payroll-absence-admin"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <PayrollAbsenceAdmin />
               </Layout>
             </ProtectedRoute>
           }

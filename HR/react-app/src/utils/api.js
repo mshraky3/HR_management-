@@ -132,6 +132,16 @@ const getCacheTTL = (url) => {
   if (url.includes('/api/notifications')) {
     return CACHE_TTL.NONE; // Notifications must be real-time
   }
+  
+  // Attendance period status endpoints - NO CACHE (must reflect manual-open immediately)
+  if (url.includes('/api/attendance-periods/check') || url.includes('/api/attendance-periods/check-current')) {
+    return CACHE_TTL.NONE; // Status must be real-time to reflect manual-open changes
+  }
+
+  // Payroll absences - must always reflect manual open/close immediately
+  if (url.includes('/api/payroll-absences')) {
+    return CACHE_TTL.NONE;
+  }
 
   // Employee data - short cache (changes frequently, but allow minimal caching)
   if (url.includes('/api/employees')) {
@@ -347,27 +357,21 @@ const getPasswordForRequest = (branchId) => {
   return null;
 };
 
-// Add token to requests if available
+// Add token to requests if available; block protected requests if no token
 api.interceptors.request.use(
   async (config) => {
     const requestStartTime = performance.now();
     const url = config.url || '';
     const method = (config.method || 'get').toUpperCase();
 
-    // Only log dashboard-related requests to avoid spam
-    const isDashboardRequest = url.includes('/api/branches') ||
-      url.includes('/api/employees') ||
-      url.includes('/api/branch-documents') ||
-      url.includes('/api/branch-statistics') ||
-      url.includes('/api/notifications') ||
-      url.includes('/api/users');
-
-    if (isDashboardRequest) {
-      console.log(`[API] ${method} ${url} - REQUEST START`);
-      console.log(`[API] Params:`, config.params);
-    }
 
     const token = localStorage.getItem('token');
+    const publicPaths = ['/api/auth/login', '/api/auth/me'];
+
+    if (!token && !publicPaths.some(p => url.includes(p))) {
+      return Promise.reject(new axios.Cancel('No token available'));
+    }
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -395,9 +399,6 @@ api.interceptors.request.use(
       // Check for pending request (deduplication) - always enabled for performance
       const pendingRequest = pendingRequests.get(requestKey);
       if (pendingRequest) {
-        if (isDashboardRequest) {
-          console.log(`[API] ${method} ${url} - DEDUPLICATED (using pending request)`);
-        }
         // Attach metadata to config to handle in response interceptor
         config.__isDeduplicated = true;
         config.__pendingRequest = pendingRequest;
@@ -410,20 +411,12 @@ api.interceptors.request.use(
         const cacheKey = getCacheKey(config);
         const cacheEntry = apiCache.get(cacheKey);
         if (cacheEntry && isCacheValid(cacheEntry)) {
-          if (isDashboardRequest) {
-            const cacheAge = Date.now() - cacheEntry.timestamp;
-            console.log(`[API] ${method} ${url} - CACHE HIT (age: ${cacheAge}ms)`);
-          }
           // Attach cached response to config
           config.__isCached = true;
           config.__cachedResponse = cacheEntry.data;
           config.__requestStartTime = requestStartTime;
           return config;
-        } else if (isDashboardRequest) {
-          console.log(`[API] ${method} ${url} - CACHE MISS`);
         }
-      } else if (isDashboardRequest) {
-        console.log(`[API] ${method} ${url} - NO CACHE (real-time endpoint)`);
       }
 
       // Store request promise for deduplication
@@ -450,31 +443,14 @@ api.interceptors.response.use(
     const config = response.config;
     const url = config?.url || '';
     const method = (config?.method || 'get').toUpperCase();
-    const requestStartTime = config?.__requestStartTime;
-
-    // Only log dashboard-related requests to avoid spam
-    const isDashboardRequest = url.includes('/api/branches') ||
-      url.includes('/api/employees') ||
-      url.includes('/api/branch-documents') ||
-      url.includes('/api/branch-statistics') ||
-      url.includes('/api/notifications') ||
-      url.includes('/api/users');
 
     // Handle cached response
     if (config?.__isCached) {
-      if (isDashboardRequest && requestStartTime) {
-        const responseTime = performance.now() - requestStartTime;
-        console.log(`[API] ${method} ${url} - RESPONSE (CACHED) in ${responseTime.toFixed(2)}ms`);
-        console.log(`[API] Status: ${response.status}, Data count:`, response?.data?.data?.length || 'N/A');
-      }
       return config.__cachedResponse;
     }
 
     // Handle deduplicated request
     if (config?.__isDeduplicated) {
-      if (isDashboardRequest) {
-        console.log(`[API] ${method} ${url} - RESPONSE (DEDUPLICATED)`);
-      }
       return config.__pendingRequest;
     }
 
@@ -494,10 +470,6 @@ api.interceptors.response.use(
           expiry: cacheTTL,
         });
 
-        if (isDashboardRequest) {
-          console.log(`[API] ${method} ${url} - CACHED (TTL: ${cacheTTL}ms)`);
-        }
-
         // Clean up old cache entries periodically (keep cache size manageable)
         if (apiCache.size > 100) {
           // Remove expired entries
@@ -510,19 +482,9 @@ api.interceptors.response.use(
       }
     }
 
-    // Log response timing for dashboard requests
-    if (isDashboardRequest && requestStartTime) {
-      const responseTime = performance.now() - requestStartTime;
-      console.log(`[API] ${method} ${url} - RESPONSE in ${responseTime.toFixed(2)}ms`);
-      console.log(`[API] Status: ${response.status}, Success: ${response?.data?.success || 'N/A'}, Data count:`, response?.data?.data?.length || 'N/A');
-    }
-
     // Clear related cache on successful mutations
     if (config && ['post', 'put', 'delete', 'patch'].includes(methodLower)) {
       clearRelatedCache(url);
-      if (isDashboardRequest) {
-        console.log(`[API] ${method} ${url} - Related cache cleared`);
-      }
     }
 
     return response;
@@ -531,26 +493,11 @@ api.interceptors.response.use(
     const config = error.config;
     const url = config?.url || '';
     const method = (config?.method || 'get').toUpperCase();
-    const requestStartTime = config?.__requestStartTime;
-
-    // Only log dashboard-related requests to avoid spam
-    const isDashboardRequest = url.includes('/api/branches') ||
-      url.includes('/api/employees') ||
-      url.includes('/api/branch-documents') ||
-      url.includes('/api/branch-statistics') ||
-      url.includes('/api/notifications') ||
-      url.includes('/api/users');
 
     // Remove from pending requests on error
     if (error.config) {
       const requestKey = getRequestKey(error.config);
       pendingRequests.delete(requestKey);
-    }
-
-    // Log error timing for dashboard requests
-    if (isDashboardRequest && requestStartTime) {
-      const responseTime = performance.now() - requestStartTime;
-      console.error(`[API] ${method} ${url} - ERROR after ${responseTime.toFixed(2)}ms`);
     }
 
     // Detect backend/database connection errors
@@ -724,6 +671,40 @@ export const employeesAPI = {
 
   nonRenewal: (id, data) =>
     api.post(`/api/employees/${id}/non-renewal`, data),
+
+  getDuplicates: () =>
+    api.get('/api/employees/duplicates'),
+
+  mergeDuplicates: (canonicalId, duplicateIds = []) =>
+    api.post('/api/employees/merge-duplicates', {
+      canonical_id: canonicalId,
+      duplicate_ids: duplicateIds
+    }),
+
+  getDuplicateDocuments: (params = {}) =>
+    api.get('/api/employees/duplicate-documents', { params }),
+
+  mergeDuplicateDocuments: (employeeId, documentType, keepId) =>
+    api.post('/api/employees/merge-duplicate-documents', {
+      employee_id: employeeId,
+      document_type: documentType,
+      keep_id: keepId
+    }),
+
+  getPaperContractInsurance: (docType = 'تأمين طبي') =>
+    api.get('/api/employees/paper-contract-insurance', { params: { doc_type: docType } }),
+
+  deletePaperContractInsurance: (employeeIds = [], docType = 'تأمين طبي') =>
+    api.post('/api/employees/paper-contract-insurance/delete', {
+      employee_ids: employeeIds,
+      doc_type: docType
+    }),
+
+  getMissingRequiredData: (params = {}) =>
+    api.get('/api/employees/missing-required-data', { params }),
+
+  saveMissingRequiredData: (data, config = {}) =>
+    api.post('/api/employees/missing-required-data', data, config),
 };
 
 // Documents API
@@ -1044,6 +1025,7 @@ export const adminAPI = {
 };
 
 // Requests API
+
 export const requestsAPI = {
   getAll: (filters = {}) => {
     const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
@@ -1066,6 +1048,7 @@ export const requestsAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
+
   respond: (id, formData) =>
     api.put(`/api/requests/${id}/respond`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -1073,6 +1056,36 @@ export const requestsAPI = {
 
   delete: (id) =>
     api.delete(`/api/requests/${id}`),
+};
+
+// Payroll Absence API
+export const payrollAbsenceAPI = {
+  getBranchState: (params = {}) =>
+    api.get('/api/payroll-absences/branch/state', { params }),
+
+  submitBranch: (data) =>
+    api.post('/api/payroll-absences/branch/submit', data),
+
+  getCycles: () =>
+    api.get('/api/payroll-absences/admin/cycles'),
+
+  getBranches: (cycleId) =>
+    api.get(`/api/payroll-absences/admin/cycles/${cycleId}/branches`),
+
+  getBranchEntries: (cycleId, branchId) =>
+    api.get(`/api/payroll-absences/admin/cycles/${cycleId}/branches/${branchId}/entries`),
+
+  reopenBranches: (data) =>
+    api.post('/api/payroll-absences/admin/reopen', data),
+
+  closeBranches: (data) =>
+    api.post('/api/payroll-absences/admin/close', data),
+
+  resetCycle: (data) =>
+    api.post('/api/payroll-absences/admin/reset', data),
+
+  exportBranches: (data) =>
+    api.post('/api/payroll-absences/admin/export', data, { responseType: 'blob' }),
 };
 
 

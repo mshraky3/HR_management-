@@ -52,35 +52,35 @@
 
 /* Primary Button */
 .btn-primary {
-  background: #6b9a95; /* Darker, more visible teal */
+  background: var(--primary); /* #4988C4 */
   color: #ffffff; /* White text for better contrast */
-  box-shadow: 0 2px 4px rgba(107, 154, 149, 0.4);
+  box-shadow: 0 2px 4px rgba(73, 136, 196, 0.3);
   /* Padding is inherited from .btn base class, no override needed */
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #5a8782; /* Even darker on hover */
-  box-shadow: 0 4px 8px rgba(107, 154, 149, 0.5);
+  background: var(--primary-hover); /* #3a73a8 */
+  box-shadow: 0 4px 8px rgba(73, 136, 196, 0.4);
   transform: translateY(-1px);
 }
 
 .btn-primary:active:not(:disabled) {
-  background: #4a6f6b; /* Darkest when active */
+  background: var(--primary-dark); /* #2c5a8a */
   transform: translateY(0);
-  box-shadow: 0 2px 4px rgba(107, 154, 149, 0.4);
+  box-shadow: 0 2px 4px rgba(73, 136, 196, 0.3);
 }
 
 /* Ready Button - Darker when form is valid */
 .btn-primary.btn-ready {
-  background: #4a6f6b; /* Darkest teal for ready state */
+  background: var(--primary-darker); /* #1C4D8D */
   color: #ffffff; /* White text for better contrast */
-  box-shadow: 0 3px 6px rgba(74, 111, 107, 0.5);
+  box-shadow: 0 3px 6px rgba(28, 77, 141, 0.4);
   font-weight: 700;
 }
 
 .btn-primary.btn-ready:hover:not(:disabled) {
-  background: #3d5d59; /* Even darker on hover */
-  box-shadow: 0 5px 10px rgba(74, 111, 107, 0.6);
+  background: var(--primary-darkest); /* #0F2854 */
+  box-shadow: 0 5px 10px rgba(28, 77, 141, 0.5);
   transform: translateY(-2px);
 }
 
@@ -146,7 +146,7 @@
 
 .btn-outline:hover:not(:disabled) {
   background: var(--primary);
-  color: #2c3e3a;
+  color: #ffffff;
 }
 
 .btn-outline-secondary {

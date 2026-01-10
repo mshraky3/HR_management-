@@ -61,7 +61,7 @@
 .form-group input:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(185, 210, 207, 0.2);
+  box-shadow: 0 0 0 3px rgba(73, 136, 196, 0.15);
   background: var(--bg);
 }
 
@@ -80,7 +80,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: all var(--transition-base);
-  box-shadow: 0 2px 4px rgba(185, 210, 207, 0.3);
+  box-shadow: 0 2px 4px rgba(73, 136, 196, 0.3);
   min-height: 44px;
 }
 
@@ -110,7 +110,7 @@
 
 .login-button:active:not(:disabled) {
   transform: translateY(0);
-  box-shadow: 0 2px 4px rgba(185, 210, 207, 0.3);
+  box-shadow: 0 2px 4px rgba(73, 136, 196, 0.3);
 }
 
 .login-button:disabled {

@@ -6,39 +6,46 @@
 }
 
 :root {
-  /* Modern Color Palette */
-  --primary: #b9d2cf;
-  --primary-hover: #9bb8b4;
-  --primary-light: #e8f2f0;
-  --primary-dark: #8ba8a4;
+  /* Modern Blue Color Palette - Based on #4988C4 */
+  --primary: #4988C4;
+  --primary-hover: #3a73a8;
+  --primary-light: #BDE8F5;
+  --primary-dark: #2c5a8a;
+  --primary-darker: #1C4D8D;
+  --primary-darkest: #0F2854;
+  
   --secondary: #64748b;
   --secondary-hover: #475569;
+  
   --success: #10b981;
   --success-hover: #059669;
+  
   --danger: #ef4444;
   --danger-hover: #dc2626;
+  
   --warning: #f59e0b;
   --warning-hover: #d97706;
-  --info: #06b6d4;
-  --info-hover: #0891b2;
+  
+  --info: #4988C4;
+  --info-hover: #3a73a8;
   
   /* Background Colors */
   --bg: #ffffff;
-  --bg-secondary: #f8fafc;
-  --bg-tertiary: #f1f5f9;
-  --bg-hover: #f8fafc;
+  --bg-secondary: #f0f9ff;
+  --bg-tertiary: #e0f2fe;
+  --bg-hover: #dbeafe;
   
   /* Text Colors */
-  --text: #0f172a;
-  --text-secondary: #334155;
-  --text-light: #64748b;
-  --text-muted: #94a3b8;
+  --text: #0F2854;
+  --text-secondary: #1C4D8D;
+  --text-light: #4988C4;
+  --text-muted: #6ba8d4;
   
   /* Border Colors */
-  --border: #e2e8f0;
-  --border-light: #f1f5f9;
-  --border-dark: #cbd5e1;
-  --border-focus: #b9d2cf;
+  --border: #dbeafe;
+  --border-light: #e0f2fe;
+  --border-dark: #93c5fd;
+  --border-focus: #4988C4;
   
   /* Spacing */
   --spacing-xs: 0.25rem;
@@ -154,7 +161,7 @@ input, textarea, select {
 input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(185, 210, 207, 0.2);
+  box-shadow: 0 0 0 3px rgba(73, 136, 196, 0.15);
 }
 
 input:disabled, textarea:disabled, select:disabled {
@@ -224,7 +231,7 @@ label {
 
 .notification-info {
   border-right-color: var(--info);
-  background: linear-gradient(to left, #ecfeff 0%, #fff 20%);
+  background: linear-gradient(to left, #BDE8F5 0%, #fff 20%);
 }
 
 .notification-content {
@@ -262,7 +269,7 @@ label {
 
 .notification-info .notification-icon {
   color: var(--info);
-  background: #cffafe;
+  background: #BDE8F5;
 }
 
 .notification-message {

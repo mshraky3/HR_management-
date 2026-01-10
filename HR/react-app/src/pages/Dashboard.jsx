@@ -7,7 +7,7 @@ import { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, dashboardAPI, adminAPI, clearCache } from '../utils/api';
+import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, dashboardAPI, adminAPI, requestsAPI, clearCache } from '../utils/api';
 import BranchesOverallProgressChart from '../components/BranchesOverallProgressChart';
 import {
   getRequiredBranchDocuments,
@@ -19,6 +19,8 @@ import { getBranchTypeRules } from '../utils/employeeRules';
 import { DATA_COMPLETION_STATUS } from '../utils/employeeConstants';
 import { formatDate } from '../utils/dateConverters';
 import DashboardProgress from './DashboardProgress';
+import MissingEmployeeDataSection from '../components/MissingEmployeeDataSection.jsx';
+import PayrollAbsenceBranchSection from '../components/PayrollAbsenceBranchSection.jsx';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -56,19 +58,15 @@ const Dashboard = () => {
   const [branchInfo, setBranchInfo] = useState(null);
   const [employeesList, setEmployeesList] = useState([]);
   const [documentsList, setDocumentsList] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [newRequestsCount, setNewRequestsCount] = useState(0);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   const loadStats = useCallback(async () => {
-    const loadStartTime = performance.now();
-    console.log('[Dashboard] ========== loadStats STARTED ==========');
-    console.log('[Dashboard] User:', { id: user?.id, branch_id: user?.branch_id, isMainManager: isMainManager() });
-    console.log('[Dashboard] Timestamp:', new Date().toISOString());
-
     try {
       // Clear cache to ensure fresh data (especially completion status)
-      console.log('[Dashboard] Clearing cache...');
       clearCache('/api/employees');
       clearCache('/api/branch-statistics');
-      console.log('[Dashboard] Cache cleared');
 
       // Build filters based on user role
       const branchFilters = { is_active: true };
@@ -80,16 +78,10 @@ const Dashboard = () => {
         branchFilters.id = user.branch_id;
         employeeFilters.branch_id = user.branch_id;
         documentFilters.branch_id = user.branch_id;
-        console.log('[Dashboard] Branch Manager mode - filters:', { branchFilters, employeeFilters, documentFilters });
-      } else {
-        console.log('[Dashboard] Main Manager mode - filters:', { branchFilters, employeeFilters, documentFilters });
       }
 
       // Performance Optimization: Batch all parallel API calls together
       // This reduces total loading time by making all requests simultaneously
-      const apiStartTime = performance.now();
-      console.log('[Dashboard] Building API promises array...');
-
       const apiPromises = [
         branchesAPI.getAll(branchFilters),
         employeesAPI.getAll(employeeFilters),
@@ -98,12 +90,10 @@ const Dashboard = () => {
           return { data: { data: [] } };
         }),
       ];
-      console.log('[Dashboard] Base API promises created (branches, employees, documents)');
 
       // Add role-specific API calls to batch
       if (!isMainManager() && user?.branch_id) {
         // Branch manager specific calls
-        console.log('[Dashboard] Adding Branch Manager specific API calls...');
         apiPromises.push(
           branchesAPI.getById(user.branch_id).catch((err) => {
             console.warn('[Dashboard] branchesAPI.getById failed:', err);
@@ -114,10 +104,8 @@ const Dashboard = () => {
             return { data: { success: false, data: [] } };
           })
         );
-        console.log('[Dashboard] Branch Manager API promises:', apiPromises.length, 'total');
       } else if (isMainManager()) {
         // Main manager specific calls
-        console.log('[Dashboard] Adding Main Manager specific API calls...');
         apiPromises.push(
           branchStatisticsAPI.getAll().catch((err) => {
             console.warn('[Dashboard] branchStatisticsAPI.getAll failed:', err);
@@ -130,78 +118,47 @@ const Dashboard = () => {
           usersAPI.getAll({ is_active: true }).catch((err) => {
             console.warn('[Dashboard] usersAPI.getAll failed:', err);
             return { data: { success: false, data: [] } };
+          }),
+          requestsAPI.getAll().catch((err) => {
+            console.warn('[Dashboard] requestsAPI.getAll failed:', err);
+            return { data: { success: false, data: [] } };
           })
         );
-        console.log('[Dashboard] Main Manager API promises:', apiPromises.length, 'total');
       }
 
       // Execute all API calls in parallel
-      console.log('[Dashboard] Executing', apiPromises.length, 'API calls in parallel...');
       const results = await Promise.all(apiPromises);
-      const apiEndTime = performance.now();
-      console.log('[Dashboard] All API calls completed in', (apiEndTime - apiStartTime).toFixed(2), 'ms');
-      console.log('[Dashboard] API Results count:', results.length);
 
       // Extract results
       const branchesRes = results[0];
       const employeesRes = results[1];
       const documentsRes = results[2];
 
-      console.log('[Dashboard] Extracting results...');
-      console.log('[Dashboard] branchesRes:', {
-        success: branchesRes?.data?.success,
-        count: branchesRes?.data?.data?.length || 0
-      });
-      console.log('[Dashboard] employeesRes:', {
-        success: employeesRes?.data?.success,
-        count: employeesRes?.data?.data?.length || 0
-      });
-      console.log('[Dashboard] documentsRes:', {
-        hasData: !!documentsRes?.data?.data,
-        count: documentsRes?.data?.data?.length || 0
-      });
-
       // Store branches for display
       const branchesList = branchesRes.data.success ? (branchesRes.data.data || []) : [];
-      console.log('[Dashboard] Setting branches state:', branchesList.length, 'branches');
       setBranches(branchesList);
 
       // Store employees and documents for progress component
       const employeesData = employeesRes.data.success ? (employeesRes.data.data || []) : [];
       const documentsData = documentsRes.data.data || [];
-      console.log('[Dashboard] Setting employees state:', employeesData.length, 'employees');
-      console.log('[Dashboard] Setting documents state:', documentsData.length, 'documents');
       setEmployeesList(employeesData);
       setDocumentsList(documentsData);
 
       // Process role-specific results
       if (!isMainManager() && user?.branch_id) {
-        console.log('[Dashboard] Processing Branch Manager results...');
         // Branch manager results
         const branchInfoRes = results[3];
         const notificationsRes = results[4];
 
-        console.log('[Dashboard] branchInfoRes:', {
-          success: branchInfoRes?.data?.success,
-          hasData: !!branchInfoRes?.data?.data
-        });
         if (branchInfoRes?.data?.success) {
-          console.log('[Dashboard] Setting branchInfo state');
           setBranchInfo(branchInfoRes.data.data);
         } else {
-          console.log('[Dashboard] branchInfoRes failed, setting branchInfo to null');
           setBranchInfo(null);
         }
 
-        console.log('[Dashboard] notificationsRes:', {
-          success: notificationsRes?.data?.success,
-          count: notificationsRes?.data?.data?.length || 0
-        });
         if (notificationsRes?.data?.success) {
-          console.log('[Dashboard] Setting notifications state:', notificationsRes.data.data?.length || 0, 'notifications');
           setNotifications(notificationsRes.data.data || []);
         } else {
-          console.log('[Dashboard] notificationsRes failed, setting notifications to empty array');
           setNotifications([]);
         }
 
@@ -213,7 +170,6 @@ const Dashboard = () => {
             const filtered = (summary.incompleteEmployees || []).filter(emp =>
               !emp.status || emp.status === 'active' || emp.status === 'pending'
             );
-            console.log('[Dashboard] Setting incompleteEmployees state from summary:', filtered.length, 'employees');
             setIncompleteEmployees(filtered);
             setBranchStats(prev => ({ ...prev, completionPercentage: summary.completionPercentage }));
           } else {
@@ -233,75 +189,49 @@ const Dashboard = () => {
           return { data: { success: false, data: [] } };
         });
 
-        console.log('[Dashboard] pendingRes:', {
-          success: pendingRes.data.success,
-          count: pendingRes.data.data?.length || 0
-        });
         if (pendingRes.data.success) {
-          console.log('[Dashboard] Setting pendingEmployees state:', pendingRes.data.data.length, 'employees');
           setPendingEmployees(pendingRes.data.data || []);
         } else {
-          console.log('[Dashboard] pendingRes failed, setting pendingEmployees to empty array');
           setPendingEmployees([]);
         }
 
         // Check monthly documents and missing branch documents
         const allDocuments = documentsRes.data.data || [];
-        console.log('[Dashboard] Processing documents:', allDocuments.length, 'total documents');
-        const docProcessingStartTime = performance.now();
-
-        console.log('[Dashboard] Checking monthly documents...');
         checkMonthlyDocuments(allDocuments, branchesList);
-        console.log('[Dashboard] Monthly documents checked');
-
-        console.log('[Dashboard] Checking missing branch documents...');
         checkMissingBranchDocuments(allDocuments, branchesList);
-        console.log('[Dashboard] Missing branch documents checked');
-
-        const docProcessingEndTime = performance.now();
-        console.log('[Dashboard] Document processing completed in', (docProcessingEndTime - docProcessingStartTime).toFixed(2), 'ms');
 
         // Progress calculation is now handled by DashboardProgress component (runs in parallel)
 
         // Separate documents by expiry date (after branches are set)
-        console.log('[Dashboard] Scheduling separateDocumentsByExpiry (100ms delay)...');
         setTimeout(() => {
-          console.log('[Dashboard] Executing separateDocumentsByExpiry...');
           separateDocumentsByExpiry(allDocuments);
-          console.log('[Dashboard] separateDocumentsByExpiry completed');
         }, 100);
       } else if (isMainManager()) {
-        console.log('[Dashboard] Processing Main Manager results...');
         // Main manager results
         setLoadingStats(true);
         const statsRes = results[3];
         const notificationsRes = results[4];
         const usersRes = results[5];
+        const requestsRes = results[6];
 
-        console.log('[Dashboard] statsRes:', {
-          success: statsRes?.data?.success,
-          count: statsRes?.data?.data?.length || 0
-        });
         if (statsRes?.data?.success) {
-          console.log('[Dashboard] Setting branchStats state');
           setBranchStats(statsRes.data.data || []);
-        } else {
-          console.log('[Dashboard] statsRes failed');
         }
 
-        console.log('[Dashboard] notificationsRes:', {
-          success: notificationsRes?.data?.success,
-          count: notificationsRes?.data?.data?.length || 0
-        });
         if (notificationsRes?.data?.success) {
           const notificationsList = notificationsRes.data.data || [];
-          console.log('[Dashboard] Setting mainManagerNotifications state:', notificationsList.length, 'notifications');
           setMainManagerNotifications(notificationsList);
           // Check for new responses since last visit (async, don't await)
-          console.log('[Dashboard] Starting checkNewResponses (async)...');
           checkNewResponses(notificationsList);
+        }
+
+        if (requestsRes?.data?.success) {
+          const requestsList = requestsRes.data.data || [];
+          setRequests(requestsList);
+          // Check for new requests since last visit (async, don't await)
+          checkNewRequests(requestsList);
         } else {
-          console.log('[Dashboard] notificationsRes failed');
+          setRequests([]);
         }
 
         const statsData = {
@@ -312,24 +242,18 @@ const Dashboard = () => {
           notifications: notificationsRes?.data?.data?.length || 0,
           loading: false,
         };
-        console.log('[Dashboard] Setting stats state:', statsData);
         setStats(statsData);
 
         // Check monthly documents for monitoring section
-        console.log('[Dashboard] Checking monthly documents for main manager...');
         checkMonthlyDocuments(documentsRes.data.data || [], branchesList);
-        console.log('[Dashboard] Monthly documents checked');
 
         // Clear branch manager specific alerts
-        console.log('[Dashboard] Clearing branch manager specific alerts...');
         setIncompleteEmployees([]);
         setMissingBranchDocumentAlerts([]);
         setDocumentsWithExpiry([]);
         setDocumentsWithoutExpiry([]);
         setLoadingStats(false);
-        console.log('[Dashboard] Main Manager processing completed');
       } else {
-        console.log('[Dashboard] Setting stats for branch manager...');
         // Set stats for branch managers (main manager stats set above)
         const branchStatsData = {
           branches: branchesRes.data.data?.length || 0,
@@ -339,35 +263,16 @@ const Dashboard = () => {
           notifications: results[4]?.data?.data?.length || 0,
           loading: false,
         };
-        console.log('[Dashboard] Setting stats state:', branchStatsData);
         setStats(branchStatsData);
       }
-
-      const loadEndTime = performance.now();
-      const totalLoadTime = loadEndTime - loadStartTime;
-      console.log('[Dashboard] ========== loadStats COMPLETED ==========');
-      console.log('[Dashboard] Total load time:', totalLoadTime.toFixed(2), 'ms');
-      console.log('[Dashboard] Timestamp:', new Date().toISOString());
     } catch (error) {
-      const loadEndTime = performance.now();
-      const totalLoadTime = loadEndTime - loadStartTime;
-      console.error('[Dashboard] ========== loadStats ERROR ==========');
       console.error('[Dashboard] Error loading stats:', error);
-      console.error('[Dashboard] Error details:', {
-        message: error.message,
-        stack: error.stack,
-        response: error.response?.data,
-        status: error.response?.status
-      });
-      console.error('[Dashboard] Failed after', totalLoadTime.toFixed(2), 'ms');
       setStats((prev) => ({ ...prev, loading: false }));
     }
   }, [user, isMainManager]); // Dependencies: user and isMainManager from context
 
   // Load stats on mount and when navigating back to Dashboard
   useEffect(() => {
-    console.log('[Dashboard] useEffect triggered - pathname:', location.pathname);
-    console.log('[Dashboard] Calling loadStats...');
     loadStats();
   }, [location.pathname, loadStats]); // Reload when route changes (including returning to Dashboard)
 
@@ -375,23 +280,18 @@ const Dashboard = () => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('[Dashboard] Page became visible, reloading stats...');
         // Reload data when page becomes visible to ensure fresh data
         loadStats();
-      } else {
-        console.log('[Dashboard] Page became hidden');
       }
     };
 
     const handleFocus = () => {
-      console.log('[Dashboard] Window regained focus, reloading stats...');
       // Reload data when window regains focus
       loadStats();
     };
 
     // Listen for branch info updates from BranchInfo page
     const handleBranchInfoUpdate = () => {
-      console.log('[Dashboard] Branch info updated event received, reloading stats...');
       // Clear cache and reload when branch info is updated
       clearCache('/api/branches');
       clearCache('/api/branch-statistics');
@@ -453,15 +353,10 @@ const Dashboard = () => {
   // Check for new responses since last visit
   // Performance Optimization: Limit to first 20 notifications to prevent N+1 query problem
   const checkNewResponses = useCallback(async (notificationsList) => {
-    const checkStartTime = performance.now();
-    console.log('[Dashboard] checkNewResponses STARTED');
-    console.log('[Dashboard] Notifications list length:', notificationsList.length);
     try {
       const lastVisitTime = localStorage.getItem('notifications_last_visit');
-      console.log('[Dashboard] Last visit time:', lastVisitTime);
       if (!lastVisitTime || notificationsList.length === 0) {
         // First time or no notifications, no new responses to show
-        console.log('[Dashboard] No last visit time or no notifications, setting count to 0');
         setNewResponsesCount(0);
         return;
       }
@@ -473,19 +368,15 @@ const Dashboard = () => {
       // Most recent notifications are more likely to have new responses
       const MAX_NOTIFICATIONS_TO_CHECK = 20;
       const notificationsToCheck = notificationsList.slice(0, MAX_NOTIFICATIONS_TO_CHECK);
-      console.log('[Dashboard] Checking', notificationsToCheck.length, 'notifications (max', MAX_NOTIFICATIONS_TO_CHECK, ')');
 
       // Early return if no notifications to check
       if (notificationsToCheck.length === 0) {
-        console.log('[Dashboard] No notifications to check, setting count to 0');
         setNewResponsesCount(0);
         return;
       }
 
       // Fetch details for limited notifications to get actual responses with timestamps
       // Use Promise.allSettled to handle individual failures gracefully
-      console.log('[Dashboard] Fetching notification details...');
-      const detailsStartTime = performance.now();
       const notificationDetailsPromises = notificationsToCheck.map(notification =>
         notificationsAPI.getById(notification.id).catch((err) => {
           console.warn('[Dashboard] Failed to fetch notification', notification.id, ':', err);
@@ -494,12 +385,9 @@ const Dashboard = () => {
       );
 
       const detailsResults = await Promise.allSettled(notificationDetailsPromises);
-      const detailsEndTime = performance.now();
-      console.log('[Dashboard] Notification details fetched in', (detailsEndTime - detailsStartTime).toFixed(2), 'ms');
 
       // Check each notification's responses for new ones
-      console.log('[Dashboard] Checking responses for new ones...');
-      detailsResults.forEach((result, index) => {
+      detailsResults.forEach((result) => {
         // Handle Promise.allSettled result structure
         const response = result.status === 'fulfilled' ? result.value : null;
         if (response && response.data && response.data.success && response.data.data) {
@@ -510,35 +398,67 @@ const Dashboard = () => {
                 const responseTime = new Date(responseItem.responded_at);
                 if (responseTime > lastVisit) {
                   newCount++;
-                  console.log('[Dashboard] Found new response for notification', notification.id, 'at', responseItem.responded_at);
                 }
               }
             });
           }
-        } else if (result.status === 'rejected') {
-          console.warn('[Dashboard] Notification', index, 'fetch was rejected:', result.reason);
         }
       });
 
-      console.log('[Dashboard] Total new responses found:', newCount);
       setNewResponsesCount(newCount);
-      const checkEndTime = performance.now();
-      console.log('[Dashboard] checkNewResponses COMPLETED in', (checkEndTime - checkStartTime).toFixed(2), 'ms');
     } catch (error) {
-      const checkEndTime = performance.now();
-      console.error('[Dashboard] checkNewResponses ERROR after', (checkEndTime - checkStartTime).toFixed(2), 'ms');
       console.error('[Dashboard] Error checking new responses:', error);
       setNewResponsesCount(0);
+    }
+  }, []);
+
+  // Check for new requests since last visit
+  const checkNewRequests = useCallback(async (requestsList) => {
+    try {
+      const lastVisitTime = localStorage.getItem('requests_last_visit');
+      
+      let newCount = 0;
+      let pendingCount = 0;
+
+      if (requestsList.length === 0) {
+        setNewRequestsCount(0);
+        setPendingRequestsCount(0);
+        return;
+      }
+
+      const lastVisit = lastVisitTime ? new Date(lastVisitTime) : null;
+
+      // Count new requests and pending requests
+      requestsList.forEach(request => {
+        // Count pending requests (without response)
+        if (request.status === 'pending') {
+          pendingCount++;
+        }
+
+        // Count new requests created since last visit
+        if (lastVisit && request.created_at) {
+          const requestTime = new Date(request.created_at);
+          if (requestTime > lastVisit) {
+            newCount++;
+          }
+        }
+      });
+
+      setNewRequestsCount(newCount);
+      setPendingRequestsCount(pendingCount);
+    } catch (error) {
+      console.error('[Dashboard] Error checking new requests:', error);
+      setNewRequestsCount(0);
+      setPendingRequestsCount(0);
     }
   }, []);
 
 
   const checkMonthlyDocuments = (documents, branchesList) => {
     const alerts = [];
-    const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
+    const monthlyTypes = ['payroll_file', 'salary_deposit_file'];
     const typeLabels = {
       payroll_file: ' مسيرات الرواتب',
-      attendance_file: ' الحضور و الانصراف',
       salary_deposit_file: ' ايداع الرواتب (التحويلات البنكية)'
     };
 
@@ -721,7 +641,6 @@ const Dashboard = () => {
       free_seats: 'المقاعد المتاحة',
       acceptance_notifications: 'إشعارات القبول',
       payroll_file: ' مسيرات الرواتب',
-      attendance_file: ' الحضور و الانصراف',
       salary_deposit_file: ' ايداع الرواتب (التحويلات البنكية)'
     };
 
@@ -779,7 +698,7 @@ const Dashboard = () => {
     const sortAlerts = (alerts) => {
       return alerts.sort((a, b) => {
         // Priority order: 1) Monthly (highest), 2) Student/Cadre, 3) Others
-        const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
+        const monthlyTypes = ['payroll_file', 'salary_deposit_file'];
         const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
 
         const aIsMonthly = monthlyTypes.includes(a.documentType);
@@ -927,10 +846,9 @@ const Dashboard = () => {
 
   // Get monthly documents status for display
   const getMonthlyDocumentsSummary = () => {
-    const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
+    const monthlyTypes = ['payroll_file', 'salary_deposit_file'];
     const typeLabels = {
       payroll_file: ' مسيرات الرواتب',
-      attendance_file: ' الحضور و الانصراف',
       salary_deposit_file: ' ايداع الرواتب (التحويلات البنكية)'
     };
 
@@ -993,6 +911,20 @@ const Dashboard = () => {
           : `${branches.find(b => b.id === user?.branch_id)?.branch_name || 'غير محدد'}`
         }
       </p>
+
+      {/* Missing employee data quick-fill (dates + qualification doc notice) */}
+      {!isMainManager() && (
+        <div className="dashboard-section">
+          <MissingEmployeeDataSection />
+        </div>
+      )}
+
+      {/* Payroll Absence Section for branch managers (inline, not a separate page) */}
+      {!isMainManager() && (
+        <div className="dashboard-section">
+          <PayrollAbsenceBranchSection />
+        </div>
+      )}
 
       {/* Notifications Section - Only for branch managers */}
       {!isMainManager() && notifications.length > 0 && (
@@ -1190,6 +1122,7 @@ const Dashboard = () => {
         />
       )}
 
+
       {/* 1. Branch Info Alert - Highest Priority - Only for branch managers */}
       {!isMainManager() && branchInfo && (!branchInfo.phone_number || !branchInfo.email) && (
         <div className="dashboard-alert-section priority-1">
@@ -1239,18 +1172,20 @@ const Dashboard = () => {
           }
         });
 
-        // 2. Add monthly document alerts (must be uploaded monthly)
-        monthlyDocumentAlerts.forEach(alert => {
-          const key = `${alert.branchId}-${alert.documentType}`;
-          if (!seenDocsWithExpiry.has(key)) {
-            seenDocsWithExpiry.add(key);
-            allDocsWithExpiry.push({
-              ...alert,
-              alertType: 'monthly',
-              documentLabel: alert.documentLabel
-            });
-          }
-        });
+        // 2. Add monthly document alerts (must be uploaded monthly) - exclude payroll_file
+        monthlyDocumentAlerts
+          .filter(alert => alert.documentType !== 'payroll_file')
+          .forEach(alert => {
+            const key = `${alert.branchId}-${alert.documentType}`;
+            if (!seenDocsWithExpiry.has(key)) {
+              seenDocsWithExpiry.add(key);
+              allDocsWithExpiry.push({
+                ...alert,
+                alertType: 'monthly',
+                documentLabel: alert.documentLabel
+              });
+            }
+          });
 
         // 3. Add missing documents that require expiry dates
         missingBranchDocumentAlertsWithExpiry.forEach(alert => {
@@ -1492,11 +1427,64 @@ const Dashboard = () => {
             </div>
 
             <div className="stat-card">
-              <h3>إنشاء تقارير</h3>
-              <div className="stat-number">
-                <img src="https://img.icons8.com/48/bar-chart.png" alt="رسم بياني" style={{ width: '48px', height: '48px' }} />
+              <h3>طلبات الفروع</h3>
+              <div className="stat-number" style={{ position: 'relative' }}>
+                {requests.length}
+                {(newRequestsCount > 0 || pendingRequestsCount > 0) && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '-8px',
+                      right: '-8px',
+                      backgroundColor: '#F44336',
+                      color: 'white',
+                      borderRadius: '50%',
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                    }}
+                    title={`${newRequestsCount > 0 ? newRequestsCount + ' طلب جديد' : ''}${newRequestsCount > 0 && pendingRequestsCount > 0 ? '، ' : ''}${pendingRequestsCount > 0 ? pendingRequestsCount + ' طلب بلا رد' : ''}`}
+                  >
+                    {(newRequestsCount + pendingRequestsCount) > 9 ? '9+' : (newRequestsCount + pendingRequestsCount)}
+                  </span>
+                )}
               </div>
-              <Link to="/reports" className="stat-link btn-stat-link">إنشاء تقرير ←</Link>
+              {newRequestsCount > 0 && (
+                <div style={{
+                  fontSize: '12px',
+                  color: '#F44336',
+                  marginBottom: '4px',
+                  fontWeight: '500'
+                }}>
+                  {newRequestsCount} طلب جديد منذ آخر زيارة
+                </div>
+              )}
+              {pendingRequestsCount > 0 && (
+                <div style={{
+                  fontSize: '12px',
+                  color: '#FF9800',
+                  marginBottom: newRequestsCount > 0 ? '4px' : '8px',
+                  fontWeight: '500'
+                }}>
+                  {pendingRequestsCount} طلب بلا رد
+                </div>
+              )}
+              <Link
+                to="/manage-requests"
+                className="stat-link btn-stat-link"
+                onClick={() => {
+                  // Update last visit time when clicking the link
+                  localStorage.setItem('requests_last_visit', new Date().toISOString());
+                  setNewRequestsCount(0);
+                }}
+              >
+                عرض الكل ←
+              </Link>
             </div>
 
             <div className="stat-card">

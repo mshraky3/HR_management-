@@ -209,7 +209,6 @@ export const DOCUMENT_TYPE_RULES = {
  */
 export const MONTHLY_BRANCH_DOCUMENTS = [
   'payroll_file',
-  'attendance_file',
   'salary_deposit_file'
 ];
 
