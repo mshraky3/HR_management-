@@ -280,7 +280,8 @@ router.get('/missing-required-data', requireManager, async (req, res) => {
 });
 
 // Configure multer for qualification upload within this endpoint
-const tempStorage = multer({ dest: 'uploads/' });
+// In serverless (e.g., Vercel) the filesystem is read-only except /tmp
+const tempStorage = multer({ dest: '/tmp/uploads' });
 
 router.post('/missing-required-data', requireManager, tempStorage.any(), async (req, res) => {
   try {
