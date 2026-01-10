@@ -93,7 +93,7 @@
 
 .dropdown-toggle.active {
   background: var(--primary);
-  color: #2c3e3a;
+  color: #ffffff;
   box-shadow: var(--shadow-md);
 }
 
@@ -154,7 +154,7 @@
 
 .dropdown-menu a.active {
   background: var(--primary);
-  color: #2c3e3a;
+  color: #ffffff;
   font-weight: 600;
 }
 

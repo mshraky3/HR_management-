@@ -6,9 +6,5 @@
 
 .branch-badge-name {
     font-weight: 600;
-    color: #333;
-}
-
-.branch-badge-swatch {
-    border: 1px solid rgba(0, 0, 0, 0.06);
+    color: var(--text);
 }

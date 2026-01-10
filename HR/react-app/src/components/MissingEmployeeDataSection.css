@@ -1,0 +1,240 @@
+/* Missing Employee Data Section - No Hover/Scale Effects */
+.missing-data-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm, 0 10px 30px rgba(0,0,0,0.04));
+  transition: none;
+  transform: none;
+}
+
+.missing-data-card:hover {
+  box-shadow: var(--shadow-sm, 0 10px 30px rgba(0,0,0,0.04));
+  transform: none;
+  border-color: #e5e7eb;
+  scale: 1;
+}
+
+.missing-data-card h2 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+}
+
+.missing-data-table-wrapper {
+  overflow-x: auto;
+  transition: none;
+  transform: none;
+  position: relative;
+}
+
+.missing-data-table-wrapper:hover {
+  transform: none;
+  scale: 1;
+}
+
+.missing-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  transition: none;
+  transform: none;
+  overflow: visible;
+}
+
+.missing-data-table:hover {
+  transform: none;
+  scale: 1;
+}
+
+.missing-data-table th,
+.missing-data-table td {
+  border: 1px solid #e5e7eb;
+  padding: 8px;
+  text-align: right;
+  vertical-align: top;
+  transition: none;
+  transform: none;
+  position: relative;
+  overflow: visible;
+}
+
+.missing-data-table th {
+  background: #f5f6f8;
+}
+
+.missing-data-table th:hover {
+  background: #f5f6f8;
+  transform: none;
+  scale: 1;
+}
+
+.missing-data-table td:hover {
+  transform: none;
+  scale: 1;
+}
+
+.missing-data-table tbody tr {
+  transition: none;
+  transform: none;
+  overflow: visible;
+}
+
+.text-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.text-input.input-error {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.missing-data-table tbody tr:hover {
+  background: transparent;
+  background-color: transparent;
+  transform: none;
+  scale: 1;
+}
+
+.subtext {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.qual-upload {
+  display: flex !important;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  width: 100%;
+  max-width: 200px;
+}
+
+.qual-upload input[type="file"] {
+  width: 100%;
+  max-width: 200px;
+  font-size: var(--font-size-xs);
+  padding: var(--spacing-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.qual-upload label {
+  font-size: var(--font-size-xs);
+  margin-bottom: var(--spacing-xs);
+}
+
+.missing-data-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+  transition: none;
+  transform: none;
+}
+
+.missing-data-actions:hover {
+  transform: none;
+  scale: 1;
+}
+
+/* Disable ALL hover, scale, and transform effects for ALL elements within this component */
+.missing-data-card * {
+  transition: none !important;
+}
+
+.missing-data-card *:hover {
+  transform: none !important;
+  scale: 1 !important;
+}
+
+/* Specific overrides for buttons */
+.missing-data-card .btn,
+.missing-data-card .btn-primary,
+.missing-data-card .btn-secondary,
+.missing-data-card .btn-success,
+.missing-data-card .btn-danger,
+.missing-data-card .btn-warning {
+  transition: none !important;
+  transform: none !important;
+}
+
+.missing-data-card .btn:hover,
+.missing-data-card .btn-primary:hover,
+.missing-data-card .btn-secondary:hover,
+.missing-data-card .btn-success:hover,
+.missing-data-card .btn-danger:hover,
+.missing-data-card .btn-warning:hover {
+  transform: none !important;
+  scale: 1 !important;
+  box-shadow: inherit !important;
+}
+
+.missing-data-card .btn:active,
+.missing-data-card .btn-primary:active,
+.missing-data-card .btn-secondary:active {
+  transform: none !important;
+  scale: 1 !important;
+}
+
+/* Specific overrides for badges */
+.missing-data-card .badge,
+.missing-data-card .badge-warning,
+.missing-data-card .badge-success {
+  transition: none !important;
+  transform: none !important;
+}
+
+.missing-data-card .badge:hover,
+.missing-data-card .badge-warning:hover,
+.missing-data-card .badge-success:hover {
+  transform: none !important;
+  scale: 1 !important;
+}
+
+/* Specific overrides for form elements and date pickers */
+.missing-data-card input,
+.missing-data-card select,
+.missing-data-card textarea,
+.missing-data-card button,
+.missing-data-card [class*="date-picker"],
+.missing-data-card [class*="DatePicker"],
+.missing-data-card [class*="unified"] {
+  transition: none !important;
+  transform: none !important;
+}
+
+.missing-data-card input:hover,
+.missing-data-card select:hover,
+.missing-data-card textarea:hover,
+.missing-data-card button:hover,
+.missing-data-card [class*="date-picker"]:hover,
+.missing-data-card [class*="DatePicker"]:hover,
+.missing-data-card [class*="unified"]:hover {
+  transform: none !important;
+  scale: 1 !important;
+}
+
+.missing-data-card input:focus,
+.missing-data-card select:focus,
+.missing-data-card textarea:focus {
+  transform: none !important;
+  scale: 1 !important;
+}
+
+/* Disable any animation or transition effects */
+@keyframes none {
+  from { transform: none; }
+  to { transform: none; }
+}
+
+.missing-data-card,
+.missing-data-card * {
+  animation: none !important;
+}

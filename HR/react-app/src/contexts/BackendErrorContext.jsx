@@ -38,7 +38,6 @@ export const BackendErrorProvider = ({ children }) => {
   }, []);
 
   const clearBackendError = useCallback(() => {
-    console.log('Clearing backend error state - attempting to reconnect');
     setError(null);
     setIsBackendDown(false);
   }, []);

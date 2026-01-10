@@ -60,19 +60,6 @@ const BranchManagerLayout = ({ children }) => {
         { path: '/employees', label: 'موظفي الفرع' },
         { path: '/reports', label: 'إصدار التقارير' },
       ]
-    },
-    documents: {
-      label: 'المستندات',
-      items: [
-        { path: '/monthly-documents', label: 'المستندات الشهرية' },
-        { path: '/branch-documents', label: 'مستندات الفرع' },
-      ]
-    },
-    requests: {
-      label: 'الطلبات',
-      items: [
-        { path: '/branch-requests', label: 'طلبات' },
-      ]
     }
   };
 
@@ -117,6 +104,21 @@ const BranchManagerLayout = ({ children }) => {
               </div>
             </div>
           ))}
+          {/* Direct navigation links (moved from documents dropdown) */}
+          <Link
+            to="/branch-documents"
+            className={`nav-link ${isActive('/branch-documents')}`}
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            مستندات الفرع
+          </Link>
+          <Link
+            to="/branch-requests"
+            className={`nav-link ${isActive('/branch-requests')}`}
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            طلبات
+          </Link>
         </div>
         <div className="nav-user">
           {/* Notification Bell */}

@@ -71,29 +71,34 @@ const Layout = ({ children }) => {
     employees: {
       label: 'الموظفين',
       items: [
-        { path: '/employees', label: 'قائمة الموظفين' },
+        { path: '/employees', label: 'البحث عن موظف' },
+        { path: '/payroll-absence-admin', label: 'المسيرات' },
+      ]
+    },
+    reports: {
+      label: 'التقارير',
+      items: [
         { path: '/employee-file', label: 'ملف موظف' },
         { path: '/reports', label: 'إصدار التقارير' },
-        { path: '/payrolls', label: 'المسيرات' },
-        { path: '/manage-requests', label: 'إدارة الطلبات' },
+        { path: '/payrolls', label: 'التقارير' },
       ]
     },
     monitoring: {
       label: 'المتابعة والمراقبة',
       items: [
         { path: '/branches-monitoring', label: 'الفروع' },
-        { path: '/monthly-documents', label: 'المستندات الشهرية' },
         { path: '/branch-statistics', label: 'إحصائيات الفروع' },
-        { path: '/notify-branches', label: 'إشعار الفروع' },
-        { path: '/direct-contact', label: 'التواصل المباشر' },
+        { path: '/term-management', label: 'إدارة الفصول' },
         { path: '/fix-missing-dates', label: 'البيانات غير الدقيقة' },
         { path: '/archive', label: 'الأرشيف' },
       ]
     },
-    academic: {
-      label: 'السنة الدراسية',
+    communication: {
+      label: 'التواصل',
       items: [
-        { path: '/term-management', label: 'إدارة الفصول' },
+        { path: '/manage-requests', label: 'إدارة الطلبات' },
+        { path: '/notify-branches', label: 'إشعار الفروع' },
+        { path: '/direct-contact', label: 'التواصل المباشر' },
       ]
     }
   };
