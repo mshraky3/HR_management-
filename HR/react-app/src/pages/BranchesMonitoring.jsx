@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import BranchBadge from '../components/BranchBadge';
 import { getRequiredBranchDocuments, getBranchTypeLabel, getMonthlyRequiredBranchDocuments } from '../utils/employeeHelpers';
+import { DATA_COMPLETION_STATUS } from '../utils/employeeConstants';
 import { calculateEmployeeCompletion } from '../utils/dataCompletionUtils';
 import { formatDate } from '../utils/dateConverters';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
