@@ -5,17 +5,372 @@
 
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { checkBranchAccess } from '../middleware/authorization.js';
+import { checkBranchAccess, requireMainManager, requireManager } from '../middleware/authorization.js';
 import { validateRequired, validateEmployeeName, validateEmail } from '../middleware/validation.js';
 import { validateDateFields } from '../middleware/dateValidation.js';
 import { Document } from '../models/Document.js';
+import { sql } from '../db-helpers.js';
 import { log } from '../utils/logger.js';
 import { clearByPrefix } from '../utils/simpleCache.js';
+import multer from 'multer';
+import path from 'path';
 
 const router = express.Router();
 
+const employeeHasBranchAccess = (employee, branchId) => {
+  if (!employee || !branchId) return false;
+  if (employee.branch_id && employee.branch_id.toString() === branchId.toString()) return true;
+  if (Array.isArray(employee.branches)) {
+    return employee.branches.some(b => b.branch_id && b.branch_id.toString() === branchId.toString());
+  }
+  return false;
+};
+
 // All routes require authentication
 router.use(authenticate);
+
+// List duplicate clusters (main manager only)
+router.get('/duplicates', requireMainManager, async (req, res) => {
+  try {
+    const { Employee } = await import('../models/Employee.js');
+    const clusters = await Employee.findDuplicateClusters();
+    return res.json({ success: true, data: clusters });
+  } catch (error) {
+    log.error('Error listing duplicate employees', { error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'فشل جلب الموظفين المكررين',
+      error: error.message
+    });
+  }
+});
+
+// Merge duplicate employees into canonical (main manager only)
+router.post('/merge-duplicates', requireMainManager, async (req, res) => {
+  try {
+    const { canonical_id: canonicalId, duplicate_ids: duplicateIds } = req.body;
+    if (!canonicalId || !Array.isArray(duplicateIds) || duplicateIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'يجب تحديد معرف الموظف الأساسي وقائمة المعرفات المكررة'
+      });
+    }
+    const { Employee } = await import('../models/Employee.js');
+    const merged = await Employee.mergeEmployees(parseInt(canonicalId), duplicateIds);
+    return res.json({ success: true, data: merged, message: 'تم دمج السجلات المكررة' });
+  } catch (error) {
+    log.error('Error merging duplicate employees', { error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'فشل دمج الموظفين المكررين',
+      error: error.message
+    });
+  }
+});
+
+// List employees that have multiple documents of the same type (main manager only)
+router.get('/duplicate-documents', requireMainManager, async (req, res) => {
+  try {
+    const { limit = 100, offset = 0 } = req.query;
+    const docTypesAllowedMultiple = [
+      'training_certificate',
+      'experience_certificate',
+      'additional_courses',
+      'other'
+    ];
+
+    const rows = await sql`
+      SELECT employee_id, document_type, COUNT(*) as doc_count,
+             array_agg(json_build_object(
+               'id', id,
+               'file_name', file_name,
+               'uploaded_at', uploaded_at,
+               'is_active', is_active
+             )) AS documents
+      FROM employee_documents
+      WHERE is_active = true
+      GROUP BY employee_id, document_type
+      HAVING COUNT(*) > 1
+      ORDER BY employee_id
+      LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
+    `;
+
+    // Filter out allowed-multiple types
+    const data = rows.filter(row => !docTypesAllowedMultiple.includes(row.document_type));
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    log.error('Error listing duplicate documents', { error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'فشل جلب المستندات المكررة',
+      error: error.message
+    });
+  }
+});
+
+// Merge duplicate documents for an employee (keep newest by uploaded_at)
+router.post('/merge-duplicate-documents', requireMainManager, async (req, res) => {
+  try {
+    const { employee_id: employeeId, document_type: documentType, keep_id: keepId } = req.body;
+    if (!employeeId || !documentType || !keepId) {
+      return res.status(400).json({
+        success: false,
+        message: 'يجب تحديد الموظف، نوع المستند، ومعرف المستند المراد الاحتفاظ به'
+      });
+    }
+
+    // Allowed multiple types are skipped from merge
+    const docTypesAllowedMultiple = [
+      'training_certificate',
+      'experience_certificate',
+      'additional_courses',
+      'other'
+    ];
+    if (docTypesAllowedMultiple.includes(documentType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'هذا النوع يسمح بتعدد المستندات ولن يتم دمجه'
+      });
+    }
+
+    await sql.begin(async (trx) => {
+      // Deactivate or delete other docs of same type for this employee
+      await trx`
+        DELETE FROM employee_documents
+        WHERE employee_id = ${employeeId}
+          AND document_type = ${documentType}
+          AND id != ${keepId}
+      `;
+      // Ensure kept doc is active
+      await trx`
+        UPDATE employee_documents
+        SET is_active = true
+        WHERE id = ${keepId}
+      `;
+    });
+
+    return res.json({ success: true, message: 'تم دمج المستندات المكررة لهذا النوع' });
+  } catch (error) {
+    log.error('Error merging duplicate documents', { error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'فشل دمج المستندات المكررة',
+      error: error.message
+    });
+  }
+});
+
+// List employees with medical insurance docs while contract_type = 'ورقي'
+router.get('/paper-contract-insurance', requireMainManager, async (req, res) => {
+  try {
+    const docType = req.query.doc_type || 'تأمين طبي';
+    const rows = await sql`
+      SELECT e.id AS employee_id,
+             e.first_name, e.second_name, e.third_name, e.fourth_name,
+             e.contract_type,
+             array_agg(json_build_object('id', d.id, 'file_name', d.file_name, 'uploaded_at', d.uploaded_at)) AS documents
+      FROM employees e
+      INNER JOIN employee_documents d ON d.employee_id = e.id
+      WHERE e.contract_type = 'ورقي'
+        AND d.document_type = ${docType}
+        AND d.is_active = true
+      GROUP BY e.id
+      ORDER BY e.id
+    `;
+    return res.json({ success: true, data: rows });
+  } catch (error) {
+    log.error('Error listing paper contract insurance docs', { error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'فشل جلب المستندات غير المطلوبة',
+      error: error.message
+    });
+  }
+});
+
+// Delete medical insurance docs for paper contract employees (bulk)
+router.post('/paper-contract-insurance/delete', requireMainManager, async (req, res) => {
+  try {
+    const { employee_ids: employeeIds = [], doc_type: docType = 'تأمين طبي' } = req.body;
+    const ids = Array.isArray(employeeIds) ? employeeIds.map(id => parseInt(id)).filter(Boolean) : [];
+    if (ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'يجب تحديد الموظفين'
+      });
+    }
+
+    await sql.begin(async (trx) => {
+      await trx`
+        DELETE FROM employee_documents
+        WHERE employee_id = ANY(${ids})
+          AND document_type = ${docType}
+      `;
+    });
+
+    return res.json({ success: true, message: 'تم حذف مستندات التأمين الطبي للموظفين المحددين' });
+  } catch (error) {
+    log.error('Error deleting paper contract insurance docs', { error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'فشل حذف المستندات',
+      error: error.message
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Missing required data (contract dates + qualification doc)
+// ---------------------------------------------------------------------------
+const QUAL_DOC_LEVELS = ['دبلوم', 'بكالوريوس', 'ماجستير', 'دكتوراه'];
+
+router.get('/missing-required-data', requireManager, async (req, res) => {
+  try {
+    const branchFilter = req.user.role === 'branch_manager' ? req.user.branch_id : (req.query.branch_id ? parseInt(req.query.branch_id) : null);
+    const rows = await sql`
+      WITH qual_docs AS (
+        SELECT employee_id, COUNT(*) FILTER (WHERE document_type = 'primary_qualification' AND is_active = true) AS qual_count
+        FROM employee_documents
+        GROUP BY employee_id
+      )
+      SELECT
+        e.id,
+        e.branch_id,
+        b.branch_name,
+        e.first_name, e.second_name, e.third_name, e.fourth_name,
+        e.employee_id_number,
+        e.educational_qualification,
+        e.contract_start_date_hijri,
+        e.contract_start_date_gregorian,
+        e.contract_end_date_hijri,
+        e.contract_end_date_gregorian,
+        (e.contract_start_date_gregorian IS NULL) AS missing_start,
+        (e.contract_end_date_gregorian IS NULL) AS missing_end,
+        (
+          e.educational_qualification IN ${sql(QUAL_DOC_LEVELS)}
+          AND COALESCE(q.qual_count, 0) = 0
+        ) AS missing_qualification_doc
+      FROM employees e
+      LEFT JOIN branches b ON b.id = e.branch_id
+      LEFT JOIN qual_docs q ON q.employee_id = e.id
+      WHERE e.is_active = true
+        AND (e.status IS NULL OR e.status IN ('active','pending'))
+        ${branchFilter ? sql`AND e.branch_id = ${branchFilter}` : sql``}
+        AND (
+          e.contract_start_date_gregorian IS NULL
+          OR e.contract_end_date_gregorian IS NULL
+          OR (
+            e.educational_qualification IN ${sql(QUAL_DOC_LEVELS)}
+            AND COALESCE(q.qual_count, 0) = 0
+          )
+        )
+      ORDER BY e.branch_id, e.id
+    `;
+
+    return res.json({ success: true, data: rows, has_missing: rows.length > 0 });
+  } catch (error) {
+    log.error('Error fetching missing required data', { error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'فشل جلب البيانات الناقصة',
+      error: error.message
+    });
+  }
+});
+
+// Configure multer for qualification upload within this endpoint
+const tempStorage = multer({ dest: 'uploads/' });
+
+router.post('/missing-required-data', requireManager, tempStorage.any(), async (req, res) => {
+  try {
+    // Multer may attach files; ensure req.files exists
+    const files = req.files || {};
+
+    const entriesRaw = req.body.entries;
+    let entries = [];
+    if (typeof entriesRaw === 'string') {
+      try {
+        entries = JSON.parse(entriesRaw);
+      } catch (e) {
+        entries = [];
+      }
+    } else if (Array.isArray(entriesRaw)) {
+      entries = entriesRaw;
+    }
+    if (entries.length === 0) {
+      return res.status(400).json({ success: false, message: 'لا توجد بيانات للحفظ' });
+    }
+
+    await sql.begin(async (trx) => {
+      for (const entry of entries) {
+        const employeeId = parseInt(entry.employee_id);
+        if (!employeeId) continue;
+
+        const [employee] = await trx`SELECT * FROM employees WHERE id = ${employeeId}`;
+        if (!employee) continue;
+
+        // Access control for branch managers
+        if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
+          continue;
+        }
+
+        const updates = {};
+        if (entry.contract_start_date_gregorian) updates.contract_start_date_gregorian = entry.contract_start_date_gregorian;
+        if (entry.contract_start_date_hijri) updates.contract_start_date_hijri = entry.contract_start_date_hijri;
+        if (entry.contract_end_date_gregorian) updates.contract_end_date_gregorian = entry.contract_end_date_gregorian;
+        if (entry.contract_end_date_hijri) updates.contract_end_date_hijri = entry.contract_end_date_hijri;
+
+        if (Object.keys(updates).length > 0) {
+          updates.updated_at = new Date();
+          await trx`
+            UPDATE employees
+            SET ${sql(updates)}
+            WHERE id = ${employeeId}
+          `;
+        }
+
+        // Handle uploaded qualification file from multipart (if any)
+        // Files are named file_<index> with accompanying file_employee_<index>
+        if (files) {
+          for (const [fieldName, fileArr] of Object.entries(files)) {
+            if (!fieldName.startsWith('file_')) continue;
+            const idx = fieldName.replace('file_', '');
+            const targetEmployeeId = parseInt(req.body[`file_employee_${idx}`]);
+            if (targetEmployeeId !== employeeId) continue;
+            const file = Array.isArray(fileArr) ? fileArr[0] : fileArr;
+            if (!file) continue;
+            const filePath = file.path;
+            const fileName = file.originalname;
+            const mimeType = file.mimetype;
+            const fileSize = file.size;
+            const extension = (file.originalname.split('.').pop() || '').toLowerCase();
+
+            await trx`
+              INSERT INTO employee_documents (
+                employee_id, document_type, file_name, file_path, file_size,
+                mime_type, file_extension, is_active, uploaded_at
+              )
+              VALUES (
+                ${employeeId}, 'primary_qualification', ${fileName}, ${filePath}, ${fileSize},
+                ${mimeType}, ${extension}, true, CURRENT_TIMESTAMP
+              )
+            `;
+          }
+        }
+      }
+    });
+
+    return res.json({ success: true, message: 'تم حفظ البيانات الناقصة' });
+  } catch (error) {
+    log.error('Error saving missing required data', { error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'فشل حفظ البيانات',
+      error: error.message
+    });
+  }
+});
 
 // Get employees with server-side pagination (optimized for large datasets)
 router.get('/paginated', async (req, res) => {
@@ -167,8 +522,8 @@ router.get('/:id/documents', async (req, res) => {
       });
     }
 
-    // Check branch access
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
+    // Check branch access (multi-branch aware)
+    if (req.user.role === 'branch_manager' && !employeeHasBranchAccess(employee, req.user.branch_id)) {
       return res.status(403).json({
         success: false,
         message: 'تم رفض الوصول'
@@ -342,16 +697,29 @@ router.post('/',
     'id_expiry_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false }
   }),
   async (req, res) => {
+    console.log('========================================');
+    console.log('[EMPLOYEE CREATE] Starting employee creation');
+    console.log('[EMPLOYEE CREATE] User:', { id: req.user.id, role: req.user.role, branch_id: req.user.branch_id });
+    console.log('[EMPLOYEE CREATE] Request body keys:', Object.keys(req.body));
+    console.log('[EMPLOYEE CREATE] Employee ID/Residency:', req.body.id_or_residency_number);
+    console.log('[EMPLOYEE CREATE] Name:', `${req.body.first_name} ${req.body.second_name} ${req.body.third_name} ${req.body.fourth_name}`);
+    console.log('[EMPLOYEE CREATE] Branch ID from body:', req.body.branch_id);
+    
     try {
       const { Employee } = await import('../models/Employee.js');
       const { updateEmployeeCompletionStatus } = await import('../utils/employeeDataCompletion.js');
       const { isSaudi } = await import('../utils/employeeHelpers.js');
 
+      console.log('[EMPLOYEE CREATE] Imports loaded successfully');
+
       // Date validation is handled by validateDateFields middleware
+      console.log('[EMPLOYEE CREATE] Date validation passed');
 
       // For branch managers, force branch_id to their branch (prevent manipulation)
       if (req.user.role === 'branch_manager') {
+        console.log('[EMPLOYEE CREATE] Branch manager detected - checking branch access');
         if (req.body.branch_id && req.body.branch_id !== req.user.branch_id) {
+          console.log('[EMPLOYEE CREATE] ERROR: Branch manager trying to add employee to different branch');
           return res.status(403).json({
             success: false,
             message: 'You can only add employees to your own branch'
@@ -359,9 +727,11 @@ router.post('/',
         }
         // Force branch_id to their branch
         req.body.branch_id = req.user.branch_id;
+        console.log('[EMPLOYEE CREATE] Branch ID forced to:', req.body.branch_id);
       }
 
       // Date normalization is handled by validateDateFields middleware
+      console.log('[EMPLOYEE CREATE] Starting field length validation');
 
       // Validate field lengths before insertion
       const fieldLengths = {
@@ -385,85 +755,123 @@ router.post('/',
 
       for (const [field, maxLength] of Object.entries(fieldLengths)) {
         if (req.body[field] && typeof req.body[field] === 'string' && req.body[field].length > maxLength) {
+          console.log('[EMPLOYEE CREATE] ERROR: Field length validation failed:', field, 'length:', req.body[field].length, 'max:', maxLength);
           return res.status(400).json({
             success: false,
             message: `الحقل "${field}" يتجاوز الحد الأقصى لعدد الأحرف (${maxLength} حرف)`
           });
         }
       }
+      console.log('[EMPLOYEE CREATE] Field length validation passed');
 
       // Set created_by to branch_id (never null)
       // For branch managers: use their branch_id
       // For main managers: use the employee's branch_id
       let createdByBranchId = req.body.branch_id;
+      console.log('[EMPLOYEE CREATE] Initial createdByBranchId:', createdByBranchId);
 
       // If branch manager, force to their branch_id
       if (req.user.role === 'branch_manager' && req.user.branch_id) {
         createdByBranchId = req.user.branch_id;
+        console.log('[EMPLOYEE CREATE] Updated createdByBranchId for branch manager:', createdByBranchId);
       }
 
       // Ensure branch_id is set (should never be null at this point)
       if (!createdByBranchId) {
+        console.log('[EMPLOYEE CREATE] ERROR: createdByBranchId is null or undefined');
         return res.status(400).json({
           success: false,
           message: 'لا يمكن تحديد الفرع. الرجاء المحاولة مرة أخرى.'
         });
       }
+      console.log('[EMPLOYEE CREATE] Final createdByBranchId:', createdByBranchId);
 
       // Check if this is linking to an existing employee (via existing_employee_id)
       if (req.body.existing_employee_id && req.body.link_to_branch) {
+        console.log('[EMPLOYEE CREATE] Linking to existing employee:', req.body.existing_employee_id);
         const existingEmployeeId = parseInt(req.body.existing_employee_id);
         const linkBranchId = req.body.link_to_branch === 'true' ? createdByBranchId : null;
 
         if (linkBranchId) {
           try {
+            console.log('[EMPLOYEE CREATE] Attempting to link employee to branch');
             await Employee.linkToBranch(existingEmployeeId, linkBranchId, createdByBranchId);
             const updatedEmployee = await Employee.findById(existingEmployeeId);
             clearByPrefix(`dashboard:summary:${linkBranchId}`);
             clearByPrefix('branch-statistics');
+            console.log('[EMPLOYEE CREATE] Successfully linked existing employee to branch');
             return res.status(200).json({ 
               success: true, 
               data: updatedEmployee,
               message: 'تم ربط الموظف بالفرع الجديد بنجاح'
             });
           } catch (linkError) {
+            console.log('[EMPLOYEE CREATE] WARNING: Could not link employee to branch:', linkError.message);
             log.warn('Could not link employee to branch (table may not exist)', { error: linkError.message });
           }
         }
       }
 
+      console.log('[EMPLOYEE CREATE] Creating new employee in database...');
+      console.log('[EMPLOYEE CREATE] Employee data being sent to model:', {
+        employee_id_number: req.body.employee_id_number,
+        branch_id: req.body.branch_id,
+        first_name: req.body.first_name,
+        id_or_residency_number: req.body.id_or_residency_number,
+        created_by: createdByBranchId,
+        updated_by: createdByBranchId,
+        contract_start_date_hijri: req.body.contract_start_date_hijri,
+        contract_end_date_hijri: req.body.contract_end_date_hijri
+      });
+      
       const employee = await Employee.create({
         ...req.body,
         created_by: createdByBranchId,
         updated_by: createdByBranchId, // For new records, updated_by = created_by
         data_completion_status: 'incomplete' // Default to incomplete
       });
+      
+      console.log('[EMPLOYEE CREATE] Employee created successfully with ID:', employee.id);
 
       // Link employee to branch in employee_branches table
       try {
+        console.log('[EMPLOYEE CREATE] Linking employee to branch in employee_branches table');
         await Employee.linkToBranch(employee.id, createdByBranchId, createdByBranchId);
+        console.log('[EMPLOYEE CREATE] Successfully linked employee to branch');
       } catch (linkError) {
+        console.log('[EMPLOYEE CREATE] WARNING: Could not link employee to branch (table may not exist yet):', linkError.message);
         log.warn('Could not link employee to branch (table may not exist yet)', { error: linkError.message });
       }
 
       // Check and update completion status
       try {
+        console.log('[EMPLOYEE CREATE] Updating employee completion status');
         await updateEmployeeCompletionStatus(employee.id);
         // Reload employee to get updated status
         const updatedEmployee = await Employee.findById(employee.id);
+        console.log('[EMPLOYEE CREATE] Employee completion status updated');
         // Invalidate caches for this branch and branch statistics
         clearByPrefix(`dashboard:summary:${updatedEmployee.branch_id}`);
         clearByPrefix('branch-statistics');
+        console.log('[EMPLOYEE CREATE] SUCCESS: Employee created and processed successfully');
+        console.log('========================================');
         res.status(201).json({ success: true, data: updatedEmployee });
       } catch (completionError) {
+        console.log('[EMPLOYEE CREATE] WARNING: Error checking completion status:', completionError.message);
         log.warn('Error checking completion status', { error: completionError.message });
         // Invalidate caches for safety
         clearByPrefix(`dashboard:summary:${createdByBranchId}`);
         clearByPrefix('branch-statistics');
         // Still return success, but with original employee data
+        console.log('[EMPLOYEE CREATE] SUCCESS: Employee created (completion status check failed)');
+        console.log('========================================');
         res.status(201).json({ success: true, data: employee });
       }
     } catch (error) {
+      console.log('[EMPLOYEE CREATE] ERROR:', error.message);
+      console.log('[EMPLOYEE CREATE] Error stack:', error.stack);
+      console.log('========================================');
+      log.error('Error creating employee', { error: error.message, stack: error.stack });
       res.status(500).json({
         success: false,
         message: 'فشل إنشاء الموظف',
@@ -478,22 +886,34 @@ router.put('/:id',
   validateEmployeeName,
   validateDateFields({
     'date_of_birth_hijri': { calendarType: 'hijri', dateType: 'birth_date', required: true },
-    'id_expiry_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false }
+    'id_expiry_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false },
+    'contract_start_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false },
+    'contract_end_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false }
   }),
   async (req, res) => {
+    console.log('========================================');
+    console.log('[EMPLOYEE UPDATE] Starting employee update');
+    console.log('[EMPLOYEE UPDATE] Employee ID:', req.params.id);
+    console.log('[EMPLOYEE UPDATE] User:', { id: req.user.id, role: req.user.role, branch_id: req.user.branch_id });
+    console.log('[EMPLOYEE UPDATE] Update fields:', Object.keys(req.body));
+    
     try {
       const { Employee } = await import('../models/Employee.js');
 
       // Check if employee exists and user has access
+      console.log('[EMPLOYEE UPDATE] Checking if employee exists...');
       const existingEmployee = await Employee.findById(parseInt(req.params.id));
       if (!existingEmployee) {
+        console.log('[EMPLOYEE UPDATE] ERROR: Employee not found');
         return res.status(404).json({
           success: false,
           message: 'الموظف غير موجود'
         });
       }
+      console.log('[EMPLOYEE UPDATE] Employee found:', existingEmployee.id, existingEmployee.branch_id);
 
-      if (req.user.role === 'branch_manager' && req.user.branch_id !== existingEmployee.branch_id) {
+      if (req.user.role === 'branch_manager' && !employeeHasBranchAccess(existingEmployee, req.user.branch_id)) {
+        console.log('[EMPLOYEE UPDATE] ERROR: Branch manager trying to update employee from different branch');
         return res.status(403).json({
           success: false,
           message: 'تم رفض الوصول'
@@ -508,7 +928,6 @@ router.put('/:id',
             message: 'لا يمكنك تغيير فرع الموظف'
           });
         }
-        // Force branch_id to their branch (prevent manipulation)
         req.body.branch_id = req.user.branch_id;
       }
 
@@ -531,6 +950,8 @@ router.put('/:id',
       }
 
       // Date normalization is handled by validateDateFields middleware
+      console.log('[EMPLOYEE UPDATE] Updated by branch ID:', updatedByBranchId);
+      console.log('[EMPLOYEE UPDATE] Calling Employee.update()...');
 
       const employee = await Employee.update(
         parseInt(req.params.id),
@@ -538,25 +959,37 @@ router.put('/:id',
         updatedByBranchId
       );
 
+      console.log('[EMPLOYEE UPDATE] Employee updated successfully:', employee.id);
+
       // Check and update completion status after update
       try {
+        console.log('[EMPLOYEE UPDATE] Updating completion status...');
         const { updateEmployeeCompletionStatus } = await import('../utils/employeeDataCompletion.js');
         await updateEmployeeCompletionStatus(employee.id);
         // Reload employee to get updated status
         const updatedEmployee = await Employee.findById(employee.id);
+        console.log('[EMPLOYEE UPDATE] Completion status updated');
         // Invalidate caches for this branch and branch statistics
         clearByPrefix(`dashboard:summary:${updatedEmployee.branch_id}`);
         clearByPrefix('branch-statistics');
+        console.log('[EMPLOYEE UPDATE] SUCCESS: Employee updated successfully');
+        console.log('========================================');
         res.json({ success: true, data: updatedEmployee });
       } catch (completionError) {
+        console.log('[EMPLOYEE UPDATE] WARNING: Error checking completion status:', completionError.message);
         log.warn('Error checking completion status', { error: completionError.message });
         // Invalidate caches for safety
         clearByPrefix(`dashboard:summary:${req.body.branch_id || existingEmployee.branch_id}`);
         clearByPrefix('branch-statistics');
         // Still return success, but with original employee data
+        console.log('[EMPLOYEE UPDATE] SUCCESS: Employee updated (completion status check failed)');
+        console.log('========================================');
         res.json({ success: true, data: employee });
       }
     } catch (error) {
+      console.log('[EMPLOYEE UPDATE] ERROR:', error.message);
+      console.log('[EMPLOYEE UPDATE] Error stack:', error.stack);
+      console.log('========================================');
       res.status(500).json({
         success: false,
         message: 'فشل تحديث الموظف',

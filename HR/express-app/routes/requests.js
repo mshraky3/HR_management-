@@ -13,6 +13,7 @@ import { uploadSingle } from '../middleware/upload.js';
 import { uploadRequestAttachmentToBlob } from '../utils/blobStorage.js';
 import { fixFilenameEncoding } from '../utils/fileUpload.js';
 import sql from '../config/database.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -36,7 +37,7 @@ router.get('/main-managers', async (req, res) => {
       data: managers
     });
   } catch (error) {
-    console.error('Error fetching main managers:', error);
+    log.error('Error fetching main managers', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       message: 'فشل جلب قائمة المديرين الرئيسيين',
@@ -130,7 +131,7 @@ router.post('/', uploadSingle, async (req, res) => {
           WHERE id = ${request.id}
         `;
       } catch (uploadError) {
-        console.error('Error uploading attachment:', uploadError);
+        log.error('Error uploading attachment', { error: uploadError.message, stack: uploadError.stack });
         // Don't fail the request creation if upload fails
       }
     }
@@ -144,7 +145,7 @@ router.post('/', uploadSingle, async (req, res) => {
       data: updatedRequest
     });
   } catch (error) {
-    console.error('Error creating request:', error);
+    log.error('Error creating request', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       message: 'فشل إنشاء الطلب',
@@ -152,6 +153,7 @@ router.post('/', uploadSingle, async (req, res) => {
     });
   }
 });
+
 
 /**
  * GET /api/requests
@@ -192,7 +194,7 @@ router.get('/', async (req, res) => {
       data: requests
     });
   } catch (error) {
-    console.error('Error fetching requests:', error);
+    log.error('Error fetching requests', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       message: 'فشل جلب الطلبات',
@@ -243,7 +245,7 @@ router.get('/:id', async (req, res) => {
       data: request
     });
   } catch (error) {
-    console.error('Error fetching request:', error);
+    log.error('Error fetching request', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       message: 'فشل جلب الطلب',
@@ -310,7 +312,7 @@ router.put('/:id/respond', requireMainManager, uploadSingle, async (req, res) =>
         responseAttachmentName = fixedFileName;
         responseAttachmentType = req.file.mimetype;
       } catch (uploadError) {
-        console.error('Error uploading response attachment:', uploadError);
+        log.error('Error uploading response attachment', { error: uploadError.message, stack: uploadError.stack });
         // Don't fail the response if upload fails
       }
     }
@@ -330,13 +332,14 @@ router.put('/:id/respond', requireMainManager, uploadSingle, async (req, res) =>
     
     const updatedRequest = await Request.update(parseInt(req.params.id), updateData);
     
+    
     res.json({
       success: true,
       message: 'تم الرد على الطلب بنجاح',
       data: updatedRequest
     });
   } catch (error) {
-    console.error('Error responding to request:', error);
+    log.error('Error responding to request', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       message: 'فشل الرد على الطلب',
@@ -387,7 +390,7 @@ router.delete('/:id', async (req, res) => {
         const { deleteFromBlob } = await import('../utils/blobStorage.js');
         await deleteFromBlob(request.attachment_url);
       } catch (deleteError) {
-        console.error('Error deleting attachment:', deleteError);
+        log.error('Error deleting attachment', { error: deleteError.message, stack: deleteError.stack });
         // Continue with request deletion even if attachment deletion fails
       }
     }
@@ -399,7 +402,7 @@ router.delete('/:id', async (req, res) => {
       message: 'تم حذف الطلب بنجاح'
     });
   } catch (error) {
-    console.error('Error deleting request:', error);
+    log.error('Error deleting request', { error: error.message, stack: error.stack });
     res.status(500).json({
       success: false,
       message: 'فشل حذف الطلب',

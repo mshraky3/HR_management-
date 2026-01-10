@@ -240,4 +240,6 @@ ${invalidFieldsText}`;
     }
 });
 
+// Removed: Attendance system has been removed
+
 export default router;

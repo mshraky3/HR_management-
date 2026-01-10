@@ -906,7 +906,6 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
     // Document type labels
     const documentTypeLabels = {
       payroll_file: 'ملف مسيرات الرواتب',
-      attendance_file: 'ملف الحضور و الانصراف',
       salary_deposit_file: 'ملف ايداع الرواتب (التحويلات البنكية)'
     };
 

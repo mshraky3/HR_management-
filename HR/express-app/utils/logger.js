@@ -167,6 +167,9 @@ export const httpLogger = (req, res, next) => {
       // Skip warning logs for intentional 404 handlers (like /me redirect)
       if (req.path === '/me' && res.statusCode === 404) {
         // Silently ignore - this is an intentional handler for incorrect requests
+      } else if (req.path === '/' && res.statusCode === 401) {
+        // Skip 401 warnings for root endpoint - it doesn't require authentication
+        // Requests with invalid tokens should still succeed
       } else {
         logger.warn(message, metadata);
       }

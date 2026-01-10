@@ -21,6 +21,7 @@ import dashboardRoutes from './dashboard.js';
 import adminRoutes from './admin.js';
 import requestRoutes from './requests.js';
 import utilsRoutes from './utils.js';
+import payrollAbsenceRoutes from './payroll-absences.js';
 
 const router = express.Router();
 
@@ -47,5 +48,6 @@ router.use('/dashboard', dashboardRoutes);
 router.use('/admin', adminRoutes);
 router.use('/requests', requestRoutes);
 router.use('/utils', utilsRoutes);
+router.use('/payroll-absences', payrollAbsenceRoutes);
 export default router;
 
