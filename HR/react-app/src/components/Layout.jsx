@@ -79,8 +79,7 @@ const Layout = ({ children }) => {
       label: 'التقارير',
       items: [
         { path: '/employee-file', label: 'ملف موظف' },
-        { path: '/reports', label: 'إصدار التقارير' },
-        { path: '/payrolls', label: 'التقارير' },
+        { path: '/reports', label: 'التقارير' },
       ]
     },
     monitoring: {

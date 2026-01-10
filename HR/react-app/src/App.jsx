@@ -61,7 +61,6 @@ const Employees = lazy(() => import('./pages/Employees'));
 const EmployeeDetails = lazy(() => import('./pages/EmployeeDetails/index.jsx'));
 const BranchDocuments = lazy(() => import('./pages/BranchDocuments'));
 const Reports = lazy(() => import('./pages/Reports'));
-const Payrolls = lazy(() => import('./pages/Payrolls'));
 const EmployeeFile = lazy(() => import('./pages/EmployeeFile'));
 const NotifyBranches = lazy(() => import('./pages/NotifyBranches'));
 const Archive = lazy(() => import('./pages/Archive'));
@@ -162,16 +161,6 @@ const AppContent = () => {
               <RoleBasedLayout>
                 <Reports />
               </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/payrolls"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <Payrolls />
-              </Layout>
             </ProtectedRoute>
           }
         />

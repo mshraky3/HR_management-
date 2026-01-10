@@ -1,66 +1,15 @@
-/**
- * Reports Page
- * Generate PDF reports based on employee filters and selected fields
- */
-
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { reportsAPI, branchesAPI, employeesAPI, branchDocumentsAPI, setBranchDocumentsPassword, documentsAPI } from '../utils/api';
-import BranchBadge from '../components/BranchBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import NationalitySelect from '../components/NationalitySelect';
-import BankSelect from '../components/BankSelect';
-import { getDocumentTypeLabel, DOCUMENT_TYPE_LABELS, DATA_COMPLETION_STATUS } from '../utils/employeeConstants';
-// TablePage.css is now loaded in App.jsx to prevent FOUC
+import { branchesAPI, employeesAPI, reportsAPI, branchDocumentsAPI, setBranchDocumentsPassword, documentsAPI } from '../utils/api';
+import BranchBadge from '../components/BranchBadge';
+import { DATA_COMPLETION_STATUS, getDocumentTypeLabel, DOCUMENT_TYPE_LABELS } from '../utils/employeeConstants';
+import { formatDate } from '../utils/dateConverters';
+import { translateValue } from '../utils/translations';
 import './Reports.css';
 
-const Reports = () => {
-  const { isMainManager, user } = useAuth();
-  const { showError, showSuccess, showWarning } = useNotification();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [branches, setBranches] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [password, setPassword] = useState('');
-  const [passwordError, setPasswordError] = useState('');
-  const [isPasswordVerified, setIsPasswordVerified] = useState(false);
-  const [currentBranchId, setCurrentBranchId] = useState(null);
-  // For main manager: support multiple branch selection
-  const [selectedBranchIds, setSelectedBranchIds] = useState([]);
-  const [selectAllBranches, setSelectAllBranches] = useState(false);
-  const [branchTypeFilter, setBranchTypeFilter] = useState([]); // For main manager: filter by branch type
-
-  // Form state
-  const [reportTitle, setReportTitle] = useState('');
-  const [fileType, setFileType] = useState('pdf'); // 'pdf' or 'excel'
-  const [filters, setFilters] = useState({
-    nationality: [],
-    job_title: [],
-    gender: [],
-    marital_status: [],
-    educational_qualification: [],
-    contract_type: [],
-    data_completion_status: [],
-    min_age: '',
-    max_age: '',
-  });
-
-  const [selectedFields, setSelectedFields] = useState([
-    'full_name',
-    'employee_id_number',
-    'id_or_residency_number',
-    'nationality',
-  ]);
-
-  // Selected documents for report
-  const [selectedDocuments, setSelectedDocuments] = useState([]);
-  const [showDocumentWarning, setShowDocumentWarning] = useState(false);
-  const [missingDocumentsInfo, setMissingDocumentsInfo] = useState(null);
-
-  // Available fields for selection
-  const availableFields = [
+const availableFields = [
     { value: 'employee_id_number', label: 'رقم الموظف' },
     { value: 'full_name', label: 'الاسم الكامل' },
     { value: 'first_name', label: 'الاسم الأول' },
@@ -68,27 +17,29 @@ const Reports = () => {
     { value: 'third_name', label: 'الاسم الثالث' },
     { value: 'fourth_name', label: 'الاسم الرابع' },
     { value: 'branch_id', label: 'الفرع' },
+    { value: 'id_or_residency_number', label: 'رقم الهوية/الإقامة' },
+    { value: 'id_type', label: 'نوع الهوية' },
+    { value: 'id_expiry_date_hijri', label: 'تاريخ انتهاء الهوية (هجري)' },
+    { value: 'id_expiry_date_gregorian', label: 'تاريخ انتهاء الهوية (ميلادي)' },
     { value: 'occupation', label: 'المهنة' },
     { value: 'job_title', label: 'المسمى الوظيفي' },
     { value: 'nationality', label: 'الجنسية' },
+    { value: 'gender', label: 'الجنس' },
     { value: 'date_of_birth_hijri', label: 'تاريخ الميلاد (هجري)' },
     { value: 'date_of_birth_gregorian', label: 'تاريخ الميلاد (ميلادي)' },
     { value: 'age', label: 'العمر' },
-    { value: 'id_or_residency_number', label: 'رقم الهوية/الإقامة' },
-    { value: 'id_type', label: 'نوع الهوية' },
-    { value: 'gender', label: 'الجنس' },
-    { value: 'id_expiry_date_hijri', label: 'تاريخ انتهاء الهوية (هجري)' },
-    { value: 'id_expiry_date_gregorian', label: 'تاريخ انتهاء الهوية (ميلادي)' },
+    { value: 'phone_number', label: 'رقم الهاتف' },
+    { value: 'email', label: 'البريد الإلكتروني' },
+    { value: 'bank_iban', label: 'الآيبان' },
+    { value: 'bank_name', label: 'اسم البنك' },
     { value: 'religion', label: 'الديانة' },
     { value: 'marital_status', label: 'الحالة الاجتماعية' },
     { value: 'educational_qualification', label: 'المؤهل التعليمي' },
     { value: 'specialization', label: 'التخصص' },
-    { value: 'bank_iban', label: 'الآيبان' },
-    { value: 'bank_name', label: 'اسم البنك' },
-    { value: 'email', label: 'البريد الإلكتروني' },
-    { value: 'phone_number', label: 'رقم الهاتف' },
-    { value: 'national_address', label: 'العنوان الوطني' },
+    { value: 'graduation_year', label: 'سنة التخرج' },
+    { value: 'university_gpa', label: 'المعدل التراكمي' },
     { value: 'contract_type', label: 'نوع العقد' },
+    { value: 'national_address', label: 'العنوان الوطني' },
     { value: 'years_of_experience_in_same_institution', label: 'سنوات الخبرة في نفس المؤسسة' },
     { value: 'years_of_experience_in_company', label: 'سنوات الخبرة في الشركة' },
     { value: 'salary', label: 'الراتب' },
@@ -99,1091 +50,1776 @@ const Reports = () => {
     { value: 'annual_leave_allowance', label: 'بدل الإجازة السنوية' },
     { value: 'other_allowances', label: 'بدلات أخرى' },
     { value: 'deductions', label: 'الخصومات' },
-    { value: 'graduation_year', label: 'سنة التخرج' },
-    { value: 'university_gpa', label: 'المعدل التراكمي' },
+    { value: 'total_salary', label: 'اجمالي الراتب' },
     { value: 'passport_number', label: 'رقم الجواز' },
     { value: 'passport_issue_date', label: 'تاريخ إصدار الجواز' },
     { value: 'passport_expiry_date', label: 'تاريخ انتهاء الجواز' },
     { value: 'passport_issue_place', label: 'مكان إصدار الجواز' },
     { value: 'residency_issue_date', label: 'تاريخ إصدار الإقامة' },
-    { value: 'data_completion_status', label: 'حالة إكمال البيانات' },
-  ];
+    { value: 'status', label: 'الحالة' },
+    { value: 'data_completion_status', label: 'حالة إكمال البيانات' }
+];
 
-  // Get unique values for filters
-  const [filterOptions, setFilterOptions] = useState({
-    nationalities: [],
-    jobTitles: [],
-    genders: ['male', 'female'],
-    maritalStatuses: [],
-    educationalQualifications: [],
-    contractTypes: [],
-    dataCompletionStatuses: [DATA_COMPLETION_STATUS.COMPLETE, DATA_COMPLETION_STATUS.INCOMPLETE],
-  });
+const Reports = () => {
+    const { isMainManager, user } = useAuth();
+    const { showError, showSuccess, showWarning } = useNotification();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [branches, setBranches] = useState([]);
+    const [loading, setLoading] = useState(true);
+    
+    // Branch selection state
+    const [selectedBranchId, setSelectedBranchId] = useState(null); // For single branch (branch managers or single selection)
+    const [selectedBranchIds, setSelectedBranchIds] = useState([]); // For multi-branch (main managers)
+    const [selectAllBranches, setSelectAllBranches] = useState(false);
+    const [branchTypeFilter, setBranchTypeFilter] = useState([]); // Filter by branch type
+    const [currentBranchId, setCurrentBranchId] = useState(null);
+    
+    // Password verification (for branch managers)
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [password, setPassword] = useState('');
+    const [passwordError, setPasswordError] = useState('');
+    const [isPasswordVerified, setIsPasswordVerified] = useState(false);
+    
+    const [selectedFields, setSelectedFields] = useState(['full_name', 'id_or_residency_number']);
+    const [employees, setEmployees] = useState([]);
+    const [totalEmployees, setTotalEmployees] = useState(0);
+    const [previewLoading, setPreviewLoading] = useState(false);
+    const [generating, setGenerating] = useState(false);
+    const [generatingExcel, setGeneratingExcel] = useState(false);
+    const [reportTitle, setReportTitle] = useState('التقارير');
+    
+    // File type and document selection
+    const [fileType, setFileType] = useState('pdf');
+    const [selectedDocuments, setSelectedDocuments] = useState([]);
+    const [showDocumentWarning, setShowDocumentWarning] = useState(false);
+    const [missingDocumentsInfo, setMissingDocumentsInfo] = useState(null);
 
-  const loadBranches = async () => {
-    try {
-      const filters = { is_active: true };
-
-      if (!isMainManager() && user?.branch_id) {
-        filters.id = user.branch_id;
-      } else if (isMainManager() && branchTypeFilter.length > 0) {
-        // Filter by branch type for main manager
-        if (branchTypeFilter.length === 1) {
-          filters.branch_type = branchTypeFilter[0];
-        }
-        // If both types selected, don't filter (show all)
-      }
-
-      const response = await branchesAPI.getAll(filters);
-      if (response.data.success) {
-        setBranches(response.data.data);
-        if (!isMainManager() && user?.branch_id) {
-          setCurrentBranchId(user.branch_id);
-          setIsPasswordVerified(false);
-          setShowPasswordModal(true);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading branches:', error);
-    }
-  };
-
-  const loadFilterOptions = async () => {
-    try {
-      const filters = { is_active: true };
-
-      if (!isMainManager() && user?.branch_id) {
-        filters.branch_id = user.branch_id;
-      } else if (isMainManager() && !selectAllBranches && selectedBranchIds.length > 0) {
-        // For main manager: filter by selected branches (only if not selecting all)
-        filters.branch_id = selectedBranchIds;
-      }
-      // If selectAllBranches is true, don't filter by branch_id (get all employees)
-
-      const response = await employeesAPI.getAll(filters);
-      if (response.data.success) {
-        const employees = response.data.data || [];
-
-        // Extract unique values
-        const nationalities = [...new Set(employees.map(e => e.nationality).filter(Boolean))];
-        const jobTitles = [...new Set(employees.map(e => e.job_title).filter(Boolean))];
-        const maritalStatuses = [...new Set(employees.map(e => e.marital_status).filter(Boolean))];
-        const educationalQualifications = [...new Set(employees.map(e => e.educational_qualification).filter(Boolean))];
-        const contractTypes = [...new Set(employees.map(e => e.contract_type).filter(Boolean))];
-
-        setFilterOptions({
-          nationalities: nationalities.sort(),
-          jobTitles: jobTitles.sort(),
-          genders: ['male', 'female'],
-          maritalStatuses: maritalStatuses.sort(),
-          educationalQualifications: educationalQualifications.sort(),
-          contractTypes: contractTypes.sort(),
-          dataCompletionStatuses: [DATA_COMPLETION_STATUS.COMPLETE, DATA_COMPLETION_STATUS.INCOMPLETE],
-        });
-      }
-    } catch (error) {
-      console.error('Error loading filter options:', error);
-    }
-  };
-
-  useEffect(() => {
-    loadBranches();
-  }, [branchTypeFilter, isMainManager, user]);
-
-  useEffect(() => {
-    loadFilterOptions();
-  }, [selectedBranchIds, selectAllBranches, isMainManager, user]);
-
-  useEffect(() => {
-    if (isMainManager() && branches.length > 0) {
-      const branchIdFromUrl = searchParams.get('branch_id');
-      if (branchIdFromUrl) {
-        const branchId = parseInt(branchIdFromUrl);
-        setCurrentBranchId(branchId);
-        setSelectedBranchIds([branchId]);
-        setSelectAllBranches(false);
-        // Main manager doesn't need password verification
-        setIsPasswordVerified(true);
-        setShowPasswordModal(false);
-      } else {
-        setIsPasswordVerified(false);
-        setCurrentBranchId(null);
-        setSelectedBranchIds([]);
-        setSelectAllBranches(false);
-        setShowPasswordModal(false);
-      }
-    }
-  }, [searchParams, isMainManager, branches]);
-
-  const getCurrentBranchId = useCallback(() => {
-    return currentBranchId ||
-      (!isMainManager() && user?.branch_id ? user.branch_id : null) ||
-      (isMainManager() ? parseInt(searchParams.get('branch_id') || '0') || null : null);
-  }, [currentBranchId, isMainManager, user, searchParams]);
-
-  const handlePasswordSubmit = async (e) => {
-    e.preventDefault();
-    setPasswordError('');
-
-    if (!password.trim()) {
-      setPasswordError('الرجاء إدخال كلمة المرور');
-      return;
-    }
-
-    const targetBranchId = getCurrentBranchId();
-    if (!targetBranchId) {
-      setPasswordError('الرجاء تحديد الفرع أولاً');
-      return;
-    }
-
-    try {
-      const response = await branchDocumentsAPI.verifyPassword(targetBranchId, password);
-      if (response.data.success) {
-        setBranchDocumentsPassword(targetBranchId, password);
-        setIsPasswordVerified(true);
-        setShowPasswordModal(false);
-        setCurrentBranchId(targetBranchId);
-        setPassword('');
-      }
-    } catch (error) {
-      setPasswordError(error.response?.data?.message || 'كلمة المرور غير صحيحة');
-    }
-  };
-
-  const handleFilterChange = (filterName, value) => {
-    setFilters(prev => ({
-      ...prev,
-      [filterName]: value
-    }));
-  };
-
-  const handleFilterToggle = (filterName, itemValue) => {
-    setFilters(prev => {
-      const currentValues = prev[filterName] || [];
-      if (Array.isArray(currentValues)) {
-        if (currentValues.includes(itemValue)) {
-          return {
-            ...prev,
-            [filterName]: currentValues.filter(v => v !== itemValue)
-          };
-        } else {
-          return {
-            ...prev,
-            [filterName]: [...currentValues, itemValue]
-          };
-        }
-      }
-      return prev;
+    // Filters state (including age)
+    const [filters, setFilters] = useState({
+        nationality: [],
+        job_title: [],
+        gender: [],
+        marital_status: [],
+        educational_qualification: [],
+        contract_type: [],
+        data_completion_status: [],
+        min_age: '',
+        max_age: '',
     });
-  };
 
-  const handleSelectAll = (filterName, allOptions) => {
-    setFilters(prev => ({
-      ...prev,
-      [filterName]: [...allOptions]
-    }));
-  };
-
-  const handleDeselectAll = (filterName) => {
-    setFilters(prev => ({
-      ...prev,
-      [filterName]: []
-    }));
-  };
-
-  const handleSelectAllToggle = (filterName, allOptions) => {
-    setFilters(prev => {
-      const currentValues = prev[filterName] || [];
-      const allSelected = allOptions.every(opt => currentValues.includes(opt));
-
-      if (allSelected) {
-        // Deselect all
-        return {
-          ...prev,
-          [filterName]: []
-        };
-      } else {
-        // Select all
-        return {
-          ...prev,
-          [filterName]: [...allOptions]
-        };
-      }
+    // Filter options state
+    const [filterOptions, setFilterOptions] = useState({
+        nationalities: [],
+        jobTitles: [],
+        genders: ['male', 'female'],
+        maritalStatuses: [],
+        educationalQualifications: [],
+        contractTypes: [],
+        dataCompletionStatuses: [DATA_COMPLETION_STATUS.COMPLETE, DATA_COMPLETION_STATUS.INCOMPLETE],
     });
-  };
 
-  const isAllSelected = (filterName, allOptions) => {
-    const currentValues = filters[filterName] || [];
-    return allOptions.length > 0 && allOptions.every(opt => currentValues.includes(opt));
-  };
+    // UI state for compact dropdowns
+    const [showFieldsDropdown, setShowFieldsDropdown] = useState(false);
+    const fieldsDropdownRef = useRef(null);
+    const fieldsToggleRef = useRef(null);
 
-  const handleFieldToggle = (fieldValue) => {
-    setSelectedFields(prev => {
-      if (prev.includes(fieldValue)) {
-        return prev.filter(f => f !== fieldValue);
-      } else {
-        return [...prev, fieldValue];
-      }
-    });
-  };
+    const [showFiltersDropdown, setShowFiltersDropdown] = useState(false);
+    const filtersDropdownRef = useRef(null);
+    const filtersToggleRef = useRef(null);
 
-  // Check for missing documents before generating report
-  const checkMissingDocuments = async (employees, selectedDocTypes) => {
-    if (!selectedDocTypes || selectedDocTypes.length === 0) {
-      return null;
-    }
+    const [showBranchesDropdown, setShowBranchesDropdown] = useState(false);
+    const branchesDropdownRef = useRef(null);
+    const branchToggleRef = useRef(null);
+    const [branchSearchTerm, setBranchSearchTerm] = useState('');
+    const formSectionRef = useRef(null);
+    
+    // Multi-branch selection UI (for main managers) - dropdown style
+    const [showMultiBranchDropdown, setShowMultiBranchDropdown] = useState(false);
+    const multiBranchDropdownRef = useRef(null);
+    const multiBranchToggleRef = useRef(null);
+    const [multiBranchSearchTerm, setMultiBranchSearchTerm] = useState('');
+    
+    // Document selection dropdown
+    const [showDocumentsDropdown, setShowDocumentsDropdown] = useState(false);
+    const documentsDropdownRef = useRef(null);
+    const documentsToggleRef = useRef(null);
 
-    const missingInfo = {};
+    // Confirmation modal for large exports
+    const [confirmExportOpen, setConfirmExportOpen] = useState(false);
+    const [confirmExportType, setConfirmExportType] = useState('pdf');
+    const exportThreshold = 500;
+    const [isGeneratingOverlay, setIsGeneratingOverlay] = useState(false);
 
-    for (const employee of employees) {
-      try {
-        const docsResponse = await documentsAPI.getByEmployeeId(employee.id);
-        const employeeDocs = docsResponse.data.success ? docsResponse.data.data : [];
-        const employeeDocTypes = employeeDocs.map(doc => doc.document_type);
+    // Helper functions
+    const handleSelectAllFields = () => setSelectedFields(availableFields.map(f => f.value));
+    const handleClearFields = () => setSelectedFields([]);
+    const toggleField = (value) => {
+        setSelectedFields(prev => prev.includes(value) ? prev.filter(f => f !== value) : [...prev, value]);
+    };
 
-        const missing = selectedDocTypes.filter(docType => !employeeDocTypes.includes(docType));
-        if (missing.length > 0) {
-          missingInfo[employee.id] = {
-            name: `${employee.first_name} ${employee.second_name} ${employee.third_name} ${employee.fourth_name}`,
-            missing: missing
-          };
-        }
-      } catch (error) {
-        console.error(`Error checking documents for employee ${employee.id}:`, error);
-      }
-    }
+    const getCurrentBranchId = useCallback(() => {
+        return currentBranchId ||
+            (!isMainManager() && user?.branch_id ? user.branch_id : null) ||
+            (isMainManager() ? parseInt(searchParams.get('branch_id') || '0') || null : null);
+    }, [currentBranchId, isMainManager, user, searchParams]);
 
-    return Object.keys(missingInfo).length > 0 ? missingInfo : null;
-  };
-
-  // Check if report form is valid for generation
-  const isReportFormValid = () => {
-    // Check report title is provided
-    if (!reportTitle.trim()) return false;
-
-    // Check at least one field is selected
-    if (selectedFields.length === 0) return false;
-
-    // For main manager: check if branches are selected
-    if (isMainManager()) {
-      if (!selectAllBranches && selectedBranchIds.length === 0) return false;
-    }
-
-    return true;
-  };
-
-  const handleGenerateReport = async (e) => {
-    e.preventDefault();
-
-    if (!reportTitle.trim()) {
-      showWarning('الرجاء إدخال عنوان التقرير');
-      return;
-    }
-
-    if (selectedFields.length === 0) {
-      showWarning('الرجاء اختيار حقل واحد على الأقل للعرض');
-      return;
-    }
-
-    // If documents are selected, only PDF is allowed
-    if (selectedDocuments.length > 0 && fileType === 'excel') {
-      showWarning('عند اختيار المستندات، يجب أن يكون التقرير بصيغة PDF فقط');
-      return;
-    }
-
-    // For main manager: check if branches are selected
-    if (isMainManager()) {
-      if (!selectAllBranches && selectedBranchIds.length === 0) {
-        showWarning('الرجاء تحديد فرع واحد على الأقل أو اختيار كل الفروع');
-        return;
-      }
-    } else {
-      const targetBranchId = getCurrentBranchId();
-      if (!targetBranchId) {
-        showWarning('الرجاء تحديد الفرع');
-        return;
-      }
-    }
-
-    // Main manager doesn't need password verification
-    if (!isMainManager() && !isPasswordVerified) {
-      setShowPasswordModal(true);
-      return;
-    }
-
-    try {
-      setGenerating(true);
-
-      // Clean filters - remove empty arrays and empty strings
-      const cleanFilters = {};
-      Object.keys(filters).forEach(key => {
-        const value = filters[key];
-        if (Array.isArray(value) && value.length > 0) {
-          cleanFilters[key] = value;
-        } else if (!Array.isArray(value) && value !== '' && value !== null && value !== undefined) {
-          cleanFilters[key] = value;
-        }
-      });
-
-      // Convert age strings to numbers
-      if (cleanFilters.min_age) {
-        cleanFilters.min_age = parseInt(cleanFilters.min_age);
-      }
-      if (cleanFilters.max_age) {
-        cleanFilters.max_age = parseInt(cleanFilters.max_age);
-      }
-
-      // Prepare branch IDs for main manager
-      let branchIds = null;
-      if (isMainManager()) {
-        if (selectAllBranches) {
-          branchIds = branches.map(b => b.id);
-        } else {
-          branchIds = selectedBranchIds;
-        }
-      } else {
-        branchIds = [getCurrentBranchId()];
-      }
-
-      // Check for missing documents if documents are selected
-      // We'll check this on the backend, but we can also check here for warning
-      if (selectedDocuments.length > 0) {
-        // Get employees list for checking (simplified - backend will do full check)
+    // Load branches with filters
+    const loadBranches = async () => {
         try {
-          const employeesResponse = await employeesAPI.getAll({
-            ...cleanFilters,
-            branch_id: branchIds.length === 1 ? branchIds[0] : branchIds,
-            is_active: true
-          });
+            const filters = { is_active: true };
 
-          if (employeesResponse.data.success) {
-            const employees = employeesResponse.data.data || [];
-            const missingInfo = await checkMissingDocuments(employees, selectedDocuments);
-            if (missingInfo) {
-              setMissingDocumentsInfo(missingInfo);
-              setShowDocumentWarning(true);
-              setGenerating(false);
-              return;
+            if (!isMainManager() && user?.branch_id) {
+                filters.id = user.branch_id;
+            } else if (isMainManager() && branchTypeFilter.length > 0) {
+                if (branchTypeFilter.length === 1) {
+                    filters.branch_type = branchTypeFilter[0];
+                }
             }
-          }
+
+            const response = await branchesAPI.getAll(filters);
+            if (response.data.success) {
+                setBranches(response.data.data || []);
+                if (!isMainManager() && user?.branch_id) {
+                    setCurrentBranchId(user.branch_id);
+                    setIsPasswordVerified(false);
+                    setShowPasswordModal(true);
+                }
+            }
         } catch (error) {
-          console.error('Error checking missing documents:', error);
-          // Continue anyway - backend will handle it
+            console.error('Error loading branches:', error);
+            showError('فشل تحميل الفروع');
+        } finally {
+            setLoading(false);
         }
-      }
+    };
 
-      const response = await reportsAPI.generate({
-        title: reportTitle,
-        filters: cleanFilters,
-        selectedFields: selectedFields,
-        selectedDocuments: selectedDocuments.length > 0 ? selectedDocuments : undefined,
-        branch_ids: branchIds, // Send as array for main manager
-        branch_id: !isMainManager() ? getCurrentBranchId() : undefined, // Keep for backward compatibility
-        fileType: selectedDocuments.length > 0 ? 'pdf' : fileType // Force PDF if documents selected
-      }, {
-        responseType: 'blob'
-      });
+    // Load filter options
+    const loadFilterOptions = async () => {
+        try {
+            const filters = { is_active: true };
 
-      // Create blob and download based on file type
-      const mimeType = fileType === 'excel'
-        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        : 'application/pdf';
-      const fileExtension = fileType === 'excel' ? 'xlsx' : 'pdf';
+            if (!isMainManager() && user?.branch_id) {
+                filters.branch_id = user.branch_id;
+            } else if (isMainManager() && !selectAllBranches && selectedBranchIds.length > 0) {
+                filters.branch_id = selectedBranchIds.length === 1 ? selectedBranchIds[0] : selectedBranchIds;
+            } else if (isMainManager() && selectAllBranches) {
+                // Don't filter by branch_id if selecting all
+            } else if (selectedBranchId) {
+                filters.branch_id = selectedBranchId;
+            }
 
-      // response.data is already a blob when responseType is 'blob'
-      const blob = response.data instanceof Blob
-        ? response.data
-        : new Blob([response.data], { type: mimeType });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${reportTitle}.${fileExtension}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+            const response = await employeesAPI.getAll(filters);
+            if (response.data.success) {
+                const employees = response.data.data || [];
+                
+                const nationalities = [...new Set(employees.map(e => e.nationality).filter(Boolean))];
+                const jobTitles = [...new Set(employees.map(e => e.job_title).filter(Boolean))];
+                const maritalStatuses = [...new Set(employees.map(e => e.marital_status).filter(Boolean))];
+                const educationalQualifications = [...new Set(employees.map(e => e.educational_qualification).filter(Boolean))];
+                const contractTypes = [...new Set(employees.map(e => e.contract_type).filter(Boolean))];
 
-      showSuccess('تم إنشاء التقرير بنجاح');
+                setFilterOptions({
+                    nationalities: nationalities.sort(),
+                    jobTitles: jobTitles.sort(),
+                    genders: ['male', 'female'],
+                    maritalStatuses: maritalStatuses.sort(),
+                    educationalQualifications: educationalQualifications.sort(),
+                    contractTypes: contractTypes.sort(),
+                    dataCompletionStatuses: [DATA_COMPLETION_STATUS.COMPLETE, DATA_COMPLETION_STATUS.INCOMPLETE],
+                });
+            }
+        } catch (error) {
+            console.error('Error loading filter options:', error);
+        }
+    };
 
-    } catch (error) {
-      console.error('Error generating report:', error);
-      showError(error.response?.data?.message || 'فشل إنشاء التقرير');
-    } finally {
-      setGenerating(false);
+    useEffect(() => {
+        loadBranches();
+    }, [branchTypeFilter, isMainManager, user]);
+
+    useEffect(() => {
+        loadFilterOptions();
+    }, [selectedBranchIds, selectAllBranches, selectedBranchId, isMainManager, user]);
+
+    useEffect(() => {
+        if (isMainManager() && branches.length > 0) {
+            const branchIdFromUrl = searchParams.get('branch_id');
+            if (branchIdFromUrl) {
+                const branchId = parseInt(branchIdFromUrl);
+                setCurrentBranchId(branchId);
+                setSelectedBranchIds([branchId]);
+                setSelectedBranchId(branchId);
+                setSelectAllBranches(false);
+                setIsPasswordVerified(true);
+                setShowPasswordModal(false);
+            } else {
+                setIsPasswordVerified(true);
+                setCurrentBranchId(null);
+                setSelectedBranchId(null);
+                setSelectedBranchIds([]);
+                setSelectAllBranches(false);
+                setShowPasswordModal(false);
+            }
+        }
+    }, [searchParams, isMainManager, branches]);
+
+    // Password verification handler
+    const handlePasswordSubmit = async (e) => {
+        e.preventDefault();
+        setPasswordError('');
+
+        if (!password.trim()) {
+            setPasswordError('الرجاء إدخال كلمة المرور');
+            return;
+        }
+
+        const targetBranchId = getCurrentBranchId();
+        if (!targetBranchId) {
+            setPasswordError('الرجاء تحديد الفرع أولاً');
+            return;
+        }
+
+        try {
+            const response = await branchDocumentsAPI.verifyPassword(targetBranchId, password);
+            if (response.data.success) {
+                setBranchDocumentsPassword(targetBranchId, password);
+                setIsPasswordVerified(true);
+                setShowPasswordModal(false);
+                setCurrentBranchId(targetBranchId);
+                setSelectedBranchId(targetBranchId);
+                setPassword('');
+            }
+        } catch (error) {
+            setPasswordError(error.response?.data?.message || 'كلمة المرور غير صحيحة');
+        }
+    };
+
+    // Filter handlers
+    const toggleFilter = (filterType, value) => {
+        setFilters(prev => ({
+            ...prev,
+            [filterType]: prev[filterType].includes(value)
+                ? prev[filterType].filter(f => f !== value)
+                : [...prev[filterType], value]
+        }));
+    };
+
+    const handleFilterChange = (filterName, value) => {
+        setFilters(prev => ({
+            ...prev,
+            [filterName]: value
+        }));
+    };
+
+    const clearFilter = (filterType) => {
+        setFilters(prev => ({
+            ...prev,
+            [filterType]: []
+        }));
+    };
+
+    const clearAllFilters = () => {
+        setFilters({
+            nationality: [],
+            job_title: [],
+            gender: [],
+            marital_status: [],
+            educational_qualification: [],
+            contract_type: [],
+            data_completion_status: [],
+            min_age: '',
+            max_age: '',
+        });
+    };
+
+    const getActiveFiltersCount = () => {
+        return Object.values(filters).reduce((count, val) => {
+            if (Array.isArray(val)) {
+                return count + val.length;
+            } else if (val !== '' && val !== null && val !== undefined) {
+                return count + 1;
+            }
+            return count;
+        }, 0);
+    };
+
+    // Report templates
+    const reportTemplates = {
+        contactInfo: {
+            title: 'تقرير بيانات التواصل',
+            fields: ['full_name', 'phone_number', 'email', 'id_or_residency_number']
+        },
+        bankAccounts: {
+            title: 'تقرير الحسابات البنكية',
+            fields: ['full_name', 'bank_iban', 'id_or_residency_number', 'bank_name']
+        },
+        jobs: {
+            title: 'تقرير الوظائف',
+            fields: ['full_name', 'occupation', 'job_title', 'nationality']
+        }
+    };
+
+    const hasMultipleBranches = () => {
+        if (isMainManager()) {
+            return selectAllBranches || selectedBranchIds.length > 1;
+        }
+        return false;
+    };
+
+    const applyTemplate = (templateKey) => {
+        const template = reportTemplates[templateKey];
+        if (!template) return;
+
+        setReportTitle(template.title);
+        let fieldsToSelect = [...template.fields];
+
+        if (hasMultipleBranches() && !fieldsToSelect.includes('branch_id')) {
+            fieldsToSelect.push('branch_id');
+        }
+
+        setSelectedFields(fieldsToSelect);
+        showSuccess(`تم تطبيق ${template.title} بنجاح`);
+    };
+
+    // Update selected fields when branch selection changes to add/remove branch_id automatically
+    useEffect(() => {
+        const needsBranchField = hasMultipleBranches();
+        const hasBranchField = selectedFields.includes('branch_id');
+
+        if (needsBranchField && !hasBranchField) {
+            setSelectedFields(prev => [...prev, 'branch_id']);
+        }
+    }, [selectAllBranches, selectedBranchIds]);
+
+    // Check for missing documents before generating report
+    const checkMissingDocuments = async (employees, selectedDocTypes) => {
+        if (!selectedDocTypes || selectedDocTypes.length === 0) {
+            return null;
+        }
+
+        const missingInfo = {};
+
+        for (const employee of employees) {
+            try {
+                const docsResponse = await documentsAPI.getByEmployeeId(employee.id);
+                const employeeDocs = docsResponse.data.success ? docsResponse.data.data : [];
+                const employeeDocTypes = employeeDocs.map(doc => doc.document_type);
+
+                const missing = selectedDocTypes.filter(docType => !employeeDocTypes.includes(docType));
+                if (missing.length > 0) {
+                    missingInfo[employee.id] = {
+                        name: `${employee.first_name || ''} ${employee.second_name || ''} ${employee.third_name || ''} ${employee.fourth_name || ''}`.trim(),
+                        missing: missing
+                    };
+                }
+            } catch (error) {
+                console.error(`Error checking documents for employee ${employee.id}:`, error);
+            }
+        }
+
+        return Object.keys(missingInfo).length > 0 ? missingInfo : null;
+    };
+
+    // Calculate age helper
+    const calculateAge = (dateOfBirth) => {
+        if (!dateOfBirth) return null;
+        const birthDate = new Date(dateOfBirth);
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+        }
+        return age;
+    };
+
+    // Filter employees by age
+    const filterByAge = (employees) => {
+        if (!filters.min_age && !filters.max_age) return employees;
+        
+        const minAge = filters.min_age ? parseInt(filters.min_age) : null;
+        const maxAge = filters.max_age ? parseInt(filters.max_age) : null;
+        
+        return employees.filter(emp => {
+            const age = calculateAge(emp.date_of_birth_gregorian);
+            if (age === null) return false;
+            if (minAge !== null && age < minAge) return false;
+            if (maxAge !== null && age > maxAge) return false;
+            return true;
+        });
+    };
+
+    const loadPreview = async () => {
+        const branchIds = isMainManager() 
+            ? (selectAllBranches ? branches.map(b => b.id) : selectedBranchIds)
+            : (selectedBranchId ? [selectedBranchId] : (user?.branch_id ? [user.branch_id] : []));
+
+        if (branchIds.length === 0) {
+            showWarning('الرجاء اختيار فرع للعرض');
+            return;
+        }
+        if (selectedFields.length === 0) {
+            showWarning('اختر حقل واحد على الأقل');
+            return;
+        }
+
+        try {
+            setPreviewLoading(true);
+            
+            // Load total employees count (without filters) for display
+            const totalResponse = await employeesAPI.getAll({ 
+                branch_id: branchIds.length === 1 ? branchIds[0] : branchIds, 
+                is_active: true 
+            });
+            if (totalResponse.data.success) {
+                setTotalEmployees(totalResponse.data.data?.length || 0);
+            }
+            
+            // Build filter query
+            const queryParams = { 
+                branch_id: branchIds.length === 1 ? branchIds[0] : branchIds, 
+                is_active: true 
+            };
+            
+            // Add filters to query
+            if (filters.nationality.length > 0) queryParams.nationality = filters.nationality.join(',');
+            if (filters.job_title.length > 0) queryParams.job_title = filters.job_title.join(',');
+            if (filters.gender.length > 0) queryParams.gender = filters.gender.join(',');
+            if (filters.marital_status.length > 0) queryParams.marital_status = filters.marital_status.join(',');
+            if (filters.educational_qualification.length > 0) queryParams.educational_qualification = filters.educational_qualification.join(',');
+            if (filters.contract_type.length > 0) queryParams.contract_type = filters.contract_type.join(',');
+            if (filters.data_completion_status.length > 0) queryParams.data_completion_status = filters.data_completion_status.join(',');
+            
+            const response = await employeesAPI.getAll(queryParams);
+            if (response.data.success) {
+                let employeesData = response.data.data || [];
+                
+                // Filter by age
+                employeesData = filterByAge(employeesData);
+                
+                // Sort employees alphabetically by full name
+                employeesData = employeesData.sort((a, b) => {
+                    const getFullName = (emp) => {
+                        const names = [
+                            emp.first_name,
+                            emp.second_name,
+                            emp.third_name,
+                            emp.fourth_name
+                        ].filter(name => name && name.trim());
+                        return names.length > 0 ? names.join(' ') : emp.full_name || '';
+                    };
+                    
+                    const nameA = getFullName(a).trim().toLowerCase();
+                    const nameB = getFullName(b).trim().toLowerCase();
+                    return nameA.localeCompare(nameB, 'ar');
+                });
+                
+                setEmployees(employeesData);
+            }
+        } catch (error) {
+            console.error('Error loading employees:', error);
+            showError('فشل تحميل الموظفين');
+        } finally {
+            setPreviewLoading(false);
+        }
+    };
+
+    // Close dropdowns when pressing Escape
+    useEffect(() => {
+        const handleEsc = (e) => {
+            if (e.key === 'Escape') {
+                setShowFieldsDropdown(false);
+                setShowBranchesDropdown(false);
+                setShowFiltersDropdown(false);
+                setShowMultiBranchDropdown(false);
+                setShowDocumentsDropdown(false);
+                setBranchSearchTerm('');
+                setMultiBranchSearchTerm('');
+            }
+        };
+        document.addEventListener('keydown', handleEsc);
+        return () => {
+            document.removeEventListener('keydown', handleEsc);
+        };
+    }, [showFieldsDropdown, showBranchesDropdown, showFiltersDropdown, showMultiBranchDropdown, showDocumentsDropdown]);
+
+    // Close dropdowns when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            const isOutsideBranches = branchesDropdownRef.current && 
+                !branchesDropdownRef.current.contains(event.target) && 
+                branchToggleRef.current && 
+                !branchToggleRef.current.contains(event.target);
+            
+            const isOutsideFields = fieldsDropdownRef.current && 
+                !fieldsDropdownRef.current.contains(event.target) && 
+                fieldsToggleRef.current && 
+                !fieldsToggleRef.current.contains(event.target);
+            
+            const isOutsideFilters = filtersDropdownRef.current && 
+                !filtersDropdownRef.current.contains(event.target) && 
+                filtersToggleRef.current && 
+                !filtersToggleRef.current.contains(event.target);
+            
+            const isOutsideMultiBranch = multiBranchDropdownRef.current && 
+                !multiBranchDropdownRef.current.contains(event.target) && 
+                multiBranchToggleRef.current && 
+                !multiBranchToggleRef.current.contains(event.target);
+            
+            const isOutsideDocuments = documentsDropdownRef.current && 
+                !documentsDropdownRef.current.contains(event.target) && 
+                documentsToggleRef.current && 
+                !documentsToggleRef.current.contains(event.target);
+
+            if (showBranchesDropdown && isOutsideBranches) {
+                setShowBranchesDropdown(false);
+                setBranchSearchTerm('');
+            }
+            if (showFieldsDropdown && isOutsideFields) {
+                setShowFieldsDropdown(false);
+            }
+            if (showFiltersDropdown && isOutsideFilters) {
+                setShowFiltersDropdown(false);
+            }
+            if (showMultiBranchDropdown && isOutsideMultiBranch) {
+                setShowMultiBranchDropdown(false);
+                setMultiBranchSearchTerm('');
+            }
+            if (showDocumentsDropdown && isOutsideDocuments) {
+                setShowDocumentsDropdown(false);
+            }
+        };
+
+        if (showBranchesDropdown || showFieldsDropdown || showFiltersDropdown || showMultiBranchDropdown || showDocumentsDropdown) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => {
+                document.removeEventListener('mousedown', handleClickOutside);
+            };
+        }
+    }, [showBranchesDropdown, showFieldsDropdown, showFiltersDropdown, showMultiBranchDropdown, showDocumentsDropdown]);
+
+    // Auto-load preview when selected branch or filters change
+    useEffect(() => {
+        if ((isMainManager() && (selectAllBranches || selectedBranchIds.length > 0)) || (!isMainManager() && selectedBranchId)) {
+            loadPreview();
+        }
+    }, [selectedBranchId, selectedBranchIds, selectAllBranches, filters, isMainManager]);
+
+    // Auto-switch to PDF when documents are selected and fileType is Excel
+    useEffect(() => {
+        if (selectedDocuments.length > 0 && fileType === 'excel') {
+            setFileType('pdf');
+        }
+    }, [selectedDocuments]);
+
+    // Position dropdowns to span full width of form-section
+    useEffect(() => {
+        const positionDropdown = (dropdownRef, toggleRef) => {
+            if (!dropdownRef.current || !toggleRef.current || !formSectionRef.current) return;
+            
+            const formSection = formSectionRef.current;
+            const toggle = toggleRef.current;
+            const dropdown = dropdownRef.current;
+            const dropdownParent = dropdown.parentElement;
+            const parentRect = dropdownParent.getBoundingClientRect();
+            
+            const formRect = formSection.getBoundingClientRect();
+            const toggleRect = toggle.getBoundingClientRect();
+            
+            dropdown.style.position = 'absolute';
+            dropdown.style.top = `${toggleRect.bottom - parentRect.top + 8}px`;
+            dropdown.style.left = `${formRect.left - parentRect.left}px`;
+            dropdown.style.width = `${formRect.width}px`;
+        };
+
+        const updatePositions = () => {
+            // Only position dropdowns that are in the formSectionRef (fields, filters, branches for branch managers)
+            // Multi-branch and documents dropdowns use their own positioning (inline styles with relative parent)
+            if (showBranchesDropdown && branchesDropdownRef.current && branchToggleRef.current) {
+                positionDropdown(branchesDropdownRef, branchToggleRef);
+            }
+            if (showFieldsDropdown && fieldsDropdownRef.current && fieldsToggleRef.current) {
+                positionDropdown(fieldsDropdownRef, fieldsToggleRef);
+            }
+            if (showFiltersDropdown && filtersDropdownRef.current && filtersToggleRef.current) {
+                positionDropdown(filtersDropdownRef, filtersToggleRef);
+            }
+        };
+
+        const timeoutId = setTimeout(updatePositions, 0);
+        window.addEventListener('resize', updatePositions);
+        return () => {
+            clearTimeout(timeoutId);
+            window.removeEventListener('resize', updatePositions);
+        };
+    }, [showBranchesDropdown, showFieldsDropdown, showFiltersDropdown, showMultiBranchDropdown, showDocumentsDropdown]);
+
+    // Generate report with all features
+    const proceedGenerateReport = async (fileTypeToUse) => {
+        try {
+            setGenerating(fileTypeToUse === 'pdf');
+            setGeneratingExcel(fileTypeToUse === 'excel');
+            setIsGeneratingOverlay(true);
+
+            if (!reportTitle.trim()) {
+                showWarning('الرجاء إدخال عنوان التقرير');
+                return;
+            }
+
+            // Prepare branch IDs
+            let branchIds = null;
+            if (isMainManager()) {
+                if (selectAllBranches) {
+                    branchIds = branches.map(b => b.id);
+                } else {
+                    branchIds = selectedBranchIds;
+                }
+            } else {
+                branchIds = [getCurrentBranchId() || selectedBranchId || user?.branch_id].filter(Boolean);
+            }
+
+            if (branchIds.length === 0) {
+                showWarning('الرجاء تحديد فرع واحد على الأقل');
+                return;
+            }
+
+            // Clean filters
+            const cleanFilters = {};
+            Object.keys(filters).forEach(key => {
+                const value = filters[key];
+                if (Array.isArray(value) && value.length > 0) {
+                    cleanFilters[key] = value;
+                } else if (!Array.isArray(value) && value !== '' && value !== null && value !== undefined) {
+                    cleanFilters[key] = value;
+                }
+            });
+
+            // Convert age strings to numbers
+            if (cleanFilters.min_age) {
+                cleanFilters.min_age = parseInt(cleanFilters.min_age);
+            }
+            if (cleanFilters.max_age) {
+                cleanFilters.max_age = parseInt(cleanFilters.max_age);
+            }
+
+            // Check for missing documents if documents are selected
+            if (selectedDocuments.length > 0) {
+                try {
+                    const employeesResponse = await employeesAPI.getAll({
+                        ...cleanFilters,
+                        branch_id: branchIds.length === 1 ? branchIds[0] : branchIds,
+                        is_active: true
+                    });
+
+                    if (employeesResponse.data.success) {
+                        let employeesList = employeesResponse.data.data || [];
+                        employeesList = filterByAge(employeesList);
+                        const missingInfo = await checkMissingDocuments(employeesList, selectedDocuments);
+                        if (missingInfo) {
+                            setMissingDocumentsInfo(missingInfo);
+                            setShowDocumentWarning(true);
+                            setGenerating(false);
+                            setGeneratingExcel(false);
+                            setIsGeneratingOverlay(false);
+                            return;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error checking missing documents:', error);
+                }
+            }
+
+            // Force PDF if documents are selected
+            const finalFileType = selectedDocuments.length > 0 ? 'pdf' : fileTypeToUse;
+
+            const response = await reportsAPI.generate({
+                title: reportTitle,
+                filters: cleanFilters,
+                selectedFields: selectedFields,
+                selectedDocuments: selectedDocuments.length > 0 ? selectedDocuments : undefined,
+                branch_ids: branchIds,
+                branch_id: !isMainManager() ? getCurrentBranchId() : undefined,
+                fileType: finalFileType
+            }, {
+                responseType: 'blob'
+            });
+
+            const mimeType = finalFileType === 'excel'
+                ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                : 'application/pdf';
+            const fileExtension = finalFileType === 'excel' ? 'xlsx' : 'pdf';
+
+            const blob = response.data instanceof Blob
+                ? response.data
+                : new Blob([response.data], { type: mimeType });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${reportTitle}.${fileExtension}`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+
+            showSuccess(`تم إنشاء التقرير بنجاح`);
+        } catch (error) {
+            console.error('Error generating report:', error);
+            showError(error.response?.data?.message || 'فشل إنشاء التقرير');
+        } finally {
+            setGenerating(false);
+            setGeneratingExcel(false);
+            setIsGeneratingOverlay(false);
+        }
+    };
+
+    const handleContinueWithMissing = async () => {
+        setShowDocumentWarning(false);
+        setMissingDocumentsInfo(null);
+        await proceedGenerateReport(fileType);
+    };
+
+    const handleGeneratePdf = async () => {
+        setFileType('pdf'); // Track that user selected PDF
+        const branchIds = isMainManager() 
+            ? (selectAllBranches ? branches.map(b => b.id) : selectedBranchIds)
+            : (selectedBranchId ? [selectedBranchId] : (user?.branch_id ? [user.branch_id] : []));
+
+        if (branchIds.length === 0) {
+            showWarning('الرجاء اختيار فرع');
+            return;
+        }
+        if (selectedFields.length === 0) {
+            showWarning('الرجاء اختيار حقل واحد على الأقل');
+            return;
+        }
+
+        if (employees.length > exportThreshold) {
+            setConfirmExportType('pdf');
+            setConfirmExportOpen(true);
+            return;
+        }
+
+        await proceedGenerateReport('pdf');
+    };
+
+    const handleGenerateExcel = async () => {
+        setFileType('excel'); // Track that user selected Excel
+        const branchIds = isMainManager() 
+            ? (selectAllBranches ? branches.map(b => b.id) : selectedBranchIds)
+            : (selectedBranchId ? [selectedBranchId] : (user?.branch_id ? [user.branch_id] : []));
+
+        if (branchIds.length === 0) {
+            showWarning('الرجاء اختيار فرع');
+            return;
+        }
+        if (selectedFields.length === 0) {
+            showWarning('الرجاء اختيار حقل واحد على الأقل');
+            return;
+        }
+
+        if (selectedDocuments.length > 0) {
+            showWarning('عند اختيار المستندات، يجب أن يكون التقرير بصيغة PDF فقط');
+            return;
+        }
+
+        if (employees.length > exportThreshold) {
+            setConfirmExportType('excel');
+            setConfirmExportOpen(true);
+            return;
+        }
+
+        await proceedGenerateReport('excel');
+    };
+
+    const handleCellClick = async (e, text) => {
+        e.stopPropagation();
+        e.preventDefault();
+        
+        const textToCopy = String(text || '').trim();
+        if (!textToCopy || textToCopy === '-' || textToCopy === '') return;
+        
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(textToCopy);
+                showSuccess('تم نسخ البيانات');
+                return;
+            }
+            throw new Error('Clipboard API not available');
+        } catch (error) {
+            try {
+                const textArea = document.createElement('textarea');
+                textArea.value = textToCopy;
+                textArea.style.position = 'fixed';
+                textArea.style.top = '0';
+                textArea.style.left = '0';
+                textArea.style.width = '2em';
+                textArea.style.height = '2em';
+                textArea.style.padding = '0';
+                textArea.style.border = 'none';
+                textArea.style.outline = 'none';
+                textArea.style.boxShadow = 'none';
+                textArea.style.background = 'transparent';
+                textArea.style.opacity = '0';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                if (successful) {
+                    showSuccess('تم نسخ البيانات');
+                } else {
+                    showError('فشل نسخ البيانات');
+                }
+            } catch (err) {
+                console.error('Copy failed:', err);
+                showError('فشل نسخ البيانات');
+            }
+        }
+    };
+
+    // Only show password modal for branch managers, not main manager
+    if (!isMainManager() && !isPasswordVerified && getCurrentBranchId()) {
+        return (
+            <div className="table-page reports-page">
+                {showPasswordModal && (
+                    <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
+                        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                            <h2>إدخال كلمة المرور</h2>
+                            <p>هذه الصفحة تتطلب كلمة مرور للوصول</p>
+                            <form onSubmit={handlePasswordSubmit}>
+                                <div className="form-group">
+                                    <label>كلمة المرور:</label>
+                                    <input
+                                        type="password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        placeholder="أدخل كلمة المرور"
+                                        autoFocus
+                                    />
+                                    {passwordError && <div className="error-message">{passwordError}</div>}
+                                </div>
+                                <div className="form-actions">
+                                    <button type="submit" className="btn btn-primary">تأكيد</button>
+                                    <button type="button" className="btn btn-secondary" onClick={() => setShowPasswordModal(false)}>
+                                        إلغاء
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
     }
-  };
 
-  // Continue with missing documents
-  const handleContinueWithMissing = async () => {
-    setShowDocumentWarning(false);
-    setMissingDocumentsInfo(null);
-
-    // Retry generation by calling handleGenerateReport directly
-    try {
-      setGenerating(true);
-
-      // Clean filters - remove empty arrays and empty strings
-      const cleanFilters = {};
-      Object.keys(filters).forEach(key => {
-        const value = filters[key];
-        if (Array.isArray(value) && value.length > 0) {
-          cleanFilters[key] = value;
-        } else if (!Array.isArray(value) && value !== '' && value !== null && value !== undefined) {
-          cleanFilters[key] = value;
-        }
-      });
-
-      // Convert age strings to numbers
-      if (cleanFilters.min_age) {
-        cleanFilters.min_age = parseInt(cleanFilters.min_age);
-      }
-      if (cleanFilters.max_age) {
-        cleanFilters.max_age = parseInt(cleanFilters.max_age);
-      }
-
-      // Prepare branch IDs for main manager
-      let branchIds = null;
-      if (isMainManager()) {
-        if (selectAllBranches) {
-          branchIds = branches.map(b => b.id);
+    const getSelectedBranchDisplay = () => {
+        if (isMainManager()) {
+            if (selectAllBranches) {
+                return 'كل الفروع';
+            } else if (selectedBranchIds.length > 0) {
+                if (selectedBranchIds.length === 1) {
+                    const branch = branches.find(b => b.id === selectedBranchIds[0]);
+                    return branch ? branch.branch_name : 'فرع محدد';
+                } else {
+                    return `${selectedBranchIds.length} فروع محددة`;
+                }
+            }
+            return 'اختر فرعاً';
         } else {
-          branchIds = selectedBranchIds;
+            if (selectedBranchId) {
+                const branch = branches.find(b => b.id === selectedBranchId);
+                return branch ? branch.branch_name : 'فرع محدد';
+            }
+            return 'اختر فرعاً';
         }
-      } else {
-        branchIds = [getCurrentBranchId()];
-      }
+    };
 
-      const response = await reportsAPI.generate({
-        title: reportTitle,
-        filters: cleanFilters,
-        selectedFields: selectedFields,
-        selectedDocuments: selectedDocuments.length > 0 ? selectedDocuments : undefined,
-        branch_ids: branchIds,
-        branch_id: !isMainManager() ? getCurrentBranchId() : undefined,
-        fileType: selectedDocuments.length > 0 ? 'pdf' : fileType
-      }, {
-        responseType: 'blob'
-      });
-
-      // Create blob and download based on file type
-      const mimeType = fileType === 'excel'
-        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        : 'application/pdf';
-      const fileExtension = fileType === 'excel' ? 'xlsx' : 'pdf';
-
-      // response.data is already a blob when responseType is 'blob'
-      const blob = response.data instanceof Blob
-        ? response.data
-        : new Blob([response.data], { type: mimeType });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${reportTitle}.${fileExtension}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      showSuccess('تم إنشاء التقرير بنجاح');
-
-    } catch (error) {
-      console.error('Error generating report:', error);
-      showError(error.response?.data?.message || 'فشل إنشاء التقرير');
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const getGenderLabel = (value) => {
-    return value === 'male' ? 'ذكر' : 'أنثى';
-  };
-
-  const getDataCompletionStatusLabel = (value) => {
-    return value === DATA_COMPLETION_STATUS.COMPLETE ? 'مكتمل' : 'غير مكتمل';
-  };
-
-  // Helper function to check if multiple branches are selected
-  const hasMultipleBranches = () => {
-    if (isMainManager()) {
-      return selectAllBranches || selectedBranchIds.length > 1;
-    }
-    return false;
-  };
-
-  // Report templates
-  const reportTemplates = {
-    contactInfo: {
-      title: 'تقرير بيانات التواصل',
-      fields: ['full_name', 'phone_number', 'email', 'id_or_residency_number']
-    },
-    bankAccounts: {
-      title: 'تقرير الحسابات البنكية',
-      fields: ['full_name', 'bank_iban', 'id_or_residency_number', 'bank_name']
-    },
-    jobs: {
-      title: 'تقرير الوظائف',
-      fields: ['full_name', 'occupation', 'job_title', 'nationality']
-    }
-  };
-
-  // Apply a template
-  const applyTemplate = (templateKey) => {
-    const template = reportTemplates[templateKey];
-    if (!template) return;
-
-    // Set the report title
-    setReportTitle(template.title);
-
-    // Get template fields
-    let fieldsToSelect = [...template.fields];
-
-    // Add branch field if multiple branches are selected
-    if (hasMultipleBranches() && !fieldsToSelect.includes('branch_id')) {
-      fieldsToSelect.push('branch_id');
-    }
-
-    // Set selected fields
-    setSelectedFields(fieldsToSelect);
-
-    // Show success message
-    showSuccess(`تم تطبيق ${template.title} بنجاح`);
-  };
-
-  // Update selected fields when branch selection changes to add/remove branch_id automatically
-  useEffect(() => {
-    const needsBranchField = hasMultipleBranches();
-    const hasBranchField = selectedFields.includes('branch_id');
-
-    // If multiple branches are selected and branch_id is not in the fields, add it
-    if (needsBranchField && !hasBranchField) {
-      setSelectedFields(prev => [...prev, 'branch_id']);
-    }
-    // Note: We don't automatically remove branch_id when switching to single branch
-    // to avoid disrupting user's manual selections
-  }, [selectAllBranches, selectedBranchIds]);
-
-  // Only show password modal for branch managers, not main manager
-  if (!isMainManager() && !isPasswordVerified && getCurrentBranchId()) {
     return (
-      <div className="table-page">
-        {showPasswordModal && (
-          <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h2>إدخال كلمة المرور</h2>
-              <p>هذه الصفحة تتطلب كلمة مرور للوصول</p>
-              <form onSubmit={handlePasswordSubmit}>
-                <div className="form-group">
-                  <label>كلمة المرور:</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="أدخل كلمة المرور"
-                    autoFocus
-                  />
-                  {passwordError && <div className="error-message">{passwordError}</div>}
-                </div>
-                <div className="form-actions">
-                  <button type="submit" className="btn btn-primary">تأكيد</button>
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowPasswordModal(false)}>
-                    إلغاء
-                  </button>
-                </div>
-              </form>
+        <div className="table-page reports-page">
+            <div className="page-header">
+                <h1>التقارير</h1>
             </div>
-          </div>
-        )}
-      </div>
+
+            {/* Report Templates Section */}
+            <div className="form-section">
+                <h2>نماذج التقارير الجاهزة</h2>
+                <p className="template-description">اختر نموذج تقرير جاهز لملء الحقول تلقائياً:</p>
+                <div className="report-templates">
+                    <button
+                        type="button"
+                        className="template-button"
+                        onClick={() => applyTemplate('contactInfo')}
+                    >
+                        <div className="template-content">
+                            <h3>تقرير بيانات التواصل</h3>
+                            <p>الاسم، رقم الجوال، الإيميل، رقم الهوية/الإقامة</p>
+                        </div>
+                    </button>
+
+                    <button
+                        type="button"
+                        className="template-button"
+                        onClick={() => applyTemplate('bankAccounts')}
+                    >
+                        <div className="template-content">
+                            <h3>تقرير الحسابات البنكية</h3>
+                            <p>الاسم، رقم الآيبان، رقم الهوية، اسم البنك</p>
+                        </div>
+                    </button>
+
+                    <button
+                        type="button"
+                        className="template-button"
+                        onClick={() => applyTemplate('jobs')}
+                    >
+                        <div className="template-content">
+                            <h3>تقرير الوظائف</h3>
+                            <p>الاسم، المهنة، المسمى الوظيفي، الفرع، الجنسية</p>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            {/* Branch Selection Section for Main Manager */}
+            {isMainManager() && (
+                <div className="form-section">
+                    <h2>اختيار الفروع</h2>
+
+                    {/* Branch Type Filter - Switches */}
+                    <div className="branch-type-filter">
+                        <label className="filter-header-label">نوع الفرع:</label>
+                        <div className="branch-type-options" style={{ display: 'flex', gap: 'var(--spacing-md)', flexWrap: 'wrap' }}>
+                            <button
+                                type="button"
+                                className={`field-btn ${branchTypeFilter.includes('school') ? 'selected' : ''}`}
+                                onClick={() => {
+                                    if (branchTypeFilter.includes('school')) {
+                                        setBranchTypeFilter(branchTypeFilter.filter(t => t !== 'school'));
+                                    } else {
+                                        setBranchTypeFilter([...branchTypeFilter, 'school']);
+                                    }
+                                    setSelectedBranchIds([]);
+                                    setSelectAllBranches(false);
+                                }}
+                            >
+                                مدارس
+                            </button>
+                            <button
+                                type="button"
+                                className={`field-btn ${branchTypeFilter.includes('healthcare_center') ? 'selected' : ''}`}
+                                onClick={() => {
+                                    if (branchTypeFilter.includes('healthcare_center')) {
+                                        setBranchTypeFilter(branchTypeFilter.filter(t => t !== 'healthcare_center'));
+                                    } else {
+                                        setBranchTypeFilter([...branchTypeFilter, 'healthcare_center']);
+                                    }
+                                    setSelectedBranchIds([]);
+                                    setSelectAllBranches(false);
+                                }}
+                            >
+                                مراكز رعاية نهارية
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="branches-selection-compact" style={{ position: 'relative', width: '100%' }}>
+                        <button 
+                            ref={multiBranchToggleRef} 
+                            type="button" 
+                            className="branches-toggle btn btn-secondary" 
+                            style={{ width: '100%', padding: '0.875rem 1.125rem', borderRadius: 'var(--radius-lg)', background: 'var(--bg-secondary)', border: '2px solid var(--border)', textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 'var(--font-size-base)', fontWeight: 500, color: 'var(--text)', cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: 'var(--shadow-sm)' }}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowMultiBranchDropdown(prev => {
+                                    if (!prev) {
+                                        setShowFieldsDropdown(false);
+                                        setShowFiltersDropdown(false);
+                                        setShowBranchesDropdown(false);
+                                        setShowDocumentsDropdown(false);
+                                    }
+                                    return !prev;
+                                });
+                            }} 
+                            aria-haspopup="true" 
+                            aria-expanded={showMultiBranchDropdown}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.borderColor = 'var(--primary)';
+                                e.currentTarget.style.background = 'var(--bg)';
+                                e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                                e.currentTarget.style.transform = 'translateY(-1px)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.borderColor = 'var(--border)';
+                                e.currentTarget.style.background = 'var(--bg-secondary)';
+                                e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+                                e.currentTarget.style.transform = 'translateY(0)';
+                            }}
+                        >
+                            {selectAllBranches ? 'كل الفروع' : (selectedBranchIds.length > 0 ? `${selectedBranchIds.length} فروع محددة` : 'اختيار الفروع')} ▾
+                        </button>
+
+                        {showMultiBranchDropdown && (
+                            <div ref={multiBranchDropdownRef} className="branches-selection-dropdown" style={{ position: 'absolute', background: 'var(--bg)', border: '2px solid var(--border)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', padding: 'var(--spacing-md)', display: 'flex', flexDirection: 'column', animation: 'expandDown 0.3s ease-out', zIndex: 1000, top: 'calc(100% + 8px)', left: 0, right: 0, maxHeight: '500px', overflowY: 'auto' }}>
+                                <div style={{ display: 'flex', gap: 'var(--spacing-sm)', justifyContent: 'flex-start', marginBottom: 'var(--spacing-md)', paddingBottom: 'var(--spacing-sm)', borderBottom: '1px solid var(--border-light)' }}>
+                                    <button 
+                                        className="btn btn-link" 
+                                        onClick={() => {
+                                            setSelectAllBranches(true);
+                                            setSelectedBranchIds([]);
+                                            setCurrentBranchId(null);
+                                            setSelectedBranchId(null);
+                                            setSearchParams({});
+                                            setIsPasswordVerified(true);
+                                        }}
+                                    >
+                                        تحديد الكل
+                                    </button>
+                                    <button 
+                                        className="btn btn-link" 
+                                        onClick={() => {
+                                            setSelectAllBranches(false);
+                                            setSelectedBranchIds([]);
+                                            setIsPasswordVerified(true);
+                                            setSearchParams({});
+                                        }}
+                                    >
+                                        مسح الكل
+                                    </button>
+                                    <button className="btn btn-link" onClick={() => setShowMultiBranchDropdown(false)}>إغلاق</button>
+                                </div>
+                                <div style={{ marginBottom: 'var(--spacing-sm)', position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1, paddingBottom: 'var(--spacing-sm)' }}>
+                                    <input
+                                        type="search"
+                                        placeholder="ابحث عن فرع..."
+                                        value={multiBranchSearchTerm}
+                                        onChange={(e) => setMultiBranchSearchTerm(e.target.value)}
+                                        style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: 'var(--radius-md)', border: '2px solid var(--border)', fontSize: 'var(--font-size-base)', background: 'var(--bg-secondary)', color: 'var(--text)', transition: 'all 0.2s ease' }}
+                                        onFocus={(e) => {
+                                            e.target.style.borderColor = 'var(--primary)';
+                                            e.target.style.background = 'var(--bg)';
+                                            e.target.style.boxShadow = '0 0 0 3px rgba(73, 136, 196, 0.15)';
+                                        }}
+                                        onBlur={(e) => {
+                                            e.target.style.borderColor = 'var(--border)';
+                                            e.target.style.background = 'var(--bg-secondary)';
+                                            e.target.style.boxShadow = 'none';
+                                        }}
+                                        autoFocus
+                                    />
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--spacing-sm)', paddingRight: '2px' }}>
+                                    {branches
+                                        .filter(b => 
+                                            !multiBranchSearchTerm || 
+                                            b.branch_name.toLowerCase().includes(multiBranchSearchTerm.trim().toLowerCase()) ||
+                                            b.branch_location?.toLowerCase().includes(multiBranchSearchTerm.trim().toLowerCase())
+                                        )
+                                        .map(branch => (
+                                            <button
+                                                key={branch.id}
+                                                type="button"
+                                                className={`field-btn ${selectedBranchIds.includes(branch.id) ? 'selected' : ''}`}
+                                                onClick={() => {
+                                                    if (selectedBranchIds.includes(branch.id)) {
+                                                        setSelectedBranchIds(selectedBranchIds.filter(id => id !== branch.id));
+                                                    } else {
+                                                        setSelectedBranchIds([...selectedBranchIds, branch.id]);
+                                                    }
+                                                    setSelectAllBranches(false);
+                                                    setIsPasswordVerified(true);
+                                                    setSearchParams({});
+                                                }}
+                                                style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-xs)' }}
+                                            >
+                                                <BranchBadge branch={branch} />
+                                                <span>{branch.branch_name}</span>
+                                            </button>
+                                        ))}
+                                    {branches.filter(b => 
+                                        !multiBranchSearchTerm || 
+                                        b.branch_name.toLowerCase().includes(multiBranchSearchTerm.trim().toLowerCase()) ||
+                                        b.branch_location?.toLowerCase().includes(multiBranchSearchTerm.trim().toLowerCase())
+                                    ).length === 0 && (
+                                        <div style={{ padding: 'var(--spacing-lg)', textAlign: 'center', color: 'var(--text-light)', fontSize: 'var(--font-size-sm)', width: '100%' }}>
+                                            لا توجد فروع مطابقة
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            <div className="form-section" ref={formSectionRef}>
+                <h2>اختيار الفرع والحقول</h2>
+                
+                {/* Report Title */}
+                <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+                    <label style={{ display: 'block', marginBottom: 'var(--spacing-sm)', fontWeight: 600 }}>عنوان التقرير:</label>
+                    <input
+                        type="text"
+                        value={reportTitle}
+                        onChange={(e) => setReportTitle(e.target.value)}
+                        placeholder="أدخل عنوان التقرير"
+                        className="form-control"
+                        style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: 'var(--radius-lg)', border: '2px solid var(--border)', fontSize: 'var(--font-size-base)' }}
+                    />
+                </div>
+
+                <div className="selection-row">
+                    {/* Branch Selection (for branch managers or single selection) */}
+                    {!isMainManager() && (
+                        <div className="branch-select-wrapper">
+                            <div className="branch-dropdown">
+                                <button
+                                    ref={branchToggleRef}
+                                    className="branch-toggle btn btn-secondary"
+                                    aria-haspopup="listbox"
+                                    aria-expanded={showBranchesDropdown}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowBranchesDropdown(prev => {
+                                            if (!prev) {
+                                                setShowFieldsDropdown(false);
+                                                setShowFiltersDropdown(false);
+                                                setShowMultiBranchDropdown(false);
+                                                setShowDocumentsDropdown(false);
+                                            }
+                                            return !prev;
+                                        });
+                                    }}
+                                >
+                                    {getSelectedBranchDisplay()} ▾
+                                </button>
+
+                                {showBranchesDropdown && (
+                                    <div ref={branchesDropdownRef} className="branches-dropdown" role="listbox" aria-label="قائمة الفروع">
+                                        <div className="branch-search">
+                                            <input
+                                                aria-label="بحث في الفروع"
+                                                type="search"
+                                                placeholder="ابحث عن فرع..."
+                                                value={branchSearchTerm}
+                                                onChange={(e) => setBranchSearchTerm(e.target.value)}
+                                                autoFocus
+                                            />
+                                        </div>
+                                        <div className="branches-list">
+                                            {branches.filter(b => b.branch_name.toLowerCase().includes(branchSearchTerm.trim().toLowerCase())).map(b => (
+                                                <button
+                                                    key={b.id}
+                                                    type="button"
+                                                    role="option"
+                                                    aria-selected={selectedBranchId === b.id}
+                                                    className={`branch-item ${selectedBranchId === b.id ? 'selected' : ''}`}
+                                                    onClick={() => { 
+                                                        setSelectedBranchId(b.id); 
+                                                        setShowBranchesDropdown(false); 
+                                                        setBranchSearchTerm('');
+                                                        setIsPasswordVerified(true);
+                                                    }}
+                                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedBranchId(b.id); setShowBranchesDropdown(false); setBranchSearchTerm(''); } }}
+                                                >
+                                                    <BranchBadge branch={b} />
+                                                    <span className="branch-name">{b.branch_name}</span>
+                                                </button>
+                                            ))}
+                                            {branches.filter(b => b.branch_name.toLowerCase().includes(branchSearchTerm.trim().toLowerCase())).length === 0 && (
+                                                <div className="no-branches">لا توجد فروع مطابقة</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Fields Selection */}
+                    <div className="fields-compact">
+                        <button 
+                            ref={fieldsToggleRef} 
+                            type="button" 
+                            className="fields-toggle btn btn-secondary" 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowFieldsDropdown(prev => {
+                                    if (!prev) {
+                                        setShowBranchesDropdown(false);
+                                        setShowFiltersDropdown(false);
+                                        setShowMultiBranchDropdown(false);
+                                        setShowDocumentsDropdown(false);
+                                    }
+                                    return !prev;
+                                });
+                            }} 
+                            aria-haspopup="true" 
+                            aria-expanded={showFieldsDropdown}
+                        >
+                            الحقول: {selectedFields.length} محددة ▾
+                        </button>
+
+                        {showFieldsDropdown && (
+                            <div ref={fieldsDropdownRef} className="fields-dropdown" role="menu" aria-label="اختيار الحقول">
+                                <div className="fields-actions">
+                                    <button className="btn btn-link" onClick={handleSelectAllFields}>تحديد الكل</button>
+                                    <button className="btn btn-link" onClick={handleClearFields}>مسح الكل</button>
+                                    <button className="btn btn-link" onClick={() => setShowFieldsDropdown(false)}>إغلاق</button>
+                                </div>
+                                <div className="fields-grid">
+                                    {availableFields.map(field => (
+                                        <button
+                                            key={field.value}
+                                            type="button"
+                                            role="menuitem"
+                                            tabIndex={0}
+                                            className={`field-btn ${selectedFields.includes(field.value) ? 'selected' : ''}`}
+                                            onClick={() => toggleField(field.value)}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleField(field.value); } }}
+                                        >
+                                            {field.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Filters Selection */}
+                    <div className="filters-compact">
+                        <button 
+                            ref={filtersToggleRef} 
+                            type="button" 
+                            className="filters-toggle btn btn-secondary" 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowFiltersDropdown(prev => {
+                                    if (!prev) {
+                                        setShowBranchesDropdown(false);
+                                        setShowFieldsDropdown(false);
+                                        setShowMultiBranchDropdown(false);
+                                        setShowDocumentsDropdown(false);
+                                    }
+                                    return !prev;
+                                });
+                            }} 
+                            aria-haspopup="true" 
+                            aria-expanded={showFiltersDropdown}
+                        >
+                            الفلاتر: {getActiveFiltersCount()} محددة ▾
+                        </button>
+
+                        {showFiltersDropdown && (
+                            <div ref={filtersDropdownRef} className="filters-dropdown" role="menu" aria-label="اختيار الفلاتر">
+                                <div className="filters-actions">
+                                    <button className="btn btn-link" onClick={clearAllFilters}>مسح الكل</button>
+                                    <button className="btn btn-link" onClick={() => setShowFiltersDropdown(false)}>إغلاق</button>
+                                </div>
+                                
+                                <div className="filters-grid">
+                                    {/* Nationality Filter */}
+                                    <div className="filter-group">
+                                        <div className="filter-group-header">
+                                            <span>الجنسية</span>
+                                            <button className="btn btn-link btn-sm" onClick={() => clearFilter('nationality')}>مسح</button>
+                                        </div>
+                                        <div className="filter-grid">
+                                            {filterOptions.nationalities.map(nat => (
+                                                <button
+                                                    key={nat}
+                                                    type="button"
+                                                    className={`filter-btn ${filters.nationality.includes(nat) ? 'selected' : ''}`}
+                                                    onClick={() => toggleFilter('nationality', nat)}
+                                                >
+                                                    {nat}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Job Title Filter */}
+                                    <div className="filter-group">
+                                        <div className="filter-group-header">
+                                            <span>المسمى الوظيفي</span>
+                                            <button className="btn btn-link btn-sm" onClick={() => clearFilter('job_title')}>مسح</button>
+                                        </div>
+                                        <div className="filter-grid">
+                                            {filterOptions.jobTitles.map(job => (
+                                                <button
+                                                    key={job}
+                                                    type="button"
+                                                    className={`filter-btn ${filters.job_title.includes(job) ? 'selected' : ''}`}
+                                                    onClick={() => toggleFilter('job_title', job)}
+                                                >
+                                                    {job}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Gender Filter */}
+                                    <div className="filter-group">
+                                        <div className="filter-group-header">
+                                            <span>الجنس</span>
+                                            <button className="btn btn-link btn-sm" onClick={() => clearFilter('gender')}>مسح</button>
+                                        </div>
+                                        <div className="filter-grid">
+                                            {filterOptions.genders.map(gender => (
+                                                <button
+                                                    key={gender}
+                                                    type="button"
+                                                    className={`filter-btn ${filters.gender.includes(gender) ? 'selected' : ''}`}
+                                                    onClick={() => toggleFilter('gender', gender)}
+                                                >
+                                                    {gender === 'male' ? 'ذكر' : 'أنثى'}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Marital Status Filter */}
+                                    <div className="filter-group">
+                                        <div className="filter-group-header">
+                                            <span>الحالة الاجتماعية</span>
+                                            <button className="btn btn-link btn-sm" onClick={() => clearFilter('marital_status')}>مسح</button>
+                                        </div>
+                                        <div className="filter-grid">
+                                            {filterOptions.maritalStatuses.map(status => (
+                                                <button
+                                                    key={status}
+                                                    type="button"
+                                                    className={`filter-btn ${filters.marital_status.includes(status) ? 'selected' : ''}`}
+                                                    onClick={() => toggleFilter('marital_status', status)}
+                                                >
+                                                    {status}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Educational Qualification Filter */}
+                                    <div className="filter-group">
+                                        <div className="filter-group-header">
+                                            <span>المؤهل التعليمي</span>
+                                            <button className="btn btn-link btn-sm" onClick={() => clearFilter('educational_qualification')}>مسح</button>
+                                        </div>
+                                        <div className="filter-grid">
+                                            {filterOptions.educationalQualifications.map(qual => (
+                                                <button
+                                                    key={qual}
+                                                    type="button"
+                                                    className={`filter-btn ${filters.educational_qualification.includes(qual) ? 'selected' : ''}`}
+                                                    onClick={() => toggleFilter('educational_qualification', qual)}
+                                                >
+                                                    {qual}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Contract Type Filter */}
+                                    <div className="filter-group">
+                                        <div className="filter-group-header">
+                                            <span>نوع العقد</span>
+                                            <button className="btn btn-link btn-sm" onClick={() => clearFilter('contract_type')}>مسح</button>
+                                        </div>
+                                        <div className="filter-grid">
+                                            {filterOptions.contractTypes.map(contract => (
+                                                <button
+                                                    key={contract}
+                                                    type="button"
+                                                    className={`filter-btn ${filters.contract_type.includes(contract) ? 'selected' : ''}`}
+                                                    onClick={() => toggleFilter('contract_type', contract)}
+                                                >
+                                                    {contract}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Data Completion Status Filter */}
+                                    <div className="filter-group">
+                                        <div className="filter-group-header">
+                                            <span>حالة إكمال البيانات</span>
+                                            <button className="btn btn-link btn-sm" onClick={() => clearFilter('data_completion_status')}>مسح</button>
+                                        </div>
+                                        <div className="filter-grid">
+                                            {filterOptions.dataCompletionStatuses.map(status => (
+                                                <button
+                                                    key={status}
+                                                    type="button"
+                                                    className={`filter-btn ${filters.data_completion_status.includes(status) ? 'selected' : ''}`}
+                                                    onClick={() => toggleFilter('data_completion_status', status)}
+                                                >
+                                                    {status === DATA_COMPLETION_STATUS.COMPLETE ? 'مكتمل' : 'غير مكتمل'}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Age Filters */}
+                                    <div className="filter-group" style={{ minWidth: '280px', maxWidth: 'none' }}>
+                                        <div className="filter-group-header">
+                                            <span>العمر</span>
+                                            <button className="btn btn-link btn-sm" onClick={() => {
+                                                handleFilterChange('min_age', '');
+                                                handleFilterChange('max_age', '');
+                                            }}>مسح</button>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexDirection: 'column' }}>
+                                            <div>
+                                                <label style={{ display: 'block', marginBottom: '4px', fontSize: 'var(--font-size-sm)' }}>من:</label>
+                                                <input
+                                                    type="number"
+                                                    value={filters.min_age}
+                                                    onChange={(e) => handleFilterChange('min_age', e.target.value)}
+                                                    placeholder="الحد الأدنى"
+                                                    min="0"
+                                                    style={{ width: '100%', padding: '8px', borderRadius: 'var(--radius-md)', border: '2px solid var(--border)', fontSize: 'var(--font-size-sm)' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label style={{ display: 'block', marginBottom: '4px', fontSize: 'var(--font-size-sm)' }}>إلى:</label>
+                                                <input
+                                                    type="number"
+                                                    value={filters.max_age}
+                                                    onChange={(e) => handleFilterChange('max_age', e.target.value)}
+                                                    placeholder="الحد الأقصى"
+                                                    min="0"
+                                                    style={{ width: '100%', padding: '8px', borderRadius: 'var(--radius-md)', border: '2px solid var(--border)', fontSize: 'var(--font-size-sm)' }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Document Selection - Dropdown Style */}
+                <div style={{ marginTop: 'var(--spacing-lg)', marginBottom: 'var(--spacing-lg)', position: 'relative' }}>
+                    <h3 style={{ marginBottom: 'var(--spacing-sm)', fontSize: 'var(--font-size-lg)', fontWeight: 600 }}>المستندات المرفقة (اختياري)</h3>
+                    <p style={{ marginBottom: 'var(--spacing-sm)', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
+                        يمكنك اختيار مستندات الموظفين لإدراجها في التقرير. عند اختيار المستندات، سيتم إنشاء تقرير لكل موظف على حدة مع بياناته ومستنداته.
+                    </p>
+                    <div style={{ position: 'relative' }}>
+                        <button 
+                            ref={documentsToggleRef} 
+                            type="button" 
+                            className="documents-toggle btn btn-secondary" 
+                            style={{ width: '100%', padding: '0.875rem 1.125rem', borderRadius: 'var(--radius-lg)', background: 'var(--bg-secondary)', border: '2px solid var(--border)', textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 'var(--font-size-base)', fontWeight: 500, color: 'var(--text)', cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: 'var(--shadow-sm)' }}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowDocumentsDropdown(prev => {
+                                    if (!prev) {
+                                        setShowBranchesDropdown(false);
+                                        setShowFieldsDropdown(false);
+                                        setShowFiltersDropdown(false);
+                                        setShowMultiBranchDropdown(false);
+                                    }
+                                    return !prev;
+                                });
+                            }} 
+                            aria-haspopup="true" 
+                            aria-expanded={showDocumentsDropdown}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.borderColor = 'var(--primary)';
+                                e.currentTarget.style.background = 'var(--bg)';
+                                e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                                e.currentTarget.style.transform = 'translateY(-1px)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.borderColor = 'var(--border)';
+                                e.currentTarget.style.background = 'var(--bg-secondary)';
+                                e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+                                e.currentTarget.style.transform = 'translateY(0)';
+                            }}
+                        >
+                            المستندات: {selectedDocuments.length} محددة ▾
+                        </button>
+
+                        {showDocumentsDropdown && (
+                            <div ref={documentsDropdownRef} className="documents-dropdown" style={{ position: 'absolute', background: 'var(--bg)', border: '2px solid var(--border)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', padding: 'var(--spacing-md)', display: 'flex', flexDirection: 'column', animation: 'expandDown 0.3s ease-out', zIndex: 1000, top: 'calc(100% + 8px)', left: 0, right: 0, maxHeight: '400px', overflowY: 'auto' }}>
+                                <div style={{ display: 'flex', gap: 'var(--spacing-sm)', justifyContent: 'flex-start', marginBottom: 'var(--spacing-md)', paddingBottom: 'var(--spacing-sm)', borderBottom: '1px solid var(--border-light)' }}>
+                                    <button 
+                                        className="btn btn-link" 
+                                        onClick={() => {
+                                            setSelectedDocuments(Object.keys(DOCUMENT_TYPE_LABELS));
+                                            if (fileType === 'excel') {
+                                                setFileType('pdf');
+                                            }
+                                        }}
+                                    >
+                                        تحديد الكل
+                                    </button>
+                                    <button 
+                                        className="btn btn-link" 
+                                        onClick={() => {
+                                            setSelectedDocuments([]);
+                                        }}
+                                    >
+                                        مسح الكل
+                                    </button>
+                                    <button className="btn btn-link" onClick={() => setShowDocumentsDropdown(false)}>إغلاق</button>
+                                </div>
+                                <div className="fields-grid" style={{ paddingRight: '2px' }}>
+                                    {Object.entries(DOCUMENT_TYPE_LABELS).map(([docType, label]) => (
+                                        <button
+                                            key={docType}
+                                            type="button"
+                                            role="menuitem"
+                                            tabIndex={0}
+                                            className={`field-btn ${selectedDocuments.includes(docType) ? 'selected' : ''}`}
+                                            onClick={() => {
+                                                if (selectedDocuments.includes(docType)) {
+                                                    setSelectedDocuments(selectedDocuments.filter(d => d !== docType));
+                                                } else {
+                                                    setSelectedDocuments([...selectedDocuments, docType]);
+                                                    if (fileType === 'excel') {
+                                                        setFileType('pdf');
+                                                    }
+                                                }
+                                            }}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (selectedDocuments.includes(docType)) { setSelectedDocuments(selectedDocuments.filter(d => d !== docType)); } else { setSelectedDocuments([...selectedDocuments, docType]); if (fileType === 'excel') { setFileType('pdf'); } } } }}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="actions-section">
+                    <button className="btn btn-primary" onClick={loadPreview} disabled={previewLoading}>{previewLoading ? 'جاري التحميل...' : 'عرض المعاينة'}</button>
+                    <button className="btn btn-primary" onClick={handleGeneratePdf} disabled={generating}>{generating ? 'جاري الإنشاء...' : 'توليد PDF'}</button>
+                    <button className="btn btn-primary" onClick={handleGenerateExcel} disabled={generatingExcel || selectedDocuments.length > 0}>{generatingExcel ? 'جاري الإنشاء...' : 'توليد Excel'}</button>
+                </div>
+
+                <div className="preview-section">
+                    <div className="preview-header">
+                        {((isMainManager() && (selectAllBranches || selectedBranchIds.length > 0)) || (!isMainManager() && selectedBranchId)) && (
+                            <div className="branch-info">
+                                <div className="branch-info-name">
+                                    {isMainManager() 
+                                        ? (selectAllBranches ? 'كل الفروع' : (selectedBranchIds.length === 1 ? branches.find(b => b.id === selectedBranchIds[0])?.branch_name : `${selectedBranchIds.length} فروع`))
+                                        : branches.find(b => b.id === selectedBranchId)?.branch_name}
+                                </div>
+                                <div className="branch-info-stats">
+                                    <span>عدد الموظفين: {employees.length} / {totalEmployees}</span>
+                                    <span>مكتمل: {employees.filter(e => e.data_completion_status === 'complete').length}</span>
+                                    <span>غير مكتمل: {employees.filter(e => e.data_completion_status !== 'complete').length}</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {previewLoading ? (
+                        <div className="loading">جاري التحميل...</div>
+                    ) : (
+                        <div className="preview-table-wrapper">
+                            <table className="preview-table">
+                                <thead>
+                                    <tr>
+                                        {selectedFields.map(f => (
+                                            <th key={f}>{(availableFields.find(a => a.value === f) || {}).label || f}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {employees.length === 0 ? (
+                                        <tr><td colSpan={selectedFields.length} className="empty-state" style={{ cursor: 'default' }}>لا توجد بيانات للعرض</td></tr>
+                                    ) : (
+                                        employees.map(emp => {
+                                            const getDisplayValue = (field) => {
+                                                let value = emp[field];
+                                                
+                                                if (field === 'full_name') {
+                                                    const names = [
+                                                        emp.first_name,
+                                                        emp.second_name,
+                                                        emp.third_name,
+                                                        emp.fourth_name
+                                                    ].filter(name => name && name.trim());
+                                                    return names.length > 0 ? names.join(' ') : emp.full_name || '-';
+                                                }
+                                                
+                                                if (field === 'branch_id') {
+                                                    const branch = branches.find(b => b.id === emp.branch_id);
+                                                    return branch ? branch.branch_name : emp.branch_id || '-';
+                                                }
+                                                
+                                                if (field === 'age') {
+                                                    const age = calculateAge(emp.date_of_birth_gregorian);
+                                                    return age !== null ? age.toString() : '-';
+                                                }
+                                                
+                                                if (field === 'total_salary') {
+                                                    const baseSalary = parseFloat(emp.base_salary) || 0;
+                                                    const housingAllowance = parseFloat(emp.housing_allowance) || 0;
+                                                    const transportationAllowance = parseFloat(emp.transportation_allowance) || 0;
+                                                    const endOfServiceAllowance = parseFloat(emp.end_of_service_allowance) || 0;
+                                                    const annualLeaveAllowance = parseFloat(emp.annual_leave_allowance) || 0;
+                                                    const otherAllowances = parseFloat(emp.other_allowances) || 0;
+                                                    const deductions = parseFloat(emp.deductions) || 0;
+                                                    
+                                                    const total = baseSalary + housingAllowance + transportationAllowance + 
+                                                                  endOfServiceAllowance + annualLeaveAllowance + otherAllowances - deductions;
+                                                    
+                                                    return total > 0 ? total.toFixed(2) : '0.00';
+                                                }
+                                                
+                                                if (field === 'date_of_birth_gregorian' || field === 'id_expiry_date_gregorian' || 
+                                                    field === 'passport_issue_date' || field === 'passport_expiry_date' || 
+                                                    field === 'residency_issue_date') {
+                                                    if (value) {
+                                                        return formatDate(value);
+                                                    }
+                                                    return '-';
+                                                }
+                                                
+                                                if (field === 'gender' || field === 'id_type' || field === 'marital_status' || 
+                                                    field === 'religion' || field === 'status' || field === 'data_completion_status') {
+                                                    return translateValue(field, value || '-');
+                                                }
+                                                
+                                                return value ?? '-';
+                                            };
+                                            
+                                            return (
+                                                <tr key={emp.id}>
+                                                    {selectedFields.map(f => {
+                                                        const cellValue = getDisplayValue(f);
+                                                        return (
+                                                            <td 
+                                                                key={f} 
+                                                                className={f === 'full_name' ? 'full-name-cell' : ''}
+                                                                onClick={(e) => handleCellClick(e, cellValue)}
+                                                                title="انقر للنسخ"
+                                                            >
+                                                                {cellValue}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+
+                {/* Confirmation modal for large exports */}
+                {confirmExportOpen && (
+                    <div className="modal-overlay" onClick={() => setConfirmExportOpen(false)}>
+                        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                            <h3>تأكيد التصدير</h3>
+                            <p>عدد الموظفين في التقرير هو {employees.length}. قد تستغرق العملية وقتاً طويلاً وقد تؤثر على أداء الخادم. هل تريد المتابعة؟</p>
+                            <div className="modal-actions">
+                                <button className="btn btn-primary" onClick={() => { 
+                                    setFileType(confirmExportType); // Track the file type
+                                    setConfirmExportOpen(false); 
+                                    proceedGenerateReport(confirmExportType);
+                                }}>متابعة</button>
+                                <button className="btn btn-secondary" onClick={() => setConfirmExportOpen(false)}>إلغاء</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Generating overlay */}
+                {isGeneratingOverlay && (
+                    <div className="generating-overlay">
+                        <div className="generating-content">
+                            <div className="spinner-large"></div>
+                            <div className="generating-text">جاري إنشاء الملف، الرجاء الانتظار...</div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Missing Documents Warning Modal */}
+            {showDocumentWarning && missingDocumentsInfo && (
+                <div className="modal-overlay" onClick={() => setShowDocumentWarning(false)}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+                        <h2>تنبيه: مستندات مفقودة</h2>
+                        <p style={{ marginBottom: '15px', color: '#666' }}>
+                            بعض الموظفين لا يمتلكون المستندات المختارة. سيتم كتابة "مستند غير متواجد" في التقرير للمستندات المفقودة.
+                        </p>
+                        <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '20px', border: '1px solid #ddd', padding: '10px', borderRadius: '4px' }}>
+                            {Object.entries(missingDocumentsInfo).map(([employeeId, info]) => (
+                                <div key={employeeId} style={{ marginBottom: '15px', paddingBottom: '15px', borderBottom: '1px solid #eee' }}>
+                                    <strong style={{ display: 'block', marginBottom: '5px' }}>{info.name}</strong>
+                                    <div style={{ fontSize: '14px', color: '#d32f2f' }}>
+                                        المستندات المفقودة:
+                                        <ul style={{ marginTop: '5px', paddingRight: '20px' }}>
+                                            {info.missing.map(docType => (
+                                                <li key={docType}>{getDocumentTypeLabel(docType)}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="form-actions">
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={handleContinueWithMissing}
+                            >
+                                المتابعة مع المستندات المفقودة
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => {
+                                    setShowDocumentWarning(false);
+                                    setMissingDocumentsInfo(null);
+                                }}
+                            >
+                                إلغاء
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Password Modal for branch managers */}
+            {!isMainManager() && showPasswordModal && (
+                <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <h2>إدخال كلمة المرور</h2>
+                        <p>هذه الصفحة تتطلب كلمة مرور للوصول</p>
+                        <form onSubmit={handlePasswordSubmit}>
+                            <div className="form-group">
+                                <label>كلمة المرور:</label>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="أدخل كلمة المرور"
+                                    autoFocus
+                                />
+                                {passwordError && <div className="error-message">{passwordError}</div>}
+                            </div>
+                            <div className="form-actions">
+                                <button type="submit" className="btn btn-primary">تأكيد</button>
+                                <button type="button" className="btn btn-secondary" onClick={() => setShowPasswordModal(false)}>
+                                    إلغاء
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
     );
-  }
-
-  return (
-    <div className="table-page">
-      <div className="page-header">
-        <h1> التقارير</h1>
-      </div>
-
-      {isMainManager() && (
-        <div className="form-section">
-          <h2>اختيار الفروع</h2>
-
-          {/* Branch Type Filter */}
-          <div className="branch-type-filter">
-            <label className="filter-header-label">نوع الفرع:</label>
-            <div className="branch-type-options">
-              <label className="branch-type-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={branchTypeFilter.includes('school')}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setBranchTypeFilter([...branchTypeFilter, 'school']);
-                    } else {
-                      setBranchTypeFilter(branchTypeFilter.filter(t => t !== 'school'));
-                    }
-                    // Reset branch selection when type filter changes
-                    setSelectedBranchIds([]);
-                    setSelectAllBranches(false);
-                  }}
-                />
-                <span>مدارس</span>
-              </label>
-              <label className="branch-type-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={branchTypeFilter.includes('healthcare_center')}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setBranchTypeFilter([...branchTypeFilter, 'healthcare_center']);
-                    } else {
-                      setBranchTypeFilter(branchTypeFilter.filter(t => t !== 'healthcare_center'));
-                    }
-                    // Reset branch selection when type filter changes
-                    setSelectedBranchIds([]);
-                    setSelectAllBranches(false);
-                  }}
-                />
-                <span>مراكز رعاية نهارية</span>
-              </label>
-            </div>
-          </div>
-
-          <div className="branches-selection">
-            <label className="branch-checkbox-label select-all-branch-label">
-              <input
-                type="checkbox"
-                checked={selectAllBranches}
-                onChange={(e) => {
-                  setSelectAllBranches(e.target.checked);
-                  if (e.target.checked) {
-                    setSelectedBranchIds([]);
-                    setCurrentBranchId(null);
-                    setSearchParams({});
-                  }
-                  setIsPasswordVerified(true);
-                }}
-              />
-              <span className="select-all-branch-text">كل الفروع</span>
-            </label>
-            <div className="branches-list">
-              {branches.map(branch => (
-                <label key={branch.id} className="branch-checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={selectedBranchIds.includes(branch.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedBranchIds([...selectedBranchIds, branch.id]);
-                        setSelectAllBranches(false);
-                      } else {
-                        setSelectedBranchIds(selectedBranchIds.filter(id => id !== branch.id));
-                      }
-                      setIsPasswordVerified(true);
-                      setSearchParams({});
-                    }}
-                  />
-                  <BranchBadge branch={branch} />
-                  <span>{branch.branch_name}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="form-section">
-        <h2>نماذج التقارير الجاهزة</h2>
-        <p className="template-description">اختر نموذج تقرير جاهز لملء الحقول تلقائياً:</p>
-        <div className="report-templates">
-          <button
-            type="button"
-            className="template-button"
-            onClick={() => applyTemplate('contactInfo')}
-          >
-            <div className="template-content">
-              <h3>تقرير بيانات التواصل</h3>
-              <p>الاسم، رقم الجوال، الإيميل، رقم الهوية/الإقامة</p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className="template-button"
-            onClick={() => applyTemplate('bankAccounts')}
-          >
-
-            <div className="template-content">
-              <h3>تقرير الحسابات البنكية</h3>
-              <p>الاسم، رقم الآيبان، رقم الهوية، اسم البنك</p>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className="template-button"
-            onClick={() => applyTemplate('jobs')}
-          >
-            <div className="template-content">
-              <h3>تقرير الوظائف</h3>
-              <p>الاسم، المهنة، المسمى الوظيفي، الفرع، الجنسية</p>
-            </div>
-          </button>
-        </div>
-      </div>
-
-      <form onSubmit={handleGenerateReport} className="report-form">
-        <div className="form-section">
-          <h2>عنوان التقرير</h2>
-          <div className="form-group">
-            <input
-              type="text"
-              value={reportTitle}
-              onChange={(e) => setReportTitle(e.target.value)}
-              placeholder="أدخل عنوان التقرير"
-              required
-              className="form-control"
-            />
-          </div>
-        </div>
-
-        <div className="form-section">
-          <h2>الفلاتر</h2>
-          <div className="filters-grid">
-            <div className="filter-group">
-              <div className="filter-header">
-                <label>الجنسية</label>
-              </div>
-              <div className="filter-info-text">
-                {filters.nationality.length === 0 ? 'الكل (لم يتم تحديد أي خيار)' : `تم تحديد ${filters.nationality.length} من ${filterOptions.nationalities.length}`}
-              </div>
-              <div className="filter-options">
-                {filterOptions.nationalities.map(nat => (
-                  <label key={nat} className="filter-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={filters.nationality.includes(nat)}
-                      onChange={() => handleFilterToggle('nationality', nat)}
-                    />
-                    <span>{nat}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="filter-group">
-              <div className="filter-header">
-                <label>المسمى الوظيفي</label>
-              </div>
-              <div className="filter-info-text">
-                {filters.job_title.length === 0 ? 'الكل (لم يتم تحديد أي خيار)' : `تم تحديد ${filters.job_title.length} من ${filterOptions.jobTitles.length}`}
-              </div>
-              <div className="filter-options">
-                {filterOptions.jobTitles.map(jt => (
-                  <label key={jt} className="filter-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={filters.job_title.includes(jt)}
-                      onChange={() => handleFilterToggle('job_title', jt)}
-                    />
-                    <span>{jt}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="filter-group">
-              <div className="filter-header">
-                <label>الجنس</label>
-              </div>
-              <div className="filter-info-text">
-                {filters.gender.length === 0 ? 'الكل (لم يتم تحديد أي خيار)' : `تم تحديد ${filters.gender.length} من ${filterOptions.genders.length}`}
-              </div>
-              <div className="filter-options">
-                {filterOptions.genders.map(g => (
-                  <label key={g} className="filter-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={filters.gender.includes(g)}
-                      onChange={() => handleFilterToggle('gender', g)}
-                    />
-                    <span>{getGenderLabel(g)}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="filter-group">
-              <div className="filter-header">
-                <label>الحالة الاجتماعية</label>
-              </div>
-              <div className="filter-info-text">
-                {filters.marital_status.length === 0 ? 'الكل (لم يتم تحديد أي خيار)' : `تم تحديد ${filters.marital_status.length} من ${filterOptions.maritalStatuses.length}`}
-              </div>
-              <div className="filter-options">
-                {filterOptions.maritalStatuses.map(ms => (
-                  <label key={ms} className="filter-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={filters.marital_status.includes(ms)}
-                      onChange={() => handleFilterToggle('marital_status', ms)}
-                    />
-                    <span>{ms}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="filter-group">
-              <div className="filter-header">
-                <label>المؤهل التعليمي</label>
-              </div>
-              <div className="filter-info-text">
-                {filters.educational_qualification.length === 0 ? 'الكل (لم يتم تحديد أي خيار)' : `تم تحديد ${filters.educational_qualification.length} من ${filterOptions.educationalQualifications.length}`}
-              </div>
-              <div className="filter-options">
-                {filterOptions.educationalQualifications.map(eq => (
-                  <label key={eq} className="filter-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={filters.educational_qualification.includes(eq)}
-                      onChange={() => handleFilterToggle('educational_qualification', eq)}
-                    />
-                    <span>{eq}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="filter-group">
-              <div className="filter-header">
-                <label>نوع العقد</label>
-              </div>
-              <div className="filter-info-text">
-                {filters.contract_type.length === 0 ? 'الكل (لم يتم تحديد أي خيار)' : `تم تحديد ${filters.contract_type.length} من ${filterOptions.contractTypes.length}`}
-              </div>
-              <div className="filter-options">
-                {filterOptions.contractTypes.map(ct => (
-                  <label key={ct} className="filter-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={filters.contract_type.includes(ct)}
-                      onChange={() => handleFilterToggle('contract_type', ct)}
-                    />
-                    <span>{ct}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="filter-group">
-              <div className="filter-header">
-                <label>حالة إكمال البيانات</label>
-              </div>
-              <div className="filter-info-text">
-                {filters.data_completion_status.length === 0 ? 'الكل (لم يتم تحديد أي خيار)' : `تم تحديد ${filters.data_completion_status.length} من ${filterOptions.dataCompletionStatuses.length}`}
-              </div>
-              <div className="filter-options">
-                {filterOptions.dataCompletionStatuses.map(dcs => (
-                  <label key={dcs} className="filter-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={filters.data_completion_status.includes(dcs)}
-                      onChange={() => handleFilterToggle('data_completion_status', dcs)}
-                    />
-                    <span>{getDataCompletionStatusLabel(dcs)}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label>العمر (من):</label>
-              <input
-                type="number"
-                value={filters.min_age}
-                onChange={(e) => handleFilterChange('min_age', e.target.value)}
-                placeholder="الحد الأدنى"
-                min="0"
-                className="form-control"
-              />
-            </div>
-
-            <div className="form-group">
-              <label>العمر (إلى):</label>
-              <input
-                type="number"
-                value={filters.max_age}
-                onChange={(e) => handleFilterChange('max_age', e.target.value)}
-                placeholder="الحد الأقصى"
-                min="0"
-                className="form-control"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="form-section">
-          <h2>الحقول المراد عرضها</h2>
-          <div className="fields-grid">
-            {availableFields.map(field => (
-              <label key={field.value} className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={selectedFields.includes(field.value)}
-                  onChange={() => handleFieldToggle(field.value)}
-                />
-                <span>{field.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div className="form-section">
-          <h2>المستندات المرفقة (اختياري)</h2>
-          <p style={{ marginBottom: '15px', color: '#666', fontSize: '14px' }}>
-            يمكنك اختيار مستندات الموظفين لإدراجها في التقرير. عند اختيار المستندات، سيتم إنشاء تقرير لكل موظف على حدة مع بياناته ومستنداته.
-          </p>
-          <div className="fields-grid">
-            {Object.entries(DOCUMENT_TYPE_LABELS).map(([docType, label]) => (
-              <label key={docType} className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={selectedDocuments.includes(docType)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedDocuments([...selectedDocuments, docType]);
-                      // Force PDF when documents are selected
-                      if (fileType === 'excel') {
-                        setFileType('pdf');
-                      }
-                    } else {
-                      setSelectedDocuments(selectedDocuments.filter(d => d !== docType));
-                    }
-                  }}
-                />
-                <span>{label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div className="form-section">
-          <h2>نوع الملف</h2>
-          <div className="file-type-selection">
-            <label className="file-type-radio-label">
-              <input
-                type="radio"
-                name="fileType"
-                value="pdf"
-                checked={fileType === 'pdf'}
-                onChange={(e) => setFileType(e.target.value)}
-              />
-              <span>PDF</span>
-            </label>
-            <label className="file-type-radio-label" style={{
-              opacity: selectedDocuments.length > 0 ? 0.5 : 1,
-              cursor: selectedDocuments.length > 0 ? 'not-allowed' : 'pointer'
-            }}>
-              <input
-                type="radio"
-                name="fileType"
-                value="excel"
-                checked={fileType === 'excel'}
-                onChange={(e) => {
-                  if (selectedDocuments.length === 0) {
-                    setFileType(e.target.value);
-                  }
-                }}
-                disabled={selectedDocuments.length > 0}
-              />
-              <span>Excel {selectedDocuments.length > 0 && '(غير متاح عند اختيار المستندات)'}</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="form-actions">
-          <button type="submit" className={`btn btn-primary btn-lg ${isReportFormValid() ? 'btn-ready' : ''}`} disabled={generating}>
-            {generating ? 'جاري الإنشاء...' : 'إنشاء التقرير'}
-          </button>
-        </div>
-      </form>
-
-      {!isMainManager() && showPasswordModal && (
-        <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2>إدخال كلمة المرور</h2>
-            <p>هذه الصفحة تتطلب كلمة مرور للوصول</p>
-            <form onSubmit={handlePasswordSubmit}>
-              <div className="form-group">
-                <label>كلمة المرور:</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="أدخل كلمة المرور"
-                  autoFocus
-                />
-                {passwordError && <div className="error-message">{passwordError}</div>}
-              </div>
-              <div className="form-actions">
-                <button type="submit" className="btn btn-primary">تأكيد</button>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowPasswordModal(false)}>
-                  إلغاء
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Missing Documents Warning Modal */}
-      {showDocumentWarning && missingDocumentsInfo && (
-        <div className="modal-overlay" onClick={() => setShowDocumentWarning(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
-            <h2>تنبيه: مستندات مفقودة</h2>
-            <p style={{ marginBottom: '15px', color: '#666' }}>
-              بعض الموظفين لا يمتلكون المستندات المختارة. سيتم كتابة "مستند غير متواجد" في التقرير للمستندات المفقودة.
-            </p>
-            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '20px', border: '1px solid #ddd', padding: '10px', borderRadius: '4px' }}>
-              {Object.entries(missingDocumentsInfo).map(([employeeId, info]) => (
-                <div key={employeeId} style={{ marginBottom: '15px', paddingBottom: '15px', borderBottom: '1px solid #eee' }}>
-                  <strong style={{ display: 'block', marginBottom: '5px' }}>{info.name}</strong>
-                  <div style={{ fontSize: '14px', color: '#d32f2f' }}>
-                    المستندات المفقودة:
-                    <ul style={{ marginTop: '5px', paddingRight: '20px' }}>
-                      {info.missing.map(docType => (
-                        <li key={docType}>{getDocumentTypeLabel(docType)}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="form-actions">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleContinueWithMissing}
-              >
-                المتابعة مع المستندات المفقودة
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => {
-                  setShowDocumentWarning(false);
-                  setMissingDocumentsInfo(null);
-                }}
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 };
 
 export default Reports;
-
