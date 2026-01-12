@@ -9,13 +9,22 @@ import { log } from '../utils/logger.js';
 
 dotenv.config();
 
+// Validate required database environment variables
+const requiredDbVars = ['DATABASE_HOST', 'DATABASE_NAME', 'DATABASE_USER', 'DATABASE_PASSWORD'];
+const missingDbVars = requiredDbVars.filter(varName => !process.env[varName]);
+
+if (missingDbVars.length > 0) {
+  log.warn(`Missing database environment variables: ${missingDbVars.join(', ')}. Database operations will fail.`);
+  // Don't throw - allow server to start but database operations will fail gracefully
+}
+
 // Database connection configuration
 // Performance Optimization: Improved Connection Pooling
 const sql = postgres({
-  host: process.env.DATABASE_HOST,
-  database: process.env.DATABASE_NAME,
-  username: process.env.DATABASE_USER,
-  password: process.env.DATABASE_PASSWORD,
+  host: process.env.DATABASE_HOST || '',
+  database: process.env.DATABASE_NAME || '',
+  username: process.env.DATABASE_USER || '',
+  password: process.env.DATABASE_PASSWORD || '',
   ssl: 'require',
   // Connection Pool Optimization
   // Reduced from 50 to 25 to prevent exhausting database connection limits

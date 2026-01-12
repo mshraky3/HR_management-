@@ -80,12 +80,10 @@ async function testDbConnection() {
 async function testBlobStorage() {
   try {
     const { isBlobStorageConfigured } = await import('./utils/blobStorage.js');
-    const { getBlobStoreName } = await import('./config/blobStorage.js');
     if (isBlobStorageConfigured()) {
-      const activeStore = getBlobStoreName();
-      log.info(`Blob Storage is configured - using ${activeStore} blob store`);
+      log.info('Blob Storage is configured');
     } else {
-      log.warn('Blob Storage is not configured - file uploads will not work. Please set BLOB_READ_WRITE_TOKEN or SPARE_BLOB_READ_WRITE_TOKEN');
+      log.warn('Blob Storage is not configured - file uploads will not work. Please set BLOB_READ_WRITE_TOKEN');
     }
   } catch (error) {
     log.warn('Could not check Blob Storage configuration', { error: error.message });

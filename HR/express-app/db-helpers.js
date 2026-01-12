@@ -30,10 +30,13 @@ function logDatabaseChange(action, details, sqlQuery = '') {
   logEntry += `---\n\n`;
   
   try {
-    fs.appendFileSync(MIGRATION_LOG_FILE, logEntry, 'utf8');
+    // Skip file logging on Vercel (read-only filesystem)
+    if (process.env.VERCEL !== '1') {
+      fs.appendFileSync(MIGRATION_LOG_FILE, logEntry, 'utf8');
+    }
     // Removed console.log to suppress logs
   } catch (error) {
-    // Silent error handling
+    // Silent error handling - file logging is optional
   }
 }
 

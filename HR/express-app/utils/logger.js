@@ -119,7 +119,8 @@ const logger = winston.createLogger({
 });
 
 // Add file transport in production (optional - can be configured)
-if (process.env.NODE_ENV === 'production' && process.env.LOG_TO_FILE === 'true') {
+// Skip file logging on Vercel (read-only filesystem)
+if (process.env.NODE_ENV === 'production' && process.env.LOG_TO_FILE === 'true' && process.env.VERCEL !== '1') {
   logger.add(new winston.transports.File({
     filename: 'logs/error.log',
     level: 'error',
