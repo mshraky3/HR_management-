@@ -32,11 +32,16 @@ const EmployeeFile = () => {
     branch_id: ''
   });
   const [hasSearched, setHasSearched] = useState(false); // Track if user has performed a search
+  const [branchSearchTerm, setBranchSearchTerm] = useState(''); // Search term for filtering branches
+  const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
+  const [showFieldsDropdown, setShowFieldsDropdown] = useState(false);
   
   // Refs to maintain focus on search inputs
   const searchNameRef = useRef(null);
   const searchIdRef = useRef(null);
   const searchPhoneRef = useRef(null);
+  const fieldsToggleRef = useRef(null);
+  const fieldsDropdownRef = useRef(null);
   
   // Available fields for selection
   const availableFields = [
@@ -101,13 +106,17 @@ const EmployeeFile = () => {
     }
   }, [isMainManager]);
 
-  // Load branches
+  // Load branches and sort alphabetically
   useEffect(() => {
     const loadBranches = async () => {
       try {
         const response = await branchesAPI.getAll({ is_active: true });
         if (response.data.success) {
-          setBranches(response.data.data || []);
+          // Sort branches alphabetically by branch_name
+          const sortedBranches = (response.data.data || []).sort((a, b) => {
+            return (a.branch_name || '').localeCompare(b.branch_name || '', 'ar');
+          });
+          setBranches(sortedBranches);
         }
       } catch (error) {
         console.error('Error loading branches:', error);
@@ -260,6 +269,34 @@ const EmployeeFile = () => {
     });
   };
 
+  const handleSelectAllFields = () => {
+    setSelectedFields(availableFields.map(f => f.value));
+  };
+
+  const handleClearFields = () => {
+    setSelectedFields([]);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        showFieldsDropdown &&
+        fieldsDropdownRef.current &&
+        fieldsToggleRef.current &&
+        !fieldsDropdownRef.current.contains(event.target) &&
+        !fieldsToggleRef.current.contains(event.target)
+      ) {
+        setShowFieldsDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showFieldsDropdown]);
+
   const handleGenerateFile = async (e) => {
     e.preventDefault();
     
@@ -389,20 +426,121 @@ const EmployeeFile = () => {
                   className="form-control"
                 />
               </div>
-              <div className="form-group">
+              <div className="form-group" style={{ position: 'relative' }}>
                 <label>البحث بالفرع:</label>
-                <select
-                  value={searchFilters.branch_id}
-                  onChange={(e) => setSearchFilters(prev => ({ ...prev, branch_id: e.target.value }))}
-                  className="form-control"
-                >
-                  <option value="">جميع الفروع</option>
-                  {branches.map(branch => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.branch_name}
-                    </option>
-                  ))}
-                </select>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    value={searchFilters.branch_id 
+                      ? branches.find(b => b.id === parseInt(searchFilters.branch_id))?.branch_name || '' 
+                      : branchSearchTerm}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setBranchSearchTerm(value);
+                      setIsBranchDropdownOpen(true);
+                      // Clear selection if user is typing (not selecting from dropdown)
+                      if (value !== branches.find(b => b.id === parseInt(searchFilters.branch_id))?.branch_name) {
+                        setSearchFilters(prev => ({ ...prev, branch_id: '' }));
+                      }
+                    }}
+                    onFocus={() => {
+                      setIsBranchDropdownOpen(true);
+                      // If a branch is selected, show it in search term for editing
+                      if (searchFilters.branch_id) {
+                        const selectedBranch = branches.find(b => b.id === parseInt(searchFilters.branch_id));
+                        if (selectedBranch) {
+                          setBranchSearchTerm(selectedBranch.branch_name);
+                        }
+                      }
+                    }}
+                    onBlur={() => {
+                      // Delay closing to allow click on option
+                      setTimeout(() => {
+                        setIsBranchDropdownOpen(false);
+                        // If no branch selected and search term doesn't match any branch, clear it
+                        if (!searchFilters.branch_id) {
+                          const matchingBranch = branches.find(b => 
+                            b.branch_name.toLowerCase() === branchSearchTerm.toLowerCase()
+                          );
+                          if (!matchingBranch) {
+                            setBranchSearchTerm('');
+                          }
+                        }
+                      }, 200);
+                    }}
+                    placeholder="ابحث واختر فرع..."
+                    className="form-control"
+                  />
+                  {isBranchDropdownOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      zIndex: 1000,
+                      backgroundColor: 'white',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-md)',
+                      maxHeight: '300px',
+                      overflowY: 'auto',
+                      boxShadow: 'var(--shadow-lg)',
+                      marginTop: '4px'
+                    }}>
+                      <div
+                        style={{
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid var(--border-light)',
+                          backgroundColor: searchFilters.branch_id === '' ? 'var(--primary-light)' : 'transparent'
+                        }}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setSearchFilters(prev => ({ ...prev, branch_id: '' }));
+                          setBranchSearchTerm('');
+                          setIsBranchDropdownOpen(false);
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = searchFilters.branch_id === '' ? 'var(--primary-light)' : 'transparent';
+                        }}
+                      >
+                        جميع الفروع
+                      </div>
+                      {branches
+                        .filter(branch => 
+                          !branchSearchTerm || 
+                          (branch.branch_name || '').toLowerCase().includes(branchSearchTerm.toLowerCase())
+                        )
+                        .map(branch => (
+                          <div
+                            key={branch.id}
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid var(--border-light)',
+                              backgroundColor: searchFilters.branch_id === branch.id.toString() ? 'var(--primary-light)' : 'transparent'
+                            }}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setSearchFilters(prev => ({ ...prev, branch_id: branch.id.toString() }));
+                              setBranchSearchTerm('');
+                              setIsBranchDropdownOpen(false);
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = searchFilters.branch_id === branch.id.toString() ? 'var(--primary-light)' : 'transparent';
+                            }}
+                          >
+                            {branch.branch_name}
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             <div className="search-actions">
@@ -514,18 +652,50 @@ const EmployeeFile = () => {
         {/* Fields Selection */}
         {selectedEmployeeId && (
           <div className="form-section">
-            <h2>الحقول المراد عرضها</h2>
-            <div className="fields-grid">
-              {availableFields.map(field => (
-                <label key={field.value} className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={selectedFields.includes(field.value)}
-                    onChange={() => handleFieldToggle(field.value)}
-                  />
-                  <span>{field.label}</span>
-                </label>
-              ))}
+            <div className="fields-compact">
+              <button 
+                ref={fieldsToggleRef} 
+                type="button" 
+                className="fields-toggle btn btn-secondary" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowFieldsDropdown(prev => !prev);
+                }} 
+                aria-haspopup="true" 
+                aria-expanded={showFieldsDropdown}
+              >
+                الحقول: {selectedFields.length} محددة ▾
+              </button>
+
+              {showFieldsDropdown && (
+                <div ref={fieldsDropdownRef} className="fields-dropdown" role="menu" aria-label="اختيار الحقول">
+                  <div className="fields-actions">
+                    <button className="btn btn-link" onClick={handleSelectAllFields}>تحديد الكل</button>
+                    <button className="btn btn-link" onClick={handleClearFields}>مسح الكل</button>
+                    <button className="btn btn-link" onClick={() => setShowFieldsDropdown(false)}>إغلاق</button>
+                  </div>
+                  <div className="fields-grid">
+                    {availableFields.map(field => (
+                      <button
+                        key={field.value}
+                        type="button"
+                        role="menuitem"
+                        tabIndex={0}
+                        className={`field-btn ${selectedFields.includes(field.value) ? 'selected' : ''}`}
+                        onClick={() => handleFieldToggle(field.value)}
+                        onKeyDown={(e) => { 
+                          if (e.key === 'Enter' || e.key === ' ') { 
+                            e.preventDefault(); 
+                            handleFieldToggle(field.value); 
+                          } 
+                        }}
+                      >
+                        {field.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -119,6 +119,13 @@ const BranchManagerLayout = ({ children }) => {
           >
             طلبات
           </Link>
+          <Link
+            to="/bus-transportation"
+            className={`nav-link ${isActive('/bus-transportation')}`}
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            نقل الطلاب
+          </Link>
         </div>
         <div className="nav-user">
           {/* Notification Bell */}

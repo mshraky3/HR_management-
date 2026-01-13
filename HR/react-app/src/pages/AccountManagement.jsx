@@ -67,7 +67,7 @@ const AccountManagement = () => {
     setEditingAccount(account);
     setFormData({
       username: account.username,
-      password: '',
+      password: account.password || '',
       full_name: account.full_name,
       phone_number: account.phone_number || '',
     });
@@ -102,7 +102,7 @@ const AccountManagement = () => {
     <div className="table-page">
       <div className="page-header">
         <h1>إدارة الحسابات</h1>
-        <button onClick={() => { setShowForm(true); resetForm(); setEditingAccount(null); }} className="btn-primary">
+        <button onClick={() => { setShowForm(true); resetForm(); setEditingAccount(null); }} className="btn-primary btn-lg">
           إضافة حساب جديد
         </button>
       </div>
@@ -125,7 +125,7 @@ const AccountManagement = () => {
                 <div className="form-group">
                   <label>كلمة المرور {!editingAccount && '*'}</label>
                   <input
-                    type="password"
+                    type="text"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     required={!editingAccount}
@@ -153,8 +153,8 @@ const AccountManagement = () => {
                 </div>
               </div>
               <div className="form-actions">
-                <button type="submit" className="btn-primary">حفظ</button>
-                <button type="button" onClick={() => { setShowForm(false); resetForm(); setEditingAccount(null); }} className="btn-secondary">
+                <button type="submit" className="btn-primary btn-lg">حفظ</button>
+                <button type="button" onClick={() => { setShowForm(false); resetForm(); setEditingAccount(null); }} className="btn-secondary btn-lg">
                   إلغاء
                 </button>
               </div>
