@@ -1088,6 +1088,75 @@ export const payrollAbsenceAPI = {
     api.post('/api/payroll-absences/admin/export', data, { responseType: 'blob' }),
 };
 
+// Bus Transportation API
+export const busTransportationAPI = {
+  getAll: (params = {}) =>
+    api.get('/api/bus-transportation', { params }),
+
+  getById: (id) =>
+    api.get(`/api/bus-transportation/${id}`),
+
+  create: (data) =>
+    api.post('/api/bus-transportation', data),
+
+  update: (id, data) =>
+    api.put(`/api/bus-transportation/${id}`, data),
+
+  delete: (id) =>
+    api.delete(`/api/bus-transportation/${id}`),
+
+  // Registration
+  saveRegistration: (id, data) =>
+    api.post(`/api/bus-transportation/${id}/registration`, data),
+
+  uploadRegistrationDocument: (id, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/api/bus-transportation/${id}/registration/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // Driver License
+  saveDriverLicense: (id, data) =>
+    api.post(`/api/bus-transportation/${id}/driver-license`, data),
+
+  uploadDriverLicenseDocument: (id, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/api/bus-transportation/${id}/driver-license/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // License Plates
+  addLicensePlate: (id, data) =>
+    api.post(`/api/bus-transportation/${id}/license-plates`, data),
+
+  updateLicensePlate: (id, plateId, data) =>
+    api.put(`/api/bus-transportation/${id}/license-plates/${plateId}`, data),
+
+  deleteLicensePlate: (id, plateId) =>
+    api.delete(`/api/bus-transportation/${id}/license-plates/${plateId}`),
+
+  // Bus Details
+  saveDetails: (id, data) =>
+    api.post(`/api/bus-transportation/${id}/details`, data),
+
+  // Students
+  getStudents: (id, params = {}) =>
+    api.get(`/api/bus-transportation/${id}/students`, { params }),
+
+  addStudent: (id, data) =>
+    api.post(`/api/bus-transportation/${id}/students`, data),
+
+  updateStudent: (id, studentId, data) =>
+    api.put(`/api/bus-transportation/${id}/students/${studentId}`, data),
+
+  deleteStudent: (id, studentId) =>
+    api.delete(`/api/bus-transportation/${id}/students/${studentId}`),
+};
+
 
 export default api;
 

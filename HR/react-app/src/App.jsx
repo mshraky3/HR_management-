@@ -73,6 +73,7 @@ const BranchRequests = lazy(() => import('./pages/BranchRequests'));
 const ManageRequests = lazy(() => import('./pages/ManageRequests'));
 const FixMissingDates = lazy(() => import('./pages/FixMissingDates'));
 const PayrollAbsenceAdmin = lazy(() => import('./pages/PayrollAbsenceAdmin'));
+const BusTransportation = lazy(() => import('./pages/BusTransportation'));
 
 // Wrapper component to choose layout based on role
 const RoleBasedLayout = ({ children }) => {
@@ -281,6 +282,16 @@ const AppContent = () => {
               <Layout>
                 <PayrollAbsenceAdmin />
               </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/bus-transportation"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <BusTransportation />
+              </RoleBasedLayout>
             </ProtectedRoute>
           }
         />
