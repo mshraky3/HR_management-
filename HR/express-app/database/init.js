@@ -616,6 +616,259 @@ export async function initializeDatabase() {
     );
 
 
+    // 15. Create bus_transportation table (main bus table linked to branches and terms)
+    await createTable('bus_transportation', `
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+      term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE RESTRICT,
+      bus_number VARCHAR(50) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      UNIQUE(branch_id, bus_number, term_id)
+    `);
+
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_bus_transportation_branch_id ON bus_transportation(branch_id)',
+      'Created index on bus_transportation.branch_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_bus_transportation_bus_number ON bus_transportation(bus_number)',
+      'Created index on bus_transportation.bus_number'
+    );
+    
+    // Check if term_id column exists before creating indexes on it
+    const termIdColumnExists = await sql`
+      SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_name = 'bus_transportation' 
+        AND column_name = 'term_id'
+      )
+    `;
+    
+    if (termIdColumnExists[0]?.exists) {
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_bus_transportation_term_id ON bus_transportation(term_id)',
+        'Created index on bus_transportation.term_id'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_bus_transportation_branch_term ON bus_transportation(branch_id, term_id)',
+        'Created index on bus_transportation(branch_id, term_id)'
+      );
+    }
+
+    // 16. Create bus_registration_data table (full vehicle registration card data)
+    await createTable('bus_registration_data', `
+      id SERIAL PRIMARY KEY,
+      bus_id INTEGER NOT NULL UNIQUE REFERENCES bus_transportation(id) ON DELETE CASCADE,
+      registration_number VARCHAR(100) UNIQUE NOT NULL,
+      registration_authority VARCHAR(200),
+      chassis_number VARCHAR(100) UNIQUE NOT NULL,
+      engine_number VARCHAR(100),
+      vehicle_make VARCHAR(100) NOT NULL,
+      vehicle_model VARCHAR(100) NOT NULL,
+      model_year INTEGER,
+      vehicle_color VARCHAR(50),
+      vehicle_type VARCHAR(50),
+      vehicle_category VARCHAR(50),
+      registration_date_hijri VARCHAR(50),
+      registration_date_gregorian DATE,
+      expiry_date_hijri VARCHAR(50),
+      expiry_date_gregorian DATE,
+      owner_name VARCHAR(255),
+      owner_id_number VARCHAR(100),
+      owner_type VARCHAR(50),
+      registration_document_url VARCHAR(500),
+      registration_document_name VARCHAR(255),
+      registration_document_mime_type VARCHAR(100),
+      is_verified BOOLEAN DEFAULT false,
+      verified_at TIMESTAMP,
+      verified_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    `);
+
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_bus_registration_bus_id ON bus_registration_data(bus_id)',
+      'Created index on bus_registration_data.bus_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_bus_registration_registration_number ON bus_registration_data(registration_number)',
+      'Created index on bus_registration_data.registration_number'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_bus_registration_chassis_number ON bus_registration_data(chassis_number)',
+      'Created index on bus_registration_data.chassis_number'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_bus_registration_expiry ON bus_registration_data(expiry_date_gregorian)',
+      'Created index on bus_registration_data.expiry_date_gregorian'
+    );
+
+    // 17. Create driver_license_data table (driver’s license front/back)
+    await createTable('driver_license_data', `
+      id SERIAL PRIMARY KEY,
+      bus_id INTEGER NOT NULL UNIQUE REFERENCES bus_transportation(id) ON DELETE CASCADE,
+      driver_full_name VARCHAR(255) NOT NULL,
+      driver_id_number VARCHAR(100) NOT NULL,
+      license_number VARCHAR(100) UNIQUE NOT NULL,
+      license_type VARCHAR(50),
+      license_category VARCHAR(50),
+      license_authority VARCHAR(200),
+      issue_date_hijri VARCHAR(50),
+      issue_date_gregorian DATE,
+      expiry_date_hijri VARCHAR(50),
+      expiry_date_gregorian DATE,
+      issue_place VARCHAR(255),
+      driver_phone_number VARCHAR(50),
+      driver_address TEXT,
+      driver_nationality VARCHAR(100),
+      driver_date_of_birth_hijri VARCHAR(50),
+      driver_date_of_birth_gregorian DATE,
+      license_document_url VARCHAR(500),
+      license_document_name VARCHAR(255),
+      license_document_mime_type VARCHAR(100),
+      is_verified BOOLEAN DEFAULT false,
+      verified_at TIMESTAMP,
+      verified_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    `);
+
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_driver_license_bus_id ON driver_license_data(bus_id)',
+      'Created index on driver_license_data.bus_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_driver_license_license_number ON driver_license_data(license_number)',
+      'Created index on driver_license_data.license_number'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_driver_license_driver_id ON driver_license_data(driver_id_number)',
+      'Created index on driver_license_data.driver_id_number'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_driver_license_expiry ON driver_license_data(expiry_date_gregorian)',
+      'Created index on driver_license_data.expiry_date_gregorian'
+    );
+
+    // 18. Create license_plate_data table (all license plates for a bus)
+    await createTable('license_plate_data', `
+      id SERIAL PRIMARY KEY,
+      bus_id INTEGER NOT NULL REFERENCES bus_transportation(id) ON DELETE CASCADE,
+      plate_number VARCHAR(50) NOT NULL,
+      plate_region VARCHAR(50),
+      plate_type VARCHAR(50),
+      plate_color VARCHAR(50),
+      is_primary BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(bus_id, plate_number)
+    `);
+
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_license_plate_bus_id ON license_plate_data(bus_id)',
+      'Created index on license_plate_data.bus_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_license_plate_number ON license_plate_data(plate_number)',
+      'Created index on license_plate_data.plate_number'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_license_plate_primary ON license_plate_data(is_primary)',
+      'Created index on license_plate_data.is_primary'
+    );
+
+    // 19. Create bus_details table (operational details: route, seats, ownership, insurance)
+    await createTable('bus_details', `
+      id SERIAL PRIMARY KEY,
+      bus_id INTEGER NOT NULL UNIQUE REFERENCES bus_transportation(id) ON DELETE CASCADE,
+      route_name VARCHAR(255),
+      route_description TEXT,
+      number_of_seats INTEGER NOT NULL,
+      ownership_type VARCHAR(50) NOT NULL CHECK (ownership_type IN ('owned', 'leased', 'rented')),
+      lease_company_name VARCHAR(255),
+      lease_contact_info VARCHAR(500),
+      lease_contract_number VARCHAR(100),
+      lease_start_date_hijri VARCHAR(50),
+      lease_start_date_gregorian DATE,
+      lease_end_date_hijri VARCHAR(50),
+      lease_end_date_gregorian DATE,
+      insurance_provider VARCHAR(255),
+      insurance_policy_number VARCHAR(100),
+      insurance_expiry_date_hijri VARCHAR(50),
+      insurance_expiry_date_gregorian DATE,
+      maintenance_schedule TEXT,
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    `);
+
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_bus_details_bus_id ON bus_details(bus_id)',
+      'Created index on bus_details.bus_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_bus_details_ownership_type ON bus_details(ownership_type)',
+      'Created index on bus_details.ownership_type'
+    );
+
+    // 20. Create bus_students table (students assigned to buses)
+    await createTable('bus_students', `
+      id SERIAL PRIMARY KEY,
+      bus_id INTEGER NOT NULL REFERENCES bus_transportation(id) ON DELETE CASCADE,
+      term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE RESTRICT,
+      student_full_name VARCHAR(255) NOT NULL,
+      contact_mobile_number VARCHAR(50) NOT NULL,
+      address TEXT NOT NULL,
+      pickup_location VARCHAR(500),
+      dropoff_location VARCHAR(500),
+      pickup_time TIME,
+      dropoff_time TIME,
+      guardian_name VARCHAR(255),
+      guardian_relationship VARCHAR(50),
+      guardian_phone VARCHAR(50),
+      notes TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      UNIQUE(bus_id, contact_mobile_number, term_id)
+    `);
+
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_bus_students_bus_id ON bus_students(bus_id)',
+      'Created index on bus_students.bus_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_bus_students_contact_mobile ON bus_students(contact_mobile_number)',
+      'Created index on bus_students.contact_mobile_number'
+    );
+    
+    // Check if term_id column exists before creating indexes on it
+    const studentTermIdColumnExists = await sql`
+      SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_name = 'bus_students' 
+        AND column_name = 'term_id'
+      )
+    `;
+    
+    if (studentTermIdColumnExists[0]?.exists) {
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_bus_students_term_id ON bus_students(term_id)',
+        'Created index on bus_students.term_id'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_bus_students_bus_term ON bus_students(bus_id, term_id)',
+        'Created index on bus_students(bus_id, term_id)'
+      );
+    }
+
+
     // ========== PERFORMANCE OPTIMIZATION: Additional Indexes for Employees ==========
     // These indexes significantly improve query performance for common operations
     
@@ -980,6 +1233,238 @@ export async function initializeDatabase() {
       );
     } catch (error) {
       console.error('Error adding excused/unexcused absences columns:', error.message);
+    }
+
+    // Migration: Add term_id to bus_transportation and bus_students (if tables exist)
+    try {
+      // Check if bus_transportation table exists
+      const busTableExists = await sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = 'bus_transportation'
+        )
+      `;
+      
+      if (busTableExists[0]?.exists) {
+        // Get current active terms for each branch type
+        const currentTerms = await sql`
+          SELECT id, branch_type FROM terms WHERE is_active = true
+        `;
+
+        const schoolTerm = currentTerms.find(t => t.branch_type === 'school');
+        const healthcareTerm = currentTerms.find(t => t.branch_type === 'healthcare_center');
+
+        // Add term_id column to bus_transportation (if not exists)
+        await executeQuery(
+          `ALTER TABLE bus_transportation ADD COLUMN IF NOT EXISTS term_id INTEGER`,
+          'Added term_id column to bus_transportation'
+        );
+
+        // Set default term_id for existing buses based on branch type
+        if (schoolTerm) {
+          await executeQuery(
+            `UPDATE bus_transportation bt
+             SET term_id = ${schoolTerm.id}
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'school'
+             AND bt.term_id IS NULL`,
+            'Set default term_id for school buses'
+          );
+        }
+
+        if (healthcareTerm) {
+          await executeQuery(
+            `UPDATE bus_transportation bt
+             SET term_id = ${healthcareTerm.id}
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'healthcare_center'
+             AND bt.term_id IS NULL`,
+            'Set default term_id for healthcare buses'
+          );
+        }
+
+        // Make term_id NOT NULL (only if all records have term_id)
+        const nullCount = await sql`
+          SELECT COUNT(*) as count FROM bus_transportation WHERE term_id IS NULL
+        `;
+        if (nullCount[0]?.count === 0) {
+          await executeQuery(
+            `ALTER TABLE bus_transportation ALTER COLUMN term_id SET NOT NULL`,
+            'Made term_id NOT NULL'
+          );
+        }
+
+        // Drop old unique constraint if it exists
+        await executeQuery(
+          `DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_id_bus_number_key'
+             ) THEN
+               ALTER TABLE bus_transportation DROP CONSTRAINT bus_transportation_branch_id_bus_number_key;
+             END IF;
+           END $$;`,
+          'Dropped old unique constraint'
+        );
+
+        // Add new unique constraint with term_id (if not exists)
+        await executeQuery(
+          `DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_bus_term_unique'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_branch_bus_term_unique UNIQUE(branch_id, bus_number, term_id);
+             END IF;
+           END $$;`,
+          'Added new unique constraint with term_id'
+        );
+
+        // Add foreign key (if not exists)
+        await executeQuery(
+          `DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_term_fkey'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;`,
+          'Added foreign key for term_id'
+        );
+
+        // Drop is_active column if it exists
+        await executeQuery(
+          `ALTER TABLE bus_transportation DROP COLUMN IF EXISTS is_active`,
+          'Dropped is_active column from bus_transportation'
+        );
+
+        // Drop is_active index if it exists
+        await executeQuery(
+          `DROP INDEX IF EXISTS idx_bus_transportation_is_active`,
+          'Dropped is_active index'
+        );
+
+        // Create indexes for term_id (now that column exists)
+        await executeQuery(
+          'CREATE INDEX IF NOT EXISTS idx_bus_transportation_term_id ON bus_transportation(term_id)',
+          'Created index on bus_transportation.term_id'
+        );
+        await executeQuery(
+          'CREATE INDEX IF NOT EXISTS idx_bus_transportation_branch_term ON bus_transportation(branch_id, term_id)',
+          'Created index on bus_transportation(branch_id, term_id)'
+        );
+      }
+
+      // Check if bus_students table exists
+      const studentsTableExists = await sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = 'bus_students'
+        )
+      `;
+
+      if (studentsTableExists[0]?.exists) {
+        // Add term_id column to bus_students (if not exists)
+        await executeQuery(
+          `ALTER TABLE bus_students ADD COLUMN IF NOT EXISTS term_id INTEGER`,
+          'Added term_id column to bus_students'
+        );
+
+        // Set term_id from bus's term_id for existing students
+        await executeQuery(
+          `UPDATE bus_students bs
+           SET term_id = bt.term_id
+           FROM bus_transportation bt
+           WHERE bs.bus_id = bt.id
+           AND bs.term_id IS NULL
+           AND bt.term_id IS NOT NULL`,
+          'Set term_id for existing students from bus term_id'
+        );
+
+        // Make term_id NOT NULL (only if all records have term_id)
+        const nullStudentCount = await sql`
+          SELECT COUNT(*) as count FROM bus_students WHERE term_id IS NULL
+        `;
+        if (nullStudentCount[0]?.count === 0) {
+          await executeQuery(
+            `ALTER TABLE bus_students ALTER COLUMN term_id SET NOT NULL`,
+            'Made term_id NOT NULL in bus_students'
+          );
+        }
+
+        // Drop old unique constraint if it exists
+        await executeQuery(
+          `DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_id_contact_mobile_number_key'
+             ) THEN
+               ALTER TABLE bus_students DROP CONSTRAINT bus_students_bus_id_contact_mobile_number_key;
+             END IF;
+           END $$;`,
+          'Dropped old unique constraint from bus_students'
+        );
+
+        // Add new unique constraint with term_id (if not exists)
+        await executeQuery(
+          `DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_contact_term_unique'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_bus_contact_term_unique UNIQUE(bus_id, contact_mobile_number, term_id);
+             END IF;
+           END $$;`,
+          'Added new unique constraint with term_id to bus_students'
+        );
+
+        // Add foreign key (if not exists)
+        await executeQuery(
+          `DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_term_fkey'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;`,
+          'Added foreign key for term_id in bus_students'
+        );
+
+        // Drop is_active column if it exists
+        await executeQuery(
+          `ALTER TABLE bus_students DROP COLUMN IF EXISTS is_active`,
+          'Dropped is_active column from bus_students'
+        );
+
+        // Drop is_active index if it exists
+        await executeQuery(
+          `DROP INDEX IF EXISTS idx_bus_students_is_active`,
+          'Dropped is_active index from bus_students'
+        );
+
+        // Create indexes for term_id (now that column exists)
+        await executeQuery(
+          'CREATE INDEX IF NOT EXISTS idx_bus_students_term_id ON bus_students(term_id)',
+          'Created index on bus_students.term_id'
+        );
+        await executeQuery(
+          'CREATE INDEX IF NOT EXISTS idx_bus_students_bus_term ON bus_students(bus_id, term_id)',
+          'Created index on bus_students(bus_id, term_id)'
+        );
+      }
+    } catch (error) {
+      console.error('Error in bus transportation term migration:', error.message);
+      // Don't throw - allow database to continue initializing
     }
 
     return { success: true, message: 'Database initialization completed successfully' };

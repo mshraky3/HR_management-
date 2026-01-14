@@ -29,30 +29,31 @@ export const authenticate = async (req, res, next) => {
     // Verify token
     const decoded = verifyToken(token);
     
-    // Validate user exists in database (even if inactive) - only log errors, not warnings for missing users
+    // Validate user exists in database (even if inactive)
+    // If user doesn't exist, still allow authentication but mark user as invalid
+    let user = null;
     try {
-      const [user] = await sql`
+      const [dbUser] = await sql`
         SELECT id, username, role, branch_id, is_active
         FROM users
         WHERE id = ${decoded.id}
       `;
-      
-      // Only log if there's an actual error, not if user is missing (which is acceptable)
-      // User might have been deleted but token is still valid - foreign key constraints handle this
+      user = dbUser;
     } catch (userCheckError) {
       log.error('Error checking if user exists during authentication', {
         error: userCheckError.message,
         user_id: decoded.id
       });
-      // Continue anyway - let the request proceed
     }
     
     // Attach user info to request
+    // If user doesn't exist in DB, still set req.user but mark it as invalid
     req.user = {
       id: decoded.id,
       username: decoded.username,
       role: decoded.role,
-      branch_id: decoded.branch_id
+      branch_id: decoded.branch_id,
+      existsInDb: !!user // Flag to indicate if user exists in database
     };
 
     next();
