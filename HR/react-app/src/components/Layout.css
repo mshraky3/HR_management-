@@ -158,6 +158,30 @@
   font-weight: 600;
 }
 
+/* Standalone nav-link (for الباصات) */
+.nav-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 0.625rem 1.25rem;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  transition: all var(--transition-base);
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.nav-link:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.nav-link.active {
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: var(--shadow-md);
+}
+
 /* Mobile Menu Toggle */
 .mobile-menu-toggle {
   display: none;
@@ -243,6 +267,15 @@
     min-height: 44px;
     display: flex;
     align-items: center;
+  }
+
+  .nav-link {
+    width: 100%;
+    padding: var(--spacing-md);
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    border-radius: 0;
   }
   
   .nav-user {
@@ -413,6 +446,14 @@
     padding: var(--spacing-sm) var(--spacing-md);
     font-size: var(--font-size-sm);
     min-height: 44px; /* Touch-friendly */
+    display: flex;
+    align-items: center;
+  }
+
+  .nav-link {
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: var(--font-size-sm);
+    min-height: 44px;
     display: flex;
     align-items: center;
   }

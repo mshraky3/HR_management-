@@ -121,7 +121,8 @@ const Dashboard = () => {
         apiPromises.push(
           branchStatisticsAPI.getAll().catch((err) => {
             console.warn('[Dashboard] branchStatisticsAPI.getAll failed:', err?.message || 'Unknown error');
-            return { data: { success: false } };
+            // Return empty array instead of false to prevent UI errors
+            return { data: { success: false, data: [] } };
           }),
           notificationsAPI.getAll().catch((err) => {
             console.warn('[Dashboard] notificationsAPI.getAll failed:', err?.message || 'Unknown error');

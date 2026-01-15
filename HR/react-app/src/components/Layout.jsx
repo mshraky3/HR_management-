@@ -90,7 +90,6 @@ const Layout = ({ children }) => {
         { path: '/term-management', label: 'إدارة الفصول' },
         { path: '/fix-missing-dates', label: 'البيانات غير الدقيقة' },
         { path: '/archive', label: 'الأرشيف' },
-        { path: '/bus-transportation', label: 'نقل الطلاب' },
       ]
     },
     communication: {
@@ -144,6 +143,18 @@ const Layout = ({ children }) => {
               </div>
             </div>
           ))}
+
+          {/* Standalone menu item */}
+          <Link
+            to="/bus-transportation"
+            className={`nav-link ${isActive('/bus-transportation')}`}
+            onClick={() => {
+              setMobileMenuOpen(false);
+              closeDropdown();
+            }}
+          >
+            الباصات
+          </Link>
         </div>
         <div className="nav-user">
           {/* Notification Bell */}

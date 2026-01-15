@@ -73,6 +73,7 @@ function PlateDisplay({ value = '' }) {
 const BusTransportation = () => {
   const { isMainManager, user } = useAuth();
   const { showError, showSuccess } = useNotification();
+  const pageTopRef = useRef(null);
   const [buses, setBuses] = useState([]);
   const [filteredBuses, setFilteredBuses] = useState([]);
   const [highlightBusId, setHighlightBusId] = useState(null);
@@ -83,12 +84,15 @@ const BusTransportation = () => {
   const [showBusForm, setShowBusForm] = useState(false);
   const [showStudentForm, setShowStudentForm] = useState(false);
   const [editingBus, setEditingBus] = useState(null);
+  const [busFormInitialTab, setBusFormInitialTab] = useState('basic');
   const [editingStudent, setEditingStudent] = useState(null);
   
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [selectedTermId, setSelectedTermId] = useState('');
+  const [filterMissingInsurance, setFilterMissingInsurance] = useState(false);
+  const [filterMissingLease, setFilterMissingLease] = useState(false);
 
   useEffect(() => {
     loadTerms();
@@ -103,14 +107,73 @@ const BusTransportation = () => {
 
   useEffect(() => {
     filterBuses();
-  }, [searchTerm, selectedBranchId, selectedTermId, buses]);
+  }, [searchTerm, selectedBranchId, selectedTermId, filterMissingInsurance, filterMissingLease, buses]);
+
+  const prefersReducedMotion = (() => {
+    try {
+      return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch (e) {
+      return false;
+    }
+  })();
+
+  const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+  const animateScrollToY = (targetY, durationMs = 900) => {
+    if (prefersReducedMotion) {
+      window.scrollTo(0, targetY);
+      return;
+    }
+
+    const startY = window.scrollY || window.pageYOffset || 0;
+    const maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    const clampedTarget = Math.max(0, Math.min(targetY, maxY));
+    const delta = clampedTarget - startY;
+    if (Math.abs(delta) < 2) return;
+
+    const start = performance.now();
+    const step = (now) => {
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed / durationMs);
+      const eased = easeInOutCubic(t);
+      window.scrollTo(0, startY + delta * eased);
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
+
+  const animateScrollToElement = (el, { offset = 12, block = 'start', durationMs = 900 } = {}) => {
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const currentY = window.scrollY || window.pageYOffset || 0;
+    const elementTop = currentY + rect.top;
+    const elementCenter = currentY + rect.top + rect.height / 2 - window.innerHeight / 2;
+    const targetY = block === 'center' ? elementCenter : elementTop - offset;
+    animateScrollToY(targetY, durationMs);
+  };
+
+  // Scroll down to the form when opening it (edit/complete/add)
+  useEffect(() => {
+    if (!showBusForm) return;
+    const t = setTimeout(() => {
+      const formEl = document.querySelector('.bus-form-expanding-section');
+      animateScrollToElement(formEl, { block: 'start', offset: 12, durationMs: 1100 });
+    }, 50);
+    return () => clearTimeout(t);
+  }, [showBusForm, editingBus?.id, busFormInitialTab]);
+
+  const scrollUpToCards = () => {
+    // Scroll up to page header/cards area
+    const target = pageTopRef.current || document.querySelector('.bus-transportation-container');
+    animateScrollToElement(target, { block: 'start', offset: 0, durationMs: 1000 });
+  };
 
   // After finishing the flow, scroll + highlight the bus card
   useEffect(() => {
     if (!highlightBusId) return;
     const el = document.querySelector(`[data-bus-id="${highlightBusId}"]`);
     if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    animateScrollToElement(el, { block: 'center', durationMs: 900 });
     el.classList.add('bus-card-highlight');
     const t = setTimeout(() => {
       el.classList.remove('bus-card-highlight');
@@ -214,8 +277,119 @@ const BusTransportation = () => {
       );
     }
 
+    // Filter by missing insurance (for main manager)
+    if (filterMissingInsurance && isMainManager()) {
+      filtered = filtered.filter(bus => !bus.insurance_provider || !bus.insurance_policy_number || !bus.insurance_expiry_date_gregorian);
+    }
+
+    // Filter by missing lease info (for main manager)
+    if (filterMissingLease && isMainManager()) {
+      filtered = filtered.filter(bus => {
+        if (bus.ownership_type !== 'leased') return false;
+        return !bus.lease_company_name || !bus.lease_contact_info || !bus.lease_contract_number || !bus.lease_start_date_gregorian || !bus.lease_end_date_gregorian;
+      });
+    }
+
     setFilteredBuses(filtered);
   };
+
+  // Calculate statistics for main manager view
+  const calculateStats = () => {
+    const totalBuses = filteredBuses.length;
+    const totalStudents = filteredBuses.reduce((sum, bus) => sum + (parseInt(bus.student_count) || 0), 0);
+    const totalSeats = filteredBuses.reduce((sum, bus) => sum + (parseInt(bus.number_of_seats) || 0), 0);
+    const availableSeats = totalSeats - totalStudents;
+    
+    let complete = 0;
+    let incomplete = 0;
+    let owned = 0;
+    let leased = 0;
+    
+    // Calculate capacity utilization per branch (for main manager)
+    const branchCapacityData = {};
+    
+    filteredBuses.forEach(bus => {
+      const missingStudents = (bus.student_count === 0 || bus.student_count === null || bus.student_count === undefined);
+      const missingRegDoc = !bus.registration_document_url;
+      const missingDriverDoc = !bus.license_document_url;
+      const missingLeaseDoc = bus.ownership_type === 'leased' && !bus.lease_contract_document_url;
+      const missingDocs = missingRegDoc || missingDriverDoc || missingLeaseDoc;
+      
+      if (missingDocs || missingStudents) {
+        incomplete++;
+      } else {
+        complete++;
+      }
+
+      // Count by ownership type
+      const ownership = bus.ownership_type || bus.details?.ownership_type;
+      if (ownership === 'leased') {
+        leased++;
+      } else {
+        owned++;
+      }
+
+      // Collect capacity data by branch
+      if (isMainManager()) {
+        const branchName = bus.branch_name || 'غير محدد';
+        const seats = parseInt(bus.number_of_seats) || 0;
+        const students = parseInt(bus.student_count) || 0;
+        
+        if (!branchCapacityData[branchName]) {
+          branchCapacityData[branchName] = {
+            branchName,
+            totalSeats: 0,
+            totalStudents: 0,
+            busCount: 0
+          };
+        }
+        
+        branchCapacityData[branchName].totalSeats += seats;
+        branchCapacityData[branchName].totalStudents += students;
+        branchCapacityData[branchName].busCount++;
+      }
+    });
+
+    // Group by branch for main manager
+    const busesByBranch = {};
+    if (isMainManager()) {
+      filteredBuses.forEach(bus => {
+        const branchName = bus.branch_name || 'غير محدد';
+        if (!busesByBranch[branchName]) {
+          busesByBranch[branchName] = 0;
+        }
+        busesByBranch[branchName]++;
+      });
+    }
+
+    // Calculate utilization for each branch
+    const branchCapacityList = Object.values(branchCapacityData).map(branch => {
+      const available = branch.totalSeats - branch.totalStudents;
+      const utilization = branch.totalSeats > 0 ? (branch.totalStudents / branch.totalSeats) * 100 : 0;
+      return {
+        ...branch,
+        available,
+        utilization,
+        needsNewBus: utilization >= 90, // 90% or more full
+        canUseSmallerBus: utilization < 50 && branch.totalSeats > 50 // Less than 50% full and has more than 50 total seats
+      };
+    }).sort((a, b) => b.utilization - a.utilization);
+
+    return { 
+      totalBuses, 
+      totalStudents, 
+      totalSeats, 
+      availableSeats,
+      complete, 
+      incomplete, 
+      busesByBranch, 
+      owned, 
+      leased,
+      branchCapacityData: branchCapacityList
+    };
+  };
+
+  const stats = calculateStats();
 
   const handleCreateBus = async (busData) => {
     try {
@@ -287,7 +461,7 @@ const BusTransportation = () => {
 
   return (
     <div className="bus-transportation-container">
-      <div className="bus-transportation-header">
+      <div className="bus-transportation-header" ref={pageTopRef}>
         <div className="header-content">
           <div className="header-icon">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -296,12 +470,13 @@ const BusTransportation = () => {
             </svg>
           </div>
           <div>
-            <h1>نقل الطلاب</h1>
+            <h1>الباصات</h1>
             <p className="page-description">إدارة بيانات حافلات نقل الطلاب</p>
           </div>
         </div>
         <button className="btn-primary" onClick={() => {
           setEditingBus(null);
+          setBusFormInitialTab('basic');
           setShowBusForm(true);
         }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -311,8 +486,297 @@ const BusTransportation = () => {
         </button>
       </div>
 
+      {/* Statistics Cards - Main Manager View */}
+      {isMainManager() && (
+        <div className="bus-stats-section">
+          <div className="stats-cards-grid">
+            <div className="stat-card">
+              <div className="stat-card-icon" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M8 17h8M8 7h8M4 12h16" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  <rect x="2" y="3" width="20" height="18" rx="2" stroke="white" strokeWidth="2" fill="none"/>
+                </svg>
+              </div>
+              <div className="stat-card-content">
+                <div className="stat-card-label">إجمالي الباصات</div>
+                <div className="stat-card-value">{stats.totalBuses}</div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-card-icon" style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  <circle cx="9" cy="7" r="4" stroke="white" strokeWidth="2" fill="none"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              </div>
+              <div className="stat-card-content">
+                <div className="stat-card-label">إجمالي الطلاب</div>
+                <div className="stat-card-value">{parseInt(stats.totalStudents) || 0}</div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-card-icon" style={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  <polyline points="22 4 12 14.01 9 11.01" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              </div>
+              <div className="stat-card-content">
+                <div className="stat-card-label">باصات مكتملة</div>
+                <div className="stat-card-value">{stats.complete}</div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-card-icon" style={{ background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="2"/>
+                  <path d="M12 8v4M12 16h.01" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              </div>
+              <div className="stat-card-content">
+                <div className="stat-card-label">باصات غير مكتملة</div>
+                <div className="stat-card-value">{stats.incomplete}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Charts Grid */}
+          <div className="bus-charts-grid">
+            {/* Simple Bar Chart: Buses by Branch */}
+            {Object.keys(stats.busesByBranch).length > 0 && (
+              <div className="bus-chart-section">
+                <h3 className="chart-title">توزيع الباصات حسب الفروع</h3>
+                <div className="bus-chart-container">
+                  <div className="bus-chart-bars">
+                    {Object.entries(stats.busesByBranch)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 8)
+                      .map(([branchName, count], idx) => {
+                        const maxCount = Math.max(...Object.values(stats.busesByBranch));
+                        const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                        const colors = [
+                          'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                          'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                          'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+                          'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
+                          'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+                          'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
+                          'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)'
+                        ];
+                        return (
+                          <div key={branchName} className="bus-chart-bar-item">
+                            <div className="bus-chart-bar-label">{branchName}</div>
+                            <div className="bus-chart-bar-wrapper">
+                              <div 
+                                className="bus-chart-bar"
+                                style={{
+                                  width: `${percentage}%`,
+                                  background: colors[idx % colors.length],
+                                  minWidth: count > 0 ? '20px' : '0'
+                                }}
+                              >
+                                <span className="bus-chart-bar-value">{count}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Ownership Type Chart */}
+            {(stats.owned > 0 || stats.leased > 0) && (
+              <div className="bus-chart-section">
+                <h3 className="chart-title">توزيع الباصات حسب نوع الملكية</h3>
+                <div className="bus-chart-container">
+                  <div className="ownership-chart">
+                    <div className="ownership-chart-item">
+                      <div className="ownership-label">ملك الشركة</div>
+                      <div className="ownership-bar-wrapper">
+                        <div 
+                          className="ownership-bar"
+                          style={{
+                            width: stats.totalBuses > 0 ? `${(stats.owned / stats.totalBuses) * 100}%` : '0%',
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            minWidth: stats.owned > 0 ? '60px' : '0'
+                          }}
+                        >
+                          <span className="ownership-value">{stats.owned}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="ownership-chart-item">
+                      <div className="ownership-label">مستأجر</div>
+                      <div className="ownership-bar-wrapper">
+                        <div 
+                          className="ownership-bar"
+                          style={{
+                            width: stats.totalBuses > 0 ? `${(stats.leased / stats.totalBuses) * 100}%` : '0%',
+                            background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                            minWidth: stats.leased > 0 ? '60px' : '0'
+                          }}
+                        >
+                          <span className="ownership-value">{stats.leased}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Capacity Chart: Seats vs Students */}
+            {stats.totalSeats > 0 && (
+              <div className="bus-chart-section capacity-chart-full-width">
+                <h3 className="chart-title">المقاعد المتاحة مقابل الطلاب</h3>
+                <div className="bus-chart-container">
+                  <div className="capacity-summary">
+                    <div className="capacity-summary-item">
+                      <div className="capacity-label">إجمالي المقاعد</div>
+                      <div className="capacity-value seats-total">{stats.totalSeats}</div>
+                    </div>
+                    <div className="capacity-summary-item">
+                      <div className="capacity-label">الطلاب المسجلين</div>
+                      <div className="capacity-value students-total">{stats.totalStudents}</div>
+                    </div>
+                    <div className="capacity-summary-item">
+                      <div className="capacity-label">المقاعد المتاحة</div>
+                      <div className={`capacity-value available-total ${stats.availableSeats < 10 ? 'warning' : ''}`}>
+                        {stats.availableSeats}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Overall capacity bar */}
+                  <div className="overall-capacity-bar">
+                    <div className="capacity-bar-label">نسبة الاستخدام الإجمالية</div>
+                    <div className="capacity-bar-wrapper">
+                      <div 
+                        className="capacity-bar-used"
+                        style={{
+                          width: stats.totalSeats > 0 ? `${(stats.totalStudents / stats.totalSeats) * 100}%` : '0%',
+                          background: stats.totalSeats > 0 && (stats.totalStudents / stats.totalSeats) >= 0.9 
+                            ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
+                            : stats.totalSeats > 0 && (stats.totalStudents / stats.totalSeats) >= 0.7
+                            ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+                            : 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                        }}
+                      >
+                        <span className="capacity-bar-text">
+                          {stats.totalSeats > 0 ? Math.round((stats.totalStudents / stats.totalSeats) * 100) : 0}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Branches by utilization */}
+                  {stats.branchCapacityData.length > 0 && (
+                    <div className="bus-capacity-list">
+                      <h4 className="capacity-list-title">الفروع حسب نسبة الاستخدام</h4>
+                      <div className="capacity-list-items">
+                        {stats.branchCapacityData.map((branch, idx) => (
+                          <div key={`${branch.branchName}-${idx}`} className={`capacity-list-item ${branch.needsNewBus ? 'needs-attention' : ''} ${branch.canUseSmallerBus ? 'can-optimize' : ''}`}>
+                            <div className="capacity-item-header">
+                              <div className="capacity-item-title-group">
+                                <span className="capacity-bus-name">{branch.branchName}</span>
+                                <span className="capacity-bus-count">{branch.busCount} باص</span>
+                              </div>
+                              <span className="capacity-utilization">{Math.round(branch.utilization)}%</span>
+                            </div>
+                            <div className="capacity-item-bar-wrapper">
+                              <div 
+                                className="capacity-item-bar"
+                                style={{
+                                  width: `${branch.utilization}%`,
+                                  background: branch.utilization >= 90 
+                                    ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
+                                    : branch.utilization >= 70
+                                    ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+                                    : 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                                }}
+                              />
+                            </div>
+                            <div className="capacity-item-details">
+                              <span className="capacity-detail">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '4px', verticalAlign: 'middle' }}>
+                                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                  <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" fill="none"/>
+                                  <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                </svg>
+                                {branch.totalStudents} طالب
+                              </span>
+                              <span className="capacity-detail">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '4px', verticalAlign: 'middle' }}>
+                                  <rect x="2" y="3" width="20" height="18" rx="2" stroke="currentColor" strokeWidth="2" fill="none"/>
+                                  <path d="M8 7h8M8 11h8M8 15h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                </svg>
+                                {branch.totalSeats} مقعد
+                              </span>
+                              <span className="capacity-detail available">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '4px', verticalAlign: 'middle' }}>
+                                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                  <polyline points="22 4 12 14.01 9 11.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                </svg>
+                                {branch.available} متاح
+                              </span>
+                              {branch.needsNewBus && (
+                                <span className="capacity-badge warning">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '4px', verticalAlign: 'middle' }}>
+                                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                                    <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                  </svg>
+                                  يحتاج باص جديد
+                                </span>
+                              )}
+                              {branch.canUseSmallerBus && (
+                                <span className="capacity-badge info">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '4px', verticalAlign: 'middle' }}>
+                                    <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                    <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                  </svg>
+                                  يمكن استخدام باص أصغر
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="filters-section">
+        <div className="filters-header">
+          <h3 className="filters-title">الفلاتر</h3>
+          {(searchTerm || selectedTermId || selectedBranchId || filterMissingInsurance || filterMissingLease) && (
+            <button 
+              className="clear-filters-btn"
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedTermId('');
+                setSelectedBranchId('');
+                setFilterMissingInsurance(false);
+                setFilterMissingLease(false);
+              }}
+            >
+              إلغاء الفلاتر
+            </button>
+          )}
+        </div>
+        <div className="filters-content">
         <div className="search-box">
           <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
             <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" strokeWidth="2"/>
@@ -351,7 +815,43 @@ const BusTransportation = () => {
             ))}
           </select>
         )}
+        </div>
+
+        {/* Quick Filter Buttons - Main Manager Only */}
+        {isMainManager() && (
+          <div className="quick-filters-section">
+            <button
+              className={`quick-filter-btn ${filterMissingInsurance ? 'active' : ''}`}
+              onClick={() => {
+                setFilterMissingInsurance(!filterMissingInsurance);
+                setFilterMissingLease(false);
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+              ناقص معلومات التأمين
+            </button>
+            <button
+              className={`quick-filter-btn ${filterMissingLease ? 'active' : ''}`}
+              onClick={() => {
+                setFilterMissingLease(!filterMissingLease);
+                setFilterMissingInsurance(false);
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+              ناقص معلومات الإيجار
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Divider */}
+      <div className="section-divider"></div>
 
       {/* Buses List */}
       <div className="buses-list">
@@ -369,7 +869,7 @@ const BusTransportation = () => {
             {filteredBuses.map(bus => (
               <div key={bus.id} className="bus-card" data-bus-id={bus.id}>
                 <div className="bus-card-header">
-                  <div className="bus-number">{bus.bus_number}</div>
+                  <div className="bus-number">{isMainManager() ? (bus.branch_name || 'غير محدد') : bus.bus_number}</div>
                   {isMainManager() && (
                     <div className="branch-badge-wrapper">
                       <BranchBadge branch={{ id: bus.branch_id, branch_name: bus.branch_name, branch_type: bus.branch_type }} />
@@ -424,8 +924,24 @@ const BusTransportation = () => {
                     عرض التفاصيل
                   </button>
                   <button
-                    className="btn-edit"
+                    className={`btn-edit ${(() => {
+                      const missingStudents = (bus.student_count === 0 || bus.student_count === null || bus.student_count === undefined);
+                      const missingRegDoc = !bus.registration_document_url;
+                      const missingDriverDoc = !bus.license_document_url;
+                      const missingLeaseDoc = bus.ownership_type === 'leased' && !bus.lease_contract_document_url;
+                      const missingDocs = missingRegDoc || missingDriverDoc || missingLeaseDoc;
+                      return (missingDocs || missingStudents) ? 'incomplete' : 'complete';
+                    })()}`}
                     onClick={() => {
+                      // If the form is already open, force re-mount by changing key (below)
+                      // and open the most relevant missing section.
+                      const missingStudents = (bus.student_count === 0 || bus.student_count === null || bus.student_count === undefined);
+                      const missingRegDoc = !bus.registration_document_url;
+                      const missingDriverDoc = !bus.license_document_url;
+                      const missingLeaseDoc = bus.ownership_type === 'leased' && !bus.lease_contract_document_url;
+                      const missingDocs = missingRegDoc || missingDriverDoc || missingLeaseDoc;
+
+                      setBusFormInitialTab(missingDocs ? 'documents' : (missingStudents ? 'students' : 'basic'));
                       setEditingBus(bus);
                       setShowBusForm(true);
                     }}
@@ -455,14 +971,19 @@ const BusTransportation = () => {
       {/* Bus Form Section */}
       {showBusForm && (
         <BusFormModal
+          key={editingBus?.id || 'new'}
           bus={editingBus}
           branches={branches}
           terms={terms}
           isMainManager={isMainManager()}
           userBranchId={user?.branch_id}
+          initialTab={busFormInitialTab}
           onClose={() => {
             setShowBusForm(false);
             setEditingBus(null);
+            setBusFormInitialTab('basic');
+            // Scroll back up after closing or final save
+            setTimeout(scrollUpToCards, 50);
           }}
           onSave={editingBus ? (data) => handleUpdateBus(editingBus.id, data) : handleCreateBus}
           onReload={loadBuses}
@@ -477,6 +998,13 @@ const BusTransportation = () => {
           onClose={() => setSelectedBus(null)}
           onEdit={() => {
             setSelectedBus(null);
+            // Same behavior from details modal: open the relevant missing section
+            const missingStudents = (selectedBus.student_count === 0 || selectedBus.student_count === null || selectedBus.student_count === undefined);
+            const missingRegDoc = !selectedBus.registration_document_url;
+            const missingDriverDoc = !selectedBus.license_document_url;
+            const missingLeaseDoc = selectedBus.ownership_type === 'leased' && !selectedBus.lease_contract_document_url;
+            const missingDocs = missingRegDoc || missingDriverDoc || missingLeaseDoc;
+            setBusFormInitialTab(missingDocs ? 'documents' : (missingStudents ? 'students' : 'basic'));
             setEditingBus(selectedBus);
             setShowBusForm(true);
           }}
@@ -488,13 +1016,14 @@ const BusTransportation = () => {
 };
 
 // Bus Form Modal Component - Extended with tabs for all data
-const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, onClose, onSave, onReload, onAfterFinish }) => {
+const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initialTab = 'basic', onClose, onSave, onReload, onAfterFinish }) => {
   const { user } = useAuth();
   const { showError, showSuccess } = useNotification();
   const isEditing = !!bus;
   const hydratedRef = useRef(false);
-  const [activeTab, setActiveTab] = useState('basic');
-  const tabsFlow = ['basic', 'registration', 'driver', 'details', 'students', 'documents'];
+  const [activeTab, setActiveTab] = useState(initialTab || 'basic');
+  // Make students the last step in the wizard
+  const tabsFlow = ['basic', 'registration', 'driver', 'details', 'documents', 'students'];
   const [maxStepIndex, setMaxStepIndex] = useState(bus ? tabsFlow.length - 1 : 0);
   const [saving, setSaving] = useState(false);
   const [docsState, setDocsState] = useState({
@@ -865,7 +1394,8 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, onClo
 
   // Don't count the always-present blank row
   const studentsCount = students.filter(
-    (s) => !isBlank(s?.student_full_name) && !isBlank(s?.contact_mobile_number) && !isBlank(s?.address)
+    // Notes are optional; count only rows with name + phone
+    (s) => !isBlank(s?.student_full_name) && !isBlank(s?.contact_mobile_number)
   ).length;
 
   useEffect(() => {
@@ -1032,22 +1562,29 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, onClo
     const busId = createdBusId || bus.id;
     
     try {
-      // Delete existing students if editing
-      if (bus?.students) {
-        for (const student of bus.students) {
+      // Always delete existing students from the server first (bus list row may not include nested students)
+      try {
+        const existingRes = await busTransportationAPI.getStudents(busId);
+        const existing = existingRes?.data?.data || [];
+        for (const st of existing) {
+          if (!st?.id) continue;
           try {
-            await busTransportationAPI.deleteStudent(busId, student.id);
+            await busTransportationAPI.deleteStudent(busId, st.id);
           } catch (error) {
-            // Ignore if student doesn't exist
+            // ignore
           }
         }
+      } catch (e) {
+        // ignore fetch failures; still try to insert new rows
       }
 
       // Create new students
-      const validStudents = students.filter(s => s.student_full_name && s.contact_mobile_number && s.address);
+      const validStudents = students.filter(s => !isBlank(s?.student_full_name) && !isBlank(s?.contact_mobile_number));
       for (const student of validStudents) {
         await busTransportationAPI.addStudent(busId, {
           ...student,
+          // Notes are optional (stored in the same column for now)
+          address: student.address || '',
           term_id: basicFormData.term_id
         });
       }
@@ -1349,18 +1886,18 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, onClo
             تفاصيل الحافلة
           </button>
           <button
-            className={activeTab === 'students' ? 'active' : ''}
-            onClick={() => setActiveTab('students')}
-            disabled={!bus && 4 > maxStepIndex}
-          >
-            الطلاب ({studentsCount})
-          </button>
-          <button
             className={activeTab === 'documents' ? 'active' : ''}
             onClick={() => setActiveTab('documents')}
-            disabled={!bus && 5 > maxStepIndex}
+            disabled={!bus && 4 > maxStepIndex}
           >
             المرفقات
+          </button>
+          <button
+            className={activeTab === 'students' ? 'active' : ''}
+            onClick={() => setActiveTab('students')}
+            disabled={!bus && 5 > maxStepIndex}
+          >
+            الطلاب ({studentsCount})
           </button>
         </div>
 
@@ -1445,14 +1982,6 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, onClo
             />
           )}
 
-          {activeTab === 'students' && (
-            <StudentsFormTab
-              students={students}
-              onUpdate={handleUpdateStudent}
-              onRemove={handleRemoveStudent}
-            />
-          )}
-
           {activeTab === 'documents' && (
             <DocumentsFormTab
               busId={createdBusId || bus?.id}
@@ -1491,6 +2020,14 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, onClo
               onReload={onReload}
             />
           )}
+
+          {activeTab === 'students' && (
+            <StudentsFormTab
+              students={students}
+              onUpdate={handleUpdateStudent}
+              onRemove={handleRemoveStudent}
+            />
+          )}
         </div>
 
         <div className="section-actions">
@@ -1522,21 +2059,40 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, onClo
               <button
                 type="button"
                 className="btn-primary"
-                disabled={
-                  saving ||
-                  !docsState.registration ||
-                  !docsState.driverLicense ||
-                  (busDetailsData.ownership_type === 'leased' && !docsState.leaseContract)
-                }
+                disabled={saving}
+                onClick={async () => {
+                  try {
+                    setSaving(true);
+                    // Save students if any valid rows; notes are optional
+                    await handleSaveStudents();
+                    showSuccess('تم حفظ البيانات بنجاح');
+                    if (typeof onReload === 'function') onReload();
+                    const id = createdBusId || bus?.id;
+                    onClose();
+                    if (typeof onAfterFinish === 'function' && id) onAfterFinish(id);
+                  } catch (e) {
+                    showError(e.response?.data?.message || e.message || 'حدث خطأ أثناء الحفظ');
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                حفظ
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={saving}
                 onClick={() => {
-                  showSuccess('تم حفظ البيانات بنجاح');
+                  // Finish now without requiring students (can complete later)
+                  showSuccess('تم حفظ البيانات ويمكنك إكمال الطلاب لاحقًا');
                   if (typeof onReload === 'function') onReload();
                   const id = createdBusId || bus?.id;
                   onClose();
                   if (typeof onAfterFinish === 'function' && id) onAfterFinish(id);
                 }}
               >
-                حفظ
+                حفظ بدون طلاب
               </button>
             </>
           )}
@@ -2312,7 +2868,7 @@ const StudentsFormTab = ({ students, onUpdate, onRemove }) => {
             <tr>
               <th>الاسم</th>
               <th>رقم الجوال</th>
-              <th>العنوان</th>
+              <th>ملاحظات</th>
               <th></th>
             </tr>
           </thead>
@@ -2343,7 +2899,7 @@ const StudentsFormTab = ({ students, onUpdate, onRemove }) => {
                     type="text"
                     value={student.address || ''}
                     onChange={(e) => onUpdate(index, 'address', e.target.value)}
-                    placeholder="العنوان"
+                    placeholder="ملاحظات (اختياري)"
                   />
                 </td>
                 <td className="students-table-actions">
