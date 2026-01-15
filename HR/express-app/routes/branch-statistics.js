@@ -50,19 +50,20 @@ router.get('/', async (req, res) => {
     
     const statistics = await Promise.all(
       branches.map(async (branch) => {
-        // Performance Optimization: Execute all 9 queries in parallel using Promise.all
-        // This reduces query time from ~450ms to ~50ms per branch (9x faster)
-        const [
-          loginDays,
-          employeeStats,
-          employeeUpdates,
-          documentUploads,
-          employeeCreations,
-          statusChanges,
-          lastActivity,
-          lastLogin,
-          monthlyLogins
-        ] = await Promise.all([
+        try {
+          // Performance Optimization: Execute all 9 queries in parallel using Promise.all
+          // This reduces query time from ~450ms to ~50ms per branch (9x faster)
+          const [
+            loginDays,
+            employeeStats,
+            employeeUpdates,
+            documentUploads,
+            employeeCreations,
+            statusChanges,
+            lastActivity,
+            lastLogin,
+            monthlyLogins
+          ] = await Promise.all([
           // 1. Login days this month
           sql`
             SELECT COUNT(DISTINCT login_date)::int as login_count
@@ -142,74 +143,153 @@ router.get('/', async (req, res) => {
           `
         ]);
         
-        // Extract results from parallel queries
-        const loginDaysCount = parseInt(loginDays[0]?.login_count || 0, 10);
+          // Extract results from parallel queries with safe parsing
+          const loginDaysCount = parseInt(loginDays?.[0]?.login_count || 0, 10) || 0;
+          
+          const stats = employeeStats?.[0] || {
+            total_employees: 0,
+            complete_employees: 0,
+            incomplete_employees: 0,
+            active_employees: 0,
+            pending_employees: 0
+          };
+          
+          // Ensure all stats values are valid numbers
+          const safeStats = {
+            total_employees: parseInt(stats.total_employees || 0, 10) || 0,
+            complete_employees: parseInt(stats.complete_employees || 0, 10) || 0,
+            incomplete_employees: parseInt(stats.incomplete_employees || 0, 10) || 0,
+            active_employees: parseInt(stats.active_employees || 0, 10) || 0,
+            pending_employees: parseInt(stats.pending_employees || 0, 10) || 0
+          };
+          
+          // Use unified utility to calculate completion percentage
+          // This ensures consistent calculation using branch.number_of_employees when available
+          let employeeMetrics;
+          let completionPercentage = 0;
+          try {
+            employeeMetrics = calculateEmployeeCompletion(safeStats, branch);
+            completionPercentage = employeeMetrics?.percentage || 0;
+          } catch (calcError) {
+            console.error(`Error calculating completion for branch ${branch.id}:`, calcError);
+            employeeMetrics = {
+              percentage: 0,
+              completeCount: safeStats.complete_employees,
+              incompleteCount: safeStats.incomplete_employees,
+              totalCount: safeStats.total_employees
+            };
+            completionPercentage = 0;
+          }
         
-        const stats = employeeStats[0] || {
-          total_employees: 0,
-          complete_employees: 0,
-          incomplete_employees: 0,
-          active_employees: 0,
-          pending_employees: 0
-        };
-        
-        // Use unified utility to calculate completion percentage
-        // This ensures consistent calculation using branch.number_of_employees when available
-        const employeeMetrics = calculateEmployeeCompletion(stats, branch);
-        const completionPercentage = employeeMetrics.percentage;
-        
-        const totalActivities = 
-          parseInt(employeeUpdates[0]?.update_count || 0, 10) +
-          parseInt(documentUploads[0]?.upload_count || 0, 10) +
-          parseInt(employeeCreations[0]?.creation_count || 0, 10) +
-          parseInt(statusChanges[0]?.status_change_count || 0, 10);
-        
-        // 7. Determine operational status
-        const daysSinceLastLogin = lastLogin[0]?.last_login 
-          ? Math.floor((new Date() - new Date(lastLogin[0].last_login)) / (1000 * 60 * 60 * 24))
-          : null;
-        const daysSinceLastActivity = lastActivity[0]?.last_activity
-          ? Math.floor((new Date() - new Date(lastActivity[0].last_activity)) / (1000 * 60 * 60 * 24))
-          : null;
-        
-        // Operational criteria:
-        // - Has logged in within last 30 days OR has activity within last 30 days
-        // - Has employees
-        // - Has some activity in last 30 days
-        const isOperational = (
-          (daysSinceLastLogin !== null && daysSinceLastLogin <= 30) ||
-          (daysSinceLastActivity !== null && daysSinceLastActivity <= 30)
-        ) && stats.total_employees > 0 && totalActivities > 0;
-        
-        return {
-          branch_id: branch.id,
-          branch_name: branch.branch_name,
-          branch_type: branch.branch_type,
-          username: branch.username,
-          login_days_this_month: parseInt(loginDaysCount, 10),
-          total_employees: parseInt(stats.total_employees),
-          complete_employees: parseInt(stats.complete_employees),
-          incomplete_employees: parseInt(stats.incomplete_employees),
-          active_employees: parseInt(stats.active_employees),
-          pending_employees: parseInt(stats.pending_employees),
-          completion_percentage: completionPercentage,
-          activities_last_30_days: {
-            employee_updates: parseInt(employeeUpdates[0]?.update_count || 0, 10),
-            document_uploads: parseInt(documentUploads[0]?.upload_count || 0, 10),
-            employee_creations: parseInt(employeeCreations[0]?.creation_count || 0, 10),
-            status_changes: parseInt(statusChanges[0]?.status_change_count || 0, 10),
-            total: totalActivities
-          },
-          last_activity: lastActivity[0]?.last_activity || null,
-          last_login: lastLogin[0]?.last_login || null,
-          monthly_login_history: monthlyLogins.map(m => ({
-            month: m.month,
-            login_days: m.login_days
-          })),
-          is_operational: isOperational,
-          days_since_last_login: daysSinceLastLogin,
-          days_since_last_activity: daysSinceLastActivity
-        };
+          const totalActivities = 
+            (parseInt(employeeUpdates?.[0]?.update_count || 0, 10) || 0) +
+            (parseInt(documentUploads?.[0]?.upload_count || 0, 10) || 0) +
+            (parseInt(employeeCreations?.[0]?.creation_count || 0, 10) || 0) +
+            (parseInt(statusChanges?.[0]?.status_change_count || 0, 10) || 0);
+          
+          // 7. Determine operational status with safe date parsing
+          let daysSinceLastLogin = null;
+          let daysSinceLastActivity = null;
+          
+          try {
+            if (lastLogin?.[0]?.last_login) {
+              const lastLoginDate = new Date(lastLogin[0].last_login);
+              if (!isNaN(lastLoginDate.getTime())) {
+                daysSinceLastLogin = Math.floor((new Date() - lastLoginDate) / (1000 * 60 * 60 * 24));
+              }
+            }
+          } catch (e) {
+            console.warn(`Error parsing last_login for branch ${branch.id}:`, e);
+          }
+          
+          try {
+            if (lastActivity?.[0]?.last_activity) {
+              const lastActivityDate = new Date(lastActivity[0].last_activity);
+              if (!isNaN(lastActivityDate.getTime())) {
+                daysSinceLastActivity = Math.floor((new Date() - lastActivityDate) / (1000 * 60 * 60 * 24));
+              }
+            }
+          } catch (e) {
+            console.warn(`Error parsing last_activity for branch ${branch.id}:`, e);
+          }
+          
+          // Operational criteria:
+          // - Has logged in within last 30 days OR has activity within last 30 days
+          // - Has employees
+          // - Has some activity in last 30 days
+          const isOperational = (
+            (daysSinceLastLogin !== null && daysSinceLastLogin <= 30) ||
+            (daysSinceLastActivity !== null && daysSinceLastActivity <= 30)
+          ) && safeStats.total_employees > 0 && totalActivities > 0;
+          
+          // Safely map monthly login history
+          let monthlyLoginHistory = [];
+          try {
+            monthlyLoginHistory = (monthlyLogins || []).map(m => ({
+              month: m?.month || null,
+              login_days: parseInt(m?.login_days || 0, 10) || 0
+            })).filter(m => m.month !== null);
+          } catch (e) {
+            console.warn(`Error mapping monthly logins for branch ${branch.id}:`, e);
+          }
+          
+          return {
+            branch_id: branch.id,
+            branch_name: branch.branch_name || 'غير محدد',
+            branch_type: branch.branch_type || null,
+            username: branch.username || null,
+            login_days_this_month: loginDaysCount,
+            total_employees: safeStats.total_employees,
+            complete_employees: safeStats.complete_employees,
+            incomplete_employees: safeStats.incomplete_employees,
+            active_employees: safeStats.active_employees,
+            pending_employees: safeStats.pending_employees,
+            completion_percentage: completionPercentage,
+            activities_last_30_days: {
+              employee_updates: parseInt(employeeUpdates?.[0]?.update_count || 0, 10) || 0,
+              document_uploads: parseInt(documentUploads?.[0]?.upload_count || 0, 10) || 0,
+              employee_creations: parseInt(employeeCreations?.[0]?.creation_count || 0, 10) || 0,
+              status_changes: parseInt(statusChanges?.[0]?.status_change_count || 0, 10) || 0,
+              total: totalActivities
+            },
+            last_activity: lastActivity?.[0]?.last_activity || null,
+            last_login: lastLogin?.[0]?.last_login || null,
+            monthly_login_history: monthlyLoginHistory,
+            is_operational: isOperational,
+            days_since_last_login: daysSinceLastLogin,
+            days_since_last_activity: daysSinceLastActivity
+          };
+        } catch (branchError) {
+          console.error(`Error processing branch ${branch?.id || 'unknown'}:`, branchError);
+          // Return safe default values for this branch
+          return {
+            branch_id: branch?.id || null,
+            branch_name: branch?.branch_name || 'غير محدد',
+            branch_type: branch?.branch_type || null,
+            username: branch?.username || null,
+            login_days_this_month: 0,
+            total_employees: 0,
+            complete_employees: 0,
+            incomplete_employees: 0,
+            active_employees: 0,
+            pending_employees: 0,
+            completion_percentage: 0,
+            activities_last_30_days: {
+              employee_updates: 0,
+              document_uploads: 0,
+              employee_creations: 0,
+              status_changes: 0,
+              total: 0
+            },
+            last_activity: null,
+            last_login: null,
+            monthly_login_history: [],
+            is_operational: false,
+            days_since_last_login: null,
+            days_since_last_activity: null,
+            error: branchError.message
+          };
+        }
       })
     );
     
@@ -225,10 +305,12 @@ router.get('/', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching branch statistics:', error);
+    // Log full error details for debugging
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'فشل جلب إحصائيات الفروع',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : 'خطأ داخلي في الخادم'
     });
   }
 });

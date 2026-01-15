@@ -816,7 +816,8 @@ router.get('/:id/students', checkBranchAccess, async (req, res) => {
  * POST /api/bus-transportation/:id/students
  * Add student to bus
  */
-router.post('/:id/students', checkBranchAccess, validateRequired(['student_full_name', 'contact_mobile_number', 'address', 'term_id']), async (req, res) => {
+// Notes (address) are optional in UI; keep term_id required due to DB constraint
+router.post('/:id/students', checkBranchAccess, validateRequired(['student_full_name', 'contact_mobile_number', 'term_id']), async (req, res) => {
   try {
     const busId = parseInt(req.params.id);
     
