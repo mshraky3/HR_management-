@@ -220,6 +220,36 @@ const UnifiedDatePicker = ({
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + direction, 1));
   };
 
+  // Navigate Gregorian years
+  const navigateYear = (direction) => {
+    setCurrentMonth(new Date(currentMonth.getFullYear() + direction, currentMonth.getMonth(), 1));
+  };
+
+  // Change Gregorian month/year directly (dropdowns)
+  const setGregorianMonth = (monthIndex) => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), monthIndex, 1));
+  };
+
+  const setGregorianYear = (year) => {
+    setCurrentMonth(new Date(year, currentMonth.getMonth(), 1));
+  };
+
+  // Navigate Hijri years
+  const navigateHijriYear = (direction) => {
+    if (!currentHijriMonth) return;
+    setCurrentHijriMonth({ month: currentHijriMonth.month, year: currentHijriMonth.year + direction });
+  };
+
+  const setHijriMonth = (month) => {
+    if (!currentHijriMonth) return;
+    setCurrentHijriMonth({ month, year: currentHijriMonth.year });
+  };
+
+  const setHijriYear = (year) => {
+    if (!currentHijriMonth) return;
+    setCurrentHijriMonth({ month: currentHijriMonth.month, year });
+  };
+
   // Get display value
   const getDisplayValue = () => {
     if (activeCalendar === 'hijri' && hijriValue) {
@@ -242,6 +272,17 @@ const UnifiedDatePicker = ({
     'محرم', 'صفر', 'ربيع الأول', 'ربيع الثاني', 'جمادى الأولى', 'جمادى الثانية',
     'رجب', 'شعبان', 'رمضان', 'شوال', 'ذو القعدة', 'ذو الحجة'
   ];
+
+  const currentGregorianYear = currentMonth.getFullYear();
+  const minGregorianYear = 1950;
+  const maxGregorianYear = Math.max(currentGregorianYear + 10, 2050);
+  const gregorianYearOptions = Array.from(
+    { length: maxGregorianYear - minGregorianYear + 1 },
+    (_, i) => minGregorianYear + i
+  );
+  const hijriYearOptions = currentHijriMonth
+    ? Array.from({ length: 101 }, (_, i) => currentHijriMonth.year - 50 + i)
+    : [];
 
   return (
     <div className="form-group unified-date-picker" ref={calendarRef}>
@@ -306,17 +347,41 @@ const UnifiedDatePicker = ({
           {activeCalendar === 'gregorian' ? (
             <div className="calendar-grid">
               <div className="calendar-header">
-                <button type="button" onClick={() => navigateMonth(-1)}>‹</button>
-                <span>
-                  {arabicMonths[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-                </span>
-                <button type="button" onClick={() => navigateMonth(1)}>›</button>
-              </div>
-              
-              <div className="calendar-days-header">
-                {arabicDayNames.map(day => (
-                  <div key={day} className="day-header">{day}</div>
-                ))}
+                <button type="button" onClick={() => navigateMonth(-1)} aria-label="الشهر السابق">‹</button>
+
+                <div className="calendar-header-controls" aria-label="اختيار الشهر والسنة">
+                  <select
+                    className="calendar-month-select"
+                    value={currentMonth.getMonth()}
+                    onChange={(e) => setGregorianMonth(parseInt(e.target.value, 10))}
+                    aria-label="الشهر"
+                  >
+                    {arabicMonths.map((_, idx) => (
+                      <option key={idx} value={idx}>
+                        {String(idx + 1).padStart(2, '0')}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="calendar-year-control">
+                    <button type="button" onClick={() => navigateYear(-1)} className="calendar-year-nav" aria-label="السنة السابقة">«</button>
+                    <select
+                      className="calendar-year-select"
+                      value={currentMonth.getFullYear()}
+                      onChange={(e) => setGregorianYear(parseInt(e.target.value, 10))}
+                      aria-label="السنة"
+                    >
+                      {gregorianYearOptions.map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                    <button type="button" onClick={() => navigateYear(1)} className="calendar-year-nav" aria-label="السنة التالية">»</button>
+                  </div>
+                </div>
+
+                <button type="button" onClick={() => navigateMonth(1)} aria-label="الشهر التالي">›</button>
               </div>
               
               <div className="calendar-days">
@@ -344,17 +409,41 @@ const UnifiedDatePicker = ({
             currentHijriMonth ? (
               <div className="calendar-grid hijri-calendar">
                 <div className="calendar-header">
-                  <button type="button" onClick={() => navigateHijriMonth(-1)}>‹</button>
-                  <span>
-                    {hijriMonthNames[currentHijriMonth.month - 1]} {currentHijriMonth.year}
-                  </span>
-                  <button type="button" onClick={() => navigateHijriMonth(1)}>›</button>
-                </div>
-                
-                <div className="calendar-days-header">
-                  {arabicDayNames.map(day => (
-                    <div key={day} className="day-header">{day}</div>
-                  ))}
+                  <button type="button" onClick={() => navigateHijriMonth(-1)} aria-label="الشهر السابق">‹</button>
+
+                  <div className="calendar-header-controls" aria-label="اختيار الشهر والسنة">
+                    <select
+                      className="calendar-month-select"
+                      value={currentHijriMonth.month}
+                      onChange={(e) => setHijriMonth(parseInt(e.target.value, 10))}
+                      aria-label="الشهر"
+                    >
+                      {hijriMonthNames.map((_, idx) => (
+                        <option key={idx + 1} value={idx + 1}>
+                          {String(idx + 1).padStart(2, '0')}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="calendar-year-control">
+                      <button type="button" onClick={() => navigateHijriYear(-1)} className="calendar-year-nav" aria-label="السنة السابقة">«</button>
+                      <select
+                        className="calendar-year-select"
+                        value={currentHijriMonth.year}
+                        onChange={(e) => setHijriYear(parseInt(e.target.value, 10))}
+                        aria-label="السنة"
+                      >
+                        {hijriYearOptions.map((y) => (
+                          <option key={y} value={y}>
+                            {y}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={() => navigateHijriYear(1)} className="calendar-year-nav" aria-label="السنة التالية">»</button>
+                    </div>
+                  </div>
+
+                  <button type="button" onClick={() => navigateHijriMonth(1)} aria-label="الشهر التالي">›</button>
                 </div>
                 
                 <div className="calendar-days">

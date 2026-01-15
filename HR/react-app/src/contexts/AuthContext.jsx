@@ -6,7 +6,16 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { authAPI } from '../utils/api';
 
-const AuthContext = createContext(null);
+// Ensure a single context instance even if Vite loads this module twice
+// (e.g. different dev query strings like `?v=dev` causing duplicate module ids).
+const AUTH_CONTEXT_KEY = '__HR_APP_AUTH_CONTEXT__';
+const AuthContext =
+  (typeof globalThis !== 'undefined' && globalThis[AUTH_CONTEXT_KEY])
+    ? globalThis[AUTH_CONTEXT_KEY]
+    : createContext(null);
+if (typeof globalThis !== 'undefined' && !globalThis[AUTH_CONTEXT_KEY]) {
+  globalThis[AUTH_CONTEXT_KEY] = AuthContext;
+}
 
 export const useAuth = () => {
   const context = useContext(AuthContext);

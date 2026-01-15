@@ -82,11 +82,23 @@ const Dashboard = () => {
 
       // Performance Optimization: Batch all parallel API calls together
       // This reduces total loading time by making all requests simultaneously
+      // Avoid calling branch-documents if branch password isn't set yet (prevents noisy 401 spam)
+      let canLoadBranchDocuments = true;
+      if (!isMainManager() && user?.branch_id) {
+        try {
+          const key = `branch_documents_password_${user.branch_id}`;
+          canLoadBranchDocuments = !!localStorage.getItem(key);
+        } catch (e) {
+          canLoadBranchDocuments = false;
+        }
+      }
+
       const apiPromises = [
         branchesAPI.getAll(branchFilters),
         employeesAPI.getAll(employeeFilters),
-        branchDocumentsAPI.getAll(documentFilters).catch((err) => {
-          console.warn('[Dashboard] branchDocumentsAPI.getAll failed:', err);
+        (canLoadBranchDocuments ? branchDocumentsAPI.getAll(documentFilters) : Promise.resolve({ data: { data: [] } }))
+          .catch((err) => {
+          console.warn('[Dashboard] branchDocumentsAPI.getAll failed:', err?.message || 'Unknown error');
           return { data: { data: [] } };
         }),
       ];
@@ -96,11 +108,11 @@ const Dashboard = () => {
         // Branch manager specific calls
         apiPromises.push(
           branchesAPI.getById(user.branch_id).catch((err) => {
-            console.warn('[Dashboard] branchesAPI.getById failed:', err);
+            console.warn('[Dashboard] branchesAPI.getById failed:', err?.message || 'Unknown error');
             return { data: { success: false } };
           }),
           notificationsAPI.getMyBranchNotifications().catch((err) => {
-            console.warn('[Dashboard] notificationsAPI.getMyBranchNotifications failed:', err);
+            console.warn('[Dashboard] notificationsAPI.getMyBranchNotifications failed:', err?.message || 'Unknown error');
             return { data: { success: false, data: [] } };
           })
         );
@@ -108,19 +120,19 @@ const Dashboard = () => {
         // Main manager specific calls
         apiPromises.push(
           branchStatisticsAPI.getAll().catch((err) => {
-            console.warn('[Dashboard] branchStatisticsAPI.getAll failed:', err);
+            console.warn('[Dashboard] branchStatisticsAPI.getAll failed:', err?.message || 'Unknown error');
             return { data: { success: false } };
           }),
           notificationsAPI.getAll().catch((err) => {
-            console.warn('[Dashboard] notificationsAPI.getAll failed:', err);
+            console.warn('[Dashboard] notificationsAPI.getAll failed:', err?.message || 'Unknown error');
             return { data: { success: false, data: [] } };
           }),
           usersAPI.getAll({ is_active: true }).catch((err) => {
-            console.warn('[Dashboard] usersAPI.getAll failed:', err);
+            console.warn('[Dashboard] usersAPI.getAll failed:', err?.message || 'Unknown error');
             return { data: { success: false, data: [] } };
           }),
           requestsAPI.getAll().catch((err) => {
-            console.warn('[Dashboard] requestsAPI.getAll failed:', err);
+            console.warn('[Dashboard] requestsAPI.getAll failed:', err?.message || 'Unknown error');
             return { data: { success: false, data: [] } };
           })
         );
@@ -176,7 +188,7 @@ const Dashboard = () => {
             setIncompleteEmployees([]);
           }
         } catch (err) {
-          console.warn('[Dashboard] Failed to load dashboard summary:', err);
+          console.warn('[Dashboard] Failed to load dashboard summary:', err?.message || 'Unknown error');
           setIncompleteEmployees([]);
         }
 
@@ -185,7 +197,7 @@ const Dashboard = () => {
           ...employeeFilters,
           status: 'pending'
         }).catch((err) => {
-          console.error('[Dashboard] Failed to fetch pending employees:', err);
+          console.error('[Dashboard] Failed to fetch pending employees:', err?.message || 'Unknown error');
           return { data: { success: false, data: [] } };
         });
 

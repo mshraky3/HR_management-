@@ -5,7 +5,16 @@
 
 import { createContext, useContext, useState, useCallback } from 'react';
 
-const NotificationContext = createContext(null);
+// Ensure a single context instance even if Vite loads this module twice
+// (e.g. different dev query strings like `?v=dev` causing duplicate module ids).
+const NOTIFICATION_CONTEXT_KEY = '__HR_APP_NOTIFICATION_CONTEXT__';
+const NotificationContext =
+  (typeof globalThis !== 'undefined' && globalThis[NOTIFICATION_CONTEXT_KEY])
+    ? globalThis[NOTIFICATION_CONTEXT_KEY]
+    : createContext(null);
+if (typeof globalThis !== 'undefined' && !globalThis[NOTIFICATION_CONTEXT_KEY]) {
+  globalThis[NOTIFICATION_CONTEXT_KEY] = NotificationContext;
+}
 
 export const useNotification = () => {
   const context = useContext(NotificationContext);

@@ -132,6 +132,20 @@
   transform: translateY(-2px);
 }
 
+/* Highlight bus card after finishing flow */
+.bus-card.bus-card-highlight {
+  outline: 3px solid rgba(73, 136, 196, 0.55);
+  box-shadow: 0 0 0 6px rgba(73, 136, 196, 0.12), 0 8px 20px rgba(0,0,0,0.12);
+  transform: translateY(-2px);
+  animation: busCardPulse 1.4s ease-in-out;
+}
+
+@keyframes busCardPulse {
+  0% { box-shadow: 0 0 0 0 rgba(73, 136, 196, 0.0), 0 4px 12px rgba(0,0,0,0.08); }
+  35% { box-shadow: 0 0 0 10px rgba(73, 136, 196, 0.14), 0 10px 24px rgba(0,0,0,0.14); }
+  100% { box-shadow: 0 0 0 0 rgba(73, 136, 196, 0.0), 0 4px 12px rgba(0,0,0,0.10); }
+}
+
 .bus-card-header {
   display: flex;
   justify-content: space-between;
@@ -251,7 +265,122 @@
   to { transform: rotate(360deg); }
 }
 
-/* Modal Styles */
+/* Expanding Section Styles (replaces modal) */
+.bus-form-expanding-section {
+  background: white;
+  border-radius: 12px;
+  margin: 2rem 0;
+  border: 1px solid var(--border-color, #e2e8f0);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.bus-form-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-secondary, #f8fafc);
+}
+
+.bus-form-section-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.bus-form-section-content {
+  max-height: none;
+  overflow-y: auto;
+}
+
+.section-close {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  cursor: pointer;
+  color: var(--text-secondary, #64748b);
+  line-height: 1;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.section-close:hover {
+  color: var(--text-primary, #1e293b);
+}
+
+.section-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  padding: 1.5rem;
+  border-top: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-secondary, #f8fafc);
+}
+
+/* Wizard buttons (BusFormModal flow) */
+.btn-wizard-prev,
+.btn-wizard-next {
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 500;
+  transition: background 0.2s, color 0.2s, opacity 0.2s;
+}
+
+.btn-wizard-prev {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.btn-wizard-prev:hover {
+  background: #cbd5e1;
+}
+
+.btn-wizard-prev:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* "Next" is dull until current step is complete, then bright */
+.btn-wizard-next {
+  background: #cbd5e1; /* dull */
+  color: #475569;
+}
+
+.btn-wizard-next.enabled {
+  background: var(--primary, #4988C4); /* bright */
+  color: white;
+}
+
+.btn-wizard-next.enabled:hover {
+  background: #3a6fa0;
+}
+
+.btn-wizard-next:disabled {
+  opacity: 1; /* keep dull color, not faded */
+  cursor: not-allowed;
+}
+
+/* Modal Styles (for BusDetailsModal) */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -337,6 +466,11 @@
   border-bottom-color: var(--primary, #4988C4);
 }
 
+.tabs button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .tab-content {
   padding: 1.5rem;
 }
@@ -383,6 +517,79 @@
   margin-bottom: 0.5rem;
   font-weight: 500;
   color: var(--text-primary, #1e293b);
+}
+
+.label-example {
+  font-weight: 400;
+  color: var(--text-secondary, #64748b);
+  font-size: 0.85em;
+}
+
+.plate-input-group {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-end;
+}
+
+.plate-number-input-wrapper,
+.plate-letter-input-wrapper,
+.plate-letter-arabic-input-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.plate-input-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-secondary, #64748b);
+  margin: 0;
+}
+
+.plate-number-input,
+.plate-letter-input,
+.plate-letter-arabic-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.2em;
+  transition: all 0.2s;
+}
+
+.plate-number-input {
+  letter-spacing: 0.3em;
+}
+
+.plate-letter-input {
+  text-transform: uppercase;
+}
+
+.plate-letter-arabic-input {
+  font-family: 'Noto Sans Arabic', 'Arial', sans-serif;
+  letter-spacing: 0.15em;
+  direction: rtl;
+}
+
+.plate-number-input:focus,
+.plate-letter-input:focus,
+.plate-letter-arabic-input:focus {
+  outline: none;
+  border-color: var(--primary, #4988C4);
+  box-shadow: 0 0 0 3px rgba(73, 136, 196, 0.1);
+}
+
+.plate-number-input::placeholder,
+.plate-letter-input::placeholder,
+.plate-letter-arabic-input::placeholder {
+  color: var(--text-muted, #94a3b8);
+  font-weight: 400;
+  letter-spacing: normal;
 }
 
 .form-group input,
@@ -448,6 +655,150 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
+}
+
+/* BusFormModal - Students table (fast bulk entry) */
+.students-table-wrapper {
+  width: 100%;
+}
+
+.students-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 10px;
+  overflow: hidden;
+  background: white;
+}
+
+.students-table thead th {
+  background: var(--bg-secondary, #f8fafc);
+  color: var(--text-secondary, #64748b);
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  text-align: right;
+}
+
+.students-table tbody td {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  vertical-align: middle;
+}
+
+.students-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.students-table input {
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.students-table input:focus {
+  outline: none;
+  border-color: var(--primary, #4988C4);
+  box-shadow: 0 0 0 3px rgba(73, 136, 196, 0.12);
+}
+
+.students-table-actions {
+  width: 90px;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.students-table-hint {
+  margin-top: 0.75rem;
+  color: var(--text-secondary, #64748b);
+  font-size: 0.9rem;
+}
+
+/* Assistant driver toggle (switch) */
+.assistant-section {
+  padding: 0.75rem;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.assistant-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.assistant-toggle-label {
+  font-weight: 600;
+  color: var(--text-primary, #1e293b);
+}
+
+.assistant-fields {
+  margin-top: 0.75rem;
+}
+
+.assistant-fields-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+/* Simple switch */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 46px;
+  height: 26px;
+  flex: 0 0 auto;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch .slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #cbd5e1;
+  transition: 0.2s;
+  border-radius: 999px;
+}
+
+.switch .slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.2s;
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+.switch input:checked + .slider {
+  background-color: var(--primary, #4988C4);
+}
+
+.switch input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+@media (max-width: 768px) {
+  .assistant-fields-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .students-list {
@@ -609,6 +960,182 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.plate-form-item {
+  padding: 1rem;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+  background: white;
+}
+
+/* Saudi License Plate Input Styles */
+.saudi-plate-input {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: white;
+  border: 3px solid #000;
+  border-radius: 8px;
+  width: fit-content;
+  min-width: 400px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  position: relative;
+}
+
+.plate-display-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+/* Compact display mode (for viewing, like cards) */
+.saudi-plate-input.plate-display {
+  min-width: unset;
+  padding: 0.75rem;
+  gap: 0.6rem;
+  border-width: 2px;
+  box-shadow: none;
+}
+
+.saudi-plate-input.plate-display.plate-display-rect {
+  /* two rows: numbers row, letters row */
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.6rem;
+  border-width: 2px;
+  border-radius: 10px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.saudi-plate-input.plate-display.plate-display-rect .plate-label {
+  display: none;
+}
+
+.saudi-plate-input.plate-display.plate-display-rect .plate-section {
+  gap: 0.25rem;
+}
+
+.saudi-plate-input.plate-display.plate-display-rect .plate-section:first-child::after {
+  display: none;
+}
+
+.saudi-plate-input.plate-display.plate-display-rect .plate-section {
+  padding: 0;
+}
+
+.saudi-plate-input.plate-display.plate-display-rect .plate-numbers,
+.saudi-plate-input.plate-display.plate-display-rect .plate-letters {
+  gap: 0.25rem;
+}
+
+.saudi-plate-input.plate-display.plate-display-rect .plate-letters-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.saudi-plate-input.plate-display.plate-display-rect .plate-letters-row .plate-section + .plate-section {
+  border-left: 2px solid #000;
+  padding-left: 0.6rem;
+}
+
+.saudi-plate-input.plate-display .plate-input-number,
+.saudi-plate-input.plate-display .plate-input-letter {
+  width: 30px;
+  height: 40px;
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.saudi-plate-input.plate-display .plate-label {
+  font-size: 0.75rem;
+}
+
+.saudi-plate-input.plate-display .plate-numbers,
+.saudi-plate-input.plate-display .plate-letters {
+  gap: 0.35rem;
+}
+
+.saudi-plate-input.plate-display .plate-section:first-child::after {
+  margin: 0.35rem 0;
+}
+
+.plate-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.plate-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.25rem;
+  text-align: right;
+}
+
+.plate-numbers,
+.plate-letters {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.plate-input-number,
+.plate-input-letter {
+  width: 55px;
+  height: 70px;
+  text-align: center;
+  font-size: 2.2rem;
+  font-weight: bold;
+  border: 2px solid #000;
+  border-radius: 6px;
+  background: white;
+  color: #000;
+  font-family: 'Arial', sans-serif;
+  padding: 0;
+  transition: all 0.2s;
+}
+
+.plate-input-number::placeholder,
+.plate-input-letter::placeholder {
+  color: #ccc;
+  font-size: 1.5rem;
+}
+
+.plate-input-number:focus,
+.plate-input-letter:focus {
+  outline: none;
+  border-color: #4988C4;
+  box-shadow: 0 0 0 3px rgba(73, 136, 196, 0.2);
+  background: #f8f9fa;
+  transform: scale(1.05);
+}
+
+.plate-input-letter {
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+/* Add divider line between numbers and letters sections */
+.plate-section:first-child::after {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: #000;
+  margin: 0.5rem 0;
 }
 
 .plate-item {

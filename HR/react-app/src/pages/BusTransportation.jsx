@@ -4,18 +4,78 @@
  * Main managers can view all branches, branch managers only their branch
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { busTransportationAPI, branchesAPI, termsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import BranchBadge from '../components/BranchBadge';
+import UnifiedDatePicker from '../components/UnifiedDatePicker';
 import './BusTransportation.css';
+
+function PlateDisplay({ value = '' }) {
+  const parsePlate = (plateValue) => {
+    if (!plateValue) return { numbers: ['', '', '', ''], lettersEn: ['', '', ''], lettersAr: ['', '', ''] };
+    const numbersPart = String(plateValue).replace(/[^0-9]/g, '').slice(0, 4);
+    const lettersEnPart = String(plateValue).replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 3);
+    const lettersArPart = String(plateValue).replace(/[^\u0600-\u06FF]/g, '').slice(0, 3);
+    const numbers = numbersPart.split('').concat(Array(4 - numbersPart.length).fill(''));
+    const lettersEn = lettersEnPart.split('').concat(Array(3 - lettersEnPart.length).fill(''));
+    const lettersAr = lettersArPart.split('').concat(Array(3 - lettersArPart.length).fill(''));
+    return { numbers, lettersEn, lettersAr };
+  };
+
+  const { numbers, lettersEn, lettersAr } = parsePlate(value);
+
+  return (
+    <div className="saudi-plate-input plate-display plate-display-rect" aria-label="رقم اللوحة">
+      <div className="plate-section">
+        <div className="plate-label">الأرقام</div>
+        <div className="plate-numbers">
+          {numbers.map((num, idx) => (
+            <div key={`num-d-${idx}`} className="plate-input-number plate-cell">
+              {num || ''}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="plate-letters-row">
+        <div className="plate-section plate-letters-en">
+          <div className="plate-label">الحروف (EN)</div>
+          <div className="plate-letters">
+            {lettersEn.map((letter, idx) => (
+              <div key={`en-d-${idx}`} className="plate-input-letter plate-cell">
+                {letter || ''}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="plate-section plate-letters-ar">
+          <div className="plate-label">الحروف (AR)</div>
+          <div className="plate-letters">
+            {lettersAr.map((letter, idx) => (
+              <div
+                key={`ar-d-${idx}`}
+                className="plate-input-letter plate-cell"
+                style={{ direction: 'rtl', fontFamily: "'Noto Sans Arabic', Arial, sans-serif" }}
+              >
+                {letter || ''}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const BusTransportation = () => {
   const { isMainManager, user } = useAuth();
   const { showError, showSuccess } = useNotification();
   const [buses, setBuses] = useState([]);
   const [filteredBuses, setFilteredBuses] = useState([]);
+  const [highlightBusId, setHighlightBusId] = useState(null);
   const [branches, setBranches] = useState([]);
   const [terms, setTerms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +104,20 @@ const BusTransportation = () => {
   useEffect(() => {
     filterBuses();
   }, [searchTerm, selectedBranchId, selectedTermId, buses]);
+
+  // After finishing the flow, scroll + highlight the bus card
+  useEffect(() => {
+    if (!highlightBusId) return;
+    const el = document.querySelector(`[data-bus-id="${highlightBusId}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('bus-card-highlight');
+    const t = setTimeout(() => {
+      el.classList.remove('bus-card-highlight');
+      setHighlightBusId(null);
+    }, 1600);
+    return () => clearTimeout(t);
+  }, [highlightBusId, filteredBuses]);
 
   const loadBranches = async () => {
     try {
@@ -149,6 +223,12 @@ const BusTransportation = () => {
       if (response.data.success) {
         showSuccess('تم إنشاء الحافلة بنجاح');
         setShowBusForm(false);
+        setEditingBus(null);
+        // Load the created bus and open details modal to enter remaining data
+        const busResponse = await busTransportationAPI.getById(response.data.data.id);
+        if (busResponse.data.success) {
+          setSelectedBus(busResponse.data.data);
+        }
         loadBuses();
       }
     } catch (error) {
@@ -287,7 +367,7 @@ const BusTransportation = () => {
         ) : (
           <div className="buses-grid">
             {filteredBuses.map(bus => (
-              <div key={bus.id} className="bus-card">
+              <div key={bus.id} className="bus-card" data-bus-id={bus.id}>
                 <div className="bus-card-header">
                   <div className="bus-number">{bus.bus_number}</div>
                   {isMainManager() && (
@@ -305,9 +385,9 @@ const BusTransportation = () => {
                     </div>
                   )}
                   {bus.primary_plate && (
-                    <div className="bus-info-item">
-                      <span className="info-label">لوحة الترخيص:</span>
-                      <span className="info-value">{bus.primary_plate}</span>
+                    <div className="plate-display-wrapper">
+                      <span className="info-label">رقم اللوحات</span>
+                      <PlateDisplay value={bus.primary_plate} />
                     </div>
                   )}
                   {bus.route_name && (
@@ -350,7 +430,14 @@ const BusTransportation = () => {
                       setShowBusForm(true);
                     }}
                   >
-                    تعديل
+                    {(() => {
+                      const missingStudents = (bus.student_count === 0 || bus.student_count === null || bus.student_count === undefined);
+                      const missingRegDoc = !bus.registration_document_url;
+                      const missingDriverDoc = !bus.license_document_url;
+                      const missingLeaseDoc = bus.ownership_type === 'leased' && !bus.lease_contract_document_url;
+                      const missingDocs = missingRegDoc || missingDriverDoc || missingLeaseDoc;
+                      return (missingDocs || missingStudents) ? 'إكمال' : 'تعديل';
+                    })()}
                   </button>
                   <button
                     className="btn-delete"
@@ -365,7 +452,7 @@ const BusTransportation = () => {
         )}
       </div>
 
-      {/* Bus Form Modal */}
+      {/* Bus Form Section */}
       {showBusForm && (
         <BusFormModal
           bus={editingBus}
@@ -378,6 +465,8 @@ const BusTransportation = () => {
             setEditingBus(null);
           }}
           onSave={editingBus ? (data) => handleUpdateBus(editingBus.id, data) : handleCreateBus}
+          onReload={loadBuses}
+          onAfterFinish={(busId) => setHighlightBusId(busId)}
         />
       )}
 
@@ -398,28 +487,397 @@ const BusTransportation = () => {
   );
 };
 
-// Bus Form Modal Component
-const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, onClose, onSave }) => {
+// Bus Form Modal Component - Extended with tabs for all data
+const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, onClose, onSave, onReload, onAfterFinish }) => {
   const { user } = useAuth();
-  const [formData, setFormData] = useState({
-    branch_id: bus?.branch_id || userBranchId || '',
-    term_id: bus?.term_id || '',
-    bus_number: bus?.bus_number || ''
-  });
+  const { showError, showSuccess } = useNotification();
+  const isEditing = !!bus;
+  const hydratedRef = useRef(false);
+  const [activeTab, setActiveTab] = useState('basic');
+  const tabsFlow = ['basic', 'registration', 'driver', 'details', 'students', 'documents'];
+  const [maxStepIndex, setMaxStepIndex] = useState(bus ? tabsFlow.length - 1 : 0);
   const [saving, setSaving] = useState(false);
+  const [docsState, setDocsState] = useState({
+    registration: !!bus?.registration?.registration_document_url,
+    driverLicense: !!bus?.driver_license?.license_document_url,
+    leaseContract: !!bus?.lease_contract_document_url
+  });
   const [currentTerm, setCurrentTerm] = useState(null);
   const [loadingTerm, setLoadingTerm] = useState(false);
+  const [createdBusId, setCreatedBusId] = useState(bus?.id || null);
+  const formSectionRef = useRef(null);
+  
+  // Basic bus info
+  const [basicFormData, setBasicFormData] = useState({
+    branch_id: bus?.branch_id || userBranchId || '',
+    term_id: bus?.term_id || '',
+    plate_number: bus?.bus_number || ''
+  });
+
+  // Scroll to form section when opened
+  useEffect(() => {
+    if (formSectionRef.current && !bus) {
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        formSectionRef.current?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center' 
+        });
+      }, 100);
+    }
+  }, [bus]);
+
+  // Registration data
+  const [registrationData, setRegistrationData] = useState({
+    registration_number: bus?.registration?.registration_number || '',
+    chassis_number: bus?.registration?.chassis_number || '',
+    vehicle_model: bus?.registration?.vehicle_model || '',
+    model_year: bus?.registration?.model_year || '',
+    vehicle_color: bus?.registration?.vehicle_color || '',
+    expiry_date_gregorian: bus?.registration?.expiry_date_gregorian || '',
+  });
+
+  // Driver license data
+  const [driverLicenseData, setDriverLicenseData] = useState({
+    driver_full_name: bus?.driver_license?.driver_full_name || '',
+    driver_id_number: bus?.driver_license?.driver_id_number || '',
+    license_number: bus?.driver_license?.license_number || '',
+    issue_date_gregorian: bus?.driver_license?.issue_date_gregorian || '',
+    expiry_date_gregorian: bus?.driver_license?.expiry_date_gregorian || '',
+    driver_phone_number: bus?.driver_license?.driver_phone_number || '',
+    driver_nationality: bus?.driver_license?.driver_nationality || '',
+    driver_date_of_birth_gregorian: bus?.driver_license?.driver_date_of_birth_gregorian || '',
+    has_assistant: bus?.driver_license?.has_assistant || false,
+    assistant_full_name: bus?.driver_license?.assistant_full_name || '',
+    assistant_phone_number: bus?.driver_license?.assistant_phone_number || '',
+  });
+
+  // License plates
+  const [licensePlates, setLicensePlates] = useState(
+    bus?.license_plates?.map(p => ({ ...p })) || [{ plate_number: bus?.bus_number || '', is_primary: true }]
+  );
+
+  // Keep the first plate in sync with the bus plate number (bus is identified by plate)
+  useEffect(() => {
+    const plate = String(basicFormData.plate_number || '').trim();
+    if (!plate) return;
+    setLicensePlates((prev) => {
+      if (!Array.isArray(prev) || prev.length === 0) {
+        return [{ plate_number: plate, is_primary: true }];
+      }
+      const first = prev[0] || {};
+      // Only auto-fill if empty to avoid overwriting user edits
+      if (first.plate_number && String(first.plate_number).trim() !== '') return prev;
+      const updated = [...prev];
+      updated[0] = { ...first, plate_number: plate, is_primary: true };
+      return updated;
+    });
+  }, [basicFormData.plate_number]);
+
+  // Bus details (must be declared before step completeness checks)
+  const normalizeOwnershipType = (v) => (v === 'rented' ? 'leased' : (v || 'owned'));
+  const [busDetailsData, setBusDetailsData] = useState({
+    route_name: bus?.details?.route_name || '',
+    route_description: bus?.details?.route_description || '',
+    number_of_seats: bus?.details?.number_of_seats || '',
+    ownership_type: normalizeOwnershipType(bus?.details?.ownership_type),
+    lease_company_name: bus?.details?.lease_company_name || '',
+    lease_contact_info: bus?.details?.lease_contact_info || '',
+    lease_contract_number: bus?.details?.lease_contract_number || '',
+    lease_start_date_hijri: bus?.details?.lease_start_date_hijri || '',
+    lease_start_date_gregorian: bus?.details?.lease_start_date_gregorian || '',
+    lease_end_date_hijri: bus?.details?.lease_end_date_hijri || '',
+    lease_end_date_gregorian: bus?.details?.lease_end_date_gregorian || '',
+    insurance_provider: bus?.details?.insurance_provider || '',
+    insurance_policy_number: bus?.details?.insurance_policy_number || '',
+    insurance_expiry_date_gregorian: bus?.details?.insurance_expiry_date_gregorian || '',
+  });
+
+  const isBlank = (v) => v === null || v === undefined || String(v).trim() === '';
+  const parsePlate = (value) => {
+    const raw = String(value || '');
+    const numbers = raw.replace(/[^0-9]/g, '').slice(0, 4);
+    const lettersEn = raw.replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 3);
+    const lettersAr = raw.replace(/[^\u0600-\u06FF]/g, '').slice(0, 3);
+    return { numbers, lettersEn, lettersAr, normalized: numbers + lettersEn + lettersAr };
+  };
+
+  // When editing, always hydrate the modal with the full saved record from API
+  // (the bus list row is often missing nested registration/driver/details/students)
+  useEffect(() => {
+    if (!bus?.id) return;
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+
+    (async () => {
+      try {
+        const res = await busTransportationAPI.getById(bus.id);
+        if (!res?.data?.success) return;
+        const full = res.data.data;
+        if (!full) return;
+
+        setCreatedBusId(full.id || bus.id);
+
+        setBasicFormData({
+          branch_id: full.branch_id || userBranchId || '',
+          term_id: full.term_id || '',
+          plate_number: full.bus_number || ''
+        });
+
+        setRegistrationData({
+          registration_number: full.registration?.registration_number || '',
+          chassis_number: full.registration?.chassis_number || '',
+          vehicle_model: full.registration?.vehicle_model || '',
+          model_year: full.registration?.model_year || '',
+          vehicle_color: full.registration?.vehicle_color || '',
+          expiry_date_gregorian: full.registration?.expiry_date_gregorian || ''
+        });
+
+        setDriverLicenseData({
+          driver_full_name: full.driver_license?.driver_full_name || '',
+          driver_id_number: full.driver_license?.driver_id_number || '',
+          license_number: full.driver_license?.license_number || '',
+          issue_date_gregorian: full.driver_license?.issue_date_gregorian || '',
+          expiry_date_gregorian: full.driver_license?.expiry_date_gregorian || '',
+          driver_phone_number: full.driver_license?.driver_phone_number || '',
+          driver_nationality: full.driver_license?.driver_nationality || '',
+          driver_date_of_birth_gregorian: full.driver_license?.driver_date_of_birth_gregorian || '',
+          has_assistant: full.driver_license?.has_assistant || false,
+          assistant_full_name: full.driver_license?.assistant_full_name || '',
+          assistant_phone_number: full.driver_license?.assistant_phone_number || ''
+        });
+
+        setLicensePlates(
+          (full.license_plates?.map(p => ({ ...p }))?.length
+            ? full.license_plates.map(p => ({ ...p }))
+            : [{ plate_number: full.bus_number || '', is_primary: true }])
+        );
+
+        setBusDetailsData({
+          route_name: full.details?.route_name || '',
+          route_description: full.details?.route_description || '',
+          number_of_seats: full.details?.number_of_seats || '',
+          ownership_type: normalizeOwnershipType(full.details?.ownership_type),
+          lease_company_name: full.details?.lease_company_name || '',
+          lease_contact_info: full.details?.lease_contact_info || '',
+          lease_contract_number: full.details?.lease_contract_number || '',
+          lease_start_date_hijri: full.details?.lease_start_date_hijri || '',
+          lease_start_date_gregorian: full.details?.lease_start_date_gregorian || '',
+          lease_end_date_hijri: full.details?.lease_end_date_hijri || '',
+          lease_end_date_gregorian: full.details?.lease_end_date_gregorian || '',
+          insurance_provider: full.details?.insurance_provider || '',
+          insurance_policy_number: full.details?.insurance_policy_number || '',
+          insurance_expiry_date_gregorian: full.details?.insurance_expiry_date_gregorian || ''
+        });
+
+        setDocsState({
+          registration: !!full.registration?.registration_document_url,
+          driverLicense: !!full.driver_license?.license_document_url,
+          leaseContract: !!full.lease_contract_document_url
+        });
+
+        setStudents(() => {
+          const existing = full.students?.map(s => ({ ...s })) || [];
+          if (existing.length === 0) return [makeEmptyStudentRow()];
+          return [...existing, makeEmptyStudentRow()];
+        });
+      } catch (e) {
+        // keep initial values if fetch fails
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bus?.id]);
+
+  const getStepComplete = (tabKey) => {
+    if (tabKey === 'basic') {
+      const plateParsed = parsePlate(basicFormData.plate_number);
+      const branchOk = !isMainManager || !isBlank(basicFormData.branch_id);
+      return (
+        branchOk &&
+        !isBlank(basicFormData.term_id) &&
+        plateParsed.numbers.length === 4 &&
+        plateParsed.lettersEn.length === 3 &&
+        plateParsed.lettersAr.length === 3
+      );
+    }
+    if (tabKey === 'registration') {
+      return (
+        !isBlank(registrationData.registration_number) &&
+        !isBlank(registrationData.chassis_number) &&
+        !isBlank(registrationData.vehicle_model) &&
+        !isBlank(registrationData.expiry_date_gregorian)
+      );
+    }
+    if (tabKey === 'driver') {
+      if (driverLicenseData?.has_assistant) {
+        return (
+          !isBlank(driverLicenseData.driver_full_name) &&
+          !isBlank(driverLicenseData.driver_id_number) &&
+          !isBlank(driverLicenseData.license_number) &&
+          !isBlank(driverLicenseData.expiry_date_gregorian) &&
+          !isBlank(driverLicenseData.assistant_full_name) &&
+          !isBlank(driverLicenseData.assistant_phone_number)
+        );
+      }
+      return (
+        !isBlank(driverLicenseData.driver_full_name) &&
+        !isBlank(driverLicenseData.driver_id_number) &&
+        !isBlank(driverLicenseData.license_number) &&
+        !isBlank(driverLicenseData.expiry_date_gregorian)
+      );
+    }
+    if (tabKey === 'details') {
+      return !isBlank(busDetailsData.number_of_seats) && !isBlank(busDetailsData.ownership_type);
+    }
+    if (tabKey === 'students') {
+      return true;
+    }
+    if (tabKey === 'documents') {
+      return true; // uploads are optional
+    }
+    return true;
+  };
+
+  const activeStepIndex = Math.max(0, tabsFlow.indexOf(activeTab));
+  const canGoPrev = activeStepIndex > 0;
+  const canGoNext = activeStepIndex >= 0 && activeStepIndex < tabsFlow.length - 1;
+  const currentStepComplete = getStepComplete(activeTab);
+
+  const goPrev = () => {
+    if (!canGoPrev) return;
+    setActiveTab(tabsFlow[activeStepIndex - 1]);
+  };
+
+  const autoSaveTab = async (tabKey) => {
+    // Auto-save silently (no manual save needed)
+    let busId = createdBusId || bus?.id;
+
+    if (tabKey === 'basic') {
+      if (isMainManager && isBlank(basicFormData.branch_id)) {
+        showError('يرجى اختيار الفرع');
+        return { ok: false };
+      }
+      if (isBlank(basicFormData.term_id)) {
+        showError('يرجى اختيار الفصل الدراسي');
+        return { ok: false };
+      }
+
+      const plateParsed = parsePlate(basicFormData.plate_number);
+      if (plateParsed.numbers.length !== 4 || plateParsed.lettersEn.length !== 3 || plateParsed.lettersAr.length !== 3) {
+        showError('يرجى إدخال رقم لوحة صحيح');
+        return { ok: false };
+      }
+
+      const payload = {
+        branch_id: basicFormData.branch_id || userBranchId,
+        term_id: basicFormData.term_id,
+        bus_number: plateParsed.normalized
+      };
+
+      // Create bus once
+      if (!busId) {
+        const createRes = await busTransportationAPI.create(payload);
+        if (!createRes.data?.success) {
+          throw new Error(createRes.data?.message || 'فشل إنشاء الحافلة');
+        }
+        busId = createRes.data.data.id;
+        setCreatedBusId(busId);
+      } else {
+        // Update basic fields when editing or continuing create flow
+        await onSave(payload);
+      }
+
+      // Keep one primary plate matching basic (safe)
+      try {
+        if (bus?.license_plates) {
+          for (const plate of bus.license_plates) {
+            await busTransportationAPI.deleteLicensePlate(busId, plate.id);
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+      await busTransportationAPI.addLicensePlate(busId, { plate_number: payload.bus_number, is_primary: true });
+
+      return { ok: true, busId };
+    }
+
+    if (!busId) return { ok: false };
+
+    if (tabKey === 'registration') {
+      await busTransportationAPI.saveRegistration(busId, { ...registrationData, term_id: basicFormData.term_id });
+      return { ok: true, busId };
+    }
+
+    if (tabKey === 'driver') {
+      await busTransportationAPI.saveDriverLicense(busId, { ...driverLicenseData, term_id: basicFormData.term_id });
+      return { ok: true, busId };
+    }
+
+    if (tabKey === 'details') {
+      await busTransportationAPI.saveDetails(busId, { ...busDetailsData, term_id: basicFormData.term_id });
+      return { ok: true, busId };
+    }
+
+    if (tabKey === 'students') {
+      await handleSaveStudents();
+      return { ok: true, busId };
+    }
+
+    return { ok: true, busId };
+  };
+
+  const goNext = async () => {
+    if (!canGoNext) return;
+    if (!currentStepComplete) return;
+
+    // Auto-save current step before moving on (create flow only)
+    if (!isEditing) {
+      try {
+        setSaving(true);
+        const res = await autoSaveTab(activeTab);
+        if (!res?.ok) return;
+      } catch (e) {
+        showError(e.response?.data?.message || e.message || 'حدث خطأ أثناء الحفظ');
+        return;
+      } finally {
+        setSaving(false);
+      }
+    }
+
+    const nextIndex = activeStepIndex + 1;
+    setActiveTab(tabsFlow[nextIndex]);
+    setMaxStepIndex((prev) => Math.max(prev, nextIndex));
+  };
+
+  const makeEmptyStudentRow = () => ({
+    student_full_name: '',
+    contact_mobile_number: '',
+    address: ''
+  });
+
+  // Students (always keep one empty row at the end for fast bulk entry)
+  const [students, setStudents] = useState(() => {
+    const existing = bus?.students?.map(s => ({ ...s })) || [];
+    if (existing.length === 0) return [makeEmptyStudentRow()];
+    return [...existing, makeEmptyStudentRow()];
+  });
+
+  // Don't count the always-present blank row
+  const studentsCount = students.filter(
+    (s) => !isBlank(s?.student_full_name) && !isBlank(s?.contact_mobile_number) && !isBlank(s?.address)
+  ).length;
 
   useEffect(() => {
     const loadCurrentTerm = async () => {
       // If editing, use the bus's term_id
       if (bus?.term_id) {
-        setFormData(prev => ({ ...prev, term_id: bus.term_id }));
+        setBasicFormData(prev => ({ ...prev, term_id: bus.term_id }));
         return;
       }
 
       // If creating, get current term for the branch
-      const branchId = formData.branch_id || userBranchId;
+      const branchId = basicFormData.branch_id || userBranchId;
       if (branchId) {
         try {
           setLoadingTerm(true);
@@ -433,7 +891,7 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, onClo
               // Get the first active term (current term)
               const term = termResponse.data.data[0];
               setCurrentTerm(term);
-              setFormData(prev => ({ ...prev, term_id: term.id }));
+              setBasicFormData(prev => ({ ...prev, term_id: term.id }));
             }
           }
         } catch (error) {
@@ -445,79 +903,1468 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, onClo
     };
 
     loadCurrentTerm();
-  }, [formData.branch_id, userBranchId, bus, user]);
+  }, [basicFormData.branch_id, userBranchId, bus, user]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formData.branch_id || !formData.term_id || !formData.bus_number) {
-      alert('يرجى ملء جميع الحقول المطلوبة');
+  // Legacy per-tab save removed: saving happens only at the final step
+
+  const handleSaveRegistration = async () => {
+    if (!createdBusId && !bus?.id) {
+      showError('يرجى إنشاء الحافلة أولاً');
+      return;
+    }
+    const busId = createdBusId || bus.id;
+    
+    try {
+      await busTransportationAPI.saveRegistration(busId, registrationData);
+      showSuccess('تم حفظ بيانات التسجيل بنجاح');
+    } catch (error) {
+      showError(error.response?.data?.message || 'فشل حفظ بيانات التسجيل');
+      throw error;
+    }
+  };
+
+  const handleSaveDriverLicense = async () => {
+    if (!createdBusId && !bus?.id) {
+      showError('يرجى إنشاء الحافلة أولاً');
+      return;
+    }
+    const busId = createdBusId || bus.id;
+    
+    try {
+      await busTransportationAPI.saveDriverLicense(busId, driverLicenseData);
+      showSuccess('تم حفظ بيانات رخصة السائق بنجاح');
+    } catch (error) {
+      showError(error.response?.data?.message || 'فشل حفظ بيانات رخصة السائق');
+      throw error;
+    }
+  };
+
+  const handleSavePlates = async () => {
+    if (!createdBusId && !bus?.id) {
+      showError('يرجى إنشاء الحافلة أولاً');
+      return;
+    }
+    const busId = createdBusId || bus.id;
+    
+    try {
+      // Delete existing plates if editing
+      if (bus?.license_plates) {
+        for (const plate of bus.license_plates) {
+          try {
+            await busTransportationAPI.deleteLicensePlate(busId, plate.id);
+          } catch (error) {
+            // Ignore if plate doesn't exist
+          }
+        }
+      }
+
+      // Create new plates
+      const validPlates = licensePlates.filter(p => p.plate_number);
+      for (const plate of validPlates) {
+        await busTransportationAPI.addLicensePlate(busId, plate);
+      }
+      if (validPlates.length > 0) {
+        showSuccess('تم حفظ لوحات الترخيص بنجاح');
+      }
+    } catch (error) {
+      showError(error.response?.data?.message || 'فشل حفظ لوحات الترخيص');
+      throw error;
+    }
+  };
+
+  const handleSaveDetails = async () => {
+    if (!createdBusId && !bus?.id) {
+      showError('يرجى إنشاء الحافلة أولاً');
+      return;
+    }
+    const busId = createdBusId || bus.id;
+    
+    try {
+      await busTransportationAPI.saveDetails(busId, busDetailsData);
+      showSuccess('تم حفظ تفاصيل الحافلة بنجاح');
+    } catch (error) {
+      showError(error.response?.data?.message || 'فشل حفظ تفاصيل الحافلة');
+      throw error;
+    }
+  };
+
+  const handleAddStudent = () => {
+    setStudents((prev) => [...(Array.isArray(prev) ? prev : []), makeEmptyStudentRow()]);
+  };
+
+  const handleUpdateStudent = (index, field, value) => {
+    const digitsOnly = (v) => String(v || '').replace(/\D/g, '');
+    setStudents((prev) => {
+      const list = Array.isArray(prev) ? [...prev] : [];
+      const current = list[index] || makeEmptyStudentRow();
+      const nextValue = field === 'contact_mobile_number' ? digitsOnly(value) : value;
+      list[index] = { ...current, [field]: nextValue };
+
+      // Auto-add a new empty row when user starts filling the last row
+      if (index === list.length - 1) {
+        const last = list[index] || {};
+        const hasAny =
+          !isBlank(last.student_full_name) ||
+          !isBlank(last.contact_mobile_number) ||
+          !isBlank(last.address);
+        if (hasAny) {
+          list.push(makeEmptyStudentRow());
+        }
+      }
+      return list;
+    });
+  };
+
+  const handleRemoveStudent = (index) => {
+    setStudents((prev) => {
+      const list = Array.isArray(prev) ? prev.filter((_, i) => i !== index) : [];
+      // Ensure at least one empty row remains
+      if (list.length === 0) return [makeEmptyStudentRow()];
+      return list;
+    });
+  };
+
+  const handleSaveStudents = async () => {
+    if (!createdBusId && !bus?.id) {
+      showError('يرجى إنشاء الحافلة أولاً');
+      return;
+    }
+    const busId = createdBusId || bus.id;
+    
+    try {
+      // Delete existing students if editing
+      if (bus?.students) {
+        for (const student of bus.students) {
+          try {
+            await busTransportationAPI.deleteStudent(busId, student.id);
+          } catch (error) {
+            // Ignore if student doesn't exist
+          }
+        }
+      }
+
+      // Create new students
+      const validStudents = students.filter(s => s.student_full_name && s.contact_mobile_number && s.address);
+      for (const student of validStudents) {
+        await busTransportationAPI.addStudent(busId, {
+          ...student,
+          term_id: basicFormData.term_id
+        });
+      }
+      if (validStudents.length > 0) {
+        showSuccess('تم حفظ بيانات الطلاب بنجاح');
+      }
+    } catch (error) {
+      showError(error.response?.data?.message || 'فشل حفظ بيانات الطلاب');
+      throw error;
+    }
+  };
+
+  const handleFinalSave = async () => {
+    // Strict validation: nothing is saved unless all required fields are filled (students optional)
+    // Prevent branch managers from saving buses outside their branch (avoid 403 on final save)
+    if (!isMainManager && bus?.branch_id && userBranchId && parseInt(bus.branch_id) !== parseInt(userBranchId)) {
+      showError('لا يمكنك تعديل بيانات حافلة تابعة لفرع آخر');
+      return;
+    }
+    // 1) Basic (required)
+    if (isMainManager && isBlank(basicFormData.branch_id)) {
+      showError('يرجى اختيار الفرع');
+      setActiveTab('basic');
+      return;
+    }
+    if (isBlank(basicFormData.term_id)) {
+      showError('يرجى اختيار الفصل الدراسي');
+      setActiveTab('basic');
+      return;
+    }
+    const plateParsed = parsePlate(basicFormData.plate_number);
+    if (plateParsed.numbers.length !== 4) {
+      showError('يرجى إدخال 4 أرقام للوحة');
+      setActiveTab('basic');
+      return;
+    }
+    if (plateParsed.lettersEn.length !== 3) {
+      showError('يرجى إدخال 3 حروف إنجليزية للوحة');
+      setActiveTab('basic');
+      return;
+    }
+    if (plateParsed.lettersAr.length !== 3) {
+      showError('يرجى إدخال 3 حروف عربية للوحة');
+      setActiveTab('basic');
+      return;
+    }
+
+    // 2) Registration (required remaining fields)
+    if (
+      isBlank(registrationData.registration_number) ||
+      isBlank(registrationData.chassis_number) ||
+      isBlank(registrationData.vehicle_model) ||
+      isBlank(registrationData.expiry_date_gregorian)
+    ) {
+      showError('يرجى إكمال بيانات التسجيل المطلوبة');
+      setActiveTab('registration');
+      return;
+    }
+
+    // 3) Driver license (required remaining fields)
+    if (
+      isBlank(driverLicenseData.driver_full_name) ||
+      isBlank(driverLicenseData.driver_id_number) ||
+      isBlank(driverLicenseData.license_number) ||
+      isBlank(driverLicenseData.expiry_date_gregorian)
+    ) {
+      showError('يرجى إكمال بيانات رخصة السائق المطلوبة');
+      setActiveTab('driver');
+      return;
+    }
+
+    if (
+      driverLicenseData?.has_assistant &&
+      (isBlank(driverLicenseData.assistant_full_name) || isBlank(driverLicenseData.assistant_phone_number))
+    ) {
+      showError('يرجى إكمال بيانات مرافق السائق');
+      setActiveTab('driver');
+      return;
+    }
+
+    // 4) Bus details (required)
+    if (isBlank(busDetailsData.number_of_seats) || isBlank(busDetailsData.ownership_type)) {
+      showError('يرجى إكمال تفاصيل الحافلة المطلوبة');
+      setActiveTab('details');
+      return;
+    }
+
+    // 5) Students are optional, but if user added any partial rows, block save
+    const hasAnyStudentInput = students.some((s) =>
+      !isBlank(s.student_full_name) || !isBlank(s.contact_mobile_number) || !isBlank(s.address)
+    );
+    if (hasAnyStudentInput) {
+      const hasInvalidStudent = students.some((s) => {
+        const any = !isBlank(s.student_full_name) || !isBlank(s.contact_mobile_number) || !isBlank(s.address);
+        if (!any) return false;
+        return isBlank(s.student_full_name) || isBlank(s.contact_mobile_number) || isBlank(s.address);
+      });
+      if (hasInvalidStudent) {
+        showError('يرجى إكمال بيانات الطلاب أو حذف الصفوف غير المكتملة');
+        setActiveTab('students');
+        return;
+      }
+    }
+
+    setSaving(true);
+    try {
+      // Create bus if needed
+      let busId = createdBusId || bus?.id;
+      const basicPayload = {
+        branch_id: basicFormData.branch_id,
+        term_id: basicFormData.term_id,
+        bus_number: plateParsed.normalized
+      };
+
+      if (!busId) {
+        const createResponse = await busTransportationAPI.create(basicPayload);
+        if (!createResponse.data.success) {
+          throw new Error(createResponse.data.message || 'فشل إنشاء الحافلة');
+        }
+        busId = createResponse.data.data.id;
+        setCreatedBusId(busId);
+      } else {
+        // keep basic updated when editing
+        await onSave(basicPayload);
+      }
+
+      // Save all sections (strict, no silent ignore)
+      await busTransportationAPI.saveRegistration(busId, {
+        ...registrationData,
+        term_id: basicFormData.term_id
+      });
+
+      await busTransportationAPI.saveDriverLicense(busId, {
+        ...driverLicenseData,
+        term_id: basicFormData.term_id
+      });
+
+      // Plates: keep one primary plate (from Basic)
+      if (bus?.license_plates) {
+        for (const plate of bus.license_plates) {
+          await busTransportationAPI.deleteLicensePlate(busId, plate.id);
+        }
+      }
+      await busTransportationAPI.addLicensePlate(busId, {
+        plate_number: plateParsed.normalized,
+        is_primary: true
+      });
+
+      await busTransportationAPI.saveDetails(busId, {
+        ...busDetailsData,
+        term_id: basicFormData.term_id
+      });
+
+      // Students (optional)
+      const validStudents = students.filter((s) => !isBlank(s.student_full_name) && !isBlank(s.contact_mobile_number) && !isBlank(s.address));
+      if (bus?.students) {
+        for (const student of bus.students) {
+          await busTransportationAPI.deleteStudent(busId, student.id);
+        }
+      }
+      for (const student of validStudents) {
+        await busTransportationAPI.addStudent(busId, { ...student, term_id: basicFormData.term_id });
+      }
+
+      showSuccess('تم حفظ جميع البيانات بنجاح');
+      onClose();
+      // IMPORTANT: don't auto-reload (it interrupts multi-file uploads)
+    } catch (error) {
+      showError(error.response?.data?.message || error.message || 'حدث خطأ أثناء حفظ البيانات');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveCurrentTab = async () => {
+    const busId = createdBusId || bus?.id;
+    if (!busId) {
+      showError('يرجى إنشاء الحافلة أولاً');
       return;
     }
 
     setSaving(true);
     try {
-      await onSave(formData);
+      if (activeTab === 'basic') {
+        if (isMainManager && isBlank(basicFormData.branch_id)) {
+          showError('يرجى اختيار الفرع');
+          return;
+        }
+        if (isBlank(basicFormData.term_id)) {
+          showError('يرجى اختيار الفصل الدراسي');
+          return;
+        }
+        const plateParsed = parsePlate(basicFormData.plate_number);
+        if (plateParsed.numbers.length !== 4 || plateParsed.lettersEn.length !== 3 || plateParsed.lettersAr.length !== 3) {
+          showError('يرجى إدخال رقم لوحة صحيح');
+          return;
+        }
+
+        // Update basic bus record (bus_number + term_id)
+        await onSave({
+          branch_id: basicFormData.branch_id,
+          term_id: basicFormData.term_id,
+          bus_number: plateParsed.normalized
+        });
+
+        // Keep one primary plate matching basic
+        if (bus?.license_plates) {
+          for (const plate of bus.license_plates) {
+            await busTransportationAPI.deleteLicensePlate(busId, plate.id);
+          }
+        }
+        await busTransportationAPI.addLicensePlate(busId, {
+          plate_number: plateParsed.normalized,
+          is_primary: true
+        });
+
+        showSuccess('تم حفظ البيانات الأساسية بنجاح');
+        return;
+      }
+
+      if (activeTab === 'registration') {
+        await busTransportationAPI.saveRegistration(busId, {
+          ...registrationData,
+          term_id: basicFormData.term_id
+        });
+        showSuccess('تم حفظ بيانات رخصة السير بنجاح');
+        return;
+      }
+
+      if (activeTab === 'driver') {
+        await busTransportationAPI.saveDriverLicense(busId, {
+          ...driverLicenseData,
+          term_id: basicFormData.term_id
+        });
+        showSuccess('تم حفظ بيانات رخصة السائق بنجاح');
+        return;
+      }
+
+      if (activeTab === 'details') {
+        await busTransportationAPI.saveDetails(busId, {
+          ...busDetailsData,
+          term_id: basicFormData.term_id
+        });
+        showSuccess('تم حفظ تفاصيل الحافلة بنجاح');
+        return;
+      }
+
+      if (activeTab === 'students') {
+        await handleSaveStudents();
+        showSuccess('تم حفظ بيانات الطلاب بنجاح');
+        return;
+      }
+
+      if (activeTab === 'documents') {
+        showSuccess('يمكنك رفع المرفقات من هنا');
+      }
+    } catch (error) {
+      showError(error.response?.data?.message || error.message || 'حدث خطأ أثناء الحفظ');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>{bus ? 'تعديل الحافلة' : 'إضافة حافلة جديدة'}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
+    <div className="bus-form-expanding-section" ref={formSectionRef}>
+      <div className="bus-form-section-header">
+        <h2>{bus ? 'تعديل الحافلة' : 'إضافة حافلة جديدة'}</h2>
+        <button className="section-close" onClick={onClose}>×</button>
+      </div>
+      <div className="bus-form-section-content">
+
+        <div className="tabs">
+          <button
+            className={activeTab === 'basic' ? 'active' : ''}
+            onClick={() => setActiveTab('basic')}
+            disabled={!bus && 0 > maxStepIndex}
+          >
+            البيانات الأساسية
+          </button>
+          <button
+            className={activeTab === 'registration' ? 'active' : ''}
+            onClick={() => setActiveTab('registration')}
+            disabled={!bus && 1 > maxStepIndex}
+          >
+            رخصة السير
+          </button>
+          <button
+            className={activeTab === 'driver' ? 'active' : ''}
+            onClick={() => setActiveTab('driver')}
+            disabled={!bus && 2 > maxStepIndex}
+          >
+            رخصة السائق
+          </button>
+          <button
+            className={activeTab === 'details' ? 'active' : ''}
+            onClick={() => setActiveTab('details')}
+            disabled={!bus && 3 > maxStepIndex}
+          >
+            تفاصيل الحافلة
+          </button>
+          <button
+            className={activeTab === 'students' ? 'active' : ''}
+            onClick={() => setActiveTab('students')}
+            disabled={!bus && 4 > maxStepIndex}
+          >
+            الطلاب ({studentsCount})
+          </button>
+          <button
+            className={activeTab === 'documents' ? 'active' : ''}
+            onClick={() => setActiveTab('documents')}
+            disabled={!bus && 5 > maxStepIndex}
+          >
+            المرفقات
+          </button>
         </div>
-        <form onSubmit={handleSubmit} className="bus-form">
-          {isMainManager && (
-            <div className="form-group">
-              <label>الفرع *</label>
-              <select
-                value={formData.branch_id}
-                onChange={(e) => {
-                  setFormData({ ...formData, branch_id: e.target.value, term_id: '' });
-                  setCurrentTerm(null);
-                }}
-                required
-              >
-                <option value="">اختر الفرع</option>
-                {branches.map(branch => (
-                  <option key={branch.id} value={branch.id}>{branch.branch_name}</option>
-                ))}
-              </select>
+
+        <div className="tab-content">
+          {activeTab === 'basic' && (
+            <div className="tab-panel">
+              <form onSubmit={(e) => { e.preventDefault(); }} className="bus-form">
+                {isMainManager && (
+                  <div className="form-group">
+                    <label>الفرع *</label>
+                    <select
+                      value={basicFormData.branch_id}
+                      onChange={(e) => {
+                        setBasicFormData({ ...basicFormData, branch_id: e.target.value, term_id: '' });
+                        setCurrentTerm(null);
+                      }}
+                      required
+                    >
+                      <option value="">اختر الفرع</option>
+                      {branches.map(branch => (
+                        <option key={branch.id} value={branch.id}>{branch.branch_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div className="form-group">
+                  <label>الفصل الدراسي *</label>
+                  {loadingTerm ? (
+                    <div>جاري تحميل الفصل الدراسي...</div>
+                  ) : currentTerm || bus?.term_id ? (
+                    <div className="term-display" style={{ padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                      {currentTerm ? `${currentTerm.term_name} - ${currentTerm.academic_year_label}` : 
+                       bus?.term_name ? `${bus.term_name} - ${bus.academic_year_label}` : 'الفصل الحالي'}
+                    </div>
+                  ) : (
+                    <div className="term-display" style={{ padding: '8px', color: '#999' }}>يرجى اختيار الفرع أولاً</div>
+                  )}
+                  <input type="hidden" value={basicFormData.term_id} required />
+                </div>
+                {/* Plate identifies the bus - use the same plate UI style */}
+                <div className="plates-list">
+                  <div className="plate-form-item">
+                    <div className="form-grid">
+                      <div className="form-group full-width">
+                        <label>رقم اللوحة *</label>
+                        <SaudiPlateInput
+                          value={basicFormData.plate_number || ''}
+                          onChange={(value) => setBasicFormData({ ...basicFormData, plate_number: value })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </form>
             </div>
           )}
-          <div className="form-group">
-            <label>الفصل الدراسي *</label>
-            {loadingTerm ? (
-              <div>جاري تحميل الفصل الدراسي...</div>
-            ) : currentTerm || bus?.term_id ? (
-              <div className="term-display">
-                {currentTerm ? `${currentTerm.term_name} - ${currentTerm.academic_year_label}` : 
-                 bus?.term_name ? `${bus.term_name} - ${bus.academic_year_label}` : 'الفصل الحالي'}
-              </div>
-            ) : (
-              <div className="term-display">يرجى اختيار الفرع أولاً</div>
-            )}
-            <input type="hidden" value={formData.term_id} />
-          </div>
-          <div className="form-group">
-            <label>رقم الحافلة *</label>
-            <input
-              type="text"
-              value={formData.bus_number}
-              onChange={(e) => setFormData({ ...formData, bus_number: e.target.value })}
-              required
+
+          {activeTab === 'registration' && (
+            <RegistrationFormTab 
+              formData={registrationData}
+              setFormData={setRegistrationData}
+              busId={createdBusId || bus?.id}
+              saving={saving}
             />
+          )}
+
+          {activeTab === 'driver' && (
+            <DriverLicenseFormTab
+              formData={driverLicenseData}
+              setFormData={setDriverLicenseData}
+              busId={createdBusId || bus?.id}
+              saving={saving}
+            />
+          )}
+
+          {activeTab === 'details' && (
+            <BusDetailsFormTab
+              formData={busDetailsData}
+              setFormData={setBusDetailsData}
+              saving={saving}
+              isMainManager={isMainManager}
+            />
+          )}
+
+          {activeTab === 'students' && (
+            <StudentsFormTab
+              students={students}
+              onUpdate={handleUpdateStudent}
+              onRemove={handleRemoveStudent}
+            />
+          )}
+
+          {activeTab === 'documents' && (
+            <DocumentsFormTab
+              busId={createdBusId || bus?.id}
+              isLeased={busDetailsData.ownership_type === 'leased'}
+              initialDocs={{
+                registration: bus?.registration?.registration_document_url ? { url: bus.registration.registration_document_url } : null,
+                driverLicense: bus?.driver_license?.license_document_url ? { url: bus.driver_license.license_document_url } : null,
+                leaseContract: bus?.lease_contract_document_url ? { url: bus.lease_contract_document_url } : null
+              }}
+              beforeUpload={async (kind) => {
+                try {
+                  // ensure bus exists for uploads
+                  if (!createdBusId && !bus?.id) {
+                    const res = await autoSaveTab('basic');
+                    if (!res?.ok) return false;
+                  }
+                  if (kind === 'registration') {
+                    const res = await autoSaveTab('registration');
+                    return !!res?.ok;
+                  }
+                  if (kind === 'driverLicense') {
+                    const res = await autoSaveTab('driver');
+                    return !!res?.ok;
+                  }
+                  if (kind === 'leaseContract') {
+                    const res = await autoSaveTab('details');
+                    return !!res?.ok;
+                  }
+                  return true;
+                } catch (e) {
+                  showError(e.response?.data?.message || e.message || 'حدث خطأ');
+                  return false;
+                }
+              }}
+              onDocsChange={(next) => setDocsState(next)}
+              onReload={onReload}
+            />
+          )}
+        </div>
+
+        <div className="section-actions">
+          {isEditing ? (
+            <>
+              <button type="button" onClick={handleSaveCurrentTab} className="btn-primary" disabled={saving}>
+                {saving ? 'جاري الحفظ...' : 'حفظ'}
+              </button>
+            </>
+          ) : activeStepIndex !== tabsFlow.length - 1 ? (
+            <>
+              <button type="button" onClick={goPrev} disabled={!canGoPrev} className="btn-wizard-prev">
+                السابق
+              </button>
+              <button
+                type="button"
+                onClick={goNext}
+                disabled={saving || !currentStepComplete || !canGoNext}
+                className={`btn-wizard-next ${currentStepComplete ? 'enabled' : ''}`}
+              >
+                التالي
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" onClick={goPrev} disabled={!canGoPrev} className="btn-wizard-prev">
+                السابق
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={
+                  saving ||
+                  !docsState.registration ||
+                  !docsState.driverLicense ||
+                  (busDetailsData.ownership_type === 'leased' && !docsState.leaseContract)
+                }
+                onClick={() => {
+                  showSuccess('تم حفظ البيانات بنجاح');
+                  if (typeof onReload === 'function') onReload();
+                  const id = createdBusId || bus?.id;
+                  onClose();
+                  if (typeof onAfterFinish === 'function' && id) onAfterFinish(id);
+                }}
+              >
+                حفظ
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Form Tab Components for BusFormModal
+const RegistrationFormTab = ({ formData, setFormData, busId }) => {
+  const [uploading, setUploading] = useState(false);
+  const { showError, showSuccess } = useNotification();
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !busId) return;
+
+    try {
+      setUploading(true);
+      const response = await busTransportationAPI.uploadRegistrationDocument(busId, file);
+      if (response.data.success) {
+        showSuccess('تم رفع المستند بنجاح');
+      }
+    } catch (error) {
+      showError(error.response?.data?.message || 'فشل رفع المستند');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  return (
+    <div className="tab-panel">
+      <div className="tab-header">
+        <h3>بيانات تسجيل الحافلة</h3>
+      </div>
+
+      <div className="form-grid">
+        <div className="form-group">
+          <label>رقم التسلسل *</label>
+          <input
+            type="text"
+            value={formData.registration_number}
+            onChange={(e) => setFormData({ ...formData, registration_number: e.target.value })}
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label>رقم الشاصي *</label>
+          <input
+            type="text"
+            value={formData.chassis_number}
+            onChange={(e) => setFormData({ ...formData, chassis_number: e.target.value })}
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label>الموديل *</label>
+          <input
+            type="text"
+            value={formData.vehicle_model}
+            onChange={(e) => setFormData({ ...formData, vehicle_model: e.target.value })}
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label>سنة الصنع</label>
+          <input
+            type="number"
+            value={formData.model_year || ''}
+            onChange={(e) => setFormData({ ...formData, model_year: e.target.value ? parseInt(e.target.value) : null })}
+          />
+        </div>
+        <div className="form-group">
+          <label>اللون</label>
+          <input
+            type="text"
+            value={formData.vehicle_color}
+            onChange={(e) => setFormData({ ...formData, vehicle_color: e.target.value })}
+          />
+        </div>
+        <UnifiedDatePicker
+          label="تاريخ الانتهاء (ميلادي)"
+          hijriValue=""
+          gregorianValue={formData.expiry_date_gregorian || ''}
+          onChange={(_, gregorian) => setFormData({ ...formData, expiry_date_gregorian: gregorian || null })}
+          required
+          dateType="general"
+          defaultCalendarType="gregorian"
+        />
+      </div>
+    </div>
+  );
+};
+
+const DocumentsFormTab = ({ busId, isLeased, initialDocs, beforeUpload, onDocsChange, onReload }) => {
+  const { showError, showSuccess } = useNotification();
+  const [preSaving, setPreSaving] = useState(false);
+  const [uploadingReg, setUploadingReg] = useState(false);
+  const [uploadingLicense, setUploadingLicense] = useState(false);
+  const [uploadingLease, setUploadingLease] = useState(false);
+  const [uploaded, setUploaded] = useState({
+    registration: initialDocs?.registration || null,
+    driverLicense: initialDocs?.driverLicense || null,
+    leaseContract: initialDocs?.leaseContract || null
+  });
+
+  // If we opened edit mode with partial data then hydrated later, merge in initial docs once
+  useEffect(() => {
+    setUploaded((prev) => ({
+      registration: prev.registration || initialDocs?.registration || null,
+      driverLicense: prev.driverLicense || initialDocs?.driverLicense || null,
+      leaseContract: prev.leaseContract || initialDocs?.leaseContract || null
+    }));
+  }, [initialDocs?.registration?.url, initialDocs?.driverLicense?.url, initialDocs?.leaseContract?.url]);
+
+  const uploadFile = async (kind, file) => {
+    if (!file || !busId) return;
+
+    try {
+      if (kind === 'registration') setUploadingReg(true);
+      if (kind === 'driverLicense') setUploadingLicense(true);
+      if (kind === 'leaseContract') setUploadingLease(true);
+
+      // silently save the related form section before uploading
+      if (typeof beforeUpload === 'function') {
+        setPreSaving(true);
+        const ok = await beforeUpload(kind);
+        setPreSaving(false);
+        if (!ok) return;
+      }
+
+      const response =
+        kind === 'registration'
+          ? await busTransportationAPI.uploadRegistrationDocument(busId, file)
+          : kind === 'driverLicense'
+            ? await busTransportationAPI.uploadDriverLicenseDocument(busId, file)
+            : await busTransportationAPI.uploadLeaseContractDocument(busId, file);
+
+      if (response.data?.success) {
+        setUploaded((prev) => {
+          const next = {
+            ...prev,
+            [kind]: response.data?.data || { name: file.name }
+          };
+          if (typeof onDocsChange === 'function') {
+            onDocsChange({
+              registration: !!next.registration?.url,
+              driverLicense: !!next.driverLicense?.url,
+              leaseContract: !!next.leaseContract?.url
+            });
+          }
+          return next;
+        });
+        const label =
+          kind === 'registration'
+            ? 'تم رفع مستند رخصة السير بنجاح'
+            : kind === 'driverLicense'
+              ? 'تم رفع مستند رخصة السائق بنجاح'
+              : 'تم رفع عقد الإيجار بنجاح';
+        showSuccess(label);
+        if (typeof onReload === 'function') onReload();
+      }
+    } catch (error) {
+      showError(error.response?.data?.message || 'فشل رفع الملف');
+    } finally {
+      if (kind === 'registration') setUploadingReg(false);
+      if (kind === 'driverLicense') setUploadingLicense(false);
+      if (kind === 'leaseContract') setUploadingLease(false);
+      setPreSaving(false);
+    }
+  };
+
+  return (
+    <div className="tab-panel">
+      <div className="tab-header">
+        <h3>المرفقات</h3>
+      </div>
+
+      <div className="form-grid">
+          <div className="form-group full-width">
+            <label>مستند رخصة السير</label>
+            <div className="students-table-hint">
+              {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : (uploaded.registration?.url ? 'تم الرفع' : 'لم يتم الرفع بعد')}
+            </div>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              disabled={!busId || preSaving || uploadingReg || uploadingLicense || uploadingLease}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                uploadFile('registration', file);
+                e.target.value = '';
+              }}
+            />
+            {!!uploaded.registration?.url && (
+              <a href={uploaded.registration.url} target="_blank" rel="noreferrer">
+                فتح الملف
+              </a>
+            )}
           </div>
-          <div className="modal-actions">
-            <button type="button" onClick={onClose}>إلغاء</button>
-            <button type="submit" className="btn-primary" disabled={saving}>
-              {saving ? 'جاري الحفظ...' : 'حفظ'}
-            </button>
+
+          <div className="form-group full-width">
+            <label>مستند رخصة السائق</label>
+            <div className="students-table-hint">
+              {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : (uploaded.driverLicense?.url ? 'تم الرفع' : 'لم يتم الرفع بعد')}
+            </div>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              disabled={!busId || preSaving || uploadingReg || uploadingLicense || uploadingLease}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                uploadFile('driverLicense', file);
+                e.target.value = '';
+              }}
+            />
+            {!!uploaded.driverLicense?.url && (
+              <a href={uploaded.driverLicense.url} target="_blank" rel="noreferrer">
+                فتح الملف
+              </a>
+            )}
           </div>
-        </form>
+
+          {isLeased && (
+            <div className="form-group full-width">
+              <label>عقد الإيجار</label>
+              <div className="students-table-hint">
+                {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : (uploaded.leaseContract?.url ? 'تم الرفع' : 'لم يتم الرفع بعد')}
+              </div>
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                disabled={!busId || preSaving || uploadingReg || uploadingLicense || uploadingLease}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  uploadFile('leaseContract', file);
+                  e.target.value = '';
+                }}
+              />
+              {!!uploaded.leaseContract?.url && (
+                <a href={uploaded.leaseContract.url} target="_blank" rel="noreferrer">
+                  فتح الملف
+                </a>
+              )}
+            </div>
+          )}
+      </div>
+    </div>
+  );
+};
+
+const DriverLicenseFormTab = ({ formData, setFormData, busId }) => {
+  const [uploading, setUploading] = useState(false);
+  const { showError, showSuccess } = useNotification();
+  const digitsOnly = (value) => String(value || '').replace(/\D/g, '');
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !busId) return;
+
+    try {
+      setUploading(true);
+      const response = await busTransportationAPI.uploadDriverLicenseDocument(busId, file);
+      if (response.data.success) {
+        showSuccess('تم رفع المستند بنجاح');
+      }
+    } catch (error) {
+      showError(error.response?.data?.message || 'فشل رفع المستند');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  return (
+    <div className="tab-panel">
+      <div className="tab-header">
+        <h3>بيانات رخصة السائق</h3>
+      </div>
+
+      <div className="form-grid">
+        <div className="form-group">
+          <label>اسم السائق الكامل *</label>
+          <input
+            type="text"
+            value={formData.driver_full_name}
+            onChange={(e) => setFormData({ ...formData, driver_full_name: e.target.value })}
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label>رقم هوية السائق *</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            dir="ltr"
+            value={formData.driver_id_number}
+            onChange={(e) => setFormData({ ...formData, driver_id_number: digitsOnly(e.target.value) })}
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label>رقم الرخصة *</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            dir="ltr"
+            value={formData.license_number}
+            onChange={(e) => setFormData({ ...formData, license_number: digitsOnly(e.target.value) })}
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label>رقم هاتف السائق</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            dir="ltr"
+            value={formData.driver_phone_number}
+            onChange={(e) => setFormData({ ...formData, driver_phone_number: digitsOnly(e.target.value) })}
+          />
+        </div>
+        <div className="form-group">
+          <label>جنسية السائق</label>
+          <input
+            type="text"
+            value={formData.driver_nationality}
+            onChange={(e) => setFormData({ ...formData, driver_nationality: e.target.value })}
+          />
+        </div>
+        <UnifiedDatePicker
+          label="تاريخ الميلاد (ميلادي)"
+          hijriValue=""
+          gregorianValue={formData.driver_date_of_birth_gregorian || ''}
+          onChange={(_, gregorian) => setFormData({ ...formData, driver_date_of_birth_gregorian: gregorian || null })}
+          dateType="birth_date"
+          defaultCalendarType="gregorian"
+        />
+        <UnifiedDatePicker
+          label="تاريخ الإصدار (ميلادي)"
+          hijriValue=""
+          gregorianValue={formData.issue_date_gregorian || ''}
+          onChange={(_, gregorian) => setFormData({ ...formData, issue_date_gregorian: gregorian || null })}
+          dateType="general"
+          defaultCalendarType="gregorian"
+        />
+        <UnifiedDatePicker
+          label="تاريخ الانتهاء (ميلادي)"
+          hijriValue=""
+          gregorianValue={formData.expiry_date_gregorian || ''}
+          onChange={(_, gregorian) => setFormData({ ...formData, expiry_date_gregorian: gregorian || null })}
+          required
+          dateType="general"
+          defaultCalendarType="gregorian"
+        />
+        <div className="form-group full-width assistant-section">
+          <div className="assistant-toggle-row">
+            <span className="assistant-toggle-label">هل يوجد مرافق للسائق؟</span>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={!!formData.has_assistant}
+                onChange={(e) => {
+                  const has = e.target.checked;
+                  setFormData({
+                    ...formData,
+                    has_assistant: has,
+                    assistant_full_name: has ? (formData.assistant_full_name || '') : '',
+                    assistant_phone_number: has ? (formData.assistant_phone_number || '') : '',
+                  });
+                }}
+              />
+              <span className="slider"></span>
+            </label>
+          </div>
+
+          {formData.has_assistant && (
+            <div className="assistant-fields">
+              <div className="assistant-fields-grid">
+                <div className="form-group">
+                  <label>اسم مرافق السائق *</label>
+                  <input
+                    type="text"
+                    value={formData.assistant_full_name || ''}
+                    onChange={(e) => setFormData({ ...formData, assistant_full_name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>رقم جوال مرافق السائق *</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    dir="ltr"
+                    value={formData.assistant_phone_number || ''}
+                    onChange={(e) => setFormData({ ...formData, assistant_phone_number: digitsOnly(e.target.value) })}
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Saudi License Plate Input Component
+const SaudiPlateInput = ({ value = '', onChange }) => {
+  // Parse existing value: "7529HBAأبج" -> numbers: "7529", en: ["H","B","A"], ar: ["أ","ب","ج"]
+  const parsePlate = (plateValue) => {
+    if (!plateValue) return { numbers: ['', '', '', ''], lettersEn: ['', '', ''], lettersAr: ['', '', ''] };
+    const numbersPart = plateValue.replace(/[^0-9]/g, '').slice(0, 4);
+    const lettersEnPart = plateValue.replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 3);
+    const lettersArPart = plateValue.replace(/[^\u0600-\u06FF]/g, '').slice(0, 3);
+    const numbers = numbersPart.split('').concat(Array(4 - numbersPart.length).fill(''));
+    const lettersEn = lettersEnPart.split('').concat(Array(3 - lettersEnPart.length).fill(''));
+    const lettersAr = lettersArPart.split('').concat(Array(3 - lettersArPart.length).fill(''));
+    return { numbers, lettersEn, lettersAr };
+  };
+
+  const initialParsed = parsePlate(value);
+  const [numbers, setNumbers] = useState(initialParsed.numbers);
+  const [lettersEn, setLettersEn] = useState(initialParsed.lettersEn);
+  const [lettersAr, setLettersAr] = useState(initialParsed.lettersAr);
+  const [lastValue, setLastValue] = useState(value);
+  const numberRefs = useRef([]);
+  const enRefs = useRef([]);
+  const arRefs = useRef([]);
+
+  // Update local state when value prop changes (external update)
+  useEffect(() => {
+    if (value !== lastValue) {
+      const parsed = parsePlate(value);
+      setNumbers(parsed.numbers);
+      setLettersEn(parsed.lettersEn);
+      setLettersAr(parsed.lettersAr);
+      setLastValue(value);
+    }
+  }, [value, lastValue]);
+
+  const handleNumberChange = (index, newValue) => {
+    if (newValue === '' || (/^[0-9]$/.test(newValue))) {
+      const updated = [...numbers];
+      updated[index] = newValue;
+      setNumbers(updated);
+      const plateNumber = updated.join('') + lettersEn.join('') + lettersAr.join('');
+      setLastValue(plateNumber);
+      onChange(plateNumber);
+
+      // Auto move to next input
+      if (newValue !== '') {
+        if (index < updated.length - 1) {
+          numberRefs.current[index + 1]?.focus();
+        } else {
+          enRefs.current[0]?.focus();
+        }
+      }
+    }
+  };
+
+  const handleEnglishLetterChange = (index, newValue) => {
+    if (newValue === '' || (/^[A-Za-z]$/.test(newValue))) {
+      const updated = [...lettersEn];
+      updated[index] = newValue.toUpperCase();
+      setLettersEn(updated);
+      const plateNumber = numbers.join('') + updated.join('') + lettersAr.join('');
+      setLastValue(plateNumber);
+      onChange(plateNumber);
+
+      // Auto move to next input
+      if (newValue !== '') {
+        if (index < updated.length - 1) {
+          enRefs.current[index + 1]?.focus();
+        } else {
+          arRefs.current[0]?.focus();
+        }
+      }
+    }
+  };
+
+  const handleArabicLetterChange = (index, newValue) => {
+    if (newValue === '' || (/^[\u0600-\u06FF]$/.test(newValue))) {
+      const updated = [...lettersAr];
+      updated[index] = newValue;
+      setLettersAr(updated);
+      const plateNumber = numbers.join('') + lettersEn.join('') + updated.join('');
+      setLastValue(plateNumber);
+      onChange(plateNumber);
+
+      // Auto move to next input
+      if (newValue !== '' && index < updated.length - 1) {
+        arRefs.current[index + 1]?.focus();
+      }
+    }
+  };
+
+  const handleBackspaceNav = (e, group, index) => {
+    if (e.key !== 'Backspace') return;
+    if (e.currentTarget.value !== '') return;
+
+    if (group === 'numbers') {
+      if (index > 0) numberRefs.current[index - 1]?.focus();
+      return;
+    }
+    if (group === 'en') {
+      if (index > 0) enRefs.current[index - 1]?.focus();
+      else numberRefs.current[numbers.length - 1]?.focus();
+      return;
+    }
+    if (group === 'ar') {
+      if (index > 0) arRefs.current[index - 1]?.focus();
+      else enRefs.current[lettersEn.length - 1]?.focus();
+    }
+  };
+
+  return (
+    <div className="saudi-plate-input">
+      <div className="plate-section">
+        <div className="plate-label">الأرقام</div>
+        <div className="plate-numbers">
+          {numbers.map((num, idx) => (
+            <input
+              key={`num-${idx}`}
+              type="text"
+              inputMode="numeric"
+              maxLength={1}
+              value={num}
+              onChange={(e) => handleNumberChange(idx, e.target.value)}
+              onKeyDown={(e) => handleBackspaceNav(e, 'numbers', idx)}
+              ref={(el) => { numberRefs.current[idx] = el; }}
+              className="plate-input-number"
+              placeholder="0"
+            />
+          ))}
+        </div>
+      </div>
+      <div className="plate-section">
+        <div className="plate-label">الحروف (EN)</div>
+        <div className="plate-letters">
+          {lettersEn.map((letter, idx) => (
+            <input
+              key={`letter-${idx}`}
+              type="text"
+              maxLength={1}
+              value={letter}
+              onChange={(e) => handleEnglishLetterChange(idx, e.target.value)}
+              onKeyDown={(e) => handleBackspaceNav(e, 'en', idx)}
+              ref={(el) => { enRefs.current[idx] = el; }}
+              className="plate-input-letter"
+              placeholder="A"
+            />
+          ))}
+        </div>
+      </div>
+      <div className="plate-section">
+        <div className="plate-label">الحروف (AR)</div>
+        <div className="plate-letters">
+          {lettersAr.map((letter, idx) => (
+            <input
+              key={`letter-ar-${idx}`}
+              type="text"
+              maxLength={1}
+              value={letter}
+              onChange={(e) => handleArabicLetterChange(idx, e.target.value)}
+              onKeyDown={(e) => handleBackspaceNav(e, 'ar', idx)}
+              ref={(el) => { arRefs.current[idx] = el; }}
+              className="plate-input-letter"
+              placeholder="أ"
+              style={{ direction: 'rtl', fontFamily: "'Noto Sans Arabic', Arial, sans-serif" }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const LicensePlatesFormTab = ({ plates, setPlates }) => {
+  // Keep exactly one plate in the UI
+  useEffect(() => {
+    if (!Array.isArray(plates) || plates.length === 0) {
+      setPlates([{ plate_number: '', is_primary: true }]);
+    } else if (plates.length > 1) {
+      setPlates([{ ...plates[0], is_primary: true }]);
+    } else {
+      // enforce primary
+      setPlates([{ ...plates[0], is_primary: true }]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const updatePlate = (value) => {
+    setPlates([{ ...(plates?.[0] || {}), plate_number: value, is_primary: true }]);
+  };
+
+  return (
+    <div className="tab-panel">
+      <div className="tab-header">
+        <h3>لوحات الترخيص</h3>
+      </div>
+
+      <div className="plates-list">
+        <div className="plate-form-item">
+          <div className="form-grid">
+            <div className="form-group full-width">
+              <label>رقم اللوحة *</label>
+              <SaudiPlateInput
+                value={plates?.[0]?.plate_number || ''}
+                onChange={(value) => updatePlate(value)}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const BusDetailsFormTab = ({ formData, setFormData, isMainManager }) => {
+  return (
+    <div className="tab-panel">
+      <div className="tab-header">
+        <h3>تفاصيل الحافلة</h3>
+      </div>
+
+      <div className="form-grid">
+        <div className="form-group">
+          <label>خط السير</label>
+          <input
+            type="text"
+            value={formData.route_name}
+            onChange={(e) => setFormData({ ...formData, route_name: e.target.value })}
+          />
+        </div>
+        <div className="form-group">
+          <label>عدد المقاعد *</label>
+          <input
+            type="number"
+            value={formData.number_of_seats}
+            onChange={(e) => setFormData({ ...formData, number_of_seats: parseInt(e.target.value) || '' })}
+            required
+          />
+        </div>
+        <div className="form-group">
+          <label>نوع الملكية *</label>
+          <select
+            value={formData.ownership_type}
+            onChange={(e) => setFormData({ ...formData, ownership_type: e.target.value })}
+            required
+          >
+            <option value="">اختر النوع</option>
+            <option value="owned">ملك الشركة</option>
+            <option value="leased">مستأجر</option>
+          </select>
+        </div>
+        {formData.ownership_type === 'leased' && (
+          <>
+            <div className="form-group">
+              <label>اسم شركة التأجير</label>
+              <input
+                type="text"
+                value={formData.lease_company_name}
+                onChange={(e) => setFormData({ ...formData, lease_company_name: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label>معلومات الاتصال</label>
+              <input
+                type="text"
+                value={formData.lease_contact_info}
+                onChange={(e) => setFormData({ ...formData, lease_contact_info: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label>رقم عقد التأجير</label>
+              <input
+                type="text"
+                value={formData.lease_contract_number}
+                onChange={(e) => setFormData({ ...formData, lease_contract_number: e.target.value })}
+              />
+            </div>
+            <UnifiedDatePicker
+              label="تاريخ بداية التأجير"
+              hijriValue={formData.lease_start_date_hijri || ''}
+              gregorianValue={formData.lease_start_date_gregorian || ''}
+              onChange={(hijri, gregorian) =>
+                setFormData({
+                  ...formData,
+                  lease_start_date_hijri: hijri || '',
+                  lease_start_date_gregorian: gregorian || null
+                })
+              }
+              dateType="general"
+              defaultCalendarType="gregorian"
+            />
+            <UnifiedDatePicker
+              label="تاريخ نهاية التأجير"
+              hijriValue={formData.lease_end_date_hijri || ''}
+              gregorianValue={formData.lease_end_date_gregorian || ''}
+              onChange={(hijri, gregorian) =>
+                setFormData({
+                  ...formData,
+                  lease_end_date_hijri: hijri || '',
+                  lease_end_date_gregorian: gregorian || null
+                })
+              }
+              dateType="general"
+              defaultCalendarType="gregorian"
+            />
+          </>
+        )}
+        <div className="form-group full-width">
+          <label>وصف خط سير الحافلة</label>
+          <textarea
+            value={formData.route_description}
+            onChange={(e) => setFormData({ ...formData, route_description: e.target.value })}
+            rows="3"
+          />
+        </div>
+
+        {isMainManager && (
+          <>
+            <div className="form-group">
+              <label>شركة التأمين</label>
+              <input
+                type="text"
+                value={formData.insurance_provider}
+                onChange={(e) => setFormData({ ...formData, insurance_provider: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label>رقم بوليصة التأمين</label>
+              <input
+                type="text"
+                value={formData.insurance_policy_number}
+                onChange={(e) => setFormData({ ...formData, insurance_policy_number: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label>تاريخ انتهاء التأمين (ميلادي)</label>
+              <input
+                type="date"
+                value={formData.insurance_expiry_date_gregorian || ''}
+                onChange={(e) => setFormData({ ...formData, insurance_expiry_date_gregorian: e.target.value || null })}
+              />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const StudentsFormTab = ({ students, onUpdate, onRemove }) => {
+  const visibleRows = Array.isArray(students) ? students : [];
+  return (
+    <div className="tab-panel">
+      <div className="tab-header">
+        <h3>الطلاب</h3>
+      </div>
+
+      <div className="students-table-wrapper">
+        <table className="students-table">
+          <thead>
+            <tr>
+              <th>الاسم</th>
+              <th>رقم الجوال</th>
+              <th>العنوان</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((student, index) => (
+              <tr key={index}>
+                <td>
+                  <input
+                    type="text"
+                    value={student.student_full_name || ''}
+                    onChange={(e) => onUpdate(index, 'student_full_name', e.target.value)}
+                    placeholder="اسم الطالب"
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    dir="ltr"
+                    value={student.contact_mobile_number || ''}
+                    onChange={(e) => onUpdate(index, 'contact_mobile_number', e.target.value)}
+                    placeholder="05xxxxxxxx"
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    value={student.address || ''}
+                    onChange={(e) => onUpdate(index, 'address', e.target.value)}
+                    placeholder="العنوان"
+                  />
+                </td>
+                <td className="students-table-actions">
+                  <button
+                    type="button"
+                    className="btn-delete"
+                    onClick={() => onRemove(index)}
+                    disabled={visibleRows.length <= 1}
+                    title="حذف"
+                  >
+                    حذف
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="students-table-hint">
+          اكتب البيانات وسيتم إضافة صف جديد تلقائيًا.
+        </div>
       </div>
     </div>
   );
@@ -584,7 +2431,7 @@ const BusDetailsModal = ({ bus, onClose, onEdit, onReload }) => {
             className={activeTab === 'registration' ? 'active' : ''}
             onClick={() => setActiveTab('registration')}
           >
-            بيانات التسجيل
+            رخصة السير
           </button>
           <button
             className={activeTab === 'driver' ? 'active' : ''}
@@ -608,7 +2455,7 @@ const BusDetailsModal = ({ bus, onClose, onEdit, onReload }) => {
             className={activeTab === 'students' ? 'active' : ''}
             onClick={() => setActiveTab('students')}
           >
-            الطلاب ({students.length})
+            الطلاب ({students.filter((s) => s?.student_full_name || s?.contact_mobile_number || s?.address).length})
           </button>
         </div>
 
@@ -727,23 +2574,11 @@ const RegistrationTab = ({ bus, onReload }) => {
   const { showError, showSuccess } = useNotification();
   const [formData, setFormData] = useState({
     registration_number: bus.registration?.registration_number || '',
-    registration_authority: bus.registration?.registration_authority || '',
     chassis_number: bus.registration?.chassis_number || '',
-    engine_number: bus.registration?.engine_number || '',
-    vehicle_make: bus.registration?.vehicle_make || '',
     vehicle_model: bus.registration?.vehicle_model || '',
     model_year: bus.registration?.model_year || '',
     vehicle_color: bus.registration?.vehicle_color || '',
-    vehicle_type: bus.registration?.vehicle_type || '',
-    vehicle_category: bus.registration?.vehicle_category || '',
-    registration_date_hijri: bus.registration?.registration_date_hijri || '',
-    registration_date_gregorian: bus.registration?.registration_date_gregorian || '',
-    expiry_date_hijri: bus.registration?.expiry_date_hijri || '',
     expiry_date_gregorian: bus.registration?.expiry_date_gregorian || '',
-    owner_name: bus.registration?.owner_name || '',
-    owner_id_number: bus.registration?.owner_id_number || '',
-    owner_type: bus.registration?.owner_type || '',
-    notes: bus.registration?.notes || ''
   });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -812,7 +2647,7 @@ const RegistrationTab = ({ bus, onReload }) => {
 
       <div className="form-grid">
         <div className="form-group">
-          <label>رقم التسجيل *</label>
+          <label>رقم التسلسل *</label>
           <input
             type="text"
             value={formData.registration_number}
@@ -826,31 +2661,6 @@ const RegistrationTab = ({ bus, onReload }) => {
             type="text"
             value={formData.chassis_number}
             onChange={(e) => setFormData({ ...formData, chassis_number: e.target.value })}
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label>الجهة المصدرة</label>
-          <input
-            type="text"
-            value={formData.registration_authority}
-            onChange={(e) => setFormData({ ...formData, registration_authority: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>رقم المحرك</label>
-          <input
-            type="text"
-            value={formData.engine_number}
-            onChange={(e) => setFormData({ ...formData, engine_number: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>المصنع *</label>
-          <input
-            type="text"
-            value={formData.vehicle_make}
-            onChange={(e) => setFormData({ ...formData, vehicle_make: e.target.value })}
             required
           />
         </div>
@@ -879,89 +2689,14 @@ const RegistrationTab = ({ bus, onReload }) => {
             onChange={(e) => setFormData({ ...formData, vehicle_color: e.target.value })}
           />
         </div>
-        <div className="form-group">
-          <label>نوع المركبة</label>
-          <input
-            type="text"
-            value={formData.vehicle_type}
-            onChange={(e) => setFormData({ ...formData, vehicle_type: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>فئة المركبة</label>
-          <input
-            type="text"
-            value={formData.vehicle_category}
-            onChange={(e) => setFormData({ ...formData, vehicle_category: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>تاريخ التسجيل (هجري)</label>
-          <input
-            type="text"
-            value={formData.registration_date_hijri}
-            onChange={(e) => setFormData({ ...formData, registration_date_hijri: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>تاريخ التسجيل (ميلادي)</label>
-          <input
-            type="date"
-            value={formData.registration_date_gregorian || ''}
-            onChange={(e) => setFormData({ ...formData, registration_date_gregorian: e.target.value || null })}
-          />
-        </div>
-        <div className="form-group">
-          <label>تاريخ الانتهاء (هجري)</label>
-          <input
-            type="text"
-            value={formData.expiry_date_hijri}
-            onChange={(e) => setFormData({ ...formData, expiry_date_hijri: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>تاريخ الانتهاء (ميلادي)</label>
-          <input
-            type="date"
-            value={formData.expiry_date_gregorian || ''}
-            onChange={(e) => setFormData({ ...formData, expiry_date_gregorian: e.target.value || null })}
-          />
-        </div>
-        <div className="form-group">
-          <label>اسم المالك</label>
-          <input
-            type="text"
-            value={formData.owner_name}
-            onChange={(e) => setFormData({ ...formData, owner_name: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>رقم هوية المالك</label>
-          <input
-            type="text"
-            value={formData.owner_id_number}
-            onChange={(e) => setFormData({ ...formData, owner_id_number: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>نوع المالك</label>
-          <select
-            value={formData.owner_type}
-            onChange={(e) => setFormData({ ...formData, owner_type: e.target.value })}
-          >
-            <option value="">اختر النوع</option>
-            <option value="individual">فرد</option>
-            <option value="company">شركة</option>
-          </select>
-        </div>
-        <div className="form-group full-width">
-          <label>ملاحظات</label>
-          <textarea
-            value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            rows="3"
-          />
-        </div>
+        <UnifiedDatePicker
+          label="تاريخ الانتهاء (ميلادي)"
+          hijriValue=""
+          gregorianValue={formData.expiry_date_gregorian || ''}
+          onChange={(_, gregorian) => setFormData({ ...formData, expiry_date_gregorian: gregorian || null })}
+          dateType="general"
+          defaultCalendarType="gregorian"
+        />
       </div>
     </div>
   );
@@ -970,24 +2705,19 @@ const RegistrationTab = ({ bus, onReload }) => {
 // Driver License Tab Component
 const DriverLicenseTab = ({ bus, onReload }) => {
   const { showError, showSuccess } = useNotification();
+  const digitsOnly = (value) => String(value || '').replace(/\D/g, '');
   const [formData, setFormData] = useState({
     driver_full_name: bus.driver_license?.driver_full_name || '',
     driver_id_number: bus.driver_license?.driver_id_number || '',
     license_number: bus.driver_license?.license_number || '',
-    license_type: bus.driver_license?.license_type || '',
-    license_category: bus.driver_license?.license_category || '',
-    license_authority: bus.driver_license?.license_authority || '',
-    issue_date_hijri: bus.driver_license?.issue_date_hijri || '',
     issue_date_gregorian: bus.driver_license?.issue_date_gregorian || '',
-    expiry_date_hijri: bus.driver_license?.expiry_date_hijri || '',
     expiry_date_gregorian: bus.driver_license?.expiry_date_gregorian || '',
-    issue_place: bus.driver_license?.issue_place || '',
     driver_phone_number: bus.driver_license?.driver_phone_number || '',
-    driver_address: bus.driver_license?.driver_address || '',
     driver_nationality: bus.driver_license?.driver_nationality || '',
-    driver_date_of_birth_hijri: bus.driver_license?.driver_date_of_birth_hijri || '',
     driver_date_of_birth_gregorian: bus.driver_license?.driver_date_of_birth_gregorian || '',
-    notes: bus.driver_license?.notes || ''
+    has_assistant: bus.driver_license?.has_assistant || false,
+    assistant_full_name: bus.driver_license?.assistant_full_name || '',
+    assistant_phone_number: bus.driver_license?.assistant_phone_number || '',
   });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -1068,8 +2798,11 @@ const DriverLicenseTab = ({ bus, onReload }) => {
           <label>رقم الهوية/الإقامة *</label>
           <input
             type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            dir="ltr"
             value={formData.driver_id_number}
-            onChange={(e) => setFormData({ ...formData, driver_id_number: e.target.value })}
+            onChange={(e) => setFormData({ ...formData, driver_id_number: digitsOnly(e.target.value) })}
             required
           />
         </div>
@@ -1077,91 +2810,88 @@ const DriverLicenseTab = ({ bus, onReload }) => {
           <label>رقم الرخصة *</label>
           <input
             type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            dir="ltr"
             value={formData.license_number}
-            onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
+            onChange={(e) => setFormData({ ...formData, license_number: digitsOnly(e.target.value) })}
             required
           />
         </div>
-        <div className="form-group">
-          <label>نوع الرخصة</label>
-          <input
-            type="text"
-            value={formData.license_type}
-            onChange={(e) => setFormData({ ...formData, license_type: e.target.value })}
-            placeholder="مثل: نقل عام، مركبات ثقيلة"
-          />
+        <div className="form-group full-width assistant-section">
+          <div className="assistant-toggle-row">
+            <span className="assistant-toggle-label">هل يوجد مرافق للسائق؟</span>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={!!formData.has_assistant}
+                onChange={(e) => {
+                  const has = e.target.checked;
+                  setFormData({
+                    ...formData,
+                    has_assistant: has,
+                    assistant_full_name: has ? (formData.assistant_full_name || '') : '',
+                    assistant_phone_number: has ? (formData.assistant_phone_number || '') : '',
+                  });
+                }}
+              />
+              <span className="slider"></span>
+            </label>
+          </div>
+
+          {formData.has_assistant && (
+            <div className="assistant-fields">
+              <div className="assistant-fields-grid">
+                <div className="form-group">
+                  <label>اسم مرافق السائق *</label>
+                  <input
+                    type="text"
+                    value={formData.assistant_full_name || ''}
+                    onChange={(e) => setFormData({ ...formData, assistant_full_name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>رقم جوال مرافق السائق *</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    dir="ltr"
+                    value={formData.assistant_phone_number || ''}
+                    onChange={(e) => setFormData({ ...formData, assistant_phone_number: digitsOnly(e.target.value) })}
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="form-group">
-          <label>فئة الرخصة</label>
-          <input
-            type="text"
-            value={formData.license_category}
-            onChange={(e) => setFormData({ ...formData, license_category: e.target.value })}
-            placeholder="مثل: C, D, E"
-          />
-        </div>
-        <div className="form-group">
-          <label>الجهة المصدرة</label>
-          <input
-            type="text"
-            value={formData.license_authority}
-            onChange={(e) => setFormData({ ...formData, license_authority: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>تاريخ الإصدار (هجري)</label>
-          <input
-            type="text"
-            value={formData.issue_date_hijri}
-            onChange={(e) => setFormData({ ...formData, issue_date_hijri: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>تاريخ الإصدار (ميلادي)</label>
-          <input
-            type="date"
-            value={formData.issue_date_gregorian || ''}
-            onChange={(e) => setFormData({ ...formData, issue_date_gregorian: e.target.value || null })}
-          />
-        </div>
-        <div className="form-group">
-          <label>تاريخ الانتهاء (هجري)</label>
-          <input
-            type="text"
-            value={formData.expiry_date_hijri}
-            onChange={(e) => setFormData({ ...formData, expiry_date_hijri: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>تاريخ الانتهاء (ميلادي)</label>
-          <input
-            type="date"
-            value={formData.expiry_date_gregorian || ''}
-            onChange={(e) => setFormData({ ...formData, expiry_date_gregorian: e.target.value || null })}
-          />
-        </div>
-        <div className="form-group">
-          <label>مكان الإصدار</label>
-          <input
-            type="text"
-            value={formData.issue_place}
-            onChange={(e) => setFormData({ ...formData, issue_place: e.target.value })}
-          />
-        </div>
+        <UnifiedDatePicker
+          label="تاريخ الإصدار (ميلادي)"
+          hijriValue=""
+          gregorianValue={formData.issue_date_gregorian || ''}
+          onChange={(_, gregorian) => setFormData({ ...formData, issue_date_gregorian: gregorian || null })}
+          dateType="general"
+          defaultCalendarType="gregorian"
+        />
+        <UnifiedDatePicker
+          label="تاريخ الانتهاء (ميلادي)"
+          hijriValue=""
+          gregorianValue={formData.expiry_date_gregorian || ''}
+          onChange={(_, gregorian) => setFormData({ ...formData, expiry_date_gregorian: gregorian || null })}
+          dateType="general"
+          defaultCalendarType="gregorian"
+        />
         <div className="form-group">
           <label>رقم هاتف السائق</label>
           <input
             type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            dir="ltr"
             value={formData.driver_phone_number}
-            onChange={(e) => setFormData({ ...formData, driver_phone_number: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>عنوان السائق</label>
-          <textarea
-            value={formData.driver_address}
-            onChange={(e) => setFormData({ ...formData, driver_address: e.target.value })}
-            rows="2"
+            onChange={(e) => setFormData({ ...formData, driver_phone_number: digitsOnly(e.target.value) })}
           />
         </div>
         <div className="form-group">
@@ -1172,30 +2902,14 @@ const DriverLicenseTab = ({ bus, onReload }) => {
             onChange={(e) => setFormData({ ...formData, driver_nationality: e.target.value })}
           />
         </div>
-        <div className="form-group">
-          <label>تاريخ الميلاد (هجري)</label>
-          <input
-            type="text"
-            value={formData.driver_date_of_birth_hijri}
-            onChange={(e) => setFormData({ ...formData, driver_date_of_birth_hijri: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>تاريخ الميلاد (ميلادي)</label>
-          <input
-            type="date"
-            value={formData.driver_date_of_birth_gregorian || ''}
-            onChange={(e) => setFormData({ ...formData, driver_date_of_birth_gregorian: e.target.value || null })}
-          />
-        </div>
-        <div className="form-group full-width">
-          <label>ملاحظات</label>
-          <textarea
-            value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            rows="3"
-          />
-        </div>
+        <UnifiedDatePicker
+          label="تاريخ الميلاد (ميلادي)"
+          hijriValue=""
+          gregorianValue={formData.driver_date_of_birth_gregorian || ''}
+          onChange={(_, gregorian) => setFormData({ ...formData, driver_date_of_birth_gregorian: gregorian || null })}
+          dateType="birth_date"
+          defaultCalendarType="gregorian"
+        />
       </div>
     </div>
   );
@@ -1209,10 +2923,7 @@ const LicensePlatesTab = ({ bus, onReload }) => {
   const [editingPlate, setEditingPlate] = useState(null);
   const [formData, setFormData] = useState({
     plate_number: '',
-    plate_region: '',
-    plate_type: '',
-    plate_color: '',
-    is_primary: false
+    is_primary: true
   });
 
   useEffect(() => {
@@ -1233,10 +2944,7 @@ const LicensePlatesTab = ({ bus, onReload }) => {
   const handleAdd = () => {
     setFormData({
       plate_number: '',
-      plate_region: '',
-      plate_type: '',
-      plate_color: '',
-      is_primary: plates.length === 0 // First plate is primary by default
+      is_primary: true
     });
     setEditingPlate(null);
     setShowAddForm(true);
@@ -1245,10 +2953,7 @@ const LicensePlatesTab = ({ bus, onReload }) => {
   const handleEdit = (plate) => {
     setFormData({
       plate_number: plate.plate_number,
-      plate_region: plate.plate_region || '',
-      plate_type: plate.plate_type || '',
-      plate_color: plate.plate_color || '',
-      is_primary: plate.is_primary
+      is_primary: true
     });
     setEditingPlate(plate);
     setShowAddForm(true);
@@ -1303,53 +3008,12 @@ const LicensePlatesTab = ({ bus, onReload }) => {
         <div className="plate-form-card">
           <h4>{editingPlate ? 'تعديل لوحة الترخيص' : 'إضافة لوحة ترخيص جديدة'}</h4>
           <div className="form-grid">
-            <div className="form-group">
+            <div className="form-group full-width">
               <label>رقم اللوحة *</label>
-              <input
-                type="text"
-                value={formData.plate_number}
-                onChange={(e) => setFormData({ ...formData, plate_number: e.target.value })}
-                required
+              <SaudiPlateInput
+                value={formData.plate_number || ''}
+                onChange={(value) => setFormData({ ...formData, plate_number: value })}
               />
-            </div>
-            <div className="form-group">
-              <label>المنطقة</label>
-              <input
-                type="text"
-                value={formData.plate_region}
-                onChange={(e) => setFormData({ ...formData, plate_region: e.target.value })}
-              />
-            </div>
-            <div className="form-group">
-              <label>نوع اللوحة</label>
-              <select
-                value={formData.plate_type}
-                onChange={(e) => setFormData({ ...formData, plate_type: e.target.value })}
-              >
-                <option value="">اختر النوع</option>
-                <option value="private">خاص</option>
-                <option value="commercial">تجاري</option>
-                <option value="government">حكومي</option>
-                <option value="taxi">تاكسي</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>لون اللوحة</label>
-              <input
-                type="text"
-                value={formData.plate_color}
-                onChange={(e) => setFormData({ ...formData, plate_color: e.target.value })}
-              />
-            </div>
-            <div className="form-group">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={formData.is_primary}
-                  onChange={(e) => setFormData({ ...formData, is_primary: e.target.checked })}
-                />
-                لوحة أساسية
-              </label>
             </div>
           </div>
           <div className="form-actions">
@@ -1371,11 +3035,6 @@ const LicensePlatesTab = ({ bus, onReload }) => {
               <div className="plate-info">
                 <div className="plate-number">{plate.plate_number}</div>
                 {plate.is_primary && <span className="primary-badge">أساسية</span>}
-                <div className="plate-details">
-                  {plate.plate_region && <span>المنطقة: {plate.plate_region}</span>}
-                  {plate.plate_type && <span>النوع: {plate.plate_type}</span>}
-                  {plate.plate_color && <span>اللون: {plate.plate_color}</span>}
-                </div>
               </div>
               <div className="plate-actions">
                 <button onClick={() => handleEdit(plate)}>تعديل</button>
@@ -1392,11 +3051,13 @@ const LicensePlatesTab = ({ bus, onReload }) => {
 // Bus Details Tab Component
 const BusDetailsTab = ({ bus, onReload }) => {
   const { showError, showSuccess } = useNotification();
+  const { isMainManager } = useAuth();
+  const normalizeOwnershipType = (v) => (v === 'rented' ? 'leased' : (v || 'owned'));
   const [formData, setFormData] = useState({
     route_name: bus.details?.route_name || '',
     route_description: bus.details?.route_description || '',
     number_of_seats: bus.details?.number_of_seats || '',
-    ownership_type: bus.details?.ownership_type || 'owned',
+    ownership_type: normalizeOwnershipType(bus.details?.ownership_type),
     lease_company_name: bus.details?.lease_company_name || '',
     lease_contact_info: bus.details?.lease_contact_info || '',
     lease_contract_number: bus.details?.lease_contract_number || '',
@@ -1406,10 +3067,8 @@ const BusDetailsTab = ({ bus, onReload }) => {
     lease_end_date_gregorian: bus.details?.lease_end_date_gregorian || '',
     insurance_provider: bus.details?.insurance_provider || '',
     insurance_policy_number: bus.details?.insurance_policy_number || '',
-    insurance_expiry_date_hijri: bus.details?.insurance_expiry_date_hijri || '',
     insurance_expiry_date_gregorian: bus.details?.insurance_expiry_date_gregorian || '',
-    maintenance_schedule: bus.details?.maintenance_schedule || '',
-    notes: bus.details?.notes || ''
+    // removed fields intentionally
   });
   const [saving, setSaving] = useState(false);
 
@@ -1447,7 +3106,7 @@ const BusDetailsTab = ({ bus, onReload }) => {
 
       <div className="form-grid">
         <div className="form-group">
-          <label>اسم المسار</label>
+          <label>خط السير</label>
           <input
             type="text"
             value={formData.route_name}
@@ -1455,7 +3114,7 @@ const BusDetailsTab = ({ bus, onReload }) => {
           />
         </div>
         <div className="form-group full-width">
-          <label>وصف المسار</label>
+          <label>وصف خط سير الحافلة</label>
           <textarea
             value={formData.route_description}
             onChange={(e) => setFormData({ ...formData, route_description: e.target.value })}
@@ -1479,13 +3138,12 @@ const BusDetailsTab = ({ bus, onReload }) => {
             onChange={(e) => setFormData({ ...formData, ownership_type: e.target.value })}
             required
           >
-            <option value="owned">مملوكة</option>
-            <option value="leased">مؤجرة</option>
-            <option value="rented">مستأجرة</option>
+            <option value="owned">ملك الشركة</option>
+            <option value="leased">مستأجر</option>
           </select>
         </div>
 
-        {(formData.ownership_type === 'leased' || formData.ownership_type === 'rented') && (
+        {formData.ownership_type === 'leased' && (
           <>
             <div className="form-group">
               <label>اسم شركة التأجير</label>
@@ -1511,89 +3169,65 @@ const BusDetailsTab = ({ bus, onReload }) => {
                 onChange={(e) => setFormData({ ...formData, lease_contract_number: e.target.value })}
               />
             </div>
+            <UnifiedDatePicker
+              label="تاريخ بداية التأجير"
+              hijriValue={formData.lease_start_date_hijri || ''}
+              gregorianValue={formData.lease_start_date_gregorian || ''}
+              onChange={(hijri, gregorian) =>
+                setFormData({
+                  ...formData,
+                  lease_start_date_hijri: hijri || '',
+                  lease_start_date_gregorian: gregorian || null
+                })
+              }
+              dateType="general"
+              defaultCalendarType="gregorian"
+            />
+            <UnifiedDatePicker
+              label="تاريخ نهاية التأجير"
+              hijriValue={formData.lease_end_date_hijri || ''}
+              gregorianValue={formData.lease_end_date_gregorian || ''}
+              onChange={(hijri, gregorian) =>
+                setFormData({
+                  ...formData,
+                  lease_end_date_hijri: hijri || '',
+                  lease_end_date_gregorian: gregorian || null
+                })
+              }
+              dateType="general"
+              defaultCalendarType="gregorian"
+            />
+          </>
+        )}
+
+        {isMainManager && (
+          <>
             <div className="form-group">
-              <label>تاريخ بدء التأجير (هجري)</label>
+              <label>شركة التأمين</label>
               <input
                 type="text"
-                value={formData.lease_start_date_hijri}
-                onChange={(e) => setFormData({ ...formData, lease_start_date_hijri: e.target.value })}
+                value={formData.insurance_provider}
+                onChange={(e) => setFormData({ ...formData, insurance_provider: e.target.value })}
               />
             </div>
             <div className="form-group">
-              <label>تاريخ بدء التأجير (ميلادي)</label>
-              <input
-                type="date"
-                value={formData.lease_start_date_gregorian || ''}
-                onChange={(e) => setFormData({ ...formData, lease_start_date_gregorian: e.target.value || null })}
-              />
-            </div>
-            <div className="form-group">
-              <label>تاريخ انتهاء التأجير (هجري)</label>
+              <label>رقم بوليصة التأمين</label>
               <input
                 type="text"
-                value={formData.lease_end_date_hijri}
-                onChange={(e) => setFormData({ ...formData, lease_end_date_hijri: e.target.value })}
+                value={formData.insurance_policy_number}
+                onChange={(e) => setFormData({ ...formData, insurance_policy_number: e.target.value })}
               />
             </div>
             <div className="form-group">
-              <label>تاريخ انتهاء التأجير (ميلادي)</label>
+              <label>تاريخ انتهاء التأمين (ميلادي)</label>
               <input
                 type="date"
-                value={formData.lease_end_date_gregorian || ''}
-                onChange={(e) => setFormData({ ...formData, lease_end_date_gregorian: e.target.value || null })}
+                value={formData.insurance_expiry_date_gregorian || ''}
+                onChange={(e) => setFormData({ ...formData, insurance_expiry_date_gregorian: e.target.value || null })}
               />
             </div>
           </>
         )}
-
-        <div className="form-group">
-          <label>شركة التأمين</label>
-          <input
-            type="text"
-            value={formData.insurance_provider}
-            onChange={(e) => setFormData({ ...formData, insurance_provider: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>رقم بوليصة التأمين</label>
-          <input
-            type="text"
-            value={formData.insurance_policy_number}
-            onChange={(e) => setFormData({ ...formData, insurance_policy_number: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>تاريخ انتهاء التأمين (هجري)</label>
-          <input
-            type="text"
-            value={formData.insurance_expiry_date_hijri}
-            onChange={(e) => setFormData({ ...formData, insurance_expiry_date_hijri: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label>تاريخ انتهاء التأمين (ميلادي)</label>
-          <input
-            type="date"
-            value={formData.insurance_expiry_date_gregorian || ''}
-            onChange={(e) => setFormData({ ...formData, insurance_expiry_date_gregorian: e.target.value || null })}
-          />
-        </div>
-        <div className="form-group full-width">
-          <label>جدول الصيانة</label>
-          <textarea
-            value={formData.maintenance_schedule}
-            onChange={(e) => setFormData({ ...formData, maintenance_schedule: e.target.value })}
-            rows="3"
-          />
-        </div>
-        <div className="form-group full-width">
-          <label>ملاحظات</label>
-          <textarea
-            value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            rows="3"
-          />
-        </div>
       </div>
     </div>
   );
@@ -1632,18 +3266,11 @@ const StudentsTab = ({ bus, students, loading, onReload, onAdd, onEdit, onDelete
 );
 
 const StudentFormModal = ({ bus, student, onClose, onSave }) => {
+  const digitsOnly = (value) => String(value || '').replace(/\D/g, '');
   const [formData, setFormData] = useState({
     student_full_name: student?.student_full_name || '',
     contact_mobile_number: student?.contact_mobile_number || '',
     address: student?.address || '',
-    pickup_location: student?.pickup_location || '',
-    dropoff_location: student?.dropoff_location || '',
-    pickup_time: student?.pickup_time || '',
-    dropoff_time: student?.dropoff_time || '',
-    guardian_name: student?.guardian_name || '',
-    guardian_relationship: student?.guardian_relationship || '',
-    guardian_phone: student?.guardian_phone || '',
-    notes: student?.notes || '',
     term_id: student?.term_id || bus?.term_id || ''
   });
   const [saving, setSaving] = useState(false);
@@ -1690,8 +3317,11 @@ const StudentFormModal = ({ bus, student, onClose, onSave }) => {
             <label>رقم الجوال *</label>
             <input
               type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              dir="ltr"
               value={formData.contact_mobile_number}
-              onChange={(e) => setFormData({ ...formData, contact_mobile_number: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, contact_mobile_number: digitsOnly(e.target.value) })}
               required
             />
           </div>
@@ -1703,73 +3333,7 @@ const StudentFormModal = ({ bus, student, onClose, onSave }) => {
               required
             />
           </div>
-          <div className="form-group">
-            <label>موقع الاستلام</label>
-            <input
-              type="text"
-              value={formData.pickup_location}
-              onChange={(e) => setFormData({ ...formData, pickup_location: e.target.value })}
-            />
-          </div>
-          <div className="form-group">
-            <label>موقع التسليم</label>
-            <input
-              type="text"
-              value={formData.dropoff_location}
-              onChange={(e) => setFormData({ ...formData, dropoff_location: e.target.value })}
-            />
-          </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label>وقت الاستلام</label>
-              <input
-                type="time"
-                value={formData.pickup_time}
-                onChange={(e) => setFormData({ ...formData, pickup_time: e.target.value })}
-              />
-            </div>
-            <div className="form-group">
-              <label>وقت التسليم</label>
-              <input
-                type="time"
-                value={formData.dropoff_time}
-                onChange={(e) => setFormData({ ...formData, dropoff_time: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="form-group">
-            <label>اسم ولي الأمر</label>
-            <input
-              type="text"
-              value={formData.guardian_name}
-              onChange={(e) => setFormData({ ...formData, guardian_name: e.target.value })}
-            />
-          </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label>صلة القرابة</label>
-              <input
-                type="text"
-                value={formData.guardian_relationship}
-                onChange={(e) => setFormData({ ...formData, guardian_relationship: e.target.value })}
-              />
-            </div>
-            <div className="form-group">
-              <label>هاتف ولي الأمر</label>
-              <input
-                type="text"
-                value={formData.guardian_phone}
-                onChange={(e) => setFormData({ ...formData, guardian_phone: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="form-group">
-            <label>ملاحظات</label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            />
-          </div>
+          <input type="hidden" value={formData.term_id || bus?.term_id || ''} />
           <div className="modal-actions">
             <button type="button" onClick={onClose}>إلغاء</button>
             <button type="submit" className="btn-primary" disabled={saving}>

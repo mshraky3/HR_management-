@@ -86,15 +86,19 @@
 .calendar-popup {
   position: absolute;
   top: 100%;
-  left: 0;
+  /* Anchor to the right in RTL layouts */
   right: 0;
+  left: auto;
   margin-top: var(--spacing-xs, 0.5rem);
   background: var(--bg-primary, #fff);
   border: 1px solid var(--border, #ddd);
   border-radius: var(--radius-md, 6px);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   z-index: 5000;
-  padding: var(--spacing-md, 1rem);
+  padding: 0.75rem;
+  width: 320px;
+  max-width: calc(100vw - 2rem);
+  box-sizing: border-box;
 }
 
 .calendar-grid {
@@ -102,22 +106,98 @@
 }
 
 .calendar-header {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  gap: 0.35rem;
+  justify-items: center;
   align-items: center;
-  margin-bottom: var(--spacing-md, 1rem);
-  padding-bottom: var(--spacing-sm, 0.5rem);
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.35rem;
   border-bottom: 1px solid var(--border, #ddd);
+}
+
+.calendar-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: nowrap;
+  flex-direction: row;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.calendar-month-select,
+.calendar-year-select {
+  border: 1px solid var(--border, #ddd);
+  border-radius: var(--radius-sm, 4px);
+  padding: 0.2rem 0.35rem;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #333);
+  font-size: 0.85rem;
+  cursor: pointer;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.calendar-month-select {
+  /* Compact: show month number only (MM) */
+  width: 44px !important;
+  text-align: center;
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+.calendar-year-control {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  justify-content: center;
+  min-width: 0;
+}
+
+.calendar-year-control .calendar-year-select {
+  /* Wider so the selected year (YYYY) is readable */
+  width: 108px !important;
+  text-align: center;
+}
+
+.calendar-year-nav {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 0.85em;
+  cursor: pointer;
+  color: var(--text-primary, #333);
+  padding: 0.05rem 0.2rem;
+  transition: all var(--transition-base, 0.2s);
+}
+
+.calendar-year-nav:hover {
+  color: var(--primary, #007bff);
+  border-color: var(--border, #ddd);
+  background: var(--bg-hover, #e9ecef);
 }
 
 .calendar-header button {
   background: none;
   border: none;
-  font-size: 1.5em;
+  font-size: 1.2em;
   cursor: pointer;
   color: var(--text-primary, #333);
-  padding: 0 var(--spacing-sm, 0.5rem);
+  padding: 0;
   transition: color var(--transition-base, 0.2s);
+  width: 40px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .calendar-header button:hover {
@@ -129,25 +209,12 @@
   font-size: var(--font-size-lg, 1.125rem);
 }
 
-.calendar-days-header {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: var(--spacing-xs, 0.5rem);
-  margin-bottom: var(--spacing-xs, 0.5rem);
-}
-
-.day-header {
-  text-align: center;
-  font-weight: 600;
-  font-size: var(--font-size-sm, 0.875rem);
-  color: var(--text-secondary, #666);
-  padding: var(--spacing-xs, 0.5rem);
-}
-
 .calendar-days {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: var(--spacing-xs, 0.5rem);
+  gap: 0.2rem;
+  /* Keep day order visually consistent (1 → 31) */
+  direction: ltr;
 }
 
 .calendar-day {
@@ -161,7 +228,9 @@
   cursor: pointer;
   border-radius: var(--radius-sm, 4px);
   transition: all var(--transition-base, 0.2s);
-  font-size: var(--font-size-base, 1rem);
+  font-size: 0.8rem;
+  min-height: 26px;
+  box-sizing: border-box;
 }
 
 .calendar-day:hover:not(.empty):not(:disabled) {

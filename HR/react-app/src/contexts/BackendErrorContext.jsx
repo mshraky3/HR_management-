@@ -5,7 +5,16 @@
 
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 
-const BackendErrorContext = createContext(null);
+// Ensure a single context instance even if Vite loads this module twice
+// (e.g. different dev query strings like `?v=dev` causing duplicate module ids).
+const BACKEND_ERROR_CONTEXT_KEY = '__HR_APP_BACKEND_ERROR_CONTEXT__';
+const BackendErrorContext =
+  (typeof globalThis !== 'undefined' && globalThis[BACKEND_ERROR_CONTEXT_KEY])
+    ? globalThis[BACKEND_ERROR_CONTEXT_KEY]
+    : createContext(null);
+if (typeof globalThis !== 'undefined' && !globalThis[BACKEND_ERROR_CONTEXT_KEY]) {
+  globalThis[BACKEND_ERROR_CONTEXT_KEY] = BackendErrorContext;
+}
 
 export const useBackendError = () => {
   const context = useContext(BackendErrorContext);

@@ -16,7 +16,16 @@ import {
 } from '../utils/pushNotifications';
 import { useAuth } from './AuthContext';
 
-const PushNotificationContext = createContext(null);
+// Ensure a single context instance even if Vite loads this module twice
+// (e.g. different dev query strings like `?v=dev` causing duplicate module ids).
+const PUSH_NOTIFICATION_CONTEXT_KEY = '__HR_APP_PUSH_NOTIFICATION_CONTEXT__';
+const PushNotificationContext =
+  (typeof globalThis !== 'undefined' && globalThis[PUSH_NOTIFICATION_CONTEXT_KEY])
+    ? globalThis[PUSH_NOTIFICATION_CONTEXT_KEY]
+    : createContext(null);
+if (typeof globalThis !== 'undefined' && !globalThis[PUSH_NOTIFICATION_CONTEXT_KEY]) {
+  globalThis[PUSH_NOTIFICATION_CONTEXT_KEY] = PushNotificationContext;
+}
 
 export const usePushNotifications = () => {
   const context = useContext(PushNotificationContext);
