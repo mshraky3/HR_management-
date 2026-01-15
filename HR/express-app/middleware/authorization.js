@@ -49,8 +49,13 @@ export const requireManager = requireRole(['main_manager', 'branch_manager']);
  */
 export const checkBranchAccess = (req, res, next) => {
   const user = req.user;
-  // Check for branch ID in various places: params.id, params.branchId, body, or query
-  const requestedBranchId = req.params.id || req.params.branchId || req.body.branch_id || req.query.branch_id;
+  // Check for branch ID in various places.
+  // IMPORTANT: many routes use ":id" for non-branch resources (e.g. bus_id).
+  // For bus-transportation routes we must NOT treat params.id as branch_id.
+  const isBusTransportationRoute = (req.baseUrl || '').includes('/api/bus-transportation');
+  const requestedBranchId = isBusTransportationRoute
+    ? (req.params?.branchId || req.params?.branch_id || req.body?.branch_id || req.query?.branch_id)
+    : (req.params?.branchId || req.params?.branch_id || req.params?.id || req.body?.branch_id || req.query?.branch_id);
 
   if (!user) {
     return res.status(401).json({

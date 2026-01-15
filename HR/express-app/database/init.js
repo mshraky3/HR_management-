@@ -626,6 +626,9 @@ export async function initializeDatabase() {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      lease_contract_document_url VARCHAR(500),
+      lease_contract_document_name VARCHAR(255),
+      lease_contract_document_mime_type VARCHAR(100),
       UNIQUE(branch_id, bus_number, term_id)
     `);
 
@@ -663,29 +666,17 @@ export async function initializeDatabase() {
       id SERIAL PRIMARY KEY,
       bus_id INTEGER NOT NULL UNIQUE REFERENCES bus_transportation(id) ON DELETE CASCADE,
       registration_number VARCHAR(100) UNIQUE NOT NULL,
-      registration_authority VARCHAR(200),
       chassis_number VARCHAR(100) UNIQUE NOT NULL,
-      engine_number VARCHAR(100),
-      vehicle_make VARCHAR(100) NOT NULL,
       vehicle_model VARCHAR(100) NOT NULL,
       model_year INTEGER,
       vehicle_color VARCHAR(50),
-      vehicle_type VARCHAR(50),
-      vehicle_category VARCHAR(50),
-      registration_date_hijri VARCHAR(50),
-      registration_date_gregorian DATE,
-      expiry_date_hijri VARCHAR(50),
       expiry_date_gregorian DATE,
-      owner_name VARCHAR(255),
-      owner_id_number VARCHAR(100),
-      owner_type VARCHAR(50),
       registration_document_url VARCHAR(500),
       registration_document_name VARCHAR(255),
       registration_document_mime_type VARCHAR(100),
       is_verified BOOLEAN DEFAULT false,
       verified_at TIMESTAMP,
       verified_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-      notes TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     `);
@@ -714,26 +705,20 @@ export async function initializeDatabase() {
       driver_full_name VARCHAR(255) NOT NULL,
       driver_id_number VARCHAR(100) NOT NULL,
       license_number VARCHAR(100) UNIQUE NOT NULL,
-      license_type VARCHAR(50),
-      license_category VARCHAR(50),
-      license_authority VARCHAR(200),
-      issue_date_hijri VARCHAR(50),
       issue_date_gregorian DATE,
-      expiry_date_hijri VARCHAR(50),
       expiry_date_gregorian DATE,
-      issue_place VARCHAR(255),
       driver_phone_number VARCHAR(50),
-      driver_address TEXT,
       driver_nationality VARCHAR(100),
-      driver_date_of_birth_hijri VARCHAR(50),
       driver_date_of_birth_gregorian DATE,
+      has_assistant BOOLEAN DEFAULT false,
+      assistant_full_name VARCHAR(255),
+      assistant_phone_number VARCHAR(50),
       license_document_url VARCHAR(500),
       license_document_name VARCHAR(255),
       license_document_mime_type VARCHAR(100),
       is_verified BOOLEAN DEFAULT false,
       verified_at TIMESTAMP,
       verified_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-      notes TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     `);
@@ -760,9 +745,6 @@ export async function initializeDatabase() {
       id SERIAL PRIMARY KEY,
       bus_id INTEGER NOT NULL REFERENCES bus_transportation(id) ON DELETE CASCADE,
       plate_number VARCHAR(50) NOT NULL,
-      plate_region VARCHAR(50),
-      plate_type VARCHAR(50),
-      plate_color VARCHAR(50),
       is_primary BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -789,7 +771,7 @@ export async function initializeDatabase() {
       route_name VARCHAR(255),
       route_description TEXT,
       number_of_seats INTEGER NOT NULL,
-      ownership_type VARCHAR(50) NOT NULL CHECK (ownership_type IN ('owned', 'leased', 'rented')),
+      ownership_type VARCHAR(50) NOT NULL CHECK (ownership_type IN ('owned', 'leased')),
       lease_company_name VARCHAR(255),
       lease_contact_info VARCHAR(500),
       lease_contract_number VARCHAR(100),
@@ -799,10 +781,7 @@ export async function initializeDatabase() {
       lease_end_date_gregorian DATE,
       insurance_provider VARCHAR(255),
       insurance_policy_number VARCHAR(100),
-      insurance_expiry_date_hijri VARCHAR(50),
       insurance_expiry_date_gregorian DATE,
-      maintenance_schedule TEXT,
-      notes TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     `);
@@ -824,14 +803,6 @@ export async function initializeDatabase() {
       student_full_name VARCHAR(255) NOT NULL,
       contact_mobile_number VARCHAR(50) NOT NULL,
       address TEXT NOT NULL,
-      pickup_location VARCHAR(500),
-      dropoff_location VARCHAR(500),
-      pickup_time TIME,
-      dropoff_time TIME,
-      guardian_name VARCHAR(255),
-      guardian_relationship VARCHAR(50),
-      guardian_phone VARCHAR(50),
-      notes TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -1350,6 +1321,15 @@ export async function initializeDatabase() {
           'Dropped is_active index'
         );
 
+        // Add lease contract document columns (if not exist)
+        await executeQuery(
+          `ALTER TABLE bus_transportation
+           ADD COLUMN IF NOT EXISTS lease_contract_document_url VARCHAR(500),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_name VARCHAR(255),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_mime_type VARCHAR(100)`,
+          'Added lease contract document columns to bus_transportation'
+        );
+
         // Create indexes for term_id (now that column exists)
         await executeQuery(
           'CREATE INDEX IF NOT EXISTS idx_bus_transportation_term_id ON bus_transportation(term_id)',
@@ -1464,6 +1444,107 @@ export async function initializeDatabase() {
       }
     } catch (error) {
       console.error('Error in bus transportation term migration:', error.message);
+      // Don't throw - allow database to continue initializing
+    }
+
+    // Migration: Drop removed bus transportation fields (keep schema aligned with simplified UI)
+    try {
+      await executeQuery(
+        `ALTER TABLE bus_registration_data
+         DROP COLUMN IF EXISTS registration_authority,
+         DROP COLUMN IF EXISTS engine_number,
+         DROP COLUMN IF EXISTS vehicle_make,
+         DROP COLUMN IF EXISTS vehicle_type,
+         DROP COLUMN IF EXISTS vehicle_category,
+         DROP COLUMN IF EXISTS registration_date_hijri,
+         DROP COLUMN IF EXISTS registration_date_gregorian,
+         DROP COLUMN IF EXISTS expiry_date_hijri,
+         DROP COLUMN IF EXISTS owner_name,
+         DROP COLUMN IF EXISTS owner_id_number,
+         DROP COLUMN IF EXISTS owner_type,
+         DROP COLUMN IF EXISTS notes`,
+        'Dropped removed columns from bus_registration_data'
+      );
+
+      await executeQuery(
+        `ALTER TABLE driver_license_data
+         DROP COLUMN IF EXISTS license_category,
+         DROP COLUMN IF EXISTS license_authority,
+         DROP COLUMN IF EXISTS issue_date_hijri,
+         DROP COLUMN IF EXISTS expiry_date_hijri,
+         DROP COLUMN IF EXISTS issue_place,
+         DROP COLUMN IF EXISTS driver_address,
+         DROP COLUMN IF EXISTS driver_date_of_birth_hijri,
+         DROP COLUMN IF EXISTS notes,
+         DROP COLUMN IF EXISTS license_type`,
+        'Dropped removed columns from driver_license_data'
+      );
+
+      // Add assistant driver fields (if table already exists)
+      await executeQuery(
+        `ALTER TABLE driver_license_data
+         ADD COLUMN IF NOT EXISTS has_assistant BOOLEAN DEFAULT false,
+         ADD COLUMN IF NOT EXISTS assistant_full_name VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS assistant_phone_number VARCHAR(50)`,
+        'Added assistant driver fields to driver_license_data'
+      );
+
+      await executeQuery(
+        `ALTER TABLE license_plate_data
+         DROP COLUMN IF EXISTS plate_region,
+         DROP COLUMN IF EXISTS plate_type,
+         DROP COLUMN IF EXISTS plate_color`,
+        'Dropped removed columns from license_plate_data'
+      );
+
+      await executeQuery(
+        `ALTER TABLE bus_details
+         DROP COLUMN IF EXISTS insurance_expiry_date_hijri,
+         DROP COLUMN IF EXISTS maintenance_schedule,
+         DROP COLUMN IF EXISTS notes`,
+        'Dropped removed columns from bus_details'
+      );
+
+      // Drop removed columns from bus_students (UI only uses name, mobile, address)
+      await executeQuery(
+        `ALTER TABLE bus_students
+         DROP COLUMN IF EXISTS pickup_location,
+         DROP COLUMN IF EXISTS dropoff_location,
+         DROP COLUMN IF EXISTS pickup_time,
+         DROP COLUMN IF EXISTS dropoff_time,
+         DROP COLUMN IF EXISTS guardian_name,
+         DROP COLUMN IF EXISTS guardian_relationship,
+         DROP COLUMN IF EXISTS guardian_phone,
+         DROP COLUMN IF EXISTS notes`,
+        'Dropped removed columns from bus_students'
+      );
+
+      // Enforce ownership_type to only owned/leased (normalize old rented -> leased)
+      await executeQuery(
+        `UPDATE bus_details SET ownership_type = 'leased' WHERE ownership_type = 'rented'`,
+        'Normalized bus_details ownership_type rented->leased'
+      );
+      await executeQuery(
+        `DO $$
+         BEGIN
+           IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details DROP CONSTRAINT bus_details_ownership_type_check;
+           END IF;
+         END $$;`,
+        'Dropped old ownership_type check constraint'
+      );
+      await executeQuery(
+        `DO $$
+         BEGIN
+           IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details
+             ADD CONSTRAINT bus_details_ownership_type_check CHECK (ownership_type IN ('owned', 'leased'));
+           END IF;
+         END $$;`,
+        'Added ownership_type check constraint (owned/leased)'
+      );
+    } catch (error) {
+      console.error('Error in bus transportation field cleanup migration:', error.message);
       // Don't throw - allow database to continue initializing
     }
 
