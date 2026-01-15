@@ -8,14 +8,50 @@ import './styles/containers.css'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 
+const safeToString = (v) => {
+  try {
+    if (typeof v === 'string') return v;
+    if (v instanceof Error) return `${v.name}: ${v.message}\n${v.stack || ''}`;
+    return JSON.stringify(v);
+  } catch (e) {
+    try {
+      return String(v);
+    } catch (e2) {
+      return '[Unprintable error]';
+    }
+  }
+};
+
+// Some devtools/console hooks crash when logging non-primitive objects (e.g. AxiosError).
+// Sanitize console output to prevent "Cannot convert object to primitive value" from breaking the app.
+try {
+  const wrap = (methodName) => {
+    const original = console[methodName]?.bind(console);
+    if (!original) return;
+    console[methodName] = (...args) => {
+      const safeArgs = args.map((a) => {
+        const t = typeof a;
+        if (a == null || t === 'string' || t === 'number' || t === 'boolean') return a;
+        return safeToString(a);
+      });
+      original(...safeArgs);
+    };
+  };
+  wrap('error');
+  wrap('warn');
+} catch (e) {
+  // ignore
+}
+
 // Add global error handler for unhandled errors
 window.addEventListener('error', (event) => {
-  console.error('Global error:', event.error);
+  const err = event?.error;
+  console.error(`Global error: ${safeToString(err)}`);
 });
 
 window.addEventListener('unhandledrejection', (event) => {
   const error = event.reason;
-  console.error('Unhandled promise rejection:', {
+  const payload = {
     message: error?.message || 'Unknown error',
     stack: error?.stack,
     response: error?.response ? {
@@ -27,7 +63,8 @@ window.addEventListener('unhandledrejection', (event) => {
     } : null,
     code: error?.code,
     name: error?.name,
-  });
+  };
+  console.error(`Unhandled promise rejection: ${safeToString(payload)}`);
 
   // Check if this is a backend/database error
   const errorCode = error?.code || '';

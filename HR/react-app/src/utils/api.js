@@ -125,6 +125,11 @@ const isCacheValid = (cacheEntry) => {
 // Get cache TTL based on endpoint
 // Dashboard and notification endpoints have NO CACHE for maximum freshness
 const getCacheTTL = (url) => {
+  // Bus Transportation - NO CACHE (uploads/saves must reflect immediately)
+  if (url.includes('/api/bus-transportation')) {
+    return CACHE_TTL.NONE;
+  }
+
   // Dashboard-related endpoints - NO CACHE (must always be fresh)
   if (url.includes('/api/branch-statistics')) {
     return CACHE_TTL.NONE; // Statistics must be real-time
@@ -193,6 +198,14 @@ const clearRelatedCache = (url) => {
   ];
 
   // Clear related cache entries when data is modified
+  if (url.includes('/api/bus-transportation')) {
+    clearCache('/api/bus-transportation');
+    // bus cards can depend on branches/terms display too
+    clearCache('/api/branches');
+    clearCache('/api/terms');
+    return;
+  }
+
   if (url.includes('/api/employees')) {
     clearCache('/api/employees');
     // Clear all dashboard endpoints
@@ -396,16 +409,6 @@ api.interceptors.request.use(
       // Skip caching entirely for endpoints with CACHE_TTL.NONE (dashboard/notifications)
       const shouldCache = cacheTTL !== CACHE_TTL.NONE;
 
-      // Check for pending request (deduplication) - always enabled for performance
-      const pendingRequest = pendingRequests.get(requestKey);
-      if (pendingRequest) {
-        // Attach metadata to config to handle in response interceptor
-        config.__isDeduplicated = true;
-        config.__pendingRequest = pendingRequest;
-        config.__requestStartTime = requestStartTime;
-        return config;
-      }
-
       // Check cache only if caching is enabled for this endpoint
       if (shouldCache) {
         const cacheKey = getCacheKey(config);
@@ -418,15 +421,6 @@ api.interceptors.request.use(
           return config;
         }
       }
-
-      // Store request promise for deduplication
-      const requestPromise = axios(config);
-      pendingRequests.set(requestKey, requestPromise);
-
-      // Clean up after request completes
-      requestPromise.finally(() => {
-        pendingRequests.delete(requestKey);
-      });
 
       // Store start time for timing
       config.__requestStartTime = requestStartTime;
@@ -447,11 +441,6 @@ api.interceptors.response.use(
     // Handle cached response
     if (config?.__isCached) {
       return config.__cachedResponse;
-    }
-
-    // Handle deduplicated request
-    if (config?.__isDeduplicated) {
-      return config.__pendingRequest;
     }
 
     // Cache successful GET requests (only if caching is enabled for this endpoint)
@@ -493,12 +482,6 @@ api.interceptors.response.use(
     const config = error.config;
     const url = config?.url || '';
     const method = (config?.method || 'get').toUpperCase();
-
-    // Remove from pending requests on error
-    if (error.config) {
-      const requestKey = getRequestKey(error.config);
-      pendingRequests.delete(requestKey);
-    }
 
     // Detect backend/database connection errors
     const isBackendError = detectBackendError(error);
@@ -1125,6 +1108,15 @@ export const busTransportationAPI = {
     const formData = new FormData();
     formData.append('file', file);
     return api.post(`/api/bus-transportation/${id}/driver-license/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // Lease Contract (for leased buses)
+  uploadLeaseContractDocument: (id, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/api/bus-transportation/${id}/lease-contract/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
   },
