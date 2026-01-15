@@ -22,6 +22,7 @@ import adminRoutes from './admin.js';
 import requestRoutes from './requests.js';
 import utilsRoutes from './utils.js';
 import payrollAbsenceRoutes from './payroll-absences.js';
+import busTransportationRoutes from './bus-transportation.js';
 
 const router = express.Router();
 
@@ -49,5 +50,6 @@ router.use('/admin', adminRoutes);
 router.use('/requests', requestRoutes);
 router.use('/utils', utilsRoutes);
 router.use('/payroll-absences', payrollAbsenceRoutes);
+router.use('/bus-transportation', busTransportationRoutes);
 export default router;
 

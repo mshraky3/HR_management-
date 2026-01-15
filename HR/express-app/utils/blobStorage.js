@@ -356,3 +356,152 @@ export async function uploadNotificationAttachmentToBlob(fileBuffer, fileName, m
   }
 }
 
+/**
+ * Upload bus registration document to Vercel Blob Storage
+ * @param {Buffer} fileBuffer - File buffer data
+ * @param {string} fileName - Original file name
+ * @param {string} mimeType - File MIME type
+ * @param {number} busId - Bus ID
+ * @returns {Promise<string>} - Blob URL
+ */
+export async function uploadBusRegistrationDocument(fileBuffer, fileName, mimeType, busId) {
+  try {
+    validateBlobConfig();
+    
+    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+      throw new Error('Invalid file buffer provided');
+    }
+    if (!fileName || !mimeType || !busId) {
+      throw new Error('Missing required parameters for blob upload');
+    }
+
+    const uniqueFileName = generateFileName(fileName);
+    const blobPath = `buses/${busId}/registration/${uniqueFileName}`;
+    
+    const token = getBlobToken();
+    if (!token) {
+      throw new Error('Blob storage token is not configured');
+    }
+    
+    const blob = await put(blobPath, fileBuffer, {
+      access: 'public',
+      contentType: mimeType,
+      addRandomSuffix: false,
+      token: token
+    });
+    
+    if (blob.url && blob.url.length > 500) {
+      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+    }
+    
+    return blob.url;
+  } catch (error) {
+    console.error('Error uploading bus registration document to Blob:', error);
+    
+    if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
+      throw error;
+    }
+    
+    throw new Error(`Failed to upload file to Blob: ${error.message}`);
+  }
+}
+
+/**
+ * Upload driver license document to Vercel Blob Storage
+ * @param {Buffer} fileBuffer - File buffer data
+ * @param {string} fileName - Original file name
+ * @param {string} mimeType - File MIME type
+ * @param {number} busId - Bus ID
+ * @returns {Promise<string>} - Blob URL
+ */
+export async function uploadDriverLicenseDocument(fileBuffer, fileName, mimeType, busId) {
+  try {
+    validateBlobConfig();
+    
+    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+      throw new Error('Invalid file buffer provided');
+    }
+    if (!fileName || !mimeType || !busId) {
+      throw new Error('Missing required parameters for blob upload');
+    }
+
+    const uniqueFileName = generateFileName(fileName);
+    const blobPath = `buses/${busId}/license/${uniqueFileName}`;
+    
+    const token = getBlobToken();
+    if (!token) {
+      throw new Error('Blob storage token is not configured');
+    }
+    
+    const blob = await put(blobPath, fileBuffer, {
+      access: 'public',
+      contentType: mimeType,
+      addRandomSuffix: false,
+      token: token
+    });
+    
+    if (blob.url && blob.url.length > 500) {
+      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+    }
+    
+    return blob.url;
+  } catch (error) {
+    console.error('Error uploading driver license document to Blob:', error);
+    
+    if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
+      throw error;
+    }
+    
+    throw new Error(`Failed to upload file to Blob: ${error.message}`);
+  }
+}
+
+/**
+ * Upload bus lease contract document to Vercel Blob Storage
+ * @param {Buffer} fileBuffer - File buffer data
+ * @param {string} fileName - Original file name
+ * @param {string} mimeType - File MIME type
+ * @param {number} busId - Bus ID
+ * @returns {Promise<string>} - Blob URL
+ */
+export async function uploadBusLeaseContractDocument(fileBuffer, fileName, mimeType, busId) {
+  try {
+    validateBlobConfig();
+
+    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+      throw new Error('Invalid file buffer provided');
+    }
+    if (!fileName || !mimeType || !busId) {
+      throw new Error('Missing required parameters for blob upload');
+    }
+
+    const uniqueFileName = generateFileName(fileName);
+    const blobPath = `buses/${busId}/lease-contract/${uniqueFileName}`;
+
+    const token = getBlobToken();
+    if (!token) {
+      throw new Error('Blob storage token is not configured');
+    }
+
+    const blob = await put(blobPath, fileBuffer, {
+      access: 'public',
+      contentType: mimeType,
+      addRandomSuffix: false,
+      token: token
+    });
+
+    if (blob.url && blob.url.length > 500) {
+      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+    }
+
+    return blob.url;
+  } catch (error) {
+    console.error('Error uploading bus lease contract document to Blob:', error);
+
+    if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
+      throw error;
+    }
+
+    throw new Error(`Failed to upload file to Blob: ${error.message}`);
+  }
+}

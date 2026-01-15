@@ -186,9 +186,10 @@ router.get('/me', authenticate, async (req, res) => {
     const user = await User.findById(req.user.id);
     
     if (!user) {
-      return res.status(404).json({
+      // Treat missing DB user as invalid/expired token so frontend can re-login cleanly
+      return res.status(401).json({
         success: false,
-        message: 'المستخدم غير موجود'
+        message: 'Authentication failed. User not found.'
       });
     }
 

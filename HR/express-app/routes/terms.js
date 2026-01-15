@@ -12,13 +12,13 @@ import sql from '../config/database.js';
 
 const router = express.Router();
 
-// All routes require authentication and main manager
+// All routes require authentication
 router.use(authenticate);
-router.use(requireMainManager);
 
 /**
  * GET /api/terms
  * Get all terms (with optional filters)
+ * Accessible to all authenticated managers (main and branch)
  */
 router.get('/', async (req, res) => {
   try {
@@ -48,6 +48,7 @@ router.get('/', async (req, res) => {
 /**
  * GET /api/terms/:id
  * Get term by ID
+ * Accessible to all authenticated managers (main and branch)
  */
 router.get('/:id', async (req, res) => {
   try {
@@ -77,8 +78,9 @@ router.get('/:id', async (req, res) => {
 /**
  * POST /api/terms
  * Create new term
+ * Main manager only
  */
-router.post('/', async (req, res) => {
+router.post('/', requireMainManager, async (req, res) => {
   try {
     const {
       branch_type, term_name, term_number, start_date, end_date,
@@ -153,8 +155,9 @@ router.post('/', async (req, res) => {
 /**
  * PUT /api/terms/:id
  * Update term
+ * Main manager only
  */
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireMainManager, async (req, res) => {
   try {
     const termId = parseInt(req.params.id);
     const updates = {};
@@ -196,8 +199,9 @@ router.put('/:id', async (req, res) => {
 /**
  * DELETE /api/terms/:id
  * Deactivate term
+ * Main manager only
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireMainManager, async (req, res) => {
   try {
     const term = await Term.deactivate(parseInt(req.params.id));
     
@@ -226,8 +230,9 @@ router.delete('/:id', async (req, res) => {
 /**
  * POST /api/terms/create-academic-year
  * Create both terms and academic year together
+ * Main manager only
  */
-router.post('/create-academic-year', async (req, res) => {
+router.post('/create-academic-year', requireMainManager, async (req, res) => {
   try {
     const {
       branch_type,
@@ -386,6 +391,7 @@ router.post('/create-academic-year', async (req, res) => {
 /**
  * GET /api/terms/current/:branchType
  * Get current term for a branch type
+ * Accessible to all authenticated managers (main and branch)
  */
 router.get('/current/:branchType', async (req, res) => {
   try {
