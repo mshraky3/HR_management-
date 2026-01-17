@@ -334,6 +334,22 @@ router.post('/',
       });
     }
 
+    // Restrict certain document types from branch managers
+    const restrictedDocumentTypes = [
+      'staff_cadre',
+      'dropped_students',
+      'free_seats',
+      'acceptance_notifications',
+      'other'
+    ];
+
+    if (req.user.role === 'branch_manager' && restrictedDocumentTypes.includes(document_type)) {
+      return res.status(403).json({
+        success: false,
+        message: 'هذا النوع من المستندات غير متاح للرفع من قبل مديري الفروع'
+      });
+    }
+
     // Validate healthcare-specific documents can only be uploaded to healthcare centers
     const healthcareOnlyDocuments = [
       'operational_plan',
