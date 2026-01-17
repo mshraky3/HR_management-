@@ -67,6 +67,7 @@ const Archive = lazy(() => import('./pages/Archive'));
 const BranchStatistics = lazy(() => import('./pages/BranchStatistics'));
 const TermManagement = lazy(() => import('./pages/TermManagement'));
 const BranchesMonitoring = lazy(() => import('./pages/BranchesMonitoring'));
+const BranchDocumentsManagement = lazy(() => import('./pages/BranchDocumentsManagement'));
 const BranchInfo = lazy(() => import('./pages/BranchInfo'));
 const DirectContact = lazy(() => import('./pages/DirectContact'));
 const BranchRequests = lazy(() => import('./pages/BranchRequests'));
@@ -227,7 +228,7 @@ const AppContent = () => {
           element={
             <ProtectedRoute requireMainManager>
               <Layout>
-                <BranchesMonitoring />
+                <BranchDocumentsManagement />
               </Layout>
             </ProtectedRoute>
           }
