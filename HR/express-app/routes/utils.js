@@ -70,7 +70,7 @@ router.post('/convert-date', async (req, res) => {
     if (!result.valid) {
       return res.status(400).json({
         success: false,
-        message: 'Date validation failed',
+        message: ' تأكد من صحة  اليوم او سنة او الشهر',
         data: result
       });
     }

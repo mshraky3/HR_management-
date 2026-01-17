@@ -796,7 +796,7 @@ router.post('/',
         if (linkBranchId) {
           try {
             console.log('[EMPLOYEE CREATE] Attempting to link employee to branch');
-            await Employee.linkToBranch(existingEmployeeId, linkBranchId, createdByBranchId);
+            await Employee.linkToBranch(existingEmployeeId, linkBranchId, req.user.id);
             const updatedEmployee = await Employee.findById(existingEmployeeId);
             clearByPrefix(`dashboard:summary:${linkBranchId}`);
             clearByPrefix('branch-statistics');
@@ -837,7 +837,7 @@ router.post('/',
       // Link employee to branch in employee_branches table
       try {
         console.log('[EMPLOYEE CREATE] Linking employee to branch in employee_branches table');
-        await Employee.linkToBranch(employee.id, createdByBranchId, createdByBranchId);
+        await Employee.linkToBranch(employee.id, createdByBranchId, req.user.id);
         console.log('[EMPLOYEE CREATE] Successfully linked employee to branch');
       } catch (linkError) {
         console.log('[EMPLOYEE CREATE] WARNING: Could not link employee to branch (table may not exist yet):', linkError.message);
