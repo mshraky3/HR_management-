@@ -83,7 +83,7 @@ const Layout = ({ children }) => {
       ]
     },
     monitoring: {
-      label: 'المتابعة والمراقبة',
+      label: 'متابعة الفروع',
       items: [
         { path: '/branches-monitoring', label: 'الفروع' },
         { path: '/branch-statistics', label: 'إحصائيات الفروع' },

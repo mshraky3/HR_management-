@@ -4,10 +4,11 @@
  * Main managers can view all branches, branch managers only their branch
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { busTransportationAPI, branchesAPI, termsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { formatTermDisplay, groupTermsByBranchType, deduplicateTerms } from '../utils/termHelpers.js';
 import BranchBadge from '../components/BranchBadge';
 import UnifiedDatePicker from '../components/UnifiedDatePicker';
 import './BusTransportation.css';
@@ -205,7 +206,7 @@ const BusTransportation = () => {
         if (branchResponse.data.success && branchResponse.data.data?.branch_type) {
           response = await termsAPI.getAll({ is_active: true, branch_type: branchResponse.data.data.branch_type });
           if (response.data.success) {
-            const activeTerms = response.data.data || [];
+            const activeTerms = deduplicateTerms(response.data.data || []);
             setTerms(activeTerms);
             // Set default to first active term (which should be the current one)
             if (activeTerms.length > 0 && !selectedTermId) {
@@ -216,13 +217,23 @@ const BusTransportation = () => {
           }
         }
       } else {
-        // For main managers, get all active terms
+        // For main managers, get all active terms but deduplicate and filter by selected branch if available
         response = await termsAPI.getAll({ is_active: true });
         if (response.data.success) {
-          setTerms(response.data.data || []);
+          let allTerms = deduplicateTerms(response.data.data || []);
+          
+          // If a branch is selected, filter terms by that branch's type
+          if (selectedBranchId) {
+            const selectedBranch = branches.find(b => b.id === parseInt(selectedBranchId));
+            if (selectedBranch?.branch_type) {
+              allTerms = allTerms.filter(term => term.branch_type === selectedBranch.branch_type);
+            }
+          }
+          
+          setTerms(allTerms);
           // Set default to first active term if available
-          if (response.data.data && response.data.data.length > 0 && !selectedTermId) {
-            setSelectedTermId(response.data.data[0].id);
+          if (allTerms.length > 0 && !selectedTermId) {
+            setSelectedTermId(allTerms[0].id);
           }
         }
       }
@@ -231,6 +242,13 @@ const BusTransportation = () => {
       showError('فشل تحميل الفصول الدراسية');
     }
   };
+  
+  // Reload terms when branch selection changes (for main managers)
+  useEffect(() => {
+    if (isMainManager() && branches.length > 0) {
+      loadTerms();
+    }
+  }, [selectedBranchId]);
 
   const loadBuses = async () => {
     try {
@@ -760,7 +778,12 @@ const BusTransportation = () => {
       {/* Filters */}
       <div className="filters-section">
         <div className="filters-header">
-          <h3 className="filters-title">الفلاتر</h3>
+          <h3 className="filters-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '0.5rem' }}>
+              <path d="M3 6a3 3 0 013-3h2.25a3 3 0 013 3v2.25a3 3 0 01-3 3H6a3 3 0 01-3-3V6zM13.5 6a3 3 0 013-3H18.75a3 3 0 013 3v2.25a3 3 0 01-3 3H16.5a3 3 0 01-3-3V6zM3 15.75a3 3 0 013-3h2.25a3 3 0 013 3V18a3 3 0 01-3 3H6a3 3 0 01-3-3v-2.25zM13.5 15.75a3 3 0 013-3H18.75a3 3 0 013 3V18a3 3 0 01-3 3H16.5a3 3 0 01-3-3v-2.25z" stroke="currentColor" strokeWidth="2" fill="none"/>
+            </svg>
+            الفلاتر
+          </h3>
           {(searchTerm || selectedTermId || selectedBranchId || filterMissingInsurance || filterMissingLease) && (
             <button 
               className="clear-filters-btn"
@@ -772,82 +795,143 @@ const BusTransportation = () => {
                 setFilterMissingLease(false);
               }}
             >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '0.5rem' }}>
+                <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
               إلغاء الفلاتر
             </button>
           )}
         </div>
-        <div className="filters-content">
-        <div className="search-box">
-          <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" strokeWidth="2"/>
-          </svg>
-          <input
-            type="text"
-            placeholder="ابحث عن حافلة، سائق، لوحة، أو مسار..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="search-input"
-          />
-        </div>
 
-        <select
-          className="filter-select"
-          value={selectedTermId}
-          onChange={(e) => setSelectedTermId(e.target.value)}
-        >
-          <option value="">جميع الفصول</option>
-          {terms.map(term => (
-            <option key={term.id} value={term.id}>
-              {term.term_name} - {term.academic_year_label}
-            </option>
-          ))}
-        </select>
+        <div className="filters-content-wrapper">
+          <div className="filters-main-row">
+            {/* Search Filter */}
+            <div className="filter-group filter-search">
+              <label className="filter-label">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '0.5rem' }}>
+                  <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" strokeWidth="2"/>
+                </svg>
+                البحث
+              </label>
+              <div className="search-box">
+                <svg className="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" strokeWidth="2"/>
+                </svg>
+                <input
+                  type="text"
+                  placeholder="ابحث عن حافلة، سائق، لوحة، أو مسار..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="filter-input"
+                />
+              </div>
+            </div>
 
-        {isMainManager() && (
-          <select
-            className="filter-select"
-            value={selectedBranchId}
-            onChange={(e) => setSelectedBranchId(e.target.value)}
-          >
-            <option value="">جميع الفروع</option>
-            {branches.map(branch => (
-              <option key={branch.id} value={branch.id}>{branch.branch_name}</option>
-            ))}
-          </select>
-        )}
-        </div>
+            {/* Term Filter */}
+            <div className="filter-group filter-term">
+              <label className="filter-label">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '0.5rem' }}>
+                  <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="currentColor" strokeWidth="2"/>
+                </svg>
+                الفصل الدراسي
+              </label>
+              <select
+                className="filter-select"
+                value={selectedTermId}
+                onChange={(e) => setSelectedTermId(e.target.value)}
+              >
+                <option value="">جميع الفصول</option>
+                {(() => {
+                  // For main managers without branch filter, group by branch type using optgroups
+                  if (isMainManager() && !selectedBranchId && terms.length > 0) {
+                    const grouped = groupTermsByBranchType(terms);
+                    const branchTypeLabels = {
+                      school: 'مدارس',
+                      healthcare_center: 'مراكز رعاية نهارية'
+                    };
+                    
+                    return Object.keys(grouped).map(branchType => {
+                      const typeTerms = grouped[branchType];
+                      if (typeTerms.length === 0) return null;
+                      
+                      return (
+                        <optgroup key={branchType} label={branchTypeLabels[branchType] || branchType}>
+                          {typeTerms.map(term => (
+                            <option key={term.id} value={term.id}>
+                              {formatTermDisplay(term, { showBranchType: false })}
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    }).filter(Boolean);
+                  } else {
+                    // For branch managers or when branch is selected, show flat list
+                    return terms.map(term => (
+                      <option key={term.id} value={term.id}>
+                        {formatTermDisplay(term, { showBranchType: false })}
+                      </option>
+                    ));
+                  }
+                })()}
+              </select>
+            </div>
 
-        {/* Quick Filter Buttons - Main Manager Only */}
-        {isMainManager() && (
-          <div className="quick-filters-section">
-            <button
-              className={`quick-filter-btn ${filterMissingInsurance ? 'active' : ''}`}
-              onClick={() => {
-                setFilterMissingInsurance(!filterMissingInsurance);
-                setFilterMissingLease(false);
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-              ناقص معلومات التأمين
-            </button>
-            <button
-              className={`quick-filter-btn ${filterMissingLease ? 'active' : ''}`}
-              onClick={() => {
-                setFilterMissingLease(!filterMissingLease);
-                setFilterMissingInsurance(false);
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-              ناقص معلومات الإيجار
-            </button>
+            {/* Branch Filter - Main Manager Only */}
+            {isMainManager() && (
+              <div className="filter-group filter-branch">
+                <label className="filter-label">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '0.5rem' }}>
+                    <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" stroke="currentColor" strokeWidth="2"/>
+                  </svg>
+                  الفرع
+                </label>
+                <select
+                  className="filter-select"
+                  value={selectedBranchId}
+                  onChange={(e) => setSelectedBranchId(e.target.value)}
+                >
+                  <option value="">جميع الفروع</option>
+                  {branches.map(branch => (
+                    <option key={branch.id} value={branch.id}>{branch.branch_name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
-        )}
+
+          {/* Quick Filter Buttons - Main Manager Only */}
+          {isMainManager() && (
+            <div className="quick-filters-section">
+              <span className="quick-filters-label">فلتر سريع:</span>
+              <button
+                className={`quick-filter-btn ${filterMissingInsurance ? 'active' : ''}`}
+                onClick={() => {
+                  setFilterMissingInsurance(!filterMissingInsurance);
+                  setFilterMissingLease(false);
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                  <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+                ناقص معلومات التأمين
+              </button>
+              <button
+                className={`quick-filter-btn ${filterMissingLease ? 'active' : ''}`}
+                onClick={() => {
+                  setFilterMissingLease(!filterMissingLease);
+                  setFilterMissingInsurance(false);
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                  <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+                ناقص معلومات الإيجار
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Divider */}
