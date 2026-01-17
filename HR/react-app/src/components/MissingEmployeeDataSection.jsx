@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import './MissingEmployeeDataSection.css';
 
-const MissingEmployeeDataSection = () => {
+const MissingEmployeeDataSection = ({ onComplete }) => {
   const { isMainManager, user } = useAuth();
   const { showError, showSuccess } = useNotification();
 
@@ -12,6 +12,7 @@ const MissingEmployeeDataSection = () => {
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingEmployeeId, setSavingEmployeeId] = useState(null); // Track which employee is being saved
   const [errors, setErrors] = useState({});
 
   const isValidDDMMYYYY = (value) => {
@@ -80,6 +81,87 @@ const MissingEmployeeDataSection = () => {
     }));
   };
 
+  // Save a single employee
+  const handleSaveEmployee = async (employeeId) => {
+    try {
+      setSavingEmployeeId(employeeId);
+      const row = rows.find(r => r.id === employeeId);
+      if (!row) return;
+
+      const draft = drafts[employeeId] || {};
+      const file = draft.qualification_file;
+
+      const startValid = isValidDDMMYYYY(draft.contract_start_date);
+      const endValid = isValidDDMMYYYY(draft.contract_end_date);
+      
+      const newErrors = {};
+      if (row.missing_start && !startValid) {
+        newErrors[employeeId] = 'صيغة التاريخ يجب أن تكون dd/mm/yyyy (مثال 20/8/2026)';
+      }
+      if (row.missing_end && !endValid) {
+        newErrors[employeeId] = 'صيغة التاريخ يجب أن تكون dd/mm/yyyy (مثال 20/8/2026)';
+      }
+
+      if (Object.keys(newErrors).length > 0) {
+        setErrors(prev => ({ ...prev, ...newErrors }));
+        setSavingEmployeeId(null);
+        return;
+      }
+
+      setErrors(prev => {
+        const updated = { ...prev };
+        delete updated[employeeId];
+        return updated;
+      });
+
+      const entry = {
+        employee_id: row.id,
+        contract_start_date_hijri: null,
+        contract_start_date_gregorian: toIso(draft.contract_start_date),
+        contract_end_date_hijri: null,
+        contract_end_date_gregorian: toIso(draft.contract_end_date),
+        qualification_file: file || null,
+      };
+
+      const formData = new FormData();
+      formData.append('entries', JSON.stringify([
+        {
+          employee_id: entry.employee_id,
+          contract_start_date_hijri: entry.contract_start_date_hijri,
+          contract_start_date_gregorian: entry.contract_start_date_gregorian,
+          contract_end_date_hijri: entry.contract_end_date_hijri,
+          contract_end_date_gregorian: entry.contract_end_date_gregorian,
+          qualification_file: entry.qualification_file ? 'attached' : null,
+        }
+      ]));
+
+      if (entry.qualification_file) {
+        formData.append('file_0', entry.qualification_file);
+        formData.append('file_employee_0', entry.employee_id);
+      }
+
+      await employeesAPI.saveMissingRequiredData(formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      showSuccess('تم حفظ بيانات الموظف');
+      await loadData();
+      
+      // Check if all employees are now complete
+      const remainingRes = await employeesAPI.getMissingRequiredData({});
+      if (remainingRes.data?.success && (remainingRes.data.data || []).length === 0) {
+        // Call onComplete callback if all employees are done
+        if (onComplete) {
+          onComplete();
+        }
+      }
+    } catch (error) {
+      console.error('Error saving employee data:', error);
+      showError(error.response?.data?.message || 'فشل حفظ البيانات');
+    } finally {
+      setSavingEmployeeId(null);
+    }
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
@@ -138,6 +220,11 @@ const MissingEmployeeDataSection = () => {
       });
       showSuccess('تم حفظ البيانات');
       await loadData();
+      
+      // Call onComplete callback if provided (for task completion tracking)
+      if (onComplete) {
+        onComplete();
+      }
     } catch (error) {
       console.error('Error saving missing required data:', error);
       showError(error.response?.data?.message || 'فشل حفظ البيانات');
@@ -174,6 +261,7 @@ const MissingEmployeeDataSection = () => {
               <th>بداية العقد</th>
               <th>نهاية العقد</th>
               <th>مؤهل أساسي</th>
+              <th>إجراءات</th>
             </tr>
           </thead>
           <tbody>
@@ -205,25 +293,40 @@ const MissingEmployeeDataSection = () => {
                 <td>
                   {row.missing_qualification_doc ? (
                     <div className="qual-upload">
-                      <label className="badge badge-warning">يلزم رفع المؤهل الأساسي</label>
-                      <input
-                        type="file"
-                        accept="application/pdf,image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [row.id]: {
-                              ...prev[row.id],
-                              qualification_file: file || null,
-                            },
-                          }));
-                        }}
-                      />
+                      <label className="file-upload-label">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>{drafts[row.id]?.qualification_file ? drafts[row.id].qualification_file.name : 'رفع مستند المؤهل'}</span>
+                        <input
+                          type="file"
+                          accept="application/pdf,image/*"
+                          className="file-upload-input"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            setDrafts((prev) => ({
+                              ...prev,
+                              [row.id]: {
+                                ...prev[row.id],
+                                qualification_file: file || null,
+                              },
+                            }));
+                          }}
+                        />
+                      </label>
                     </div>
                   ) : (
                     <span className="badge badge-success">مكتمل</span>
                   )}
+                </td>
+                <td>
+                  <button
+                    className="btn btn-primary btn-sm employee-save-btn"
+                    onClick={() => handleSaveEmployee(row.id)}
+                    disabled={savingEmployeeId === row.id}
+                  >
+                    {savingEmployeeId === row.id ? 'جارٍ الحفظ...' : 'حفظ'}
+                  </button>
                 </td>
               </tr>
             ))}

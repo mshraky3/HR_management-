@@ -205,11 +205,11 @@ const UnifiedDatePicker = ({
         setSelectedDate(new Date(gregorian));
         setCalendarOpen(false);
       } else {
-        setValidationError(response.data.data.errors?.[0] || 'Invalid date');
+        setValidationError(response.data.data.errors?.[0] || 'تاريخ غير صحيح');
       }
     } catch (error) {
       console.error('Error converting date:', error);
-      setValidationError(error.response?.data?.message || 'Failed to convert date');
+      setValidationError(error.response?.data?.message || 'فشل تحويل التاريخ');
     } finally {
       setLoading(false);
     }

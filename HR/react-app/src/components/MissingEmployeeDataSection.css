@@ -111,23 +111,70 @@
   flex-direction: column;
   gap: var(--spacing-xs);
   width: 100%;
-  max-width: 200px;
+  max-width: 220px;
 }
 
-.qual-upload input[type="file"] {
-  width: 100%;
-  max-width: 200px;
-  font-size: var(--font-size-xs);
-  padding: var(--spacing-xs);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg);
+/* Hide default file input */
+.qual-upload .file-upload-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+  z-index: -1;
+}
+
+/* Eye-catching file upload label/button */
+.qual-upload .file-upload-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  border: 2px solid var(--primary, #4988C4);
+  border-radius: var(--radius-md, 8px);
+  background: linear-gradient(135deg, rgba(73, 136, 196, 0.1) 0%, rgba(73, 136, 196, 0.05) 100%);
+  color: var(--primary, #4988C4);
+  font-size: var(--font-size-sm, 14px);
+  font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s ease !important;
+  text-align: center;
+  min-width: 180px;
+  box-shadow: 0 2px 8px rgba(73, 136, 196, 0.2);
 }
 
-.qual-upload label {
-  font-size: var(--font-size-xs);
-  margin-bottom: var(--spacing-xs);
+.qual-upload .file-upload-label:hover {
+  background: linear-gradient(135deg, rgba(73, 136, 196, 0.15) 0%, rgba(73, 136, 196, 0.1) 100%) !important;
+  border-color: var(--primary-hover, #3a6fa0) !important;
+  box-shadow: 0 4px 12px rgba(73, 136, 196, 0.3) !important;
+  transform: none !important;
+  scale: 1 !important;
+}
+
+.qual-upload .file-upload-label:active {
+  background: linear-gradient(135deg, rgba(73, 136, 196, 0.2) 0%, rgba(73, 136, 196, 0.15) 100%) !important;
+  transform: translateY(1px) !important;
+  scale: 1 !important;
+}
+
+.qual-upload .file-upload-label svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+/* Employee save button */
+.employee-save-btn {
+  min-width: 100px;
+  padding: 0.5rem 1rem;
+  font-size: var(--font-size-sm, 14px);
+  white-space: nowrap;
+}
+
+.employee-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .missing-data-actions {
