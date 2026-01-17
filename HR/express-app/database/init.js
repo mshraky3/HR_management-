@@ -535,6 +535,23 @@ export async function initializeDatabase() {
       'CREATE INDEX IF NOT EXISTS idx_terms_dates ON terms(start_date, end_date)',
       'Created index on terms dates'
     );
+    
+    // Add UNIQUE constraint to prevent duplicate terms
+    // Prevents same term_number for same branch_type + academic_year_label
+    await executeQuery(
+      `DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint 
+          WHERE conname = 'terms_unique_per_branch_year_term'
+        ) THEN
+          ALTER TABLE terms 
+          ADD CONSTRAINT terms_unique_per_branch_year_term 
+          UNIQUE(branch_type, academic_year_label, term_number);
+        END IF;
+      END $$;`,
+      'Added UNIQUE constraint on terms (branch_type, academic_year_label, term_number)'
+    );
 
     // 13. Create academic_years table
     await createTable('academic_years', `

@@ -132,6 +132,30 @@ export const Term = {
   },
 
   /**
+   * Check for duplicate terms (same branch_type, academic_year_label, term_number)
+   */
+  async checkDuplicate(branchType, academicYearLabel, termNumber, excludeId = null) {
+    try {
+      let query = sql`
+        SELECT * FROM terms
+        WHERE branch_type = ${branchType}
+        AND academic_year_label = ${academicYearLabel}
+        AND term_number = ${termNumber}
+        AND is_active = true
+      `;
+      
+      if (excludeId) {
+        query = sql`${query} AND id != ${excludeId}`;
+      }
+      
+      return await query;
+    } catch (error) {
+      console.error('Error checking term duplicate:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Create new term
    */
   async create(termData) {
@@ -154,6 +178,12 @@ export const Term = {
       const overlaps = await this.checkOverlap(branch_type, start_date, end_date);
       if (overlaps.length > 0) {
         throw new Error('Term overlaps with existing term');
+      }
+      
+      // Check for duplicates (same branch_type, academic_year_label, term_number)
+      const duplicates = await this.checkDuplicate(branch_type, academic_year_label, term_number);
+      if (duplicates.length > 0) {
+        throw new Error(`Term with same branch type, academic year label, and term number already exists. Academic year: ${academic_year_label}, Term number: ${term_number}`);
       }
       
       const [term] = await sql`
@@ -190,19 +220,31 @@ export const Term = {
         throw new Error('No valid fields to update');
       }
       
+      // Get existing term for validation
+      const term = await this.findById(id);
+      if (!term) {
+        throw new Error('Term not found');
+      }
+      
       // Check for overlaps if dates are being updated
       if (updates.start_date || updates.end_date) {
-        const term = await this.findById(id);
-        if (!term) {
-          throw new Error('Term not found');
-        }
-        
         const startDate = updates.start_date || term.start_date;
         const endDate = updates.end_date || term.end_date;
         
         const overlaps = await this.checkOverlap(term.branch_type, startDate, endDate, id);
         if (overlaps.length > 0) {
           throw new Error('Updated term dates overlap with existing term');
+        }
+      }
+      
+      // Check for duplicates if academic_year_label or term_number are being updated
+      const newAcademicYearLabel = updates.academic_year_label || term.academic_year_label;
+      const newTermNumber = updates.term_number !== undefined ? updates.term_number : term.term_number;
+      
+      if (updates.academic_year_label || updates.term_number !== undefined) {
+        const duplicates = await this.checkDuplicate(term.branch_type, newAcademicYearLabel, newTermNumber, id);
+        if (duplicates.length > 0) {
+          throw new Error(`Term with same branch type, academic year label, and term number already exists. Academic year: ${newAcademicYearLabel}, Term number: ${newTermNumber}`);
         }
       }
       

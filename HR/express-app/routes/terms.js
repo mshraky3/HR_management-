@@ -326,6 +326,23 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
       });
     }
     
+    // Check for duplicate terms (same branch_type, academic_year_label, term_number)
+    const term1Duplicates = await Term.checkDuplicate(branch_type, year_label.trim(), 1);
+    if (term1Duplicates.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `الفصل الأول للسنة الدراسية "${year_label.trim()}" موجود مسبقاً لهذا النوع من الفروع`
+      });
+    }
+    
+    const term2Duplicates = await Term.checkDuplicate(branch_type, year_label.trim(), 2);
+    if (term2Duplicates.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `الفصل الثاني للسنة الدراسية "${year_label.trim()}" موجود مسبقاً لهذا النوع من الفروع`
+      });
+    }
+    
     // Create both terms and academic year in a transaction
     const result = await sql.begin(async sql => {
       // Create first term

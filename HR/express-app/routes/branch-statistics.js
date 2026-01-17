@@ -37,6 +37,20 @@ router.get('/', async (req, res) => {
       WHERE is_active = true
       ORDER BY branch_name
     `;
+
+    // If no branches, return early
+    if (!branches || branches.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        period: {
+          month: currentMonth,
+          year: currentYear,
+          first_day: firstDayOfMonth,
+          last_day: lastDayOfMonth
+        }
+      });
+    }
     
     // Get statistics for each branch
     // Performance Optimization: Calculate date ranges once before the loop
@@ -48,250 +62,288 @@ router.get('/', async (req, res) => {
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const sixMonthsAgoStr = sixMonthsAgo.toISOString().split('T')[0];
     
-    const statistics = await Promise.all(
-      branches.map(async (branch) => {
+    const branchIds = branches.map(b => b.id).filter(Boolean);
+
+    // IMPORTANT: Avoid N-branches * N-queries fan-out.
+    // For small DB instances, the previous approach can trigger Postgres OOM.
+    // We aggregate per-branch in a few queries, then assemble the same response.
+    const [
+      loginDaysRows,
+      employeeStatsRows,
+      employeeUpdatesRows,
+      documentUploadsRows,
+      employeeCreationsRows,
+      statusChangesRows,
+      lastActivityRows,
+      lastLoginRows,
+      monthlyLoginRows
+    ] = await Promise.all([
+      // 1. Login days this month
+      sql`
+        SELECT branch_id, COUNT(DISTINCT login_date)::int AS login_count
+        FROM user_logins
+        WHERE branch_id = ANY(${branchIds})
+        AND login_date >= ${firstDayOfMonth}
+        AND login_date <= ${lastDayOfMonth}
+        GROUP BY branch_id
+      `,
+      // 2. Employee completion statistics
+      sql`
+        SELECT
+          branch_id,
+          COUNT(*)::int AS total_employees,
+          COUNT(*) FILTER (WHERE data_completion_status = 'complete')::int AS complete_employees,
+          COUNT(*) FILTER (WHERE data_completion_status = 'incomplete')::int AS incomplete_employees,
+          COUNT(*) FILTER (WHERE status = 'active')::int AS active_employees,
+          COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_employees
+        FROM employees
+        WHERE branch_id = ANY(${branchIds})
+        AND status IN ('active', 'pending')
+        GROUP BY branch_id
+      `,
+      // 3a. Employee updates (last 30 days)
+      sql`
+        SELECT branch_id, COUNT(*)::int AS update_count
+        FROM employees
+        WHERE branch_id = ANY(${branchIds})
+        AND updated_at >= ${thirtyDaysAgoStr}
+        GROUP BY branch_id
+      `,
+      // 3b. Document uploads (last 30 days)
+      sql`
+        SELECT e.branch_id, COUNT(*)::int AS upload_count
+        FROM employee_documents ed
+        INNER JOIN employees e ON ed.employee_id = e.id
+        WHERE e.branch_id = ANY(${branchIds})
+        AND ed.uploaded_at >= ${thirtyDaysAgoStr}
+        AND ed.is_active = true
+        GROUP BY e.branch_id
+      `,
+      // 3c. Employee creations (last 30 days)
+      sql`
+        SELECT branch_id, COUNT(*)::int AS creation_count
+        FROM employees
+        WHERE branch_id = ANY(${branchIds})
+        AND created_at >= ${thirtyDaysAgoStr}
+        GROUP BY branch_id
+      `,
+      // 3d. Status changes (last 30 days)
+      sql`
+        SELECT branch_id, COUNT(*)::int AS status_change_count
+        FROM employees
+        WHERE branch_id = ANY(${branchIds})
+        AND status_changed_at IS NOT NULL
+        AND status_changed_at >= ${thirtyDaysAgoStr}
+        GROUP BY branch_id
+      `,
+      // 4. Last activity date per branch (employees + documents)
+      sql`
+        WITH emp AS (
+          SELECT
+            branch_id,
+            MAX(updated_at) AS max_updated_at,
+            MAX(created_at) AS max_created_at,
+            MAX(status_changed_at) AS max_status_changed_at
+          FROM employees
+          WHERE branch_id = ANY(${branchIds})
+          GROUP BY branch_id
+        ),
+        docs AS (
+          SELECT
+            e.branch_id,
+            MAX(ed.uploaded_at) AS max_uploaded_at
+          FROM employee_documents ed
+          INNER JOIN employees e ON ed.employee_id = e.id
+          WHERE e.branch_id = ANY(${branchIds})
+          GROUP BY e.branch_id
+        )
+        SELECT
+          b.id AS branch_id,
+          GREATEST(
+            COALESCE(emp.max_updated_at, '1970-01-01'::timestamp),
+            COALESCE(docs.max_uploaded_at, '1970-01-01'::timestamp),
+            COALESCE(emp.max_created_at, '1970-01-01'::timestamp),
+            COALESCE(emp.max_status_changed_at, '1970-01-01'::timestamp)
+          ) AS last_activity
+        FROM branches b
+        LEFT JOIN emp ON emp.branch_id = b.id
+        LEFT JOIN docs ON docs.branch_id = b.id
+        WHERE b.id = ANY(${branchIds})
+      `,
+      // 5. Last login date per branch
+      sql`
+        SELECT branch_id, MAX(login_date) AS last_login
+        FROM user_logins
+        WHERE branch_id = ANY(${branchIds})
+        GROUP BY branch_id
+      `,
+      // 6. Monthly login history (last 6 months)
+      sql`
+        SELECT
+          branch_id,
+          DATE_TRUNC('month', login_date)::date AS month,
+          COUNT(DISTINCT login_date)::int AS login_days
+        FROM user_logins
+        WHERE branch_id = ANY(${branchIds})
+        AND login_date >= ${sixMonthsAgoStr}
+        GROUP BY branch_id, DATE_TRUNC('month', login_date)
+        ORDER BY month DESC
+      `
+    ]);
+
+    const toMap = (rows, key) => {
+      const m = new Map();
+      for (const r of rows || []) m.set(r?.[key], r);
+      return m;
+    };
+
+    const loginDaysMap = toMap(loginDaysRows, 'branch_id');
+    const employeeStatsMap = toMap(employeeStatsRows, 'branch_id');
+    const employeeUpdatesMap = toMap(employeeUpdatesRows, 'branch_id');
+    const documentUploadsMap = toMap(documentUploadsRows, 'branch_id');
+    const employeeCreationsMap = toMap(employeeCreationsRows, 'branch_id');
+    const statusChangesMap = toMap(statusChangesRows, 'branch_id');
+    const lastActivityMap = toMap(lastActivityRows, 'branch_id');
+    const lastLoginMap = toMap(lastLoginRows, 'branch_id');
+
+    const monthlyLoginHistoryByBranch = new Map();
+    for (const r of monthlyLoginRows || []) {
+      const id = r?.branch_id;
+      if (!id) continue;
+      if (!monthlyLoginHistoryByBranch.has(id)) monthlyLoginHistoryByBranch.set(id, []);
+      monthlyLoginHistoryByBranch.get(id).push({
+        month: r?.month || null,
+        login_days: parseInt(r?.login_days || 0, 10) || 0
+      });
+    }
+
+    const statistics = branches.map((branch) => {
+      try {
+        const loginDaysCount = parseInt(loginDaysMap.get(branch.id)?.login_count || 0, 10) || 0;
+
+        const stats = employeeStatsMap.get(branch.id) || {
+          total_employees: 0,
+          complete_employees: 0,
+          incomplete_employees: 0,
+          active_employees: 0,
+          pending_employees: 0
+        };
+
+        const safeStats = {
+          total_employees: parseInt(stats.total_employees || 0, 10) || 0,
+          complete_employees: parseInt(stats.complete_employees || 0, 10) || 0,
+          incomplete_employees: parseInt(stats.incomplete_employees || 0, 10) || 0,
+          active_employees: parseInt(stats.active_employees || 0, 10) || 0,
+          pending_employees: parseInt(stats.pending_employees || 0, 10) || 0
+        };
+
+        let completionPercentage = 0;
         try {
-          // Performance Optimization: Execute all 9 queries in parallel using Promise.all
-          // This reduces query time from ~450ms to ~50ms per branch (9x faster)
-          const [
-            loginDays,
-            employeeStats,
-            employeeUpdates,
-            documentUploads,
-            employeeCreations,
-            statusChanges,
-            lastActivity,
-            lastLogin,
-            monthlyLogins
-          ] = await Promise.all([
-          // 1. Login days this month
-          sql`
-            SELECT COUNT(DISTINCT login_date)::int as login_count
-            FROM user_logins
-            WHERE branch_id = ${branch.id}
-            AND login_date >= ${firstDayOfMonth}
-            AND login_date <= ${lastDayOfMonth}
-          `,
-          // 2. Employee completion statistics
-          sql`
-            SELECT 
-              COUNT(*) as total_employees,
-              COUNT(*) FILTER (WHERE data_completion_status = 'complete') as complete_employees,
-              COUNT(*) FILTER (WHERE data_completion_status = 'incomplete') as incomplete_employees,
-              COUNT(*) FILTER (WHERE status = 'active') as active_employees,
-              COUNT(*) FILTER (WHERE status = 'pending') as pending_employees
-            FROM employees
-            WHERE branch_id = ${branch.id}
-            AND (status = 'active' OR status = 'pending')
-          `,
-          // 3a. Employee updates (last 30 days)
-          sql`
-            SELECT COUNT(*)::int as update_count
-            FROM employees
-            WHERE branch_id = ${branch.id}
-            AND updated_at >= ${thirtyDaysAgoStr}
-          `,
-          // 3b. Document uploads (last 30 days)
-          sql`
-            SELECT COUNT(*)::int as upload_count
-            FROM employee_documents ed
-            INNER JOIN employees e ON ed.employee_id = e.id
-            WHERE e.branch_id = ${branch.id}
-            AND ed.uploaded_at >= ${thirtyDaysAgoStr}
-            AND ed.is_active = true
-          `,
-          // 3c. Employee creations (last 30 days)
-          sql`
-            SELECT COUNT(*)::int as creation_count
-            FROM employees
-            WHERE branch_id = ${branch.id}
-            AND created_at >= ${thirtyDaysAgoStr}
-          `,
-          // 3d. Status changes (last 30 days)
-          sql`
-            SELECT COUNT(*)::int as status_change_count
-            FROM employees
-            WHERE branch_id = ${branch.id}
-            AND status_changed_at >= ${thirtyDaysAgoStr}
-            AND status_changed_at IS NOT NULL
-          `,
-          // 4. Last activity date
-          sql`
-            SELECT GREATEST(
-              COALESCE((SELECT MAX(updated_at) FROM employees WHERE branch_id = ${branch.id}), '1970-01-01'::timestamp),
-              COALESCE((SELECT MAX(uploaded_at) FROM employee_documents ed INNER JOIN employees e ON ed.employee_id = e.id WHERE e.branch_id = ${branch.id}), '1970-01-01'::timestamp),
-              COALESCE((SELECT MAX(created_at) FROM employees WHERE branch_id = ${branch.id}), '1970-01-01'::timestamp),
-              COALESCE((SELECT MAX(status_changed_at) FROM employees WHERE branch_id = ${branch.id} AND status_changed_at IS NOT NULL), '1970-01-01'::timestamp)
-            ) as last_activity
-          `,
-          // 5. Last login date
-          sql`
-            SELECT MAX(login_date) as last_login
-            FROM user_logins
-            WHERE branch_id = ${branch.id}
-          `,
-          // 6. Monthly login history (last 6 months)
-          sql`
-            SELECT 
-              DATE_TRUNC('month', login_date)::date as month,
-              COUNT(DISTINCT login_date)::int as login_days
-            FROM user_logins
-            WHERE branch_id = ${branch.id}
-            AND login_date >= ${sixMonthsAgoStr}
-            GROUP BY DATE_TRUNC('month', login_date)
-            ORDER BY month DESC
-          `
-        ]);
-        
-          // Extract results from parallel queries with safe parsing
-          const loginDaysCount = parseInt(loginDays?.[0]?.login_count || 0, 10) || 0;
-          
-          const stats = employeeStats?.[0] || {
-            total_employees: 0,
-            complete_employees: 0,
-            incomplete_employees: 0,
-            active_employees: 0,
-            pending_employees: 0
-          };
-          
-          // Ensure all stats values are valid numbers
-          const safeStats = {
-            total_employees: parseInt(stats.total_employees || 0, 10) || 0,
-            complete_employees: parseInt(stats.complete_employees || 0, 10) || 0,
-            incomplete_employees: parseInt(stats.incomplete_employees || 0, 10) || 0,
-            active_employees: parseInt(stats.active_employees || 0, 10) || 0,
-            pending_employees: parseInt(stats.pending_employees || 0, 10) || 0
-          };
-          
-          // Use unified utility to calculate completion percentage
-          // This ensures consistent calculation using branch.number_of_employees when available
-          let employeeMetrics;
-          let completionPercentage = 0;
-          try {
-            employeeMetrics = calculateEmployeeCompletion(safeStats, branch);
-            completionPercentage = employeeMetrics?.percentage || 0;
-          } catch (calcError) {
-            console.error(`Error calculating completion for branch ${branch.id}:`, calcError);
-            employeeMetrics = {
-              percentage: 0,
-              completeCount: safeStats.complete_employees,
-              incompleteCount: safeStats.incomplete_employees,
-              totalCount: safeStats.total_employees
-            };
-            completionPercentage = 0;
-          }
-        
-          const totalActivities = 
-            (parseInt(employeeUpdates?.[0]?.update_count || 0, 10) || 0) +
-            (parseInt(documentUploads?.[0]?.upload_count || 0, 10) || 0) +
-            (parseInt(employeeCreations?.[0]?.creation_count || 0, 10) || 0) +
-            (parseInt(statusChanges?.[0]?.status_change_count || 0, 10) || 0);
-          
-          // 7. Determine operational status with safe date parsing
-          let daysSinceLastLogin = null;
-          let daysSinceLastActivity = null;
-          
-          try {
-            if (lastLogin?.[0]?.last_login) {
-              const lastLoginDate = new Date(lastLogin[0].last_login);
-              if (!isNaN(lastLoginDate.getTime())) {
-                daysSinceLastLogin = Math.floor((new Date() - lastLoginDate) / (1000 * 60 * 60 * 24));
-              }
-            }
-          } catch (e) {
-            console.warn(`Error parsing last_login for branch ${branch.id}:`, e);
-          }
-          
-          try {
-            if (lastActivity?.[0]?.last_activity) {
-              const lastActivityDate = new Date(lastActivity[0].last_activity);
-              if (!isNaN(lastActivityDate.getTime())) {
-                daysSinceLastActivity = Math.floor((new Date() - lastActivityDate) / (1000 * 60 * 60 * 24));
-              }
-            }
-          } catch (e) {
-            console.warn(`Error parsing last_activity for branch ${branch.id}:`, e);
-          }
-          
-          // Operational criteria:
-          // - Has logged in within last 30 days OR has activity within last 30 days
-          // - Has employees
-          // - Has some activity in last 30 days
-          const isOperational = (
-            (daysSinceLastLogin !== null && daysSinceLastLogin <= 30) ||
-            (daysSinceLastActivity !== null && daysSinceLastActivity <= 30)
-          ) && safeStats.total_employees > 0 && totalActivities > 0;
-          
-          // Safely map monthly login history
-          let monthlyLoginHistory = [];
-          try {
-            monthlyLoginHistory = (monthlyLogins || []).map(m => ({
-              month: m?.month || null,
-              login_days: parseInt(m?.login_days || 0, 10) || 0
-            })).filter(m => m.month !== null);
-          } catch (e) {
-            console.warn(`Error mapping monthly logins for branch ${branch.id}:`, e);
-          }
-          
-          return {
-            branch_id: branch.id,
-            branch_name: branch.branch_name || 'غير محدد',
-            branch_type: branch.branch_type || null,
-            username: branch.username || null,
-            login_days_this_month: loginDaysCount,
-            total_employees: safeStats.total_employees,
-            complete_employees: safeStats.complete_employees,
-            incomplete_employees: safeStats.incomplete_employees,
-            active_employees: safeStats.active_employees,
-            pending_employees: safeStats.pending_employees,
-            completion_percentage: completionPercentage,
-            activities_last_30_days: {
-              employee_updates: parseInt(employeeUpdates?.[0]?.update_count || 0, 10) || 0,
-              document_uploads: parseInt(documentUploads?.[0]?.upload_count || 0, 10) || 0,
-              employee_creations: parseInt(employeeCreations?.[0]?.creation_count || 0, 10) || 0,
-              status_changes: parseInt(statusChanges?.[0]?.status_change_count || 0, 10) || 0,
-              total: totalActivities
-            },
-            last_activity: lastActivity?.[0]?.last_activity || null,
-            last_login: lastLogin?.[0]?.last_login || null,
-            monthly_login_history: monthlyLoginHistory,
-            is_operational: isOperational,
-            days_since_last_login: daysSinceLastLogin,
-            days_since_last_activity: daysSinceLastActivity
-          };
-        } catch (branchError) {
-          console.error(`Error processing branch ${branch?.id || 'unknown'}:`, branchError);
-          // Return safe default values for this branch
-          return {
-            branch_id: branch?.id || null,
-            branch_name: branch?.branch_name || 'غير محدد',
-            branch_type: branch?.branch_type || null,
-            username: branch?.username || null,
-            login_days_this_month: 0,
-            total_employees: 0,
-            complete_employees: 0,
-            incomplete_employees: 0,
-            active_employees: 0,
-            pending_employees: 0,
-            completion_percentage: 0,
-            activities_last_30_days: {
-              employee_updates: 0,
-              document_uploads: 0,
-              employee_creations: 0,
-              status_changes: 0,
-              total: 0
-            },
-            last_activity: null,
-            last_login: null,
-            monthly_login_history: [],
-            is_operational: false,
-            days_since_last_login: null,
-            days_since_last_activity: null,
-            error: branchError.message
-          };
+          const employeeMetrics = calculateEmployeeCompletion(safeStats, branch);
+          completionPercentage = employeeMetrics?.percentage || 0;
+        } catch (calcError) {
+          console.error(`Error calculating completion for branch ${branch.id}:`, calcError);
         }
-      })
-    );
+
+        const employeeUpdatesCount = parseInt(employeeUpdatesMap.get(branch.id)?.update_count || 0, 10) || 0;
+        const documentUploadsCount = parseInt(documentUploadsMap.get(branch.id)?.upload_count || 0, 10) || 0;
+        const employeeCreationsCount = parseInt(employeeCreationsMap.get(branch.id)?.creation_count || 0, 10) || 0;
+        const statusChangesCount = parseInt(statusChangesMap.get(branch.id)?.status_change_count || 0, 10) || 0;
+
+        const totalActivities = employeeUpdatesCount + documentUploadsCount + employeeCreationsCount + statusChangesCount;
+
+        const lastLoginVal = lastLoginMap.get(branch.id)?.last_login || null;
+        const lastActivityVal = lastActivityMap.get(branch.id)?.last_activity || null;
+
+        let daysSinceLastLogin = null;
+        let daysSinceLastActivity = null;
+
+        try {
+          if (lastLoginVal) {
+            const lastLoginDate = new Date(lastLoginVal);
+            if (!isNaN(lastLoginDate.getTime())) {
+              daysSinceLastLogin = Math.floor((new Date() - lastLoginDate) / (1000 * 60 * 60 * 24));
+            }
+          }
+        } catch (e) {
+          console.warn(`Error parsing last_login for branch ${branch.id}:`, e);
+        }
+
+        try {
+          if (lastActivityVal) {
+            const lastActivityDate = new Date(lastActivityVal);
+            if (!isNaN(lastActivityDate.getTime())) {
+              daysSinceLastActivity = Math.floor((new Date() - lastActivityDate) / (1000 * 60 * 60 * 24));
+            }
+          }
+        } catch (e) {
+          console.warn(`Error parsing last_activity for branch ${branch.id}:`, e);
+        }
+
+        const isOperational = (
+          (daysSinceLastLogin !== null && daysSinceLastLogin <= 30) ||
+          (daysSinceLastActivity !== null && daysSinceLastActivity <= 30)
+        ) && safeStats.total_employees > 0 && totalActivities > 0;
+
+        const monthlyLoginHistory = (monthlyLoginHistoryByBranch.get(branch.id) || []).filter(m => m.month !== null);
+
+        return {
+          branch_id: branch.id,
+          branch_name: branch.branch_name || 'غير محدد',
+          branch_type: branch.branch_type || null,
+          username: branch.username || null,
+          login_days_this_month: loginDaysCount,
+          total_employees: safeStats.total_employees,
+          complete_employees: safeStats.complete_employees,
+          incomplete_employees: safeStats.incomplete_employees,
+          active_employees: safeStats.active_employees,
+          pending_employees: safeStats.pending_employees,
+          completion_percentage: completionPercentage,
+          activities_last_30_days: {
+            employee_updates: employeeUpdatesCount,
+            document_uploads: documentUploadsCount,
+            employee_creations: employeeCreationsCount,
+            status_changes: statusChangesCount,
+            total: totalActivities
+          },
+          last_activity: lastActivityVal,
+          last_login: lastLoginVal,
+          monthly_login_history: monthlyLoginHistory,
+          is_operational: isOperational,
+          days_since_last_login: daysSinceLastLogin,
+          days_since_last_activity: daysSinceLastActivity
+        };
+      } catch (branchError) {
+        console.error(`Error processing branch ${branch?.id || 'unknown'}:`, branchError);
+        return {
+          branch_id: branch?.id || null,
+          branch_name: branch?.branch_name || 'غير محدد',
+          branch_type: branch?.branch_type || null,
+          username: branch?.username || null,
+          login_days_this_month: 0,
+          total_employees: 0,
+          complete_employees: 0,
+          incomplete_employees: 0,
+          active_employees: 0,
+          pending_employees: 0,
+          completion_percentage: 0,
+          activities_last_30_days: {
+            employee_updates: 0,
+            document_uploads: 0,
+            employee_creations: 0,
+            status_changes: 0,
+            total: 0
+          },
+          last_activity: null,
+          last_login: null,
+          monthly_login_history: [],
+          is_operational: false,
+          days_since_last_login: null,
+          days_since_last_activity: null,
+          error: branchError.message
+        };
+      }
+    });
     
     res.json({
       success: true,
