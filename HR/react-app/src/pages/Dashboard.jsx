@@ -7,7 +7,7 @@ import { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, dashboardAPI, adminAPI, requestsAPI, clearCache } from '../utils/api';
+import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, dashboardAPI, adminAPI, requestsAPI, busTransportationAPI, payrollAbsenceAPI, clearCache } from '../utils/api';
 import BranchesOverallProgressChart from '../components/BranchesOverallProgressChart';
 import {
   getRequiredBranchDocuments,
@@ -21,6 +21,11 @@ import { formatDate } from '../utils/dateConverters';
 import DashboardProgress from './DashboardProgress';
 import MissingEmployeeDataSection from '../components/MissingEmployeeDataSection.jsx';
 import PayrollAbsenceBranchSection from '../components/PayrollAbsenceBranchSection.jsx';
+import TaskProgressOverview from '../components/TaskProgressOverview';
+import FocusTaskCard from '../components/FocusTaskCard';
+import TaskQueue from '../components/TaskQueue';
+import TaskCardWrapper from '../components/TaskCardWrapper';
+import { calculateTasks } from '../utils/taskPrioritizer';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -61,6 +66,12 @@ const Dashboard = () => {
   const [requests, setRequests] = useState([]);
   const [newRequestsCount, setNewRequestsCount] = useState(0);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+  const [buses, setBuses] = useState([]);
+  const [skippedTaskIds, setSkippedTaskIds] = useState(new Set()); // Temporary skip (session-only, doesn't mark as completed)
+  const [completedTaskIds, setCompletedTaskIds] = useState(new Set()); // Actually completed tasks
+  const [missingEmployeeContractData, setMissingEmployeeContractData] = useState([]);
+  const [payrollAbsenceState, setPayrollAbsenceState] = useState(null);
+  const [currentTaskIndex, setCurrentTaskIndex] = useState(0); // Track current task being shown
 
   const loadStats = useCallback(async () => {
     try {
@@ -114,6 +125,18 @@ const Dashboard = () => {
           notificationsAPI.getMyBranchNotifications().catch((err) => {
             console.warn('[Dashboard] notificationsAPI.getMyBranchNotifications failed:', err?.message || 'Unknown error');
             return { data: { success: false, data: [] } };
+          }),
+          busTransportationAPI.getAll({ branch_id: user.branch_id }).catch((err) => {
+            console.warn('[Dashboard] busTransportationAPI.getAll failed:', err?.message || 'Unknown error');
+            return { data: { success: false, data: [] } };
+          }),
+          employeesAPI.getMissingRequiredData().catch((err) => {
+            console.warn('[Dashboard] employeesAPI.getMissingRequiredData failed:', err?.message || 'Unknown error');
+            return { data: { success: false, data: [] } };
+          }),
+          payrollAbsenceAPI.getBranchState().catch((err) => {
+            console.warn('[Dashboard] payrollAbsenceAPI.getBranchState failed:', err?.message || 'Unknown error');
+            return { data: { success: false, data: null } };
           })
         );
       } else if (isMainManager()) {
@@ -162,6 +185,9 @@ const Dashboard = () => {
         // Branch manager results
         const branchInfoRes = results[3];
         const notificationsRes = results[4];
+        const busesRes = results[5];
+        const missingContractDataRes = results[6];
+        const payrollAbsenceRes = results[7];
 
         if (branchInfoRes?.data?.success) {
           setBranchInfo(branchInfoRes.data.data);
@@ -173,6 +199,24 @@ const Dashboard = () => {
           setNotifications(notificationsRes.data.data || []);
         } else {
           setNotifications([]);
+        }
+
+        if (busesRes?.data?.success) {
+          setBuses(busesRes.data.data || []);
+        } else {
+          setBuses([]);
+        }
+
+        if (missingContractDataRes?.data?.success) {
+          setMissingEmployeeContractData(missingContractDataRes.data.data || []);
+        } else {
+          setMissingEmployeeContractData([]);
+        }
+
+        if (payrollAbsenceRes?.data?.success && payrollAbsenceRes.data.data) {
+          setPayrollAbsenceState(payrollAbsenceRes.data.data);
+        } else {
+          setPayrollAbsenceState(null);
         }
 
         // Use cached dashboard summary endpoint to get current incomplete employees and totals
@@ -925,20 +969,6 @@ const Dashboard = () => {
         }
       </p>
 
-      {/* Missing employee data quick-fill (dates + qualification doc notice) */}
-      {!isMainManager() && (
-        <div className="dashboard-section">
-          <MissingEmployeeDataSection />
-        </div>
-      )}
-
-      {/* Payroll Absence Section for branch managers (inline, not a separate page) */}
-      {!isMainManager() && (
-        <div className="dashboard-section">
-          <PayrollAbsenceBranchSection />
-        </div>
-      )}
-
       {/* Notifications Section - Only for branch managers */}
       {!isMainManager() && notifications.length > 0 && (
         <div className="notifications-section">
@@ -1126,299 +1156,224 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* Progress Bar - Only for branch managers */}
-      {!isMainManager() && branchInfo && (
-        <DashboardProgress
-          employees={employeesList}
-          documents={documentsList}
-          branch={branchInfo}
-        />
-      )}
-
-
-      {/* 1. Branch Info Alert - Highest Priority - Only for branch managers */}
-      {!isMainManager() && branchInfo && (!branchInfo.phone_number || !branchInfo.email) && (
-        <div className="dashboard-alert-section priority-1">
-          <h2 className="dashboard-section-title">
-            <img src="https://img.icons8.com/material-rounded/24/building.png" alt="مبنى" className="section-icon" style={{ width: '24px', height: '24px' }} />
-            معلومات الفرع
-          </h2>
-          <div className="alert-card alert-branch-info">
-            <div className="alert-card-header">
-              <span className="alert-priority-badge badge-critical">الأولوية القصوى</span>
-            </div>
-            <div className="alert-card-body">
-              <p className="alert-message">
-                {!branchInfo.phone_number && !branchInfo.email
-                  ? 'يرجى إكمال معلومات الفرع (رقم الجوال والإيميل)'
-                  : !branchInfo.phone_number
-                    ? 'يرجى إضافة رقم جوال الفرع'
-                    : 'يرجى إضافة إيميل الفرع'
-                }
-              </p>
-            </div>
-            <div className="alert-card-actions">
-              <Link to="/branch-info" className="btn-alert btn-critical">
-                تحديث المعلومات الآن
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Documents with Expiry Date - Second Priority (Unified Section) */}
-      {!isMainManager() && (() => {
-        // Combine all documents that require expiry dates (no duplicates)
-        const seenDocsWithExpiry = new Set();
-        const allDocsWithExpiry = [];
-
-        // 1. Add uploaded documents that are expiring soon
-        documentsWithExpiry.forEach(doc => {
-          const key = `${doc.branchId}-${doc.documentType}`;
-          if (!seenDocsWithExpiry.has(key)) {
-            seenDocsWithExpiry.add(key);
-            allDocsWithExpiry.push({
-              ...doc,
-              alertType: 'expiring',
-              status: doc.isExpired ? 'critical' : doc.daysUntilExpiry <= 7 ? 'must_do' : 'preferred'
-            });
-          }
+      {/* Gamified Dashboard for Branch Managers */}
+      {!isMainManager() && branchInfo && (() => {
+        // Calculate all tasks
+        const allTasks = calculateTasks({
+          branchInfo,
+          branches,
+          documents: documentsList,
+          incompleteEmployees,
+          notifications,
+          monthlyDocumentAlerts,
+          missingBranchDocumentAlerts,
+          documentsWithExpiry,
+          buses,
+          missingEmployeeContractData,
+          payrollAbsenceState
         });
 
-        // 2. Add monthly document alerts (must be uploaded monthly) - exclude payroll_file
-        monthlyDocumentAlerts
-          .filter(alert => alert.documentType !== 'payroll_file')
-          .forEach(alert => {
-            const key = `${alert.branchId}-${alert.documentType}`;
-            if (!seenDocsWithExpiry.has(key)) {
-              seenDocsWithExpiry.add(key);
-              allDocsWithExpiry.push({
-                ...alert,
-                alertType: 'monthly',
-                documentLabel: alert.documentLabel
-              });
+        // Filter out actually completed tasks (not just skipped)
+        const visibleTasks = allTasks.filter(task => !completedTaskIds.has(task.id));
+
+        // Filter out temporarily skipped tasks for display (session-only)
+        const tasksForDisplay = visibleTasks.filter(task => !skippedTaskIds.has(task.id));
+
+        // Combine all tasks in priority order: inline editors first, then regular tasks
+        const allTasksOrdered = [
+          ...tasksForDisplay.filter(task => task.hasInlineEditor),
+          ...tasksForDisplay.filter(task => !task.hasInlineEditor)
+        ];
+
+        // Reset to first task if current index is out of bounds or if tasks changed
+        // Use a ref or effect to track task list changes, but for now, just validate index
+        const validTaskIndex = allTasksOrdered.length > 0 
+          ? Math.max(0, Math.min(currentTaskIndex, allTasksOrdered.length - 1))
+          : 0;
+        
+        // Update index if it's out of bounds
+        if (currentTaskIndex !== validTaskIndex && allTasksOrdered.length > 0) {
+          setCurrentTaskIndex(validTaskIndex);
+        }
+        
+        const currentTask = allTasksOrdered[validTaskIndex] || null;
+        const isLastTask = validTaskIndex === allTasksOrdered.length - 1;
+        const isFirstTask = validTaskIndex === 0;
+        const allTasksComplete = allTasks.length > 0 && allTasksOrdered.length === 0;
+
+        // Auto-update index if current task is out of bounds
+        if (currentTaskIndex >= allTasksOrdered.length && allTasksOrdered.length > 0) {
+          setCurrentTaskIndex(allTasksOrdered.length - 1);
+        }
+
+        // Handle next task navigation
+        const handleNext = () => {
+          if (validTaskIndex < allTasksOrdered.length - 1) {
+            setCurrentTaskIndex(validTaskIndex + 1);
+          }
+        };
+
+        // Handle previous task navigation
+        const handlePrevious = () => {
+          if (validTaskIndex > 0) {
+            setCurrentTaskIndex(validTaskIndex - 1);
+          }
+        };
+
+        // Handle scroll to section
+        const handleScrollToSection = (url) => {
+          if (url && url.startsWith('#')) {
+            const sectionId = url.replace('#', '');
+            const element = document.getElementById(sectionId);
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
-          });
-
-        // 3. Add missing documents that require expiry dates
-        missingBranchDocumentAlertsWithExpiry.forEach(alert => {
-          const key = `${alert.branchId}-${alert.documentType}`;
-          if (!seenDocsWithExpiry.has(key)) {
-            seenDocsWithExpiry.add(key);
-            allDocsWithExpiry.push({
-              ...alert,
-              alertType: 'missing',
-              status: 'must_do'
-            });
           }
-        });
+        };
 
-        // Sort: critical first, then must_do, then preferred
-        allDocsWithExpiry.sort((a, b) => {
-          const statusOrder = { critical: 0, must_do: 1, preferred: 2 };
-          const aOrder = statusOrder[a.status] || 3;
-          const bOrder = statusOrder[b.status] || 3;
-          if (aOrder !== bOrder) return aOrder - bOrder;
-          return (a.documentLabel || '').localeCompare((b.documentLabel || ''), 'ar');
-        });
-
-        if (allDocsWithExpiry.length === 0) return null;
-
-        return (
-          <div className="dashboard-alert-section priority-2">
-            <h2 className="dashboard-section-title">
-              <img src="https://img.icons8.com/material-rounded/24/calendar.png" alt="تقويم" className="section-icon" style={{ width: '24px', height: '24px' }} />
-              مستندات لها تاريخ انتهاء أو تحتاج تحديث دوري
-              <span className="section-count">({allDocsWithExpiry.length})</span>
-            </h2>
-            <p className="section-description" style={{ color: '#666', marginBottom: '15px', fontSize: '14px' }}>
-              المستندات التي تتطلب تاريخ انتهاء أو تحديث شهري/سنوي
-            </p>
-
-            {/* Critical notice for monthly documents if any are critical */}
-            {allDocsWithExpiry.some(a => a.status === 'critical') && (
-              <div className="critical-notice" style={{
-                background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)',
-                border: '2px solid #dc2626',
-                borderRadius: '12px',
-                padding: '16px',
-                marginBottom: '20px',
-                textAlign: 'center'
-              }}>
-                <strong style={{ color: '#991b1b', fontSize: '16px' }}>
-                  تنبيه عاجل: يوجد مستندات منتهية أو يجب رفعها فوراً
-                </strong>
-              </div>
-            )}
-
-            <div className="alerts-container">
-              {allDocsWithExpiry.map((doc, index) => (
-                <div
-                  key={`expiry-${doc.branchId || 'unknown'}-${doc.documentType}-${index}`}
-                  className={`alert-card ${doc.status === 'critical' ? 'alert-critical' :
-                    doc.status === 'must_do' ? 'alert-must-do' : 'alert-warning'
-                    }`}
-                >
-                  <div className="alert-header">
-                    <span className={`alert-badge ${doc.status === 'critical' ? 'badge-critical' :
-                      doc.status === 'must_do' ? 'badge-danger' : 'badge-warning'
-                      }`}>
-                      {doc.alertType === 'expiring'
-                        ? (doc.isExpired ? 'منتهي الصلاحية' : 'ينتهي قريباً')
-                        : doc.alertType === 'monthly'
-                          ? (doc.status === 'critical' ? 'عاجل جداً' : 'مطلوب شهرياً')
-                          : 'مستند مفقود'}
-                    </span>
-                  </div>
-                  <div className="alert-body">
-                    <p className="alert-message">{doc.message}</p>
-                    {doc.expiryDate && (
-                      <p className="alert-date">
-                        تاريخ الانتهاء: {formatDate(doc.expiryDate)}
-                      </p>
-                    )}
-                    {doc.lastUploadDate && (
-                      <p className="alert-date" style={{ fontSize: '12px', color: '#888', marginTop: '5px' }}>
-                        آخر تحديث: {formatDate(doc.lastUploadDate)}
-                      </p>
-                    )}
-                  </div>
-                  <div className="alert-actions">
-                    <Link
-                      to={`/branch-documents?branch_id=${doc.branchId}&document_type=${doc.documentType}`}
-                      className={`btn-alert ${doc.status === 'critical' ? 'btn-critical' : 'btn-important'}`}
-                    >
-                      {doc.alertType === 'expiring' && doc.isExpired ? 'تجديد المستند الآن' :
-                        doc.alertType === 'missing' ? 'رفع المستند' : 'عرض المستند'}
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* 3. Incomplete Employees - Third Priority */}
-      {!isMainManager() && incompleteEmployees.length > 0 && (
-        <div className="dashboard-alert-section priority-3">
-          <h2 className="dashboard-section-title">
-            <img src="https://img.icons8.com/material-rounded/24/user.png" alt="موظف" className="section-icon" style={{ width: '24px', height: '24px' }} />
-            الموظفين غير مكتملي البيانات
-            <span className="section-count">({incompleteEmployees.length})</span>
-          </h2>
-          <p className="section-description">
-            يوجد {incompleteEmployees.length} موظف بحاجة إلى إكمال بياناته
-          </p>
-          <div className="incomplete-employees-table">
-            <table className="data-table" style={{ width: '100%' }}>
-              <thead>
-                <tr>
-                  <th>الاسم</th>
-                  <th>المهنة</th>
-                  <th>الإجراء</th>
-                </tr>
-              </thead>
-              <tbody>
-                {incompleteEmployees.slice(0, 10).map((employee) => {
-                  return (
-                    <tr key={employee.id}>
-                      <td>
-                        {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
-                      </td>
-                      <td>{employee.occupation || '-'}</td>
-                      <td>
-                        <Link
-                          to={`/employees/${employee.id}`}
-                          className="btn-alert btn-important"
-                          style={{ padding: '4px 10px', fontSize: '11px' }}
-                        >
-                          إكمال البيانات
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {incompleteEmployees.length > 10 && (
-              <div style={{ marginTop: '15px', textAlign: 'center' }}>
-                <Link
-                  to={`/employees?data_completion_status=${DATA_COMPLETION_STATUS.INCOMPLETE}`}
-                  className="btn-alert btn-important"
-                  style={{ padding: '8px 16px', fontSize: '13px' }}
-                >
-                  عرض جميع الموظفين غير مكتملي البيانات ({incompleteEmployees.length})
-                </Link>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 4. Documents without Expiry Date - Fourth Priority */}
-      {!isMainManager() && (() => {
-        // Only show documents that DON'T require expiry dates (static documents)
-        const seenDocsWithoutExpiry = new Set();
-        const allDocsWithoutExpiry = [];
-
-        // Add missing documents that don't require expiry dates
-        missingBranchDocumentAlertsWithoutExpiry.forEach(alert => {
-          const key = `${alert.branchId}-${alert.documentType}`;
-          if (!seenDocsWithoutExpiry.has(key)) {
-            seenDocsWithoutExpiry.add(key);
-            allDocsWithoutExpiry.push({
-              ...alert,
-              status: alert.status || 'must_do'
-            });
+        // Completion verification - check if task is actually complete
+        const checkTaskCompletion = async (task) => {
+          try {
+            if (task.type === 'branch_info') {
+              // Check if phone/email now exist
+              const branchInfoRes = await branchesAPI.getById(user.branch_id);
+              const branchInfo = branchInfoRes.data.data;
+              return branchInfo?.phone_number && branchInfo?.email;
+            }
+            if (task.type === 'employee_contract_data') {
+              // Check if missing contract data is now empty
+              const missingRes = await employeesAPI.getMissingRequiredData();
+              return !missingRes.data.data || missingRes.data.data.length === 0;
+            }
+            if (task.type === 'payroll_absence') {
+              // Check if payroll absence is now submitted (view_only or closed)
+              const stateRes = await payrollAbsenceAPI.getBranchState();
+              const state = stateRes.data.data;
+              return state?.state === 'view_only' || state?.state === 'closed';
+            }
+            // For other tasks, rely on data refresh to update task list
+            return false;
+          } catch (error) {
+            console.error('[Dashboard] Error checking task completion:', error);
+            return false;
           }
-        });
+        };
 
-        // Sort by document label
-        allDocsWithoutExpiry.sort((a, b) => {
-          return (a.documentLabel || '').localeCompare((b.documentLabel || ''), 'ar');
-        });
+        // Handle task completion - verify and mark as complete
+        const handleTaskComplete = async (taskId) => {
+          const task = visibleTasks.find(t => t.id === taskId);
+          if (!task) return;
 
-        if (allDocsWithoutExpiry.length === 0) return null;
+          // Small delay to allow data to be saved
+          setTimeout(async () => {
+            // Verify completion
+            const isComplete = await checkTaskCompletion(task);
+            if (isComplete) {
+              setCompletedTaskIds(prev => new Set([...prev, taskId]));
+              // Refresh data to update tasks
+              await loadStats();
+            }
+          }, 500);
+        };
 
-        return (
-          <div className="dashboard-alert-section priority-4">
-            <h2 className="dashboard-section-title">
-              <img src="https://img.icons8.com/material-rounded/24/document.png" alt="مستند" className="section-icon" style={{ width: '24px', height: '24px' }} />
-              مستندات بدون تاريخ انتهاء
-              <span className="section-count">({allDocsWithoutExpiry.length})</span>
-            </h2>
-            <p className="section-description" style={{ color: '#666', marginBottom: '15px', fontSize: '14px' }}>
-              المستندات الثابتة التي لا تحتاج تاريخ انتهاء أو تحديث دوري
-            </p>
-
-            {/* Unified documents container */}
-            <div className="alerts-container">
-              {allDocsWithoutExpiry.map((alert, index) => (
-                <div
-                  key={`no-expiry-${alert.branchId || 'unknown'}-${alert.documentType || index}-${index}`}
-                  className="alert-card alert-must-do"
-                >
-                  <div className="alert-header">
-                    <span className="alert-badge badge-info">
-                      مستند مفقود
-                    </span>
-                  </div>
-                  <div className="alert-body">
-                    <p className="alert-message">{alert.message}</p>
-                  </div>
-                  <div className="alert-actions">
-                    <Link
-                      to={`/branch-documents?branch_id=${alert.branchId}&document_type=${alert.documentType}`}
-                      className="btn-alert btn-important"
-                    >
-                      رفع المستند
-                    </Link>
-                  </div>
+        // If all tasks are complete, show completion message
+        if (allTasksComplete) {
+          return (
+            <div className="dashboard-tasks-section">
+              <div className="tasks-completion-message">
+                <div className="completion-icon">
+                  <svg width="80" height="80" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" fill="#4CAF50" opacity="0.2"/>
+                    <path d="M9 12L11 14L15 10" stroke="#4CAF50" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                 </div>
-              ))}
+                <h2 className="completion-title">🎉 مبروك! تم إكمال جميع المهام</h2>
+                <p className="completion-description">
+                  لقد أكملت جميع المهام المطلوبة للفرع. رائع جداً!
+                </p>
+              </div>
             </div>
-          </div>
+          );
+        }
+
+        // Show only the current task (one at a time)
+        return (
+          <>
+            {/* Unified Task Management Section */}
+            <div className="dashboard-tasks-section">
+              {/* Progress Overview */}
+              <TaskProgressOverview tasks={tasksForDisplay} />
+
+              {/* Task Navigation Info */}
+              {allTasksOrdered.length > 0 && (
+                <div className="task-navigation-info">
+                  <span className="task-counter">
+                    المهمة {validTaskIndex + 1} من {allTasksOrdered.length}
+                  </span>
+                </div>
+              )}
+
+              {/* Show only the current task - Auto-expanded */}
+              {currentTask && (
+                <>
+                  {currentTask.hasInlineEditor ? (
+                    // Inline Editor Task (TaskCardWrapper)
+                    <div>
+                      {currentTask.type === 'employee_contract_data' && (
+                        <TaskCardWrapper key={currentTask.id} task={currentTask} defaultExpanded={true}>
+                          <MissingEmployeeDataSection 
+                            onComplete={() => handleTaskComplete(currentTask.id)}
+                          />
+                        </TaskCardWrapper>
+                      )}
+                      {currentTask.type === 'payroll_absence' && (
+                        <TaskCardWrapper key={currentTask.id} task={currentTask} defaultExpanded={true}>
+                          <PayrollAbsenceBranchSection 
+                            onComplete={() => handleTaskComplete(currentTask.id)}
+                          />
+                        </TaskCardWrapper>
+                      )}
+                    </div>
+                  ) : (
+                    // Regular Task (FocusTaskCard)
+                    <FocusTaskCard
+                      task={currentTask}
+                      onSkip={handleNext}
+                    />
+                  )}
+                </>
+              )}
+
+              {/* Navigation Buttons */}
+              {allTasksOrdered.length > 1 && (
+                <div className="task-navigation-buttons">
+                  <button
+                    className="task-nav-btn task-nav-btn-prev"
+                    onClick={handlePrevious}
+                    disabled={isFirstTask}
+                    title="المهمة السابقة"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                      <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    السابقة
+                  </button>
+                  
+                  <button
+                    className="task-nav-btn task-nav-btn-next"
+                    onClick={handleNext}
+                    disabled={isLastTask}
+                    title="المهمة التالية"
+                  >
+                    التالية
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                      <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
         );
       })()}
 

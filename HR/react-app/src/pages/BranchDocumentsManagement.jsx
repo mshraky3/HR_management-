@@ -13,6 +13,7 @@ import UnifiedDatePicker from '../components/UnifiedDatePicker';
 import BankSelect from '../components/BankSelect';
 import { formatDate } from '../utils/dateConverters';
 import { getRequiredBranchDocuments, getMonthlyRequiredBranchDocuments } from '../utils/employeeHelpers';
+import { RESTRICTED_DOCUMENT_TYPES } from '../utils/documentRestrictions';
 import './BranchDocumentsManagement.css';
 
 const BranchDocumentsManagement = () => {
@@ -86,6 +87,18 @@ const BranchDocumentsManagement = () => {
     payroll_file: 'ملف مسيرات الرواتب',
     salary_deposit_file: 'ملف إيداع الرواتب'
   };
+
+  // Filtered document type labels for modals (exclude restricted types for branch managers)
+  const filteredDocumentTypeLabels = useMemo(() => {
+    if (isMainManager()) {
+      return documentTypeLabels;
+    }
+    const filtered = { ...documentTypeLabels };
+    RESTRICTED_DOCUMENT_TYPES.forEach(type => {
+      delete filtered[type];
+    });
+    return filtered;
+  }, [isMainManager]);
 
   // Load branches and documents
   useEffect(() => {
@@ -191,8 +204,16 @@ const BranchDocumentsManagement = () => {
       const monthly = getMonthlyRequiredBranchDocuments();
       required.filter(doc => !monthly.includes(doc)).forEach(type => types.add(type));
     });
-    return Array.from(types).sort();
-  }, [branches]);
+    
+    let typesArray = Array.from(types).sort();
+    
+    // Hide restricted types from branch managers
+    if (!isMainManager()) {
+      typesArray = typesArray.filter(type => !RESTRICTED_DOCUMENT_TYPES.includes(type));
+    }
+    
+    return typesArray;
+  }, [branches, isMainManager]);
 
   // Filter branches and documents based on filters
   const filteredData = useMemo(() => {
@@ -665,32 +686,29 @@ const BranchDocumentsManagement = () => {
           });
 
           const isExpanded = expandedCards.has(docType);
-
+          
           return (
-            <div key={docType} className={`document-card ${isExpanded ? 'expanded' : ''}`}>
+            <div 
+              key={docType} 
+              className={`document-card ${isExpanded ? 'expanded' : ''}`}
+              onClick={() => toggleCard(docType)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleCard(docType);
+                }
+              }}
+              aria-expanded={isExpanded}
+            >
               <div className="document-card-header">
                 <div className="document-header-left">
-                  <button
-                    className={`expand-toggle-btn ${isExpanded ? 'expanded' : ''}`}
-                    onClick={() => toggleCard(docType)}
-                    aria-expanded={isExpanded}
-                    title={isExpanded ? 'طي' : 'توسيع'}
-                  >
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <path
-                        d="M9 18l6-6-6-6"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
+                  <div className={`expand-toggle-indicator ${isExpanded ? 'expanded' : ''}`}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                      <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
-                  </button>
+                  </div>
                   <h3 className="document-type-title">
                     {documentTypeLabels[docType] || docType}
                   </h3>
@@ -723,7 +741,10 @@ const BranchDocumentsManagement = () => {
                           <span className="branch-name">{branch.branch_name}</span>
                           <button
                             className="btn-quick-upload"
-                            onClick={() => handleQuickUpload(branch.id, docType)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleQuickUpload(branch.id, docType);
+                            }}
                             title="رفع سريع"
                           >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -771,7 +792,10 @@ const BranchDocumentsManagement = () => {
                               )}
                               <button
                                 className="btn-action btn-preview"
-                                onClick={() => handlePreview(doc)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePreview(doc);
+                                }}
                                 title="عرض"
                               >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -781,7 +805,10 @@ const BranchDocumentsManagement = () => {
                               </button>
                               <button
                                 className="btn-action btn-download"
-                                onClick={() => handleDownload(doc)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDownload(doc);
+                                }}
                                 title="تحميل"
                               >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -792,7 +819,10 @@ const BranchDocumentsManagement = () => {
                               </button>
                               <button
                                 className="btn-action btn-edit"
-                                onClick={() => openEditModal(doc)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEditModal(doc);
+                                }}
                                 title="تعديل"
                               >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -802,7 +832,10 @@ const BranchDocumentsManagement = () => {
                               </button>
                               <button
                                 className="btn-action btn-delete"
-                                onClick={() => handleDelete(doc)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDelete(doc);
+                                }}
                                 title="حذف"
                               >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -841,7 +874,7 @@ const BranchDocumentsManagement = () => {
           formData={formData}
           setFormData={setFormData}
           branches={branches}
-          documentTypeLabels={documentTypeLabels}
+          documentTypeLabels={filteredDocumentTypeLabels}
           onSave={handleUpload}
           onClose={() => {
             if (!uploading) {
@@ -861,7 +894,7 @@ const BranchDocumentsManagement = () => {
           formData={formData}
           setFormData={setFormData}
           branches={branches}
-          documentTypeLabels={documentTypeLabels}
+          documentTypeLabels={filteredDocumentTypeLabels}
           onSave={handleEdit}
           onClose={() => {
             if (!uploading) {

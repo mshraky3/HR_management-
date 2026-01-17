@@ -775,8 +775,9 @@ const BusTransportation = () => {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="filters-section">
+      {/* Filters - Main Manager Only */}
+      {isMainManager() && (
+        <div className="filters-section">
         <div className="filters-header">
           <h3 className="filters-title">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ marginLeft: '0.5rem' }}>
@@ -932,7 +933,8 @@ const BusTransportation = () => {
             </div>
           )}
         </div>
-      </div>
+        </div>
+      )}
 
       {/* Divider */}
       <div className="section-divider"></div>

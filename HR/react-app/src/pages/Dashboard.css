@@ -3,6 +3,10 @@
   width: 100%;
 }
 
+.dashboard svg {
+  transform: scaleX(-1);
+}
+
 /* Loading spinner animation */
 @keyframes spin {
   0% { transform: rotate(0deg); }
@@ -1330,4 +1334,318 @@
   border-color: #4CAF50;
   border-width: 2px;
   background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%);
+}
+
+/* Gamified Dashboard Styles */
+.dashboard-section {
+  margin-bottom: var(--spacing-xl);
+}
+
+/* Celebration Animation */
+@keyframes celebration {
+  0%, 100% {
+    transform: scale(1) rotate(0deg);
+  }
+  25% {
+    transform: scale(1.1) rotate(-5deg);
+  }
+  50% {
+    transform: scale(1.15) rotate(5deg);
+  }
+  75% {
+    transform: scale(1.1) rotate(-5deg);
+  }
+}
+
+.celebration {
+  animation: celebration 0.6s ease-in-out;
+}
+
+/* Progress Ring Animation */
+@keyframes progressRing {
+  0% {
+    stroke-dashoffset: 100;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.progress-ring {
+  animation: progressRing 1s ease-out;
+}
+
+/* Task Completion Animation */
+@keyframes taskComplete {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+.task-complete {
+  animation: taskComplete 0.5s ease-out forwards;
+}
+
+/* Focus Glow Effect */
+@keyframes focusGlow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(73, 136, 196, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(73, 136, 196, 0.6);
+  }
+}
+
+.focus-glow {
+  animation: focusGlow 2s infinite;
+}
+
+/* Smooth Transitions for Task Updates */
+.task-update {
+  transition: all 0.3s ease;
+}
+
+/* Achievement Badge Styles */
+.achievement-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
+  font-size: 24px;
+  animation: bounce 2s infinite;
+}
+
+/* Milestone Progress Indicator */
+.milestone-indicator {
+  position: relative;
+  display: inline-block;
+}
+
+.milestone-indicator::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 12px;
+  height: 12px;
+  background: #4CAF50;
+  border-radius: 50%;
+  border: 2px solid white;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+}
+
+/* Smooth scrolling for hash links */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Dashboard sections spacing */
+.dashboard-section {
+  margin-bottom: var(--spacing-xl);
+}
+
+/* Unified Task Management Section */
+.dashboard-tasks-section {
+  background: var(--bg);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl);
+  box-shadow: var(--shadow-md);
+  border: 2px solid var(--border-light);
+  margin-bottom: var(--spacing-xl);
+}
+
+.dashboard-tasks-section > * {
+  margin-bottom: var(--spacing-lg);
+}
+
+.dashboard-tasks-section > *:last-child {
+  margin-bottom: 0;
+}
+
+/* Remove duplicate borders/padding from nested components when in unified section */
+.dashboard-tasks-section .task-progress-overview {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin-bottom: var(--spacing-lg);
+}
+
+.dashboard-tasks-section .focus-task-card {
+  margin-bottom: var(--spacing-lg);
+}
+
+.dashboard-tasks-section .task-card-wrapper {
+  margin-bottom: var(--spacing-lg);
+}
+
+.dashboard-tasks-section .task-queue {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+/* Scroll offset for hash navigation */
+[id^="employee-contract-data"],
+[id^="payroll-absence"] {
+  scroll-margin-top: 20px;
+}
+
+/* Task Navigation */
+.task-navigation-info {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+.task-counter {
+  font-size: var(--font-size-sm);
+  color: var(--text-light);
+  font-weight: 600;
+}
+
+.task-navigation-buttons {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
+  border-top: 2px solid var(--border-light);
+}
+
+.task-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-xl);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+  transition: all var(--transition-base);
+  border: 2px solid var(--border);
+  cursor: pointer;
+  background: var(--bg-secondary);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.task-nav-btn:hover:not(:disabled) {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.task-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--bg-secondary);
+  color: var(--text-light);
+  border-color: var(--border-light);
+}
+
+.task-nav-btn svg {
+  flex-shrink: 0;
+}
+
+.task-nav-btn-prev svg {
+  transform: scaleX(-1);
+}
+
+/* Tasks Completion Message */
+.tasks-completion-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-3xl) var(--spacing-xl);
+  text-align: center;
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%);
+  border-radius: var(--radius-xl);
+  border: 3px solid #4CAF50;
+}
+
+.completion-icon {
+  margin-bottom: var(--spacing-lg);
+  animation: bounceIn 0.8s ease-out;
+}
+
+@keyframes bounceIn {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.completion-title {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: #4CAF50;
+  margin: 0 0 var(--spacing-md) 0;
+}
+
+.completion-description {
+  font-size: var(--font-size-lg);
+  color: var(--text);
+  line-height: 1.6;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .task-navigation-buttons {
+    flex-direction: column;
+  }
+
+  .task-nav-btn {
+    width: 100%;
+  }
+
+  .completion-title {
+    font-size: var(--font-size-xl);
+  }
+
+  .completion-description {
+    font-size: var(--font-size-base);
+  }
 }

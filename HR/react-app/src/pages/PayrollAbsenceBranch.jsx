@@ -22,7 +22,7 @@ const formatMonthMMYYYY = (value) => {
   return `${month}/${year}`;
 };
 
-const PayrollAbsenceBranch = () => {
+const PayrollAbsenceBranch = ({ onComplete }) => {
   const { user } = useAuth();
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -105,6 +105,11 @@ const PayrollAbsenceBranch = () => {
       });
       setSuccess('تم الحفظ. للتعديل لاحقاً، يرجى مراسلة إدارة الموارد البشرية لفتح الإدخال.');
       await loadState();
+      
+      // Call onComplete callback if provided (for task completion tracking)
+      if (onComplete) {
+        onComplete();
+      }
     } catch (err) {
       setError(err?.response?.data?.message || 'فشل الحفظ، حاول مرة أخرى');
     } finally {

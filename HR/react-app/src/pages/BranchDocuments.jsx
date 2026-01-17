@@ -13,6 +13,7 @@ import BankSelect from '../components/BankSelect';
 import UnifiedDatePicker from '../components/UnifiedDatePicker';
 import BranchBadge from '../components/BranchBadge';
 import { formatDate } from '../utils/dateConverters';
+import { RESTRICTED_DOCUMENT_TYPES } from '../utils/documentRestrictions';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 
 const BranchDocuments = () => {
@@ -715,13 +716,20 @@ const BranchDocuments = () => {
 
   // Filter document types based on branch type (memoized)
   const branchDocumentTypes = useMemo(() => {
-    return allBranchDocumentTypes.filter(type => {
+    let filtered = allBranchDocumentTypes.filter(type => {
       if (type.branchType) {
         return currentBranchType === type.branchType;
       }
       return true;
     });
-  }, [currentBranchType]);
+    
+    // Hide restricted types from branch managers
+    if (!isMainManager()) {
+      filtered = filtered.filter(type => !RESTRICTED_DOCUMENT_TYPES.includes(type.value));
+    }
+    
+    return filtered;
+  }, [currentBranchType, isMainManager]);
 
   // Get current branch (must be before early returns)
   const currentBranch = useMemo(() => {
