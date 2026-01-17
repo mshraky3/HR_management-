@@ -83,7 +83,7 @@ export const validateDateFields = (dateFields) => {
         console.log('[DATE VALIDATION] Validation failed with errors:', errors);
         return res.status(400).json({
           success: false,
-          message: 'Date validation failed',
+          message: ' تأكد من صحة اليوم او سنة او الشهر',
           errors: errors
         });
       }
