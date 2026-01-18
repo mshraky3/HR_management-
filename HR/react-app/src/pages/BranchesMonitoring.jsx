@@ -169,7 +169,7 @@ const BranchesMonitoring = () => {
   // Sort documents by priority: 1) Monthly (highest), 2) Student/Cadre, 3) Others
   const sortDocumentsByPriority = (docs) => {
     const monthlyTypes = ['payroll_file', 'salary_deposit_file'];
-    const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
+    const studentCadreTypes = ['student_cadre_file'];
 
     return [...docs].sort((a, b) => {
       const aType = a.type;
@@ -393,7 +393,7 @@ const BranchesMonitoring = () => {
               {missingDocs.length > 0 && (() => {
                 const sortedMissingDocs = sortDocumentsByPriority(missingDocs);
                 const monthlyTypes = ['payroll_file', 'salary_deposit_file'];
-                const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
+                const studentCadreTypes = ['student_cadre_file'];
 
                 const monthlyMissing = sortedMissingDocs.filter(doc => monthlyTypes.includes(doc.type));
                 const studentCadreMissing = sortedMissingDocs.filter(doc => studentCadreTypes.includes(doc.type));

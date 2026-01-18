@@ -200,16 +200,37 @@ const BusTransportation = () => {
   const loadTerms = async () => {
     try {
       let response;
+      let currentTermResponse = null;
+      let branchType = null;
+      
       if (!isMainManager() && user?.branch_id) {
         // For branch managers, get active terms for their branch type
         const branchResponse = await branchesAPI.getById(user.branch_id);
         if (branchResponse.data.success && branchResponse.data.data?.branch_type) {
-          response = await termsAPI.getAll({ is_active: true, branch_type: branchResponse.data.data.branch_type });
+          branchType = branchResponse.data.data.branch_type;
+          console.log('[BusTransportation] Branch manager - branch_type:', branchType);
+          
+          // Get current term first
+          try {
+            currentTermResponse = await termsAPI.getCurrent(branchType);
+            console.log('[BusTransportation] Current term response:', currentTermResponse?.data);
+          } catch (e) {
+            console.warn('[BusTransportation] Failed to get current term:', e);
+          }
+          
+          response = await termsAPI.getAll({ is_active: true, branch_type: branchType });
           if (response.data.success) {
             const activeTerms = deduplicateTerms(response.data.data || []);
+            console.log('[BusTransportation] All active terms:', activeTerms.map(t => ({ id: t.id, name: t.term_name, year: t.academic_year_label, term_number: t.term_number })));
             setTerms(activeTerms);
-            // Set default to first active term (which should be the current one)
-            if (activeTerms.length > 0 && !selectedTermId) {
+            
+            // Set default to current term if available, otherwise first active term
+            const currentTerm = currentTermResponse?.data?.success ? currentTermResponse.data.data : null;
+            if (currentTerm) {
+              console.log('[BusTransportation] Setting selected term to current term:', currentTerm.id, currentTerm.term_name, currentTerm.academic_year_label);
+              setSelectedTermId(currentTerm.id);
+            } else if (activeTerms.length > 0 && !selectedTermId) {
+              console.log('[BusTransportation] No current term found, using first active term:', activeTerms[0].id);
               setSelectedTermId(activeTerms[0].id);
             }
           } else {
@@ -222,23 +243,39 @@ const BusTransportation = () => {
         if (response.data.success) {
           let allTerms = deduplicateTerms(response.data.data || []);
           
-          // If a branch is selected, filter terms by that branch's type
+          // If a branch is selected, filter terms by that branch's type and get current term
           if (selectedBranchId) {
             const selectedBranch = branches.find(b => b.id === parseInt(selectedBranchId));
             if (selectedBranch?.branch_type) {
-              allTerms = allTerms.filter(term => term.branch_type === selectedBranch.branch_type);
+              branchType = selectedBranch.branch_type;
+              allTerms = allTerms.filter(term => term.branch_type === branchType);
+              
+              // Get current term for selected branch
+              try {
+                currentTermResponse = await termsAPI.getCurrent(branchType);
+                console.log('[BusTransportation] Main manager - current term for branch:', currentTermResponse?.data);
+              } catch (e) {
+                console.warn('[BusTransportation] Failed to get current term:', e);
+              }
             }
           }
           
+          console.log('[BusTransportation] All terms (main manager):', allTerms.map(t => ({ id: t.id, name: t.term_name, year: t.academic_year_label, term_number: t.term_number })));
           setTerms(allTerms);
-          // Set default to first active term if available
-          if (allTerms.length > 0 && !selectedTermId) {
+          
+          // Set default to current term if available, otherwise first active term
+          const currentTerm = currentTermResponse?.data?.success ? currentTermResponse.data.data : null;
+          if (currentTerm) {
+            console.log('[BusTransportation] Setting selected term to current term:', currentTerm.id, currentTerm.term_name, currentTerm.academic_year_label);
+            setSelectedTermId(currentTerm.id);
+          } else if (allTerms.length > 0 && !selectedTermId) {
+            console.log('[BusTransportation] No current term found, using first active term:', allTerms[0].id);
             setSelectedTermId(allTerms[0].id);
           }
         }
       }
     } catch (error) {
-      console.error('Error loading terms:', error);
+      console.error('[BusTransportation] Error loading terms:', error);
       showError('فشل تحميل الفصول الدراسية');
     }
   };
@@ -466,7 +503,8 @@ const BusTransportation = () => {
     }
   };
 
-  if (loading) {
+  // Keep the bus form visible even if the list is reloading, so uploads/autosaves never "close" it.
+  if (loading && !showBusForm) {
     return (
       <div className="bus-transportation-container">
         <div className="loading-container">
@@ -1107,6 +1145,13 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
   const { showError, showSuccess } = useNotification();
   const isEditing = !!bus;
   const hydratedRef = useRef(false);
+  // Avoid repeating auto-saves (improves tab switching speed + prevents form resets)
+  const lastAutoSavedRef = useRef({
+    basic: null,
+    registration: null,
+    driver: null,
+    details: null
+  });
   const [activeTab, setActiveTab] = useState(initialTab || 'basic');
   // Make students the last step in the wizard
   const tabsFlow = ['basic', 'registration', 'driver', 'details', 'documents', 'students'];
@@ -1117,6 +1162,18 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
     driverLicense: !!bus?.driver_license?.license_document_url,
     leaseContract: !!bus?.lease_contract_document_url
   });
+  // Keep uploaded docs in modal state so they remain visible even when switching tabs
+  const [uploadedDocs, setUploadedDocs] = useState(() => ({
+    registration: (bus?.registration?.registration_document_url || bus?.registration_document_url)
+      ? { url: bus?.registration?.registration_document_url || bus?.registration_document_url }
+      : null,
+    driverLicense: (bus?.driver_license?.license_document_url || bus?.license_document_url)
+      ? { url: bus?.driver_license?.license_document_url || bus?.license_document_url }
+      : null,
+    leaseContract: bus?.lease_contract_document_url
+      ? { url: bus.lease_contract_document_url }
+      : null
+  }));
   const [currentTerm, setCurrentTerm] = useState(null);
   const [loadingTerm, setLoadingTerm] = useState(false);
   const [createdBusId, setCreatedBusId] = useState(bus?.id || null);
@@ -1291,6 +1348,30 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
           leaseContract: !!full.lease_contract_document_url
         });
 
+        setUploadedDocs({
+          registration: full.registration?.registration_document_url
+            ? {
+                url: full.registration.registration_document_url,
+                name: full.registration.registration_document_name,
+                mime_type: full.registration.registration_document_mime_type
+              }
+            : null,
+          driverLicense: full.driver_license?.license_document_url
+            ? {
+                url: full.driver_license.license_document_url,
+                name: full.driver_license.license_document_name,
+                mime_type: full.driver_license.license_document_mime_type
+              }
+            : null,
+          leaseContract: full.lease_contract_document_url
+            ? {
+                url: full.lease_contract_document_url,
+                name: full.lease_contract_document_name,
+                mime_type: full.lease_contract_document_mime_type
+              }
+            : null
+        });
+
         setStudents(() => {
           const existing = full.students?.map(s => ({ ...s })) || [];
           if (existing.length === 0) return [makeEmptyStudentRow()];
@@ -1388,6 +1469,10 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
         term_id: basicFormData.term_id,
         bus_number: plateParsed.normalized
       };
+      const signature = JSON.stringify(payload);
+      if (busId && lastAutoSavedRef.current.basic === signature) {
+        return { ok: true, busId };
+      }
 
       // Create bus once
       if (!busId) {
@@ -1398,8 +1483,9 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
         busId = createRes.data.data.id;
         setCreatedBusId(busId);
       } else {
-        // Update basic fields when editing or continuing create flow
-        await onSave(payload);
+        // IMPORTANT: Do NOT call the parent onSave here (it triggers loadBuses() + can unmount the form).
+        // Update directly to keep the form stable during autosave.
+        await busTransportationAPI.update(busId, payload);
       }
 
       // Keep one primary plate matching basic (safe)
@@ -1414,23 +1500,39 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
       }
       await busTransportationAPI.addLicensePlate(busId, { plate_number: payload.bus_number, is_primary: true });
 
+      lastAutoSavedRef.current.basic = signature;
       return { ok: true, busId };
     }
 
     if (!busId) return { ok: false };
 
     if (tabKey === 'registration') {
-      await busTransportationAPI.saveRegistration(busId, { ...registrationData, term_id: basicFormData.term_id });
+      const payload = { ...registrationData, term_id: basicFormData.term_id };
+      const signature = JSON.stringify(payload);
+      if (lastAutoSavedRef.current.registration !== signature) {
+        await busTransportationAPI.saveRegistration(busId, payload);
+        lastAutoSavedRef.current.registration = signature;
+      }
       return { ok: true, busId };
     }
 
     if (tabKey === 'driver') {
-      await busTransportationAPI.saveDriverLicense(busId, { ...driverLicenseData, term_id: basicFormData.term_id });
+      const payload = { ...driverLicenseData, term_id: basicFormData.term_id };
+      const signature = JSON.stringify(payload);
+      if (lastAutoSavedRef.current.driver !== signature) {
+        await busTransportationAPI.saveDriverLicense(busId, payload);
+        lastAutoSavedRef.current.driver = signature;
+      }
       return { ok: true, busId };
     }
 
     if (tabKey === 'details') {
-      await busTransportationAPI.saveDetails(busId, { ...busDetailsData, term_id: basicFormData.term_id });
+      const payload = { ...busDetailsData, term_id: basicFormData.term_id };
+      const signature = JSON.stringify(payload);
+      if (lastAutoSavedRef.current.details !== signature) {
+        await busTransportationAPI.saveDetails(busId, payload);
+        lastAutoSavedRef.current.details = signature;
+      }
       return { ok: true, busId };
     }
 
@@ -1488,6 +1590,7 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
     const loadCurrentTerm = async () => {
       // If editing, use the bus's term_id
       if (bus?.term_id) {
+        console.log('[BusFormModal] Editing bus, using bus.term_id:', bus.term_id);
         setBasicFormData(prev => ({ ...prev, term_id: bus.term_id }));
         return;
       }
@@ -1498,20 +1601,38 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
         try {
           setLoadingTerm(true);
           const branchResponse = await branchesAPI.getById(branchId);
+          console.log('[BusFormModal] Branch response:', branchResponse?.data);
+          
           if (branchResponse.data.success && branchResponse.data.data?.branch_type) {
-            const termResponse = await termsAPI.getAll({ 
-              is_active: true, 
-              branch_type: branchResponse.data.data.branch_type 
-            });
-            if (termResponse.data.success && termResponse.data.data && termResponse.data.data.length > 0) {
-              // Get the first active term (current term)
-              const term = termResponse.data.data[0];
+            const branchType = branchResponse.data.data.branch_type;
+            console.log('[BusFormModal] Branch type:', branchType);
+            
+            // Get current term using the proper API
+            const currentTermResponse = await termsAPI.getCurrent(branchType);
+            console.log('[BusFormModal] Current term response:', currentTermResponse?.data);
+            
+            if (currentTermResponse?.data?.success && currentTermResponse.data.data) {
+              const term = currentTermResponse.data.data;
+              console.log('[BusFormModal] Setting current term:', term.id, term.term_name, term.academic_year_label, 'term_number:', term.term_number);
               setCurrentTerm(term);
               setBasicFormData(prev => ({ ...prev, term_id: term.id }));
+            } else {
+              // Fallback: get all active terms and use first one
+              console.warn('[BusFormModal] No current term found, falling back to getAll');
+              const termResponse = await termsAPI.getAll({ 
+                is_active: true, 
+                branch_type: branchType
+              });
+              if (termResponse.data.success && termResponse.data.data && termResponse.data.data.length > 0) {
+                const term = termResponse.data.data[0];
+                console.log('[BusFormModal] Using first active term as fallback:', term.id, term.term_name, term.academic_year_label);
+                setCurrentTerm(term);
+                setBasicFormData(prev => ({ ...prev, term_id: term.id }));
+              }
             }
           }
         } catch (error) {
-          console.error('Error loading current term:', error);
+          console.error('[BusFormModal] Error loading current term:', error);
         } finally {
           setLoadingTerm(false);
         }
@@ -2072,11 +2193,11 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
             <DocumentsFormTab
               busId={createdBusId || bus?.id}
               isLeased={busDetailsData.ownership_type === 'leased'}
-              initialDocs={{
-                registration: bus?.registration?.registration_document_url ? { url: bus.registration.registration_document_url } : null,
-                driverLicense: bus?.driver_license?.license_document_url ? { url: bus.driver_license.license_document_url } : null,
-                leaseContract: bus?.lease_contract_document_url ? { url: bus.lease_contract_document_url } : null
-              }}
+              ownershipTypeKnown={!isBlank(busDetailsData.ownership_type)}
+              isNewBus={!bus}
+              initialDocs={uploadedDocs}
+              uploadedDocs={uploadedDocs}
+              setUploadedDocs={setUploadedDocs}
               beforeUpload={async (kind) => {
                 try {
                   // ensure bus exists for uploads
@@ -2103,6 +2224,7 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
                 }
               }}
               onDocsChange={(next) => setDocsState(next)}
+              onNavigateToStudents={() => setActiveTab('students')}
               onReload={onReload}
             />
           )}
@@ -2275,24 +2397,33 @@ const RegistrationFormTab = ({ formData, setFormData, busId }) => {
   );
 };
 
-const DocumentsFormTab = ({ busId, isLeased, initialDocs, beforeUpload, onDocsChange, onReload }) => {
+const DocumentsFormTab = ({
+  busId,
+  isLeased,
+  ownershipTypeKnown,
+  initialDocs,
+  uploadedDocs,
+  setUploadedDocs,
+  beforeUpload,
+  onDocsChange,
+  onReload,
+  onNavigateToStudents,
+  isNewBus
+}) => {
   const { showError, showSuccess } = useNotification();
   const [preSaving, setPreSaving] = useState(false);
   const [uploadingReg, setUploadingReg] = useState(false);
   const [uploadingLicense, setUploadingLicense] = useState(false);
   const [uploadingLease, setUploadingLease] = useState(false);
-  const [uploaded, setUploaded] = useState({
-    registration: initialDocs?.registration || null,
-    driverLicense: initialDocs?.driverLicense || null,
-    leaseContract: initialDocs?.leaseContract || null
-  });
+  const didAutoNavigateRef = useRef(false);
 
   // If we opened edit mode with partial data then hydrated later, merge in initial docs once
   useEffect(() => {
-    setUploaded((prev) => ({
-      registration: prev.registration || initialDocs?.registration || null,
-      driverLicense: prev.driverLicense || initialDocs?.driverLicense || null,
-      leaseContract: prev.leaseContract || initialDocs?.leaseContract || null
+    if (typeof setUploadedDocs !== 'function') return;
+    setUploadedDocs((prev) => ({
+      registration: prev?.registration || initialDocs?.registration || null,
+      driverLicense: prev?.driverLicense || initialDocs?.driverLicense || null,
+      leaseContract: prev?.leaseContract || initialDocs?.leaseContract || null
     }));
   }, [initialDocs?.registration?.url, initialDocs?.driverLicense?.url, initialDocs?.leaseContract?.url]);
 
@@ -2320,7 +2451,8 @@ const DocumentsFormTab = ({ busId, isLeased, initialDocs, beforeUpload, onDocsCh
             : await busTransportationAPI.uploadLeaseContractDocument(busId, file);
 
       if (response.data?.success) {
-        setUploaded((prev) => {
+        if (typeof setUploadedDocs === 'function') {
+          setUploadedDocs((prev) => {
           const next = {
             ...prev,
             [kind]: response.data?.data || { name: file.name }
@@ -2332,8 +2464,30 @@ const DocumentsFormTab = ({ busId, isLeased, initialDocs, beforeUpload, onDocsCh
               leaseContract: !!next.leaseContract?.url
             });
           }
+          
+          // Check if all required documents are uploaded (only for new buses)
+          if (
+            typeof onNavigateToStudents === 'function' &&
+            isNewBus &&
+            ownershipTypeKnown &&
+            !didAutoNavigateRef.current
+          ) {
+            const hasRegistration = !!next.registration?.url;
+            const hasDriverLicense = !!next.driverLicense?.url;
+            const hasLeaseContract = isLeased ? !!next.leaseContract?.url : true;
+            
+            if (hasRegistration && hasDriverLicense && hasLeaseContract) {
+              didAutoNavigateRef.current = true;
+              // Small delay to allow state to update
+              setTimeout(() => {
+                onNavigateToStudents();
+              }, 500);
+            }
+          }
+          
           return next;
-        });
+          });
+        }
         const label =
           kind === 'registration'
             ? 'تم رفع مستند رخصة السير بنجاح'
@@ -2341,7 +2495,7 @@ const DocumentsFormTab = ({ busId, isLeased, initialDocs, beforeUpload, onDocsCh
               ? 'تم رفع مستند رخصة السائق بنجاح'
               : 'تم رفع عقد الإيجار بنجاح';
         showSuccess(label);
-        if (typeof onReload === 'function') onReload();
+        // REMOVED: onReload() call to prevent modal closure during multi-file uploads
       }
     } catch (error) {
       showError(error.response?.data?.message || 'فشل رفع الملف');
@@ -2363,7 +2517,7 @@ const DocumentsFormTab = ({ busId, isLeased, initialDocs, beforeUpload, onDocsCh
           <div className="form-group full-width">
             <label>مستند رخصة السير</label>
             <div className="students-table-hint">
-              {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : (uploaded.registration?.url ? 'تم الرفع' : 'لم يتم الرفع بعد')}
+              {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : (uploadedDocs?.registration?.url ? 'تم الرفع' : 'لم يتم الرفع بعد')}
             </div>
             <input
               type="file"
@@ -2375,17 +2529,22 @@ const DocumentsFormTab = ({ busId, isLeased, initialDocs, beforeUpload, onDocsCh
                 e.target.value = '';
               }}
             />
-            {!!uploaded.registration?.url && (
-              <a href={uploaded.registration.url} target="_blank" rel="noreferrer">
-                فتح الملف
-              </a>
+            {!!uploadedDocs?.registration?.url && (
+              <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ fontSize: '13px', color: '#0f172a' }}>
+                  الملف المرفوع: {uploadedDocs.registration?.name || 'ملف'}
+                </div>
+                <a href={uploadedDocs.registration.url} target="_blank" rel="noreferrer">
+                  فتح الملف
+                </a>
+              </div>
             )}
           </div>
 
           <div className="form-group full-width">
             <label>مستند رخصة السائق</label>
             <div className="students-table-hint">
-              {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : (uploaded.driverLicense?.url ? 'تم الرفع' : 'لم يتم الرفع بعد')}
+              {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : (uploadedDocs?.driverLicense?.url ? 'تم الرفع' : 'لم يتم الرفع بعد')}
             </div>
             <input
               type="file"
@@ -2397,10 +2556,15 @@ const DocumentsFormTab = ({ busId, isLeased, initialDocs, beforeUpload, onDocsCh
                 e.target.value = '';
               }}
             />
-            {!!uploaded.driverLicense?.url && (
-              <a href={uploaded.driverLicense.url} target="_blank" rel="noreferrer">
-                فتح الملف
-              </a>
+            {!!uploadedDocs?.driverLicense?.url && (
+              <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ fontSize: '13px', color: '#0f172a' }}>
+                  الملف المرفوع: {uploadedDocs.driverLicense?.name || 'ملف'}
+                </div>
+                <a href={uploadedDocs.driverLicense.url} target="_blank" rel="noreferrer">
+                  فتح الملف
+                </a>
+              </div>
             )}
           </div>
 
@@ -2408,7 +2572,7 @@ const DocumentsFormTab = ({ busId, isLeased, initialDocs, beforeUpload, onDocsCh
             <div className="form-group full-width">
               <label>عقد الإيجار</label>
               <div className="students-table-hint">
-                {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : (uploaded.leaseContract?.url ? 'تم الرفع' : 'لم يتم الرفع بعد')}
+                {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : (uploadedDocs?.leaseContract?.url ? 'تم الرفع' : 'لم يتم الرفع بعد')}
               </div>
               <input
                 type="file"
@@ -2420,10 +2584,15 @@ const DocumentsFormTab = ({ busId, isLeased, initialDocs, beforeUpload, onDocsCh
                   e.target.value = '';
                 }}
               />
-              {!!uploaded.leaseContract?.url && (
-                <a href={uploaded.leaseContract.url} target="_blank" rel="noreferrer">
-                  فتح الملف
-                </a>
+              {!!uploadedDocs?.leaseContract?.url && (
+                <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ fontSize: '13px', color: '#0f172a' }}>
+                    الملف المرفوع: {uploadedDocs.leaseContract?.name || 'ملف'}
+                  </div>
+                  <a href={uploadedDocs.leaseContract.url} target="_blank" rel="noreferrer">
+                    فتح الملف
+                  </a>
+                </div>
               )}
             </div>
           )}

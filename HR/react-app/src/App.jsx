@@ -74,6 +74,8 @@ const BranchRequests = lazy(() => import('./pages/BranchRequests'));
 const ManageRequests = lazy(() => import('./pages/ManageRequests'));
 const FixMissingDates = lazy(() => import('./pages/FixMissingDates'));
 const PayrollAbsenceAdmin = lazy(() => import('./pages/PayrollAbsenceAdmin'));
+const EmployeeStatistics = lazy(() => import('./pages/EmployeeStatistics'));
+const ExperienceCertificate = lazy(() => import('./pages/ExperienceCertificate'));
 // NOTE: Vite dev-server can sometimes cache an empty transform for this large file
 // (serving 200 with Content-Length: 0), which breaks React.lazy with "{}".
 // Adding a harmless query string in DEV forces a fresh module id and avoids the issue.
@@ -179,6 +181,16 @@ const AppContent = () => {
             <ProtectedRoute requireMainManager>
               <Layout>
                 <EmployeeFile />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/experience-certificate"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <ExperienceCertificate />
               </Layout>
             </ProtectedRoute>
           }
@@ -290,6 +302,16 @@ const AppContent = () => {
               <Layout>
                 <PayrollAbsenceAdmin />
               </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/employee-statistics"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <EmployeeStatistics />
+              </RoleBasedLayout>
             </ProtectedRoute>
           }
         />

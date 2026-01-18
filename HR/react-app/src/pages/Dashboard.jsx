@@ -689,14 +689,7 @@ const Dashboard = () => {
       insurance_statement: 'كشف التأمينات',
       operational_plan: 'الخطة التشغلية للمركز',
       owner_civil_id_copy: 'نسخه من هوية الاحوال الشخصية لمالك المركز',
-      disclosure_commitment: 'افصاح و تعهد',
-      certification_commitment_form: 'نموذج تصديق و تعاقد',
-      financial_platform_declaration: ' اقرار المنصة المالية',
-      financial_claim_form: 'نموذج مطالبة مالية',
       student_cadre_file: 'بيانات الطلاب',
-      dropped_students: 'الطلاب المنقطعين',
-      free_seats: 'المقاعد المتاحة',
-      acceptance_notifications: 'إشعارات القبول',
       payroll_file: ' مسيرات الرواتب',
       salary_deposit_file: ' ايداع الرواتب (التحويلات البنكية)'
     };
@@ -831,14 +824,7 @@ const Dashboard = () => {
             insurance_statement: 'كشف التأمينات',
             operational_plan: 'الخطة التشغلية للمركز',
             owner_civil_id_copy: 'نسخه من هوية الاحوال الشخصية لمالك المركز',
-            disclosure_commitment: 'افصاح و تعهد',
-            certification_commitment_form: 'نموذج تصديق و تعاقد',
-            financial_platform_declaration: ' اقرار المنصة المالية',
-            financial_claim_form: 'نموذج مطالبة مالية',
-            student_cadre_file: 'بيانات الطلاب',
-            dropped_students: 'الطلاب المنقطعين',
-            free_seats: 'المقاعد المتاحة',
-            acceptance_notifications: 'إشعارات القبول'
+            student_cadre_file: 'بيانات الطلاب'
           };
 
           withExpiry.push({
@@ -1022,7 +1008,7 @@ const Dashboard = () => {
                     </span>
                   </div>
                   <div className="notification-message-dashboard">
-                    {notification.message}
+                    {notification.message ? notification.message.split('\n').filter(line => line.trim() !== '').join('\n') : ''}
                   </div>
 
                   {/* Attachment Display */}

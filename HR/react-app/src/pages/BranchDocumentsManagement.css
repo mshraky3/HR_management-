@@ -117,6 +117,15 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   align-items: flex-end;
   flex-wrap: wrap;
+  position: relative;
+  z-index: 10;
+}
+
+/* Filter Dropdown Menu */
+.filter-dropdown-menu {
+  position: absolute !important;
+  z-index: 9999 !important;
+  isolation: isolate;
 }
 
 .filter-group {
@@ -125,6 +134,8 @@
   gap: 0.5rem;
   flex: 1;
   min-width: 200px;
+  position: relative;
+  z-index: 1;
 }
 
 .filter-group label {
@@ -556,12 +567,32 @@
   background: #fef3c7;
 }
 
+.btn-edit svg {
+  fill: none;
+}
+
+.btn-edit svg path,
+.btn-edit svg polyline,
+.btn-edit svg line {
+  stroke: #f59e0b;
+}
+
 .btn-delete {
   color: #ef4444;
 }
 
 .btn-delete:hover {
   background: #fee2e2;
+}
+
+.btn-delete svg {
+  fill: none;
+}
+
+.btn-delete svg path,
+.btn-delete svg polyline,
+.btn-delete svg line {
+  stroke: #ef4444;
 }
 
 /* Modal Styles */

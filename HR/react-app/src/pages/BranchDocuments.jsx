@@ -678,20 +678,9 @@ const BranchDocuments = () => {
     { value: 'insurance_print', label: 'كشف التأمينات', requiresDefaultFields: true, branchType: 'healthcare_center' },
     { value: 'rental_contract', label: 'عقد الايجار', requiresDefaultFields: true, branchType: 'healthcare_center' },
     { value: 'operational_plan', label: 'الخطة التشغلية للمركز', requiresDefaultFields: true, branchType: 'healthcare_center' },
-    { value: 'decision_obligation', label: 'قرار و الزام', requiresDefaultFields: false, branchType: 'healthcare_center' },
-    { value: 'decision_commitment', label: 'قرار و تعهد', requiresDefaultFields: false, branchType: 'healthcare_center' },
-    { value: 'staff_cadre', label: 'الكادر', requiresDefaultFields: false, branchType: 'healthcare_center' },
     { value: 'owner_civil_id_copy', label: 'نسخه من هوية الاحوال الشخصية لمالك المركز', requiresDefaultFields: true, branchType: 'healthcare_center' },
-    { value: 'disclosure_commitment', label: 'افصاح و تعهد', requiresDefaultFields: true, branchType: 'healthcare_center' },
-    { value: 'certification_commitment_form', label: 'نموذج تصديق و تعاقد', requiresDefaultFields: true, branchType: 'healthcare_center' },
-    { value: 'financial_platform_declaration', label: 'ملف اقرار المنصة المالية', requiresDefaultFields: true, branchType: 'healthcare_center' },
-    { value: 'financial_claim_form', label: 'نموذج مطالبة مالية', requiresDefaultFields: true, branchType: 'healthcare_center' },
     // Student-related documents for healthcare centers only (should appear in alerts)
     { value: 'student_cadre_file', label: 'بيانات الطلاب', requiresDefaultFields: false, branchType: 'healthcare_center' },
-    { value: 'dropped_students', label: 'الطلاب المنقطعين', requiresDefaultFields: false, branchType: 'healthcare_center' },
-    { value: 'free_seats', label: 'المقاعد المتاحة', requiresDefaultFields: false, branchType: 'healthcare_center' },
-    { value: 'acceptance_notifications', label: 'إشعارات القبول', requiresDefaultFields: false, branchType: 'healthcare_center' },
-    { value: 'other', label: 'أخرى', requiresDefaultFields: true, branchType: null },
   ];
 
   // Get current branch type (memoized)
@@ -769,7 +758,7 @@ const BranchDocuments = () => {
   // Sort documents by priority: 1) Monthly (highest), 2) Student/Cadre, 3) Others
   const sortDocumentCardsByPriority = useCallback((cards) => {
     const monthlyTypes = ['payroll_file', 'salary_deposit_file'];
-    const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
+    const studentCadreTypes = ['student_cadre_file'];
 
     return [...cards].sort((a, b) => {
       const aType = a.value;
@@ -781,7 +770,8 @@ const BranchDocuments = () => {
       if (aIsMonthly && !bIsMonthly) return -1;
       if (!aIsMonthly && bIsMonthly) return 1;
 
-      // Student/Cadre documents second
+      // Student/Cadre documents second (only student_cadre_file remains)
+      const studentCadreTypes = ['student_cadre_file'];
       const aIsStudentCadre = studentCadreTypes.includes(aType);
       const bIsStudentCadre = studentCadreTypes.includes(bType);
       if (aIsStudentCadre && !bIsStudentCadre) return -1;

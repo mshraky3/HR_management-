@@ -4,7 +4,7 @@
  * Quick upload for missing documents
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { branchDocumentsAPI, branchesAPI, setBranchDocumentsPassword } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
@@ -57,6 +57,12 @@ const BranchDocumentsManagement = () => {
   const [branchSearch, setBranchSearch] = useState('');
   const [documentTypeSearch, setDocumentTypeSearch] = useState('');
   
+  // Dropdown state for searchable selects
+  const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
+  const [isDocumentTypeDropdownOpen, setIsDocumentTypeDropdownOpen] = useState(false);
+  const branchDropdownRef = useRef(null);
+  const documentTypeDropdownRef = useRef(null);
+  
   // Expanded/collapsed state for document cards (default: all collapsed)
   const [expandedCards, setExpandedCards] = useState(new Set());
 
@@ -99,6 +105,46 @@ const BranchDocumentsManagement = () => {
     });
     return filtered;
   }, [isMainManager]);
+
+  // Get selected branch name for display
+  const selectedBranchName = useMemo(() => {
+    if (isBranchDropdownOpen && branchSearch) {
+      return branchSearch;
+    }
+    if (selectedBranchFilter) {
+      const branch = branches.find(b => b.id === parseInt(selectedBranchFilter));
+      return branch?.branch_name || '';
+    }
+    return branchSearch;
+  }, [selectedBranchFilter, branches, branchSearch, isBranchDropdownOpen]);
+
+  // Get selected document type name for display
+  const selectedDocumentTypeName = useMemo(() => {
+    if (isDocumentTypeDropdownOpen && documentTypeSearch) {
+      return documentTypeSearch;
+    }
+    if (documentTypeFilter) {
+      return documentTypeLabels[documentTypeFilter] || documentTypeFilter;
+    }
+    return documentTypeSearch;
+  }, [documentTypeFilter, documentTypeSearch, isDocumentTypeDropdownOpen, documentTypeLabels]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (branchDropdownRef.current && !branchDropdownRef.current.contains(event.target)) {
+        setIsBranchDropdownOpen(false);
+      }
+      if (documentTypeDropdownRef.current && !documentTypeDropdownRef.current.contains(event.target)) {
+        setIsDocumentTypeDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // Load branches and documents
   useEffect(() => {
@@ -585,61 +631,192 @@ const BranchDocumentsManagement = () => {
           />
         </div>
 
-        <div className="filter-group">
+        <div className="filter-group" style={{ position: 'relative' }} ref={branchDropdownRef}>
           <label>الفرع</label>
           <input
             type="text"
-            value={branchSearch}
-            onChange={(e) => setBranchSearch(e.target.value)}
-            placeholder="ابحث عن فرع..."
-            className="filter-input filter-input-small"
+            value={selectedBranchName}
+            onChange={(e) => {
+              const term = e.target.value;
+              setBranchSearch(term);
+              setIsBranchDropdownOpen(true);
+              if (!term) {
+                setSelectedBranchFilter('');
+              }
+            }}
+            onFocus={() => {
+              setIsBranchDropdownOpen(true);
+              if (selectedBranchFilter) {
+                const branch = branches.find(b => b.id === parseInt(selectedBranchFilter));
+                setBranchSearch(branch?.branch_name || '');
+              }
+            }}
+            placeholder="ابحث عن فرع أو اختر من القائمة..."
+            className="filter-input"
+            autoComplete="off"
           />
-          <select
-            value={selectedBranchFilter}
-            onChange={(e) => setSelectedBranchFilter(e.target.value)}
-            className="filter-select"
-          >
-            <option value="">جميع الفروع</option>
-            {branches
-              .filter(branch => 
-                !branchSearch.trim() || 
-                branch.branch_name?.toLowerCase().includes(branchSearch.toLowerCase())
-              )
-              .map(branch => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.branch_name}
-                </option>
-              ))}
-          </select>
+          {isBranchDropdownOpen && (
+            <div className="filter-dropdown-menu" style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              maxHeight: '300px',
+              overflowY: 'auto',
+              backgroundColor: 'white',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+              zIndex: 9999,
+              marginTop: '4px'
+            }}>
+              <div
+                style={{
+                  padding: '8px 12px',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid #f0f0f0',
+                  backgroundColor: !selectedBranchFilter ? '#f0f9ff' : 'white'
+                }}
+                onClick={() => {
+                  setSelectedBranchFilter('');
+                  setBranchSearch('');
+                  setIsBranchDropdownOpen(false);
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f9ff'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = !selectedBranchFilter ? '#f0f9ff' : 'white'}
+              >
+                جميع الفروع
+              </div>
+              {branches
+                .filter(b => !branchSearch || b.branch_name.toLowerCase().includes(branchSearch.toLowerCase()))
+                .map(branch => (
+                  <div
+                    key={branch.id}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid #f0f0f0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      backgroundColor: selectedBranchFilter === String(branch.id) ? '#f0f9ff' : 'white'
+                    }}
+                    onClick={() => {
+                      setSelectedBranchFilter(String(branch.id));
+                      setBranchSearch('');
+                      setIsBranchDropdownOpen(false);
+                    }}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f9ff'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = selectedBranchFilter === String(branch.id) ? '#f0f9ff' : 'white'}
+                  >
+                    <BranchBadge branch={branch} />
+                    <span>{branch.branch_name}</span>
+                  </div>
+                ))}
+              {branches.filter(b => !branchSearch || b.branch_name.toLowerCase().includes(branchSearch.toLowerCase())).length === 0 && (
+                <div style={{ padding: '12px', textAlign: 'center', color: '#666' }}>
+                  لا توجد فروع مطابقة
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        <div className="filter-group">
+        <div className="filter-group" style={{ position: 'relative' }} ref={documentTypeDropdownRef}>
           <label>نوع المستند</label>
           <input
             type="text"
-            value={documentTypeSearch}
-            onChange={(e) => setDocumentTypeSearch(e.target.value)}
-            placeholder="ابحث عن نوع مستند..."
-            className="filter-input filter-input-small"
+            value={selectedDocumentTypeName}
+            onChange={(e) => {
+              const term = e.target.value;
+              setDocumentTypeSearch(term);
+              setIsDocumentTypeDropdownOpen(true);
+              if (!term) {
+                setDocumentTypeFilter('');
+              }
+            }}
+            onFocus={() => {
+              setIsDocumentTypeDropdownOpen(true);
+              if (documentTypeFilter) {
+                setDocumentTypeSearch(documentTypeLabels[documentTypeFilter] || documentTypeFilter);
+              }
+            }}
+            placeholder="ابحث عن نوع مستند أو اختر من القائمة..."
+            className="filter-input"
+            autoComplete="off"
           />
-          <select
-            value={documentTypeFilter}
-            onChange={(e) => setDocumentTypeFilter(e.target.value)}
-            className="filter-select"
-          >
-            <option value="">جميع الأنواع</option>
-            {allDocumentTypes
-              .filter(docType => {
+          {isDocumentTypeDropdownOpen && (
+            <div className="filter-dropdown-menu" style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              maxHeight: '300px',
+              overflowY: 'auto',
+              backgroundColor: 'white',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+              zIndex: 9999,
+              marginTop: '4px'
+            }}>
+              <div
+                style={{
+                  padding: '8px 12px',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid #f0f0f0',
+                  backgroundColor: !documentTypeFilter ? '#f0f9ff' : 'white'
+                }}
+                onClick={() => {
+                  setDocumentTypeFilter('');
+                  setDocumentTypeSearch('');
+                  setIsDocumentTypeDropdownOpen(false);
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f9ff'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = !documentTypeFilter ? '#f0f9ff' : 'white'}
+              >
+                جميع الأنواع
+              </div>
+              {allDocumentTypes
+                .filter(docType => {
+                  if (!documentTypeSearch.trim()) return true;
+                  const label = documentTypeLabels[docType] || docType;
+                  return label.toLowerCase().includes(documentTypeSearch.toLowerCase());
+                })
+                .map(docType => {
+                  const label = documentTypeLabels[docType] || docType;
+                  return (
+                    <div
+                      key={docType}
+                      style={{
+                        padding: '8px 12px',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid #f0f0f0',
+                        backgroundColor: documentTypeFilter === docType ? '#f0f9ff' : 'white'
+                      }}
+                      onClick={() => {
+                        setDocumentTypeFilter(docType);
+                        setDocumentTypeSearch('');
+                        setIsDocumentTypeDropdownOpen(false);
+                      }}
+                      onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f9ff'}
+                      onMouseLeave={(e) => e.target.style.backgroundColor = documentTypeFilter === docType ? '#f0f9ff' : 'white'}
+                    >
+                      {label}
+                    </div>
+                  );
+                })}
+              {allDocumentTypes.filter(docType => {
                 if (!documentTypeSearch.trim()) return true;
                 const label = documentTypeLabels[docType] || docType;
                 return label.toLowerCase().includes(documentTypeSearch.toLowerCase());
-              })
-              .map(docType => (
-                <option key={docType} value={docType}>
-                  {documentTypeLabels[docType] || docType}
-                </option>
-              ))}
-          </select>
+              }).length === 0 && (
+                <div style={{ padding: '12px', textAlign: 'center', color: '#666' }}>
+                  لا توجد أنواع مطابقة
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="filter-group">
