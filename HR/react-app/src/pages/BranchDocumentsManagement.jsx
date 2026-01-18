@@ -91,7 +91,6 @@ const BranchDocumentsManagement = () => {
     free_seats: 'المقاعد المتاحة',
     acceptance_notifications: 'إشعارات القبول',
     payroll_file: 'ملف مسيرات الرواتب',
-    salary_deposit_file: 'ملف إيداع الرواتب'
   };
 
   // Filtered document type labels for modals (exclude restricted types for branch managers)
@@ -225,10 +224,13 @@ const BranchDocumentsManagement = () => {
       status[branch.id] = {};
       
       nonMonthlyRequired.forEach(docType => {
+        // IMPORTANT: Match the same logic as Dashboard.jsx
+        // Document must be active AND have a stored file reference (file_path is the main one for branch docs)
         const existingDocs = allDocuments.filter(
           doc => doc.branch_id === branch.id && 
                  doc.document_type === docType && 
-                 doc.is_active !== false
+                 doc.is_active !== false &&
+                 (doc.file_path || doc.file_url || doc.blob_url)
         );
         
         status[branch.id][docType] = {
@@ -1197,7 +1199,7 @@ const DocumentModal = ({ title, formData, setFormData, branches, documentTypeLab
               </div>
             </div>
 
-            {(formData.document_type === 'payroll_file' || formData.document_type === 'salary_deposit_file') && (
+            {formData.document_type === 'payroll_file' && (
               <div className="form-row">
                 <div className="form-group">
                   <label>رقم IBAN</label>

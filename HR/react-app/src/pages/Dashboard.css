@@ -877,6 +877,27 @@
   box-shadow: var(--shadow-md);
 }
 
+.notifications-section.focus-scroll-highlight {
+  animation: notificationsFocusPulse 1.5s ease;
+  outline: 3px solid rgba(33, 150, 243, 0.35);
+  outline-offset: 4px;
+}
+
+@keyframes notificationsFocusPulse {
+  0% {
+    box-shadow: var(--shadow-md);
+    transform: translateY(0);
+  }
+  35% {
+    box-shadow: 0 14px 32px rgba(33, 150, 243, 0.25);
+    transform: translateY(-2px);
+  }
+  100% {
+    box-shadow: var(--shadow-md);
+    transform: translateY(0);
+  }
+}
+
 .notifications-section h2 {
   margin-bottom: var(--spacing-lg);
   color: var(--text);

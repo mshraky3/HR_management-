@@ -17,7 +17,7 @@ import {
 } from '../utils/employeeHelpers';
 import { getBranchTypeRules } from '../utils/employeeRules';
 import { DATA_COMPLETION_STATUS } from '../utils/employeeConstants';
-import { formatDate } from '../utils/dateConverters';
+import { formatDate, hijriToGregorian, parseHijriString } from '../utils/dateConverters';
 import DashboardProgress from './DashboardProgress';
 import MissingEmployeeDataSection from '../components/MissingEmployeeDataSection.jsx';
 import PayrollAbsenceBranchSection from '../components/PayrollAbsenceBranchSection.jsx';
@@ -513,10 +513,9 @@ const Dashboard = () => {
 
   const checkMonthlyDocuments = (documents, branchesList) => {
     const alerts = [];
-    const monthlyTypes = ['payroll_file', 'salary_deposit_file'];
+    const monthlyTypes = ['payroll_file'];
     const typeLabels = {
       payroll_file: ' مسيرات الرواتب',
-      salary_deposit_file: ' ايداع الرواتب (التحويلات البنكية)'
     };
 
     // Helper function to get last day of current month
@@ -670,6 +669,8 @@ const Dashboard = () => {
     const alertsWithExpiry = [];
     const alertsWithoutExpiry = [];
     const seenAlerts = new Set(); // To prevent duplicates
+    const missingDebug = [];
+    const hasStoredFile = (doc) => !!(doc?.file_path || doc?.file_url || doc?.blob_url);
 
     // Get document type labels from branch document type labels
     // This ensures consistency with the rule system
@@ -690,8 +691,7 @@ const Dashboard = () => {
       operational_plan: 'الخطة التشغلية للمركز',
       owner_civil_id_copy: 'نسخه من هوية الاحوال الشخصية لمالك المركز',
       student_cadre_file: 'بيانات الطلاب',
-      payroll_file: ' مسيرات الرواتب',
-      salary_deposit_file: ' ايداع الرواتب (التحويلات البنكية)'
+      payroll_file: ' مسيرات الرواتب'
     };
 
     // Get branches to check
@@ -717,11 +717,36 @@ const Dashboard = () => {
         }
 
         // Check if this document type exists for this branch
+        // IMPORTANT: Only check active documents (is_active !== false)
+        // Also check that document exists and has a stored file reference (file_path is the main one for branch docs)
         const branchDocs = documents.filter(
-          doc => doc.branch_id === branch.id && doc.document_type === docType && doc.is_active !== false
+          doc => doc.branch_id === branch.id && 
+                 doc.document_type === docType && 
+                 doc.is_active !== false &&
+                 hasStoredFile(doc)
+        );
+
+        const allBranchDocsOfType = documents.filter(
+          doc => doc.branch_id === branch.id && doc.document_type === docType
         );
 
         if (branchDocs.length === 0) {
+          missingDebug.push({
+            branchId: branch.id,
+            branchName: branch.branch_name,
+            branchType,
+            documentType: docType,
+            documentLabel: typeLabels[docType] || docType,
+            reason: allBranchDocsOfType.length > 0 ? 'exists_but_inactive_or_no_file_ref' : 'no_record',
+            found: allBranchDocsOfType.map(d => ({
+              id: d.id,
+              is_active: d.is_active,
+              has_file_path: !!d.file_path,
+              has_file_url: !!d.file_url,
+              has_blob_url: !!d.blob_url,
+            }))
+          });
+          
           // Document is missing
           const alert = {
             branchId: branch.id,
@@ -748,7 +773,7 @@ const Dashboard = () => {
     const sortAlerts = (alerts) => {
       return alerts.sort((a, b) => {
         // Priority order: 1) Monthly (highest), 2) Student/Cadre, 3) Others
-        const monthlyTypes = ['payroll_file', 'salary_deposit_file'];
+        const monthlyTypes = ['payroll_file'];
         const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
 
         const aIsMonthly = monthlyTypes.includes(a.documentType);
@@ -770,13 +795,31 @@ const Dashboard = () => {
 
     // Keep old state for backward compatibility
     const allAlerts = [...alertsWithExpiry, ...alertsWithoutExpiry];
+    
+    // Final summary logging
+    console.log('[Dashboard] Missing documents summary:', {
+      totalMissing: allAlerts.length,
+      withExpiry: alertsWithExpiry.length,
+      withoutExpiry: alertsWithoutExpiry.length,
+      missingDebug,
+      missingDocuments: allAlerts.map(a => ({
+        branchId: a.branchId,
+        branchName: a.branchName,
+        documentType: a.documentType,
+        documentLabel: a.documentLabel
+      }))
+    });
+    
     setMissingBranchDocumentAlerts(allAlerts);
     setMissingBranchDocumentAlertsWithExpiry(sortAlerts(alertsWithExpiry));
     setMissingBranchDocumentAlertsWithoutExpiry(sortAlerts(alertsWithoutExpiry));
   };
 
-  // Separate documents by expiry date
+  // Separate documents by expiry date - TEMPORARILY DISABLED until date calculations are fixed
   const separateDocumentsByExpiry = useCallback((documents) => {
+    // Temporarily disabled - will be re-enabled after fixing date calculations
+    return;
+    
     if (isMainManager()) return;
 
     const branchId = user?.branch_id;
@@ -793,16 +836,67 @@ const Dashboard = () => {
 
     branchDocs.forEach(doc => {
       // Skip monthly documents (handled separately)
-      const monthlyTypes = ['payroll_file', 'attendance_file', 'salary_deposit_file'];
+      const monthlyTypes = ['payroll_file', 'attendance_file'];
       if (monthlyTypes.includes(doc.document_type)) {
         return;
       }
 
       // Check if document has expiry date
+      // IMPORTANT: Determine date type based on year: < 1600 = Hijri, >= 1600 = Gregorian
+      let expiryDate = null;
+      
       if (doc.expiry_date) {
-        const expiryDate = new Date(doc.expiry_date);
+        const tempDate = new Date(doc.expiry_date);
+        if (!isNaN(tempDate.getTime())) {
+          const year = tempDate.getFullYear();
+          
+          // Determine date type: year < 1600 = Hijri, year >= 1600 = Gregorian
+          if (year < 1600) {
+            // Hijri date - convert to Gregorian for calculation
+            // Parse the date string to get day/month/year
+            const dateStr = doc.expiry_date;
+            const parts = dateStr.split(/[-/]/);
+            if (parts.length === 3) {
+              // Try to parse as YYYY-MM-DD format (hijri year is first)
+              const hijriYear = parseInt(parts[0]);
+              const hijriMonth = parseInt(parts[1]);
+              const hijriDay = parseInt(parts[2]);
+              
+              // Convert Hijri to Gregorian
+              const gregorianDateStr = hijriToGregorian(hijriDay, hijriMonth, hijriYear);
+              if (gregorianDateStr) {
+                expiryDate = new Date(gregorianDateStr);
+              }
+            } else if (doc.expiry_date_hijri) {
+              // Use expiry_date_hijri if available (format: DD/MM/YYYY)
+              const hijriDate = parseHijriString(doc.expiry_date_hijri);
+              if (hijriDate) {
+                const gregorianDateStr = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+                if (gregorianDateStr) {
+                  expiryDate = new Date(gregorianDateStr);
+                }
+              }
+            }
+          } else {
+            // Gregorian date - use directly
+            expiryDate = tempDate;
+          }
+        }
+      } else if (doc.expiry_date_hijri) {
+        // Only hijri date available - convert to Gregorian (format: DD/MM/YYYY)
+        const hijriDate = parseHijriString(doc.expiry_date_hijri);
+        if (hijriDate) {
+          const gregorianDateStr = hijriToGregorian(hijriDate.day, hijriDate.month, hijriDate.year);
+          if (gregorianDateStr) {
+            expiryDate = new Date(gregorianDateStr);
+          }
+        }
+      }
+      
+      if (expiryDate && !isNaN(expiryDate.getTime())) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+        expiryDate.setHours(0, 0, 0, 0);
 
         // Only show if expired or expiring soon (within 90 days)
         const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
@@ -889,10 +983,9 @@ const Dashboard = () => {
 
   // Get monthly documents status for display
   const getMonthlyDocumentsSummary = () => {
-    const monthlyTypes = ['payroll_file', 'salary_deposit_file'];
+    const monthlyTypes = ['payroll_file'];
     const typeLabels = {
       payroll_file: ' مسيرات الرواتب',
-      salary_deposit_file: ' ايداع الرواتب (التحويلات البنكية)'
     };
 
     if (isMainManager()) {
@@ -957,7 +1050,7 @@ const Dashboard = () => {
 
       {/* Notifications Section - Only for branch managers */}
       {!isMainManager() && notifications.length > 0 && (
-        <div className="notifications-section">
+        <div className="notifications-section" id="notifications">
           <h2>الإشعارات</h2>
           <div className="notifications-list-dashboard">
             {notifications.map((notification) => {

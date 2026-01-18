@@ -12,7 +12,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import BankSelect from '../components/BankSelect';
 import UnifiedDatePicker from '../components/UnifiedDatePicker';
 import BranchBadge from '../components/BranchBadge';
-import { formatDate } from '../utils/dateConverters';
+import { formatDate, hijriToGregorian, parseHijriString, gregorianToHijri } from '../utils/dateConverters';
 import { RESTRICTED_DOCUMENT_TYPES } from '../utils/documentRestrictions';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 
@@ -665,6 +665,8 @@ const BranchDocuments = () => {
 
   // All document types (monthly documents are in separate page)
   const allBranchDocumentTypes = [
+    // Required for all branches (per rules)
+    { value: 'license', label: 'الترخيص', requiresDefaultFields: true, branchType: null },
     // Common documents (all branches)
     { value: 'registration', label: 'السجل التجاري', requiresDefaultFields: true, branchType: null },
     { value: 'iban_file', label: 'ملف الآيبان', requiresDefaultFields: false, branchType: null },
@@ -757,7 +759,7 @@ const BranchDocuments = () => {
 
   // Sort documents by priority: 1) Monthly (highest), 2) Student/Cadre, 3) Others
   const sortDocumentCardsByPriority = useCallback((cards) => {
-    const monthlyTypes = ['payroll_file', 'salary_deposit_file'];
+    const monthlyTypes = ['payroll_file'];
     const studentCadreTypes = ['student_cadre_file'];
 
     return [...cards].sort((a, b) => {
@@ -1008,7 +1010,8 @@ const BranchDocuments = () => {
                             {formatDate(card.document.uploaded_at)}
                           </span>
                         </div>
-                        {card.document.expiry_date && (
+                        {/* Expiry date display - temporarily hidden until date calculations are fixed */}
+                        {false && card.document.expiry_date && (
                           <div className="document-info-item">
                             <span className="info-label">تاريخ الانتهاء:</span>
                             <span className="info-value">
@@ -1021,12 +1024,6 @@ const BranchDocuments = () => {
                             </span>
                           </div>
                         )}
-                        <div className="document-info-item">
-                          <span className="info-label">حالة التحقق:</span>
-                          <span className={`verification-badge ${card.document.is_verified ? 'verified' : 'not-verified'}`}>
-                            {card.document.is_verified ? '✓ تم التحقق' : '✗ غير محقق'}
-                          </span>
-                        </div>
                       </div>
                     ) : (
                       <div className="document-missing-message">
