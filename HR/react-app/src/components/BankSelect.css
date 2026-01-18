@@ -1,0 +1,59 @@
+.bank-select-group {
+  margin-bottom: var(--spacing-md);
+}
+
+.bank-select-group .form-row {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: 0;
+}
+
+.bank-select-group select.error,
+.bank-select-group input.error {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+.bank-error,
+.iban-error {
+  color: var(--danger);
+  font-size: var(--font-size-xs);
+  margin-top: var(--spacing-xs);
+}
+
+.iban-success {
+  color: var(--success);
+  font-size: var(--font-size-xs);
+  margin-top: var(--spacing-xs);
+}
+
+/* IBAN input should always be LTR (left-to-right) */
+.iban-input {
+  direction: ltr !important;
+  text-align: left !important;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 1px;
+}
+
+/* RTL support */
+html[dir="rtl"] .bank-select-group .form-row {
+  flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .iban-input {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .bank-select-group .form-row {
+    flex-direction: column;
+    gap: 0;
+  }
+  
+  html[dir="rtl"] .bank-select-group .form-row {
+    flex-direction: column;
+  }
+}
+

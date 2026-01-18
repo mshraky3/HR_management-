@@ -1,0 +1,105 @@
+:root {
+    --focus-bg-start: #fff8e1;
+    --focus-bg-end: #fff3d6;
+    --focus-border: #ffc947;
+    --focus-accent: #ffb300
+}
+
+.focus-employee-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 16px;
+    border-radius: 12px;
+    background: linear-gradient(90deg, var(--focus-bg-start), var(--focus-bg-end));
+    border: 1px solid var(--focus-border);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+    margin-bottom: 1rem;
+    direction: rtl;
+    /* keep layout consistent for RTL */
+}
+
+.focus-employee-card::before {
+    content: '';
+    width: 8px;
+    height: 56px;
+    border-radius: 6px;
+    background: var(--focus-accent);
+    margin-left: 8px;
+}
+
+.focus-employee-info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.focus-employee-name {
+    font-weight: 800;
+    font-size: 1.125rem;
+    color: #2c3e50;
+}
+
+.focus-employee-meta {
+    color: #4b5563;
+    font-size: 0.975rem;
+}
+
+/* Loading spinner animation */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.focus-employee-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+/* Slightly larger buttons inside the focus card to emphasize actions */
+.focus-employee-actions .btn-sm {
+    padding: 8px 12px;
+    font-size: 0.95rem;
+    border-radius: 8px;
+}
+
+/* Make the primary button bolder and higher contrast */
+.focus-employee-actions .btn-primary {
+    background: linear-gradient(180deg, #1976D2, #145ea8);
+    border: none;
+    color: white;
+}
+
+/* Danger button: stronger red */
+.focus-employee-actions .btn-danger {
+    background: #d32f2f;
+    border: none;
+    color: white;
+}
+
+@media (max-width:768px) {
+    .focus-employee-card {
+        flex-direction: column;
+        align-items: flex-start
+    }
+
+    .focus-employee-card::before {
+        height: 6px;
+        width: 100%;
+        border-radius: 6px;
+        margin-left: 0;
+        margin-bottom: 8px
+    }
+
+    .focus-employee-actions {
+        width: 100%;
+        display: flex;
+        justify-content: flex-start
+    }
+}
