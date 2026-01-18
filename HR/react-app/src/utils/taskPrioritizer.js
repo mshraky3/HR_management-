@@ -257,6 +257,37 @@ const calculateDocumentTasks = (documents, branches, branchId, monthlyAlerts, mi
     (alert.status === 'critical' || alert.status === 'must_do')
   );
   
+  // Debug logging to diagnose document count issue
+  if (missingRequired.length > 0 || monthlyDue.length > 0) {
+    console.log('[taskPrioritizer] Document tasks calculation:', {
+      branchId,
+      missingAlertsTotal: missingAlerts.length,
+      missingRequired: missingRequired.length,
+      missingRequiredDetails: missingRequired.map(a => ({ 
+        branchId: a.branchId, 
+        type: a.documentType, 
+        label: a.documentLabel,
+        message: a.message
+      })),
+      monthlyAlertsTotal: monthlyAlerts.length,
+      monthlyDue: monthlyDue.length,
+      monthlyDueDetails: monthlyDue.map(a => ({ 
+        branchId: a.branchId,
+        type: a.documentType, 
+        label: a.documentLabel, 
+        status: a.status,
+        message: a.message
+      })),
+      availableDocuments: documents.filter(d => d.branch_id === branchId).map(d => ({
+        id: d.id,
+        type: d.document_type,
+        is_active: d.is_active,
+        has_file_url: !!d.file_url,
+        has_blob_url: !!d.blob_url
+      }))
+    });
+  }
+  
   const totalDocuments = missingRequired.length + monthlyDue.length;
   
   if (totalDocuments > 0) {

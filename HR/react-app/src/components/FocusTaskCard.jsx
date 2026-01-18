@@ -133,6 +133,11 @@ const FocusTaskCard = ({ task, onSkip }) => {
               const element = document.getElementById(sectionId);
               if (element) {
                 element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // Add a quick highlight animation so the user sees where to act
+                element.classList.add('focus-scroll-highlight');
+                window.setTimeout(() => {
+                  element.classList.remove('focus-scroll-highlight');
+                }, 1500);
               }
             }}
             className={`focus-task-action-btn action-primary ${priorityClass}`}

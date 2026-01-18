@@ -201,8 +201,7 @@ export const DOCUMENT_TYPE_RULES = {
  * Documents that must be uploaded monthly
  */
 export const MONTHLY_BRANCH_DOCUMENTS = [
-  'payroll_file',
-  'salary_deposit_file'
+  'payroll_file'
 ];
 
 // ============================================================================

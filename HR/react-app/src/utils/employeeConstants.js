@@ -193,7 +193,6 @@ export const BRANCH_DOCUMENT_TYPE_LABELS = {
   'license': 'الترخيص',
   'permit': 'التصريح',
   'payroll_file': 'ملف مسيرات الرواتب',
-  'salary_deposit_file': 'ملف ايداع الرواتب (التحويلات البنكية)',
   'insurance': 'التأمين',
   'contract': 'العقد',
   'certification': 'الشهادة',
