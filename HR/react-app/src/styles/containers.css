@@ -1,0 +1,212 @@
+/**
+ * Unified Container System
+ * Consistent container sizes and spacing across the application
+ */
+
+/* Standard Container Sizes */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--spacing-md);
+}
+
+.container-sm {
+  max-width: 800px;
+}
+
+.container-lg {
+  max-width: 1400px;
+}
+
+.container-xl {
+  max-width: 1600px;
+}
+
+.container-full {
+  max-width: 100%;
+}
+
+/* Page Container */
+.page-container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--spacing-xl);
+}
+
+/* Card Container */
+.card-container {
+  background: var(--bg);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-light);
+  margin-bottom: var(--spacing-lg);
+}
+
+.card-container-sm {
+  padding: var(--spacing-lg);
+}
+
+.card-container-lg {
+  padding: var(--spacing-2xl);
+}
+
+/* Section Container */
+.section-container {
+  margin-bottom: var(--spacing-xl);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-lg);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 2px solid var(--primary);
+}
+
+.section-header h2 {
+  margin: 0;
+  color: var(--text);
+}
+
+/* Grid Containers */
+.grid-container {
+  display: grid;
+  gap: var(--spacing-lg);
+}
+
+.grid-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.grid-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* Form Container */
+.form-container {
+  background: var(--bg);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-light);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.form-container-lg {
+  max-width: 1000px;
+}
+
+/* Table Container */
+.table-container {
+  background: var(--bg);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-light);
+  overflow-x: auto;
+}
+
+/* Modal Container */
+.modal-container {
+  background: var(--bg);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl);
+  box-shadow: var(--shadow-2xl);
+  max-width: 600px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-container-lg {
+  max-width: 900px;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .page-container {
+    padding: var(--spacing-lg);
+  }
+}
+
+@media (max-width: 640px) {
+  .container,
+  .page-container {
+    padding: var(--spacing-md);
+  }
+  
+  .card-container {
+    padding: var(--spacing-lg);
+  }
+  
+  .grid-4,
+  .grid-3,
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+  
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+  }
+  
+  .form-container {
+    padding: var(--spacing-lg);
+  }
+}
+
+/* Mobile-specific styles (smartphones only) - max-width: 480px */
+@media (max-width: 480px) {
+  .container,
+  .page-container {
+    padding: var(--spacing-xs);
+  }
+  
+  .card-container {
+    padding: var(--spacing-sm);
+    border-radius: var(--radius-lg);
+  }
+  
+  .card-container-sm {
+    padding: var(--spacing-sm);
+  }
+  
+  .section-header {
+    gap: var(--spacing-sm);
+    padding-bottom: var(--spacing-sm);
+  }
+  
+  .section-header h2 {
+    font-size: var(--font-size-lg);
+  }
+  
+  .form-container {
+    padding: var(--spacing-md);
+    border-radius: var(--radius-lg);
+  }
+  
+  .modal-container {
+    padding: var(--spacing-md);
+    max-width: 95vw;
+    border-radius: var(--radius-lg);
+  }
+}
+
