@@ -324,6 +324,37 @@
   border: 1px solid #10b981;
 }
 
+.abnormal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  border: 1px solid #dc2626;
+}
+
+.abnormal-date-row {
+  background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%) !important;
+}
+
+.abnormal-date-row:hover {
+  background: linear-gradient(135deg, #ffe0b2 0%, #ffcc80 100%) !important;
+}
+
+.abnormal-input {
+  border-color: #dc2626 !important;
+  background-color: #fee2e2 !important;
+}
+
+.abnormal-input:focus {
+  outline: 2px solid #dc2626;
+  outline-offset: 2px;
+}
+
 .invalid-age {
   color: var(--warning);
   font-weight: 600;

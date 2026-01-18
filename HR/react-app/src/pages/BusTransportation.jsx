@@ -224,15 +224,8 @@ const BusTransportation = () => {
             console.log('[BusTransportation] All active terms:', activeTerms.map(t => ({ id: t.id, name: t.term_name, year: t.academic_year_label, term_number: t.term_number })));
             setTerms(activeTerms);
             
-            // Set default to current term if available, otherwise first active term
-            const currentTerm = currentTermResponse?.data?.success ? currentTermResponse.data.data : null;
-            if (currentTerm) {
-              console.log('[BusTransportation] Setting selected term to current term:', currentTerm.id, currentTerm.term_name, currentTerm.academic_year_label);
-              setSelectedTermId(currentTerm.id);
-            } else if (activeTerms.length > 0 && !selectedTermId) {
-              console.log('[BusTransportation] No current term found, using first active term:', activeTerms[0].id);
-              setSelectedTermId(activeTerms[0].id);
-            }
+            // Don't set term filter automatically - let user choose
+            // Filters should be clear by default
           } else {
             setTerms([]);
           }
@@ -263,15 +256,8 @@ const BusTransportation = () => {
           console.log('[BusTransportation] All terms (main manager):', allTerms.map(t => ({ id: t.id, name: t.term_name, year: t.academic_year_label, term_number: t.term_number })));
           setTerms(allTerms);
           
-          // Set default to current term if available, otherwise first active term
-          const currentTerm = currentTermResponse?.data?.success ? currentTermResponse.data.data : null;
-          if (currentTerm) {
-            console.log('[BusTransportation] Setting selected term to current term:', currentTerm.id, currentTerm.term_name, currentTerm.academic_year_label);
-            setSelectedTermId(currentTerm.id);
-          } else if (allTerms.length > 0 && !selectedTermId) {
-            console.log('[BusTransportation] No current term found, using first active term:', allTerms[0].id);
-            setSelectedTermId(allTerms[0].id);
-          }
+          // Don't set term filter automatically - let user choose
+          // Filters should be clear by default
         }
       }
     } catch (error) {
@@ -1206,6 +1192,7 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
     vehicle_model: bus?.registration?.vehicle_model || '',
     model_year: bus?.registration?.model_year || '',
     vehicle_color: bus?.registration?.vehicle_color || '',
+    expiry_date_hijri: bus?.registration?.expiry_date_hijri || '',
     expiry_date_gregorian: bus?.registration?.expiry_date_gregorian || '',
   });
 
@@ -1214,10 +1201,13 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
     driver_full_name: bus?.driver_license?.driver_full_name || '',
     driver_id_number: bus?.driver_license?.driver_id_number || '',
     license_number: bus?.driver_license?.license_number || '',
+    issue_date_hijri: bus?.driver_license?.issue_date_hijri || '',
     issue_date_gregorian: bus?.driver_license?.issue_date_gregorian || '',
+    expiry_date_hijri: bus?.driver_license?.expiry_date_hijri || '',
     expiry_date_gregorian: bus?.driver_license?.expiry_date_gregorian || '',
     driver_phone_number: bus?.driver_license?.driver_phone_number || '',
     driver_nationality: bus?.driver_license?.driver_nationality || '',
+    driver_date_of_birth_hijri: bus?.driver_license?.driver_date_of_birth_hijri || '',
     driver_date_of_birth_gregorian: bus?.driver_license?.driver_date_of_birth_gregorian || '',
     has_assistant: bus?.driver_license?.has_assistant || false,
     assistant_full_name: bus?.driver_license?.assistant_full_name || '',
@@ -1302,6 +1292,7 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
           vehicle_model: full.registration?.vehicle_model || '',
           model_year: full.registration?.model_year || '',
           vehicle_color: full.registration?.vehicle_color || '',
+          expiry_date_hijri: full.registration?.expiry_date_hijri || '',
           expiry_date_gregorian: full.registration?.expiry_date_gregorian || ''
         });
 
@@ -1309,10 +1300,13 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
           driver_full_name: full.driver_license?.driver_full_name || '',
           driver_id_number: full.driver_license?.driver_id_number || '',
           license_number: full.driver_license?.license_number || '',
+          issue_date_hijri: full.driver_license?.issue_date_hijri || '',
           issue_date_gregorian: full.driver_license?.issue_date_gregorian || '',
+          expiry_date_hijri: full.driver_license?.expiry_date_hijri || '',
           expiry_date_gregorian: full.driver_license?.expiry_date_gregorian || '',
           driver_phone_number: full.driver_license?.driver_phone_number || '',
           driver_nationality: full.driver_license?.driver_nationality || '',
+          driver_date_of_birth_hijri: full.driver_license?.driver_date_of_birth_hijri || '',
           driver_date_of_birth_gregorian: full.driver_license?.driver_date_of_birth_gregorian || '',
           has_assistant: full.driver_license?.has_assistant || false,
           assistant_full_name: full.driver_license?.assistant_full_name || '',
@@ -2384,10 +2378,14 @@ const RegistrationFormTab = ({ formData, setFormData, busId }) => {
           />
         </div>
         <UnifiedDatePicker
-          label="تاريخ الانتهاء (ميلادي)"
-          hijriValue=""
+          label="تاريخ الانتهاء"
+          hijriValue={formData.expiry_date_hijri || ''}
           gregorianValue={formData.expiry_date_gregorian || ''}
-          onChange={(_, gregorian) => setFormData({ ...formData, expiry_date_gregorian: gregorian || null })}
+          onChange={(hijri, gregorian) => setFormData({ 
+            ...formData, 
+            expiry_date_hijri: hijri || null,
+            expiry_date_gregorian: gregorian || null 
+          })}
           required
           dateType="general"
           defaultCalendarType="gregorian"
@@ -2415,7 +2413,6 @@ const DocumentsFormTab = ({
   const [uploadingReg, setUploadingReg] = useState(false);
   const [uploadingLicense, setUploadingLicense] = useState(false);
   const [uploadingLease, setUploadingLease] = useState(false);
-  const didAutoNavigateRef = useRef(false);
 
   // If we opened edit mode with partial data then hydrated later, merge in initial docs once
   useEffect(() => {
@@ -2465,25 +2462,8 @@ const DocumentsFormTab = ({
             });
           }
           
-          // Check if all required documents are uploaded (only for new buses)
-          if (
-            typeof onNavigateToStudents === 'function' &&
-            isNewBus &&
-            ownershipTypeKnown &&
-            !didAutoNavigateRef.current
-          ) {
-            const hasRegistration = !!next.registration?.url;
-            const hasDriverLicense = !!next.driverLicense?.url;
-            const hasLeaseContract = isLeased ? !!next.leaseContract?.url : true;
-            
-            if (hasRegistration && hasDriverLicense && hasLeaseContract) {
-              didAutoNavigateRef.current = true;
-              // Small delay to allow state to update
-              setTimeout(() => {
-                onNavigateToStudents();
-              }, 500);
-            }
-          }
+          // Documents are saved immediately on upload - no auto-navigation
+          // User must click "Next" button or manually switch tabs to proceed to students table
           
           return next;
           });
@@ -2516,8 +2496,13 @@ const DocumentsFormTab = ({
       <div className="form-grid">
           <div className="form-group full-width">
             <label>مستند رخصة السير</label>
-            <div className="students-table-hint">
-              {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : (uploadedDocs?.registration?.url ? 'تم الرفع' : 'لم يتم الرفع بعد')}
+            <div className="students-table-hint" style={{ 
+              color: uploadedDocs?.registration?.url ? '#16a34a' : '#dc2626',
+              fontWeight: uploadedDocs?.registration?.url ? '600' : 'normal'
+            }}>
+              {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : 
+               uploadingReg ? 'جاري الرفع...' :
+               (uploadedDocs?.registration?.url ? '✓ تم الحفظ' : '✗ لم يتم الرفع بعد')}
             </div>
             <input
               type="file"
@@ -2543,8 +2528,13 @@ const DocumentsFormTab = ({
 
           <div className="form-group full-width">
             <label>مستند رخصة السائق</label>
-            <div className="students-table-hint">
-              {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : (uploadedDocs?.driverLicense?.url ? 'تم الرفع' : 'لم يتم الرفع بعد')}
+            <div className="students-table-hint" style={{ 
+              color: uploadedDocs?.driverLicense?.url ? '#16a34a' : '#dc2626',
+              fontWeight: uploadedDocs?.driverLicense?.url ? '600' : 'normal'
+            }}>
+              {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : 
+               uploadingLicense ? 'جاري الرفع...' :
+               (uploadedDocs?.driverLicense?.url ? '✓ تم الحفظ' : '✗ لم يتم الرفع بعد')}
             </div>
             <input
               type="file"
@@ -2571,8 +2561,13 @@ const DocumentsFormTab = ({
           {isLeased && (
             <div className="form-group full-width">
               <label>عقد الإيجار</label>
-              <div className="students-table-hint">
-                {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : (uploadedDocs?.leaseContract?.url ? 'تم الرفع' : 'لم يتم الرفع بعد')}
+              <div className="students-table-hint" style={{ 
+                color: uploadedDocs?.leaseContract?.url ? '#16a34a' : '#dc2626',
+                fontWeight: uploadedDocs?.leaseContract?.url ? '600' : 'normal'
+              }}>
+                {preSaving ? 'جاري حفظ البيانات تلقائياً قبل الرفع...' : 
+                 uploadingLease ? 'جاري الرفع...' :
+                 (uploadedDocs?.leaseContract?.url ? '✓ تم الحفظ' : '✗ لم يتم الرفع بعد')}
               </div>
               <input
                 type="file"
@@ -2684,26 +2679,38 @@ const DriverLicenseFormTab = ({ formData, setFormData, busId }) => {
           />
         </div>
         <UnifiedDatePicker
-          label="تاريخ الميلاد (ميلادي)"
-          hijriValue=""
+          label="تاريخ الميلاد"
+          hijriValue={formData.driver_date_of_birth_hijri || ''}
           gregorianValue={formData.driver_date_of_birth_gregorian || ''}
-          onChange={(_, gregorian) => setFormData({ ...formData, driver_date_of_birth_gregorian: gregorian || null })}
+          onChange={(hijri, gregorian) => setFormData({ 
+            ...formData, 
+            driver_date_of_birth_hijri: hijri || null,
+            driver_date_of_birth_gregorian: gregorian || null 
+          })}
           dateType="birth_date"
           defaultCalendarType="gregorian"
         />
         <UnifiedDatePicker
-          label="تاريخ الإصدار (ميلادي)"
-          hijriValue=""
+          label="تاريخ الإصدار"
+          hijriValue={formData.issue_date_hijri || ''}
           gregorianValue={formData.issue_date_gregorian || ''}
-          onChange={(_, gregorian) => setFormData({ ...formData, issue_date_gregorian: gregorian || null })}
+          onChange={(hijri, gregorian) => setFormData({ 
+            ...formData, 
+            issue_date_hijri: hijri || null,
+            issue_date_gregorian: gregorian || null 
+          })}
           dateType="general"
           defaultCalendarType="gregorian"
         />
         <UnifiedDatePicker
-          label="تاريخ الانتهاء (ميلادي)"
-          hijriValue=""
+          label="تاريخ الانتهاء"
+          hijriValue={formData.expiry_date_hijri || ''}
           gregorianValue={formData.expiry_date_gregorian || ''}
-          onChange={(_, gregorian) => setFormData({ ...formData, expiry_date_gregorian: gregorian || null })}
+          onChange={(hijri, gregorian) => setFormData({ 
+            ...formData, 
+            expiry_date_hijri: hijri || null,
+            expiry_date_gregorian: gregorian || null 
+          })}
           required
           dateType="general"
           defaultCalendarType="gregorian"
@@ -3095,7 +3102,7 @@ const BusDetailsFormTab = ({ formData, setFormData, isMainManager }) => {
               />
             </div>
             <div className="form-group">
-              <label>تاريخ انتهاء التأمين (ميلادي)</label>
+              <label>تاريخ انتهاء التأمين</label>
               <input
                 type="date"
                 value={formData.insurance_expiry_date_gregorian || ''}
@@ -3389,6 +3396,7 @@ const RegistrationTab = ({ bus, onReload }) => {
     vehicle_model: bus.registration?.vehicle_model || '',
     model_year: bus.registration?.model_year || '',
     vehicle_color: bus.registration?.vehicle_color || '',
+    expiry_date_hijri: bus.registration?.expiry_date_hijri || '',
     expiry_date_gregorian: bus.registration?.expiry_date_gregorian || '',
   });
   const [saving, setSaving] = useState(false);
@@ -3501,10 +3509,14 @@ const RegistrationTab = ({ bus, onReload }) => {
           />
         </div>
         <UnifiedDatePicker
-          label="تاريخ الانتهاء (ميلادي)"
-          hijriValue=""
+          label="تاريخ الانتهاء"
+          hijriValue={formData.expiry_date_hijri || ''}
           gregorianValue={formData.expiry_date_gregorian || ''}
-          onChange={(_, gregorian) => setFormData({ ...formData, expiry_date_gregorian: gregorian || null })}
+          onChange={(hijri, gregorian) => setFormData({ 
+            ...formData, 
+            expiry_date_hijri: hijri || null,
+            expiry_date_gregorian: gregorian || null 
+          })}
           dateType="general"
           defaultCalendarType="gregorian"
         />
@@ -3521,10 +3533,13 @@ const DriverLicenseTab = ({ bus, onReload }) => {
     driver_full_name: bus.driver_license?.driver_full_name || '',
     driver_id_number: bus.driver_license?.driver_id_number || '',
     license_number: bus.driver_license?.license_number || '',
+    issue_date_hijri: bus.driver_license?.issue_date_hijri || '',
     issue_date_gregorian: bus.driver_license?.issue_date_gregorian || '',
+    expiry_date_hijri: bus.driver_license?.expiry_date_hijri || '',
     expiry_date_gregorian: bus.driver_license?.expiry_date_gregorian || '',
     driver_phone_number: bus.driver_license?.driver_phone_number || '',
     driver_nationality: bus.driver_license?.driver_nationality || '',
+    driver_date_of_birth_hijri: bus.driver_license?.driver_date_of_birth_hijri || '',
     driver_date_of_birth_gregorian: bus.driver_license?.driver_date_of_birth_gregorian || '',
     has_assistant: bus.driver_license?.has_assistant || false,
     assistant_full_name: bus.driver_license?.assistant_full_name || '',
@@ -3679,18 +3694,26 @@ const DriverLicenseTab = ({ bus, onReload }) => {
           )}
         </div>
         <UnifiedDatePicker
-          label="تاريخ الإصدار (ميلادي)"
-          hijriValue=""
+          label="تاريخ الإصدار"
+          hijriValue={formData.issue_date_hijri || ''}
           gregorianValue={formData.issue_date_gregorian || ''}
-          onChange={(_, gregorian) => setFormData({ ...formData, issue_date_gregorian: gregorian || null })}
+          onChange={(hijri, gregorian) => setFormData({ 
+            ...formData, 
+            issue_date_hijri: hijri || null,
+            issue_date_gregorian: gregorian || null 
+          })}
           dateType="general"
           defaultCalendarType="gregorian"
         />
         <UnifiedDatePicker
-          label="تاريخ الانتهاء (ميلادي)"
-          hijriValue=""
+          label="تاريخ الانتهاء"
+          hijriValue={formData.expiry_date_hijri || ''}
           gregorianValue={formData.expiry_date_gregorian || ''}
-          onChange={(_, gregorian) => setFormData({ ...formData, expiry_date_gregorian: gregorian || null })}
+          onChange={(hijri, gregorian) => setFormData({ 
+            ...formData, 
+            expiry_date_hijri: hijri || null,
+            expiry_date_gregorian: gregorian || null 
+          })}
           dateType="general"
           defaultCalendarType="gregorian"
         />
@@ -3714,10 +3737,14 @@ const DriverLicenseTab = ({ bus, onReload }) => {
           />
         </div>
         <UnifiedDatePicker
-          label="تاريخ الميلاد (ميلادي)"
-          hijriValue=""
+          label="تاريخ الميلاد"
+          hijriValue={formData.driver_date_of_birth_hijri || ''}
           gregorianValue={formData.driver_date_of_birth_gregorian || ''}
-          onChange={(_, gregorian) => setFormData({ ...formData, driver_date_of_birth_gregorian: gregorian || null })}
+          onChange={(hijri, gregorian) => setFormData({ 
+            ...formData, 
+            driver_date_of_birth_hijri: hijri || null,
+            driver_date_of_birth_gregorian: gregorian || null 
+          })}
           dateType="birth_date"
           defaultCalendarType="gregorian"
         />
@@ -4030,7 +4057,7 @@ const BusDetailsTab = ({ bus, onReload }) => {
               />
             </div>
             <div className="form-group">
-              <label>تاريخ انتهاء التأمين (ميلادي)</label>
+              <label>تاريخ انتهاء التأمين</label>
               <input
                 type="date"
                 value={formData.insurance_expiry_date_gregorian || ''}

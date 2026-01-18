@@ -185,13 +185,15 @@ export const formatHijriToString = (hijriDate) => {
  */
 export const parseHijriString = (dateString) => {
   if (!dateString) return null;
-  const parts = dateString.split('/');
+  const normalized = String(dateString).trim();
+  // Accept d/m/yyyy, dd/m/yyyy, d/mm/yyyy, dd/mm/yyyy (slashes)
+  const parts = normalized.split('/').map((p) => p.trim());
   if (parts.length !== 3) return null;
-  return {
-    day: parseInt(parts[0]),
-    month: parseInt(parts[1]),
-    year: parseInt(parts[2])
-  };
+  const day = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const year = parseInt(parts[2], 10);
+  if ([day, month, year].some((n) => Number.isNaN(n))) return null;
+  return { day, month, year };
 };
 
 /**

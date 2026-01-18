@@ -14,6 +14,7 @@ import UnifiedDatePicker from '../components/UnifiedDatePicker';
 import BranchBadge from '../components/BranchBadge';
 import { formatDate, hijriToGregorian, parseHijriString, gregorianToHijri } from '../utils/dateConverters';
 import { RESTRICTED_DOCUMENT_TYPES } from '../utils/documentRestrictions';
+import './BranchDocuments.css';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 
 const BranchDocuments = () => {
@@ -932,6 +933,22 @@ const BranchDocuments = () => {
       file: null,
     });
     setShowUploadForm(true);
+
+    // Smooth scroll to upload form section after a brief delay to ensure DOM update
+    setTimeout(() => {
+      const uploadSection = document.getElementById('upload-form-section');
+      if (uploadSection) {
+        // Calculate offset to account for any fixed headers
+        const headerOffset = 80;
+        const elementPosition = uploadSection.getBoundingClientRect().top;
+        const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+        window.scrollTo({
+          top: offsetPosition,
+          behavior: 'smooth'
+        });
+      }
+    }, 150);
   };
 
   return (
@@ -1103,10 +1120,36 @@ const BranchDocuments = () => {
         )}
       </div>
 
+      {/* Upload Form - Expandable Section */}
       {showUploadForm && (
-        <div className="modal">
-          <div className="modal-content">
+        <div id="upload-form-section" className="upload-form-expanding-section">
+          <div className="upload-form-section-header">
             <h2>رفع مستند فرع</h2>
+            <button
+              type="button"
+              className="section-close"
+              onClick={() => {
+                setShowUploadForm(false);
+                setUploadData({
+                  branch_id: !isMainManager() && user?.branch_id ? user.branch_id : '',
+                  document_type: '',
+                  description: '',
+                  document_number: '',
+                  issue_date: '',
+                  issue_date_hijri: '',
+                  expiry_date: '',
+                  expiry_date_hijri: '',
+                  iban_number: '',
+                  bank_name: '',
+                  file: null,
+                });
+                setDocumentAlert(null);
+              }}
+            >
+              ×
+            </button>
+          </div>
+          <div className="upload-form-section-content">
             <form onSubmit={handleUpload}>
               {isMainManager() && (
                 <div className="form-group">
@@ -1211,7 +1254,7 @@ const BranchDocuments = () => {
                 )}
               </div>
               <div className="form-group">
-                <label>الملف * (PDF, JPG, PNG - الحد الأقصى 10 ميجابايت)</label>
+                <label>الملف * (PDF, JPG, PNG - الحد الأقصى 15 ميجابايت)</label>
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"
@@ -1253,7 +1296,7 @@ const BranchDocuments = () => {
                         onChange={(hijri, gregorian) => {
                           setUploadData({ ...uploadData, expiry_date_hijri: hijri, expiry_date: gregorian });
                         }}
-                        dateType="general"
+                        dateType="expiry_date"
                       />
                     </div>
                   </>
@@ -1280,7 +1323,7 @@ const BranchDocuments = () => {
                   rows="3"
                 />
               </div>
-              <div className="form-actions">
+              <div className="upload-form-actions">
                 <button
                   type="submit"
                   className="btn-primary"
@@ -1310,6 +1353,7 @@ const BranchDocuments = () => {
                       bank_name: '',
                       file: null,
                     });
+                    setDocumentAlert(null);
                   }}
                   className="btn-secondary"
                   disabled={uploading}
@@ -1382,7 +1426,7 @@ const BranchDocuments = () => {
                       onChange={(hijri, gregorian) => {
                         setEditData({ ...editData, expiry_date_hijri: hijri, expiry_date: gregorian });
                       }}
-                      dateType="general"
+                      dateType="expiry_date"
                     />
                   </div>
                 </>

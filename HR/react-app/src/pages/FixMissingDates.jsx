@@ -34,6 +34,14 @@ const FixMissingDates = () => {
   const [loadingPaperContractDocs, setLoadingPaperContractDocs] = useState(true);
   const [selectedPaperEmployees, setSelectedPaperEmployees] = useState(new Set());
   const [processingPaperDelete, setProcessingPaperDelete] = useState(false);
+  const [branchDocuments, setBranchDocuments] = useState([]);
+  const [loadingBranchDocuments, setLoadingBranchDocuments] = useState(true);
+  const [selectedBranchDocs, setSelectedBranchDocs] = useState(new Set());
+  const [convertingDocs, setConvertingDocs] = useState({});
+  const [abnormalDates, setAbnormalDates] = useState([]);
+  const [loadingAbnormalDates, setLoadingAbnormalDates] = useState(true);
+  const [editingDates, setEditingDates] = useState({});
+  const [savingDates, setSavingDates] = useState({});
 
   useEffect(() => {
     if (!isMainManager()) {
@@ -43,6 +51,8 @@ const FixMissingDates = () => {
     loadDuplicates();
     loadDuplicateDocuments();
     loadPaperContractDocs();
+    loadBranchDocuments();
+    loadAbnormalDates();
   }, [currentPage]);
 
   const loadEmployees = async () => {
@@ -238,6 +248,186 @@ const FixMissingDates = () => {
     navigate(`/employees/${employeeId}`);
   };
 
+  const loadBranchDocuments = async () => {
+    try {
+      setLoadingBranchDocuments(true);
+      const res = await adminAPI.getBranchDocumentsDateStatus();
+      if (res.data?.success) {
+        setBranchDocuments(res.data.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading branch documents:', error);
+      showError(error.response?.data?.message || 'فشل جلب مستندات الفروع');
+    } finally {
+      setLoadingBranchDocuments(false);
+    }
+  };
+
+  const toggleBranchDoc = (docId) => {
+    setSelectedBranchDocs((prev) => {
+      const next = new Set(prev);
+      if (next.has(docId)) {
+        next.delete(docId);
+      } else {
+        next.add(docId);
+      }
+      return next;
+    });
+  };
+
+  const handleConvertDates = async (docId) => {
+    const doc = branchDocuments.find(d => d.id === docId);
+    if (!doc) return;
+
+    setConvertingDocs((prev) => ({ ...prev, [docId]: true }));
+    try {
+      // Determine what needs conversion
+      const needsIssueConversion = (doc.has_issue_gregorian && !doc.has_issue_hijri) || 
+                                   (doc.has_issue_hijri && !doc.has_issue_gregorian);
+      const needsExpiryConversion = (doc.has_expiry_gregorian && !doc.has_expiry_hijri) || 
+                                     (doc.has_expiry_hijri && !doc.has_expiry_gregorian);
+
+      if (!needsIssueConversion && !needsExpiryConversion) {
+        showWarning('لا يحتاج هذا المستند للتحويل - كلا التقويمين موجودان');
+        return;
+      }
+
+      const res = await adminAPI.convertBranchDocumentDates(docId, {
+        convert_issue_date: needsIssueConversion,
+        convert_expiry_date: needsExpiryConversion
+      });
+
+      if (res.data?.success) {
+        showSuccess('تم تحويل التواريخ بنجاح');
+        await loadBranchDocuments();
+      }
+    } catch (error) {
+      console.error('Error converting dates:', error);
+      showError(error.response?.data?.message || 'فشل تحويل التواريخ');
+    } finally {
+      setConvertingDocs((prev) => ({ ...prev, [docId]: false }));
+    }
+  };
+
+  const handleBulkConvert = async () => {
+    if (selectedBranchDocs.size === 0) {
+      showWarning('يرجى اختيار مستند واحد على الأقل');
+      return;
+    }
+
+    const docIds = Array.from(selectedBranchDocs);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const docId of docIds) {
+      try {
+        await handleConvertDates(docId);
+        successCount++;
+      } catch (error) {
+        failCount++;
+      }
+    }
+
+    if (successCount > 0) {
+      showSuccess(`تم تحويل التواريخ لـ ${successCount} مستند${successCount > 1 ? 'ات' : ''}`);
+    }
+    if (failCount > 0) {
+      showError(`فشل تحويل التواريخ لـ ${failCount} مستند${failCount > 1 ? 'ات' : ''}`);
+    }
+
+    setSelectedBranchDocs(new Set());
+  };
+
+  const formatDateDisplay = (date) => {
+    if (!date) return '-';
+    if (typeof date === 'string') {
+      if (date.includes('T')) {
+        return date.split('T')[0];
+      }
+      return date;
+    }
+    return date;
+  };
+
+  const loadAbnormalDates = async () => {
+    try {
+      setLoadingAbnormalDates(true);
+      const res = await adminAPI.getBranchDocumentsAbnormalDates();
+      if (res.data?.success) {
+        setAbnormalDates(res.data.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading abnormal dates:', error);
+      showError(error.response?.data?.message || 'فشل جلب التواريخ غير الطبيعية');
+    } finally {
+      setLoadingAbnormalDates(false);
+    }
+  };
+
+  const getYearFromHijri = (hijriDate) => {
+    if (!hijriDate) return null;
+    const parts = hijriDate.split('/');
+    if (parts.length === 3) {
+      return parseInt(parts[2]);
+    }
+    return null;
+  };
+
+  const getYearFromGregorian = (gregorianDate) => {
+    if (!gregorianDate) return null;
+    if (typeof gregorianDate === 'string') {
+      const dateStr = gregorianDate.includes('T') ? gregorianDate.split('T')[0] : gregorianDate;
+      const parts = dateStr.split('-');
+      if (parts.length >= 1) {
+        return parseInt(parts[0]);
+      }
+    }
+    return null;
+  };
+
+  const handleDateEdit = (docId, field, value) => {
+    setEditingDates((prev) => ({
+      ...prev,
+      [docId]: {
+        ...prev[docId],
+        [field]: value
+      }
+    }));
+  };
+
+  const handleSaveDates = async (docId) => {
+    const editedDates = editingDates[docId];
+    if (!editedDates) return;
+
+    setSavingDates((prev) => ({ ...prev, [docId]: true }));
+    try {
+      const updateData = {};
+      if (editedDates.issue_date !== undefined) updateData.issue_date = editedDates.issue_date || null;
+      if (editedDates.issue_date_hijri !== undefined) updateData.issue_date_hijri = editedDates.issue_date_hijri || null;
+      if (editedDates.expiry_date !== undefined) updateData.expiry_date = editedDates.expiry_date || null;
+      if (editedDates.expiry_date_hijri !== undefined) updateData.expiry_date_hijri = editedDates.expiry_date_hijri || null;
+
+      const res = await adminAPI.updateBranchDocumentDates(docId, updateData);
+
+      if (res.data?.success) {
+        showSuccess('تم تحديث التواريخ بنجاح');
+        // Clear editing state for this document
+        setEditingDates((prev) => {
+          const next = { ...prev };
+          delete next[docId];
+          return next;
+        });
+        // Reload abnormal dates
+        await loadAbnormalDates();
+      }
+    } catch (error) {
+      console.error('Error saving dates:', error);
+      showError(error.response?.data?.message || 'فشل تحديث التواريخ');
+    } finally {
+      setSavingDates((prev) => ({ ...prev, [docId]: false }));
+    }
+  };
+
   if (!isMainManager()) {
     return (
       <div className="fix-missing-dates-container">
@@ -381,6 +571,295 @@ const FixMissingDates = () => {
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      <div className="duplicates-section">
+        <h2>مستندات الفروع مع تواريخ غير طبيعية</h2>
+        <p style={{ marginBottom: '1rem', color: '#666' }}>
+          سنوات أقل من 2000 ميلادي أو أقل من 1400 هجري
+        </p>
+        {loadingAbnormalDates ? (
+          <p>جاري التحميل...</p>
+        ) : abnormalDates.length === 0 ? (
+          <p>✅ لا توجد مستندات مع تواريخ غير طبيعية.</p>
+        ) : (
+          <div className="table-container">
+            <table className="employees-table">
+              <thead>
+                <tr>
+                  <th>الفرع</th>
+                  <th>نوع المستند</th>
+                  <th>اسم الملف</th>
+                  <th>تاريخ الإصدار</th>
+                  <th>تاريخ الانتهاء</th>
+                  <th>الإجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {abnormalDates.map((doc) => {
+                  const issueGYear = getYearFromGregorian(doc.issue_date);
+                  const issueHYear = getYearFromHijri(doc.issue_date_hijri);
+                  const expiryGYear = getYearFromGregorian(doc.expiry_date);
+                  const expiryHYear = getYearFromHijri(doc.expiry_date_hijri);
+                  const edited = editingDates[doc.id] || {};
+                  const hasChanges = Object.keys(edited).length > 0;
+
+                  return (
+                    <tr key={doc.id} className="abnormal-date-row">
+                      <td>{doc.branch_name}</td>
+                      <td>{doc.document_type}</td>
+                      <td>{doc.file_name}</td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <div>
+                            <label style={{ fontSize: '0.875rem', display: 'block', marginBottom: '0.25rem' }}>
+                              ميلادي:
+                            </label>
+                            <input
+                              type="date"
+                              value={edited.issue_date !== undefined 
+                                ? (edited.issue_date || '') 
+                                : (doc.issue_date ? (typeof doc.issue_date === 'string' ? doc.issue_date.split('T')[0] : doc.issue_date) : '')}
+                              onChange={(e) => handleDateEdit(doc.id, 'issue_date', e.target.value)}
+                              className={issueGYear && issueGYear < 2000 ? 'abnormal-input' : ''}
+                              style={{ 
+                                padding: '0.25rem 0.5rem',
+                                border: '1px solid #ccc',
+                                borderRadius: '4px',
+                                width: '100%',
+                                maxWidth: '200px'
+                              }}
+                            />
+                            {issueGYear && issueGYear < 2000 && (
+                              <span style={{ color: 'red', marginLeft: '0.5rem', fontSize: '0.875rem' }}>
+                                ⚠️ سنة {issueGYear}
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '0.875rem', display: 'block', marginBottom: '0.25rem' }}>
+                              هجري (DD/MM/YYYY):
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="DD/MM/YYYY"
+                              value={edited.issue_date_hijri !== undefined 
+                                ? (edited.issue_date_hijri || '') 
+                                : (doc.issue_date_hijri || '')}
+                              onChange={(e) => handleDateEdit(doc.id, 'issue_date_hijri', e.target.value)}
+                              className={issueHYear && issueHYear < 1400 ? 'abnormal-input' : ''}
+                              style={{ 
+                                padding: '0.25rem 0.5rem',
+                                border: '1px solid #ccc',
+                                borderRadius: '4px',
+                                width: '100%',
+                                maxWidth: '200px'
+                              }}
+                            />
+                            {issueHYear && issueHYear < 1400 && (
+                              <span style={{ color: 'red', marginLeft: '0.5rem', fontSize: '0.875rem' }}>
+                                ⚠️ سنة {issueHYear}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <div>
+                            <label style={{ fontSize: '0.875rem', display: 'block', marginBottom: '0.25rem' }}>
+                              ميلادي:
+                            </label>
+                            <input
+                              type="date"
+                              value={edited.expiry_date !== undefined 
+                                ? (edited.expiry_date || '') 
+                                : (doc.expiry_date ? (typeof doc.expiry_date === 'string' ? doc.expiry_date.split('T')[0] : doc.expiry_date) : '')}
+                              onChange={(e) => handleDateEdit(doc.id, 'expiry_date', e.target.value)}
+                              className={expiryGYear && expiryGYear < 2000 ? 'abnormal-input' : ''}
+                              style={{ 
+                                padding: '0.25rem 0.5rem',
+                                border: '1px solid #ccc',
+                                borderRadius: '4px',
+                                width: '100%',
+                                maxWidth: '200px'
+                              }}
+                            />
+                            {expiryGYear && expiryGYear < 2000 && (
+                              <span style={{ color: 'red', marginLeft: '0.5rem', fontSize: '0.875rem' }}>
+                                ⚠️ سنة {expiryGYear}
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '0.875rem', display: 'block', marginBottom: '0.25rem' }}>
+                              هجري (DD/MM/YYYY):
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="DD/MM/YYYY"
+                              value={edited.expiry_date_hijri !== undefined 
+                                ? (edited.expiry_date_hijri || '') 
+                                : (doc.expiry_date_hijri || '')}
+                              onChange={(e) => handleDateEdit(doc.id, 'expiry_date_hijri', e.target.value)}
+                              className={expiryHYear && expiryHYear < 1400 ? 'abnormal-input' : ''}
+                              style={{ 
+                                padding: '0.25rem 0.5rem',
+                                border: '1px solid #ccc',
+                                borderRadius: '4px',
+                                width: '100%',
+                                maxWidth: '200px'
+                              }}
+                            />
+                            {expiryHYear && expiryHYear < 1400 && (
+                              <span style={{ color: 'red', marginLeft: '0.5rem', fontSize: '0.875rem' }}>
+                                ⚠️ سنة {expiryHYear}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        {hasChanges && (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handleSaveDates(doc.id)}
+                            disabled={savingDates[doc.id]}
+                          >
+                            {savingDates[doc.id] ? 'جارٍ الحفظ...' : 'حفظ'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="duplicates-section">
+        <h2>مستندات الفروع مع تواريخ ناقصة</h2>
+        {loadingBranchDocuments ? (
+          <p>جاري التحميل...</p>
+        ) : branchDocuments.length === 0 ? (
+          <p>✅ جميع مستندات الفروع تحتوي على كلا التقويمين (هجري وميلادي).</p>
+        ) : (
+          <div className="branch-docs-section">
+            <div className="bulk-actions" style={{ marginBottom: '1rem' }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleBulkConvert}
+                disabled={selectedBranchDocs.size === 0 || Object.values(convertingDocs).some(v => v)}
+              >
+                {Object.values(convertingDocs).some(v => v) 
+                  ? 'جارٍ التحويل...' 
+                  : `تحويل المحدد (${selectedBranchDocs.size})`}
+              </button>
+              <span style={{ marginLeft: '1rem' }}>
+                إجمالي المستندات الناقصة: {branchDocuments.length}
+              </span>
+            </div>
+            <div className="table-container">
+              <table className="employees-table">
+                <thead>
+                  <tr>
+                    <th>
+                      <input
+                        type="checkbox"
+                        checked={selectedBranchDocs.size === branchDocuments.length && branchDocuments.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedBranchDocs(new Set(branchDocuments.map(d => d.id)));
+                          } else {
+                            setSelectedBranchDocs(new Set());
+                          }
+                        }}
+                      />
+                    </th>
+                    <th>الفرع</th>
+                    <th>نوع المستند</th>
+                    <th>اسم الملف</th>
+                    <th>تاريخ الإصدار</th>
+                    <th>تاريخ الانتهاء</th>
+                    <th>الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {branchDocuments.map((doc) => {
+                    const needsIssueConversion = (doc.has_issue_gregorian && !doc.has_issue_hijri) || 
+                                                 (doc.has_issue_hijri && !doc.has_issue_gregorian);
+                    const needsExpiryConversion = (doc.has_expiry_gregorian && !doc.has_expiry_hijri) || 
+                                                   (doc.has_expiry_hijri && !doc.has_expiry_gregorian);
+                    const needsConversion = needsIssueConversion || needsExpiryConversion;
+
+                    return (
+                      <tr key={doc.id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedBranchDocs.has(doc.id)}
+                            onChange={() => toggleBranchDoc(doc.id)}
+                          />
+                        </td>
+                        <td>{doc.branch_name}</td>
+                        <td>{doc.document_type}</td>
+                        <td>{doc.file_name}</td>
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <div>
+                              ميلادي: {doc.issue_date ? (
+                                <span className="valid-badge">{formatDateDisplay(doc.issue_date)}</span>
+                              ) : (
+                                <span className="missing-badge">❌ مفقود</span>
+                              )}
+                            </div>
+                            <div>
+                              هجري: {doc.issue_date_hijri ? (
+                                <span className="valid-badge">{doc.issue_date_hijri}</span>
+                              ) : (
+                                <span className="missing-badge">❌ مفقود</span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <div>
+                              ميلادي: {doc.expiry_date ? (
+                                <span className="valid-badge">{formatDateDisplay(doc.expiry_date)}</span>
+                              ) : (
+                                <span className="missing-badge">❌ مفقود</span>
+                              )}
+                            </div>
+                            <div>
+                              هجري: {doc.expiry_date_hijri ? (
+                                <span className="valid-badge">{doc.expiry_date_hijri}</span>
+                              ) : (
+                                <span className="missing-badge">❌ مفقود</span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handleConvertDates(doc.id)}
+                            disabled={convertingDocs[doc.id] || !needsConversion}
+                            title={needsConversion ? 'تحويل التواريخ' : 'لا يحتاج تحويل'}
+                          >
+                            {convertingDocs[doc.id] ? 'جارٍ...' : 'تحويل'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

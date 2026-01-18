@@ -5,7 +5,7 @@
  */
 
 import axios from 'axios';
-import { API_URL } from '../config/api.js';
+import { API_URL, getCurrentApiUrl, switchToProductionUrl } from '../config/api.js';
 
 // In-memory storage for branch documents passwords (not persistent, cleared on page reload)
 // Key: branchId, Value: password
@@ -262,13 +262,18 @@ export const getDocumentBranchMapping = (documentId) => {
   return documentBranchMapping.get(documentId);
 };
 
-// Create axios instance
+// Create axios instance with dynamic baseURL
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: getCurrentApiUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+// Update baseURL when it changes (for localhost fallback)
+const updateApiBaseUrl = () => {
+  api.defaults.baseURL = getCurrentApiUrl();
+};
 
 // Helper function to extract branch ID from request config
 const extractBranchId = (config) => {
@@ -482,6 +487,33 @@ api.interceptors.response.use(
     const config = error.config;
     const url = config?.url || '';
     const method = (config?.method || 'get').toUpperCase();
+
+    // Auto-fallback from LOCAL to PRODUCTION if localhost fails
+    // Only trigger once per page load and only if CURRENT is set to LOCAL
+    const currentUrl = getCurrentApiUrl();
+    if (!error.config.__hasRetried && currentUrl.includes('localhost')) {
+      // Check for network errors or connection refused (localhost not available)
+      const isLocalhostConnectionError = 
+        error.code === 'ERR_NETWORK' ||
+        error.code === 'ECONNREFUSED' ||
+        error.message?.includes('Network Error') ||
+        error.message?.includes('ERR_NETWORK');
+
+      if (isLocalhostConnectionError) {
+        // Switch to production URL
+        switchToProductionUrl();
+        updateApiBaseUrl();
+
+        // Retry the request with production URL (only once)
+        error.config.__hasRetried = true;
+        error.config.baseURL = getCurrentApiUrl();
+
+        console.warn(`[API] Localhost connection failed, switching to PRODUCTION URL: ${error.config.baseURL}${url}`);
+        
+        // Retry the request
+        return api.request(error.config);
+      }
+    }
 
     // Detect backend/database connection errors
     const isBackendError = detectBackendError(error);
@@ -1014,6 +1046,18 @@ export const adminAPI = {
 
   batchFixAllEmployeeDates: (options = {}) =>
     api.post('/api/admin/fix-all-employee-dates', options),
+
+  getBranchDocumentsDateStatus: () =>
+    api.get('/api/admin/branch-documents/date-status'),
+
+  getBranchDocumentsAbnormalDates: () =>
+    api.get('/api/admin/branch-documents/abnormal-dates'),
+
+  convertBranchDocumentDates: (docId, options = {}) =>
+    api.post(`/api/admin/branch-documents/${docId}/convert-dates`, options),
+
+  updateBranchDocumentDates: (docId, dates) =>
+    api.put(`/api/admin/branch-documents/${docId}/dates`, dates),
 };
 
 // Requests API

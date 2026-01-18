@@ -224,8 +224,9 @@ const Dashboard = () => {
           const summaryRes = await dashboardAPI.getSummary({ branch_id: user?.branch_id });
           if (summaryRes?.data?.success) {
             const summary = summaryRes.data.data;
+            // Filter to only active employees (exclude pending and inactive)
             const filtered = (summary.incompleteEmployees || []).filter(emp =>
-              !emp.status || emp.status === 'active' || emp.status === 'pending'
+              !emp.status || emp.status === 'active'
             );
             setIncompleteEmployees(filtered);
             setBranchStats(prev => ({ ...prev, completionPercentage: summary.completionPercentage }));
@@ -730,6 +731,10 @@ const Dashboard = () => {
           doc => doc.branch_id === branch.id && doc.document_type === docType
         );
 
+        // Check if there are archived documents of this type (expired documents)
+        const archivedDocs = allBranchDocsOfType.filter(doc => doc.is_active === false);
+        const hasArchivedDoc = archivedDocs.length > 0;
+
         if (branchDocs.length === 0) {
           missingDebug.push({
             branchId: branch.id,
@@ -737,7 +742,7 @@ const Dashboard = () => {
             branchType,
             documentType: docType,
             documentLabel: typeLabels[docType] || docType,
-            reason: allBranchDocsOfType.length > 0 ? 'exists_but_inactive_or_no_file_ref' : 'no_record',
+            reason: allBranchDocsOfType.length > 0 ? (hasArchivedDoc ? 'exists_but_archived' : 'exists_but_inactive_or_no_file_ref') : 'no_record',
             found: allBranchDocsOfType.map(d => ({
               id: d.id,
               is_active: d.is_active,
@@ -747,14 +752,19 @@ const Dashboard = () => {
             }))
           });
           
-          // Document is missing
+          // Document is missing - determine message based on archive status
+          const alertMessage = hasArchivedDoc
+            ? `مستند ${typeLabels[docType] || docType} منتهي الصلاحية في الأرشيف - يحتاج رفع مستند جديد`
+            : `مستند ${typeLabels[docType] || docType} مفقود - يجب رفعه`;
+
           const alert = {
             branchId: branch.id,
             branchName: branch.branch_name,
             branchType: branchType,
             documentType: docType,
             documentLabel: typeLabels[docType] || docType,
-            message: `مستند ${typeLabels[docType] || docType} مفقود - يجب رفعه`
+            message: alertMessage,
+            isArchived: hasArchivedDoc
           };
 
           // Check if document requires expiry date
