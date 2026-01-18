@@ -483,12 +483,19 @@ router.get('/:id/download', verifyBranchDocumentsPassword, async (req, res) => {
       });
     }
 
+    // Helper function to sanitize filename for Content-Disposition header
+    const sanitizeFilename = (filename) => {
+      // Remove control characters, newlines, and other invalid header characters
+      return filename.replace(/[\x00-\x1F\x7F-\x9F]/g, '').replace(/[\r\n]/g, '');
+    };
+
     // If file_path is a URL (Blob), fetch and proxy it to maintain password protection
     if (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) {
       try {
         const { buffer, contentType } = await fetchFromBlob(document.file_path);
+        const safeFilename = sanitizeFilename(document.file_name);
         res.setHeader('Content-Type', contentType || document.mime_type);
-        res.setHeader('Content-Disposition', `attachment; filename="${document.file_name}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeFilename)}"`);
         return res.send(buffer);
       } catch (error) {
         console.error('Error fetching blob file:', error);
@@ -509,8 +516,9 @@ router.get('/:id/download', verifyBranchDocumentsPassword, async (req, res) => {
       });
     }
 
+    const safeFilename = sanitizeFilename(document.file_name);
     res.setHeader('Content-Type', document.mime_type);
-    res.setHeader('Content-Disposition', `attachment; filename="${document.file_name}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeFilename)}"`);
     res.sendFile(path.resolve(filePath));
   } catch (error) {
     console.error('Error downloading branch document:', error);

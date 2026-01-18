@@ -14,8 +14,97 @@ import { log } from '../utils/logger.js';
 import { clearByPrefix } from '../utils/simpleCache.js';
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import PdfPrinter from '@digicole/pdfmake-rtl';
+import { PDFDocument } from 'pdf-lib';
+import { formatDate, gregorianToHijri as convertGregorianToHijri, formatHijriToString } from '../utils/dateConverter.js';
 
 const router = express.Router();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Setup PDF fonts for certificate generation (similar to employee-file.js)
+const fontsDir = path.join(__dirname, '..', 'fonts');
+const notoSansArabicDir = path.join(fontsDir, 'Noto_Sans_Arabic');
+const notoSansArabicVariable = path.join(notoSansArabicDir, 'NotoSansArabic-VariableFont_wdth,wght.ttf');
+const notoSansArabicStatic = path.join(notoSansArabicDir, 'static');
+let arabicFontPath = null;
+
+try {
+  if (fs.existsSync(notoSansArabicVariable)) {
+    arabicFontPath = notoSansArabicVariable;
+  } else if (fs.existsSync(notoSansArabicStatic)) {
+    try {
+      const staticFiles = fs.readdirSync(notoSansArabicStatic);
+      const regularFont = staticFiles.find(f => f.includes('Regular') && f.endsWith('.ttf'));
+      if (regularFont) {
+        arabicFontPath = path.join(notoSansArabicStatic, regularFont);
+      }
+    } catch (e) {
+      console.warn('Error reading static fonts directory:', e.message);
+    }
+  }
+} catch (error) {
+  console.warn('Font files not accessible, will use fallback fonts:', error.message);
+}
+
+const hasArabicFont = arabicFontPath !== null && (() => {
+  try {
+    return fs.existsSync(arabicFontPath);
+  } catch {
+    return false;
+  }
+})();
+
+let certificateFonts;
+if (hasArabicFont) {
+  const notoSansStatic = path.join(notoSansArabicDir, 'static');
+  const regularFont = path.join(notoSansStatic, 'NotoSansArabic-Regular.ttf');
+  const boldFont = path.join(notoSansStatic, 'NotoSansArabic-Bold.ttf');
+  const mediumFont = path.join(notoSansStatic, 'NotoSansArabic-Medium.ttf');
+  
+  const fontExists = (fontPath) => {
+    try {
+      return fs.existsSync(fontPath);
+    } catch {
+      return false;
+    }
+  };
+  
+  certificateFonts = {
+    Roboto: {
+      normal: fontExists(regularFont) ? regularFont : arabicFontPath,
+      bold: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath),
+      italics: fontExists(regularFont) ? regularFont : arabicFontPath,
+      bolditalics: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath)
+    },
+    Nillima: {
+      normal: fontExists(regularFont) ? regularFont : arabicFontPath,
+      bold: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath),
+      italics: fontExists(regularFont) ? regularFont : arabicFontPath,
+      bolditalics: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath)
+    }
+  };
+} else {
+  certificateFonts = {
+    Roboto: {
+      normal: 'Helvetica',
+      bold: 'Helvetica-Bold',
+      italics: 'Helvetica-Oblique',
+      bolditalics: 'Helvetica-BoldOblique'
+    },
+    Nillima: {
+      normal: 'Helvetica',
+      bold: 'Helvetica-Bold',
+      italics: 'Helvetica-Oblique',
+      bolditalics: 'Helvetica-BoldOblique'
+    }
+  };
+}
+
+const certificatePrinter = new PdfPrinter(certificateFonts);
 
 const employeeHasBranchAccess = (employee, branchId) => {
   if (!employee || !branchId) return false;
@@ -418,6 +507,476 @@ router.get('/paginated', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'فشل جلب الموظفين',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/employees/statistics
+ * Get aggregated employee statistics
+ * Accessible to main managers (all branches) and branch managers (their branch only)
+ */
+router.get('/statistics', async (req, res) => {
+  try {
+    // Determine branch filter
+    let branchId = null;
+    let branchIds = null;
+    if (req.user.role === 'branch_manager') {
+      branchId = req.user.branch_id;
+    } else if (req.query.branch_id) {
+      // Support single branch or multiple branches for main managers
+      if (Array.isArray(req.query.branch_id)) {
+        branchIds = req.query.branch_id.map(id => parseInt(id)).filter(id => !isNaN(id));
+      } else if (typeof req.query.branch_id === 'string' && req.query.branch_id.includes(',')) {
+        branchIds = req.query.branch_id.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      } else {
+        branchId = parseInt(req.query.branch_id);
+        if (isNaN(branchId)) branchId = null;
+      }
+    }
+
+    // Build branch filter for SQL
+    const branchFilter = branchId 
+      ? sql`AND branch_id = ${branchId}`
+      : (branchIds && branchIds.length > 0)
+        ? sql`AND branch_id = ANY(${sql(branchIds)})`
+        : sql``;
+
+    // Get overview statistics
+    const overviewQuery = sql`
+      SELECT 
+        COUNT(*)::int as total,
+        COUNT(*) FILTER (WHERE gender = 'male')::int as male,
+        COUNT(*) FILTER (WHERE gender = 'female')::int as female,
+        COUNT(*) FILTER (WHERE status = 'active')::int as active_count,
+        COUNT(*) FILTER (WHERE status = 'pending')::int as pending_count,
+        AVG(salary)::numeric(10,2) as avg_salary,
+        SUM(salary)::numeric(10,2) as total_salary_budget,
+        COUNT(*) FILTER (WHERE data_completion_status = 'complete')::int as complete_count,
+        MIN(salary)::numeric(10,2) as min_salary,
+        MAX(salary)::numeric(10,2) as max_salary
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+    `;
+
+    // Gender distribution
+    const genderQuery = sql`
+      SELECT 
+        gender,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND gender IS NOT NULL
+      GROUP BY gender
+    `;
+
+    // Salary by gender
+    const salaryByGenderQuery = sql`
+      SELECT 
+        gender,
+        AVG(salary)::numeric(10,2) as average,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND salary IS NOT NULL AND salary > 0 AND gender IS NOT NULL
+      GROUP BY gender
+    `;
+
+    // Salary ranges
+    const salaryRangesQuery = sql`
+      SELECT 
+        CASE 
+          WHEN salary < 5000 THEN '0-5000'
+          WHEN salary < 10000 THEN '5000-10000'
+          WHEN salary < 15000 THEN '10000-15000'
+          WHEN salary < 20000 THEN '15000-20000'
+          ELSE '20000+'
+        END as range,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND salary IS NOT NULL AND salary > 0
+      GROUP BY range
+      ORDER BY MIN(salary)
+    `;
+
+    // Salary by job title
+    const salaryByJobTitleQuery = sql`
+      SELECT 
+        COALESCE(job_title, occupation, 'غير محدد') as job_title,
+        AVG(salary)::numeric(10,2) as average,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND salary IS NOT NULL AND salary > 0
+      GROUP BY COALESCE(job_title, occupation, 'غير محدد')
+      HAVING COUNT(*) > 0
+      ORDER BY average DESC
+      LIMIT 20
+    `;
+
+    // Top paid employees
+    const topPaidQuery = sql`
+      SELECT 
+        employee_id_number as employee_id,
+        CONCAT(first_name, ' ', second_name, ' ', third_name, ' ', fourth_name) as name,
+        salary::numeric(10,2)
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND salary IS NOT NULL AND salary > 0
+      ORDER BY salary DESC
+      LIMIT 10
+    `;
+
+    // Job titles distribution (no limit to show all)
+    // Handle both NULL and empty strings by converting empty strings to NULL first
+    const jobTitlesQuery = sql`
+      SELECT 
+        COALESCE(NULLIF(job_title, ''), NULLIF(occupation, ''), 'غير محدد') as job_title,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      GROUP BY COALESCE(NULLIF(job_title, ''), NULLIF(occupation, ''), 'غير محدد')
+      ORDER BY count DESC
+    `;
+
+    // Contract types
+    const contractTypesQuery = sql`
+      SELECT 
+        COALESCE(contract_type, 'غير محدد') as contract_type,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      GROUP BY COALESCE(contract_type, 'غير محدد')
+      ORDER BY count DESC
+    `;
+
+    // Marital status
+    const maritalStatusQuery = sql`
+      SELECT 
+        COALESCE(marital_status, 'غير محدد') as status,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      GROUP BY COALESCE(marital_status, 'غير محدد')
+      ORDER BY count DESC
+    `;
+
+    // Nationalities (top 15)
+    const nationalitiesQuery = sql`
+      SELECT 
+        nationality,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND nationality IS NOT NULL
+      GROUP BY nationality
+      ORDER BY count DESC
+      LIMIT 15
+    `;
+
+    // Educational qualifications
+    const qualificationsQuery = sql`
+      SELECT 
+        COALESCE(educational_qualification, 'غير محدد') as qualification,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      GROUP BY COALESCE(educational_qualification, 'غير محدد')
+      ORDER BY count DESC
+    `;
+
+    // Status distribution
+    const statusQuery = sql`
+      SELECT 
+        COALESCE(status, 'active') as status,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      GROUP BY COALESCE(status, 'active')
+      ORDER BY count DESC
+    `;
+
+    // Branch distribution (only if main manager)
+    let branchDistributionQuery = null;
+    if (!branchId && (!branchIds || branchIds.length === 0)) {
+      branchDistributionQuery = sql`
+        SELECT 
+          b.branch_name,
+          b.id as branch_id,
+          COUNT(e.id)::int as count
+        FROM branches b
+        LEFT JOIN employees e ON e.branch_id = b.id AND (e.status IN ('active', 'pending') OR e.status IS NULL)
+        WHERE b.is_active = true
+        GROUP BY b.id, b.branch_name
+        HAVING COUNT(e.id) > 0
+        ORDER BY count DESC
+      `;
+    }
+
+    // Age groups (if date_of_birth_gregorian available)
+    const ageGroupsQuery = sql`
+      SELECT 
+        CASE 
+          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 25 THEN 'أقل من 25'
+          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 30 THEN '25-30'
+          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 35 THEN '30-35'
+          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 40 THEN '35-40'
+          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 45 THEN '40-45'
+          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 50 THEN '45-50'
+          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 55 THEN '50-55'
+          ELSE '55+'
+        END as age_group,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND date_of_birth_gregorian IS NOT NULL
+      GROUP BY age_group
+      ORDER BY MIN(EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)))
+    `;
+
+    // Experience levels
+    const experienceQuery = sql`
+      SELECT 
+        CASE 
+          WHEN years_of_experience_in_same_institution IS NULL OR years_of_experience_in_same_institution < 2 THEN '0-2'
+          WHEN years_of_experience_in_same_institution < 5 THEN '2-5'
+          WHEN years_of_experience_in_same_institution < 10 THEN '5-10'
+          WHEN years_of_experience_in_same_institution < 15 THEN '10-15'
+          ELSE '15+'
+        END as experience_range,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      GROUP BY experience_range
+      ORDER BY MIN(COALESCE(years_of_experience_in_same_institution, 0))
+    `;
+
+    // ID Type distribution (citizen vs resident)
+    const idTypeQuery = sql`
+      SELECT 
+        COALESCE(id_type, 'غير محدد') as id_type,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      GROUP BY COALESCE(id_type, 'غير محدد')
+      ORDER BY count DESC
+    `;
+
+    // Experience in company (years_of_experience_in_company)
+    const companyExperienceQuery = sql`
+      SELECT 
+        CASE 
+          WHEN years_of_experience_in_company IS NULL OR years_of_experience_in_company < 1 THEN 'أقل من سنة'
+          WHEN years_of_experience_in_company < 2 THEN '1-2'
+          WHEN years_of_experience_in_company < 3 THEN '2-3'
+          WHEN years_of_experience_in_company < 5 THEN '3-5'
+          WHEN years_of_experience_in_company < 10 THEN '5-10'
+          ELSE '10+'
+        END as experience_range,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      GROUP BY experience_range
+      ORDER BY MIN(COALESCE(years_of_experience_in_company, 0))
+    `;
+
+    // Salary by branch (only if main manager)
+    let salaryByBranchQuery = null;
+    if (!branchId && (!branchIds || branchIds.length === 0)) {
+      salaryByBranchQuery = sql`
+        SELECT 
+          b.branch_name,
+          b.id as branch_id,
+          AVG(e.salary)::numeric(10,2) as average_salary,
+          COUNT(e.id)::int as count
+        FROM branches b
+        LEFT JOIN employees e ON e.branch_id = b.id 
+          AND (e.status IN ('active', 'pending') OR e.status IS NULL)
+          AND e.salary IS NOT NULL AND e.salary > 0
+        WHERE b.is_active = true
+        GROUP BY b.id, b.branch_name
+        HAVING COUNT(e.id) > 0
+        ORDER BY average_salary DESC
+      `;
+    }
+
+    // Execute all queries in parallel
+    const [
+      overviewResult,
+      genderResult,
+      salaryByGenderResult,
+      salaryRangesResult,
+      salaryByJobTitleResult,
+      topPaidResult,
+      jobTitlesResult,
+      contractTypesResult,
+      maritalStatusResult,
+      nationalitiesResult,
+      qualificationsResult,
+      statusResult,
+      ageGroupsResult,
+      experienceResult,
+      branchDistributionResult,
+      idTypeResult,
+      companyExperienceResult,
+      salaryByBranchResult
+    ] = await Promise.all([
+      overviewQuery,
+      genderQuery,
+      salaryByGenderQuery,
+      salaryRangesQuery,
+      salaryByJobTitleQuery,
+      topPaidQuery,
+      jobTitlesQuery,
+      contractTypesQuery,
+      maritalStatusQuery,
+      nationalitiesQuery,
+      qualificationsQuery,
+      statusQuery,
+      ageGroupsQuery,
+      experienceQuery,
+      branchDistributionQuery || Promise.resolve([]),
+      idTypeQuery,
+      companyExperienceQuery,
+      salaryByBranchQuery || Promise.resolve([])
+    ]);
+
+    const overview = overviewResult[0] || {};
+    const total = parseInt(overview.total || 0);
+    const completionRate = total > 0 ? Math.round((parseInt(overview.complete_count || 0) / total) * 100) : 0;
+
+    // Calculate gender percentages
+    const genderData = (genderResult || []).map(item => ({
+      gender: item.gender === 'male' ? 'male' : 'female',
+      count: parseInt(item.count || 0),
+      percentage: total > 0 ? Math.round((parseInt(item.count || 0) / total) * 100 * 10) / 10 : 0
+    }));
+
+    // Build salary by gender object
+    const salaryByGender = {};
+    (salaryByGenderResult || []).forEach(item => {
+      salaryByGender[item.gender] = {
+        average: parseFloat(item.average || 0),
+        count: parseInt(item.count || 0)
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        overview: {
+          total,
+          male: parseInt(overview.male || 0),
+          female: parseInt(overview.female || 0),
+          active: parseInt(overview.active_count || 0),
+          pending: parseInt(overview.pending_count || 0),
+          avgSalary: parseFloat(overview.avg_salary || 0),
+          totalSalaryBudget: parseFloat(overview.total_salary_budget || 0),
+          completionRate,
+          minSalary: parseFloat(overview.min_salary || 0),
+          maxSalary: parseFloat(overview.max_salary || 0)
+        },
+        gender: genderData,
+        salary: {
+          average: parseFloat(overview.avg_salary || 0),
+          min: parseFloat(overview.min_salary || 0),
+          max: parseFloat(overview.max_salary || 0),
+          byGender: salaryByGender,
+          ranges: (salaryRangesResult || []).map(item => ({
+            range: item.range,
+            count: parseInt(item.count || 0)
+          })),
+          byJobTitle: (salaryByJobTitleResult || []).map(item => ({
+            job_title: item.job_title,
+            average: parseFloat(item.average || 0),
+            count: parseInt(item.count || 0)
+          })),
+          topPaid: (topPaidResult || []).map(item => ({
+            employee_id: item.employee_id,
+            name: item.name,
+            salary: parseFloat(item.salary || 0)
+          }))
+        },
+        jobTitles: (jobTitlesResult || []).map(item => ({
+          job_title: item.job_title,
+          count: parseInt(item.count || 0)
+        })),
+        contractTypes: (contractTypesResult || []).map(item => ({
+          contract_type: item.contract_type,
+          count: parseInt(item.count || 0)
+        })),
+        maritalStatus: (maritalStatusResult || []).map(item => ({
+          status: item.status,
+          count: parseInt(item.count || 0)
+        })),
+        nationalities: (nationalitiesResult || []).map(item => ({
+          nationality: item.nationality,
+          count: parseInt(item.count || 0)
+        })),
+        educationalQualifications: (qualificationsResult || []).map(item => ({
+          qualification: item.qualification,
+          count: parseInt(item.count || 0)
+        })),
+        status: (statusResult || []).map(item => ({
+          status: item.status,
+          count: parseInt(item.count || 0)
+        })),
+        ageGroups: (ageGroupsResult || []).map(item => ({
+          age_group: item.age_group,
+          count: parseInt(item.count || 0)
+        })),
+        experienceLevels: (experienceResult || []).map(item => ({
+          experience_range: item.experience_range,
+          count: parseInt(item.count || 0)
+        })),
+        idTypes: (idTypeResult || []).map(item => ({
+          id_type: item.id_type,
+          count: parseInt(item.count || 0)
+        })),
+        companyExperience: (companyExperienceResult || []).map(item => ({
+          experience_range: item.experience_range,
+          count: parseInt(item.count || 0)
+        })),
+        ...(branchDistributionResult && branchDistributionResult.length > 0 ? {
+          branches: (branchDistributionResult || []).map(item => ({
+            branch_name: item.branch_name,
+            branch_id: parseInt(item.branch_id),
+            count: parseInt(item.count || 0)
+          }))
+        } : {}),
+        ...(salaryByBranchResult && salaryByBranchResult.length > 0 ? {
+          salaryByBranch: (salaryByBranchResult || []).map(item => ({
+            branch_name: item.branch_name,
+            branch_id: parseInt(item.branch_id),
+            average_salary: parseFloat(item.average_salary || 0),
+            count: parseInt(item.count || 0)
+          }))
+        } : {})
+      }
+    });
+  } catch (error) {
+    log.error('Error fetching employee statistics', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'فشل جلب إحصائيات الموظفين',
       error: error.message
     });
   }
@@ -1320,6 +1879,328 @@ router.post('/:id/non-renewal', async (req, res) => {
       message: 'فشل تحديد عدم التجديد',
       error: error.message
     });
+  }
+});
+
+/**
+ * POST /api/employees/certificates/generate
+ * Generate experience certificate for an employee
+ * Main manager only
+ */
+router.post('/certificates/generate', requireMainManager, async (req, res) => {
+  try {
+    const { employee_id, certificate_type, certificate_data } = req.body;
+
+    if (!employee_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'معرف الموظف مطلوب'
+      });
+    }
+
+    if (certificate_type !== 'experience') {
+      return res.status(400).json({
+        success: false,
+        message: 'نوع الشهادة غير مدعوم'
+      });
+    }
+
+    // Fetch employee
+    const { Employee } = await import('../models/Employee.js');
+    const employee = await Employee.findById(parseInt(employee_id));
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'الموظف غير موجود'
+      });
+    }
+
+    // Get employee data (use provided certificate_data if available, otherwise use employee data)
+    const employeeFullName = certificate_data?.full_name 
+      || `${employee.first_name || ''} ${employee.second_name || ''} ${employee.third_name || ''} ${employee.fourth_name || ''}`.trim();
+    const employeeIdNumber = certificate_data?.id_number || employee.id_or_residency_number || '';
+    const nationality = certificate_data?.nationality || employee.nationality || '';
+    const jobTitle = certificate_data?.job_title || employee.job_title || employee.occupation || '';
+    const employeeGender = employee.gender || 'male'; // Get gender for هو/هي
+    
+    // Get contract dates (use provided dates if available)
+    const contractStartDate = certificate_data?.contract_start_date 
+      || (employee.contract_start_date_gregorian ? formatDate(employee.contract_start_date_gregorian) : null);
+    const contractEndDate = certificate_data?.contract_end_date 
+      || (employee.contract_end_date_gregorian ? formatDate(employee.contract_end_date_gregorian) : null);
+    
+    // Determine gender pronoun
+    const genderPronoun = employeeGender === 'female' ? 'هي' : 'هو';
+    const genderPronounRef = employeeGender === 'female' ? 'المذكورة' : 'المذكور';
+
+    // Load background PDF watermark
+    const backgroundPdfPath = path.join(__dirname, '..', 'files', 'bg.pdf');
+    let backgroundPdfBytes = null;
+    
+    // Check if file exists
+    if (fs.existsSync(backgroundPdfPath)) {
+      try {
+        backgroundPdfBytes = fs.readFileSync(backgroundPdfPath);
+        console.log(`Background PDF loaded successfully from: ${backgroundPdfPath}`);
+      } catch (error) {
+        console.error('Error reading background PDF file:', error.message);
+        console.error('File path:', backgroundPdfPath);
+      }
+    } else {
+      console.warn(`Background PDF file not found at: ${backgroundPdfPath}`);
+    }
+
+    // Load signature and stamp image
+    const signatureImagePath = path.join(__dirname, '..', 'files', 'image.png');
+    let signatureImageBytes = null;
+    if (fs.existsSync(signatureImagePath)) {
+      signatureImageBytes = fs.readFileSync(signatureImagePath);
+    }
+
+    // Create certificate content using pdfmake with table layout
+    const certificateContent = [];
+    
+    // Title
+    certificateContent.push({
+      text: 'شهادة خبرة',
+      style: 'certificateTitle',
+      alignment: 'center',
+      margin: [0, 40, 0, 30]
+    });
+
+    // Main certificate text in a table format for better layout
+    const certificateTable = {
+      table: {
+        widths: ['*'],
+        body: [
+          [
+            {
+              text: [
+                'تفيد شركة الرعاية المتناهية للتأهيل بأن / ',
+                { text: employeeFullName, bold: true },
+                ` ، ${nationality} الجنسية، هوية رقم ${employeeIdNumber}`,
+                jobTitle ? `، ${genderPronoun} ` : '',
+                jobTitle ? { text: jobTitle, bold: true } : '',
+                contractStartDate && contractEndDate 
+                  ? `، عمل لدى الشركة خلال الفترة من ${contractStartDate} م الى ${contractEndDate} م`
+                  : contractStartDate
+                  ? `، عمل لدى الشركة منذ ${contractStartDate} م`
+                  : '، عمل لدى الشركة',
+                `. وقد أظهر ${genderPronounRef} خلال فترة عمله التزامًا مهنيًا، وتعاونًا مثاليًا، كما اتسم أداؤه بالاحترافية، وكان مثالاً في حسن السيرة والسلوك، مما جعله محل تقدير إدارة الشركة. وقد أصدرت هذه الشهادة بناءً على طلبه، دون أدنى مسؤولية قانونية أو مدنية على الشركة تجاه أي جهة كانت.`
+              ],
+              style: 'certificateBody',
+              alignment: 'right',
+              border: [false, false, false, false],
+              fillColor: 'transparent'
+            }
+          ]
+        ]
+      },
+      layout: 'noBorders',
+      margin: [40, 0, 40, 30]
+    };
+
+    certificateContent.push(certificateTable);
+
+    // Closing
+    certificateContent.push({
+      text: 'مع خالص التحية والتقدير',
+      style: 'certificateClosing',
+      alignment: 'center',
+      margin: [0, 30, 0, 60]
+    });
+
+    // Signature and stamp section (will be added using pdf-lib)
+    const certificateDocDefinition = {
+      pageSize: 'A4',
+      pageMargins: [0, 0, 0, 0],
+      defaultStyle: {
+        font: 'Roboto',
+        fontSize: 12,
+        color: 'black'
+      },
+      styles: {
+        certificateTitle: {
+          fontSize: 20,
+          bold: true,
+          alignment: 'center'
+        },
+        certificateBody: {
+          fontSize: 12,
+          lineHeight: 1.8
+        },
+        certificateClosing: {
+          fontSize: 12
+        }
+      },
+      content: certificateContent
+    };
+
+    // Generate PDF with pdfmake
+    const certificatePdfDoc = certificatePrinter.createPdfKitDocument(certificateDocDefinition);
+    const chunks = [];
+    
+    certificatePdfDoc.on('data', (chunk) => {
+      chunks.push(chunk);
+    });
+
+    const certificatePdfBuffer = await new Promise((resolve, reject) => {
+      certificatePdfDoc.on('end', () => {
+        resolve(Buffer.concat(chunks));
+      });
+      certificatePdfDoc.on('error', reject);
+      certificatePdfDoc.end();
+    });
+
+    // Load certificate PDF and merge with background and signature
+    // IMPORTANT: To put background BEHIND text, we need to:
+    // 1. Create a new PDF
+    // 2. Draw background first
+    // 3. Copy content pages on top
+    
+    let finalPdfBytes = certificatePdfBuffer;
+
+    // If we have background or signature, merge them
+    if (backgroundPdfBytes || signatureImageBytes) {
+      // Load content PDF
+      const contentPdf = await PDFDocument.load(certificatePdfBuffer);
+      const contentPages = contentPdf.getPages();
+      
+      // Create new PDF for final result
+      const finalPdf = new PDFDocument();
+      
+      // Load background PDF and prepare for embedding
+      let embeddedBackgroundPage = null;
+      let bgPageSize = null;
+      if (backgroundPdfBytes) {
+        try {
+          const backgroundPdfDoc = await PDFDocument.load(backgroundPdfBytes);
+          if (backgroundPdfDoc.getPageCount() > 0) {
+            // Get the first page of background PDF to get its size
+            const backgroundPageObj = backgroundPdfDoc.getPage(0);
+            bgPageSize = backgroundPageObj.getSize();
+            
+            // Embed the background page (will be drawn first, behind content)
+            embeddedBackgroundPage = await finalPdf.embedPage(backgroundPageObj, {
+              left: 0,
+              bottom: 0,
+              right: bgPageSize.width,
+              top: bgPageSize.height
+            });
+          }
+        } catch (error) {
+          console.warn('Error loading background PDF:', error.message);
+          console.error('Full error:', error);
+        }
+      }
+
+      // Load signature image if available
+      let signatureImage = null;
+      if (signatureImageBytes) {
+        try {
+          // Try PNG first, then JPEG
+          try {
+            signatureImage = await finalPdf.embedPng(signatureImageBytes);
+          } catch {
+            signatureImage = await finalPdf.embedJpg(signatureImageBytes);
+          }
+        } catch (error) {
+          console.warn('Error embedding signature image:', error.message);
+        }
+      }
+
+      // Process each content page
+      for (let i = 0; i < contentPages.length; i++) {
+        const contentPage = contentPages[i];
+        const { width, height } = contentPage.getSize();
+        
+        // Add a new page to final PDF
+        const newPage = finalPdf.addPage([width, height]);
+        
+        // Draw background FIRST (behind content)
+        if (embeddedBackgroundPage && bgPageSize) {
+          try {
+            newPage.drawPage(embeddedBackgroundPage, {
+              x: 0,
+              y: 0,
+              width: width,
+              height: height,
+              xScale: width / bgPageSize.width,
+              yScale: height / bgPageSize.height
+            });
+          } catch (error) {
+            console.warn('Error drawing background on page:', error.message);
+            console.error('Full error:', error);
+          }
+        }
+        
+        // Embed and draw content page on top of background
+        try {
+          // Embed the content page
+          const embeddedContentPage = await finalPdf.embedPage(contentPage, {
+            left: 0,
+            bottom: 0,
+            right: width,
+            top: height
+          });
+          
+          // Draw the embedded content page on top of background
+          newPage.drawPage(embeddedContentPage, {
+            x: 0,
+            y: 0,
+            width: width,
+            height: height
+          });
+        } catch (error) {
+          console.warn('Error embedding content page:', error.message);
+          console.error('Full error:', error);
+        }
+
+        // Draw signature image at bottom (on top of everything)
+        if (signatureImage) {
+          try {
+            const imageDims = signatureImage.scale(0.25); // Scale down to fit
+            
+            // Position at bottom center
+            newPage.drawImage(signatureImage, {
+              x: (width - imageDims.width) / 2,
+              y: 80, // Bottom margin
+              width: imageDims.width,
+              height: imageDims.height
+            });
+          } catch (error) {
+            console.warn('Error drawing signature on page:', error.message);
+          }
+        }
+      }
+
+      // Save final PDF
+      finalPdfBytes = await finalPdf.save();
+    }
+
+    // Clean filename for Content-Disposition header (remove special characters)
+    const cleanFileName = employeeFullName
+      .replace(/[^\w\s-]/g, '') // Remove special characters except spaces and hyphens
+      .replace(/\s+/g, '_') // Replace spaces with underscores
+      .substring(0, 50); // Limit length
+    const safeFileName = encodeURIComponent(`شهادة_خبرة_${cleanFileName}.pdf`);
+    
+    // Return PDF
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${safeFileName}`);
+    res.send(Buffer.from(finalPdfBytes));
+
+  } catch (error) {
+    log.error('Error generating certificate', { error: error.message });
+    console.error('Certificate generation error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: 'فشل إنشاء الشهادة',
+        error: error.message
+      });
+    }
   }
 });
 

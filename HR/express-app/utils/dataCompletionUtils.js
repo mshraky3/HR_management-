@@ -41,14 +41,7 @@ export const getRequiredBranchDocuments = (branchType) => {
         'rental_contract',
         'operational_plan',
         'owner_civil_id_copy',
-        'disclosure_commitment',
-        'certification_commitment_form',
-        'financial_platform_declaration',
-        'financial_claim_form',
-        'student_cadre_file',
-        'dropped_students',
-        'free_seats',
-        'acceptance_notifications'
+        'student_cadre_file'
       ]
     }
   };
