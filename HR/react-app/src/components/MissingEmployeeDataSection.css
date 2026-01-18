@@ -275,7 +275,126 @@
   scale: 1 !important;
 }
 
-/* Disable any animation or transition effects */
+/* Date Input Wrapper - for popup positioning */
+.date-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+/* Date Format Popup - Exception to no-animation rule */
+.date-format-popup {
+  position: absolute;
+  top: -120px;
+  right: 0;
+  z-index: 1000;
+  background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+  border: 2px solid #f39c12;
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 8px 24px rgba(243, 156, 18, 0.4);
+  min-width: 220px;
+  animation: formatPopupBounce 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  pointer-events: none;
+}
+
+.format-popup-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+}
+
+.format-popup-icon {
+  font-size: 32px;
+  margin-bottom: 4px;
+  animation: formatPopupIconPulse 1.5s infinite;
+}
+
+.format-popup-title {
+  font-weight: 700;
+  color: #d68910;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.format-popup-example {
+  font-size: 32px;
+  font-weight: 900;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.format-popup-example .format-number {
+  color: #e67e22;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.format-popup-example .format-slash {
+  color: #d68910;
+  font-size: 40px;
+  font-weight: 900;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+  animation: formatSlashPulse 1.5s infinite;
+  padding: 0 2px;
+}
+
+.format-popup-description {
+  font-size: 12px;
+  color: #856404;
+  margin-top: 4px;
+}
+
+.format-popup-arrow {
+  position: absolute;
+  bottom: -10px;
+  right: 30px;
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 10px solid #f39c12;
+}
+
+/* Popup Animations - Exception to no-animation rule */
+@keyframes formatPopupBounce {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.8);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes formatPopupIconPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+@keyframes formatSlashPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.9;
+  }
+}
+
+/* Disable any animation or transition effects for other elements */
 @keyframes none {
   from { transform: none; }
   to { transform: none; }
@@ -284,4 +403,10 @@
 .missing-data-card,
 .missing-data-card * {
   animation: none !important;
+}
+
+/* Exception for format popup animations */
+.missing-data-card .date-format-popup,
+.missing-data-card .date-format-popup * {
+  animation: initial !important;
 }

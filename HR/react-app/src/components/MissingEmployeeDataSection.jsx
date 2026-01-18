@@ -14,6 +14,7 @@ const MissingEmployeeDataSection = ({ onComplete }) => {
   const [saving, setSaving] = useState(false);
   const [savingEmployeeId, setSavingEmployeeId] = useState(null); // Track which employee is being saved
   const [errors, setErrors] = useState({});
+  const [showFormatPopup, setShowFormatPopup] = useState(null); // Track which employee/field should show format popup
 
   const isValidDDMMYYYY = (value) => {
     if (!value) return false;
@@ -72,6 +73,17 @@ const MissingEmployeeDataSection = ({ onComplete }) => {
   }, []);
 
   const handleDateChange = (employeeId, value, fieldPrefix) => {
+    // Clear format popup when user starts typing
+    if (showFormatPopup === employeeId) {
+      setShowFormatPopup(null);
+    }
+    // Clear error for this employee when they start typing
+    setErrors((prev) => {
+      const updated = { ...prev };
+      delete updated[employeeId];
+      return updated;
+    });
+    
     setDrafts((prev) => ({
       ...prev,
       [employeeId]: {
@@ -104,6 +116,10 @@ const MissingEmployeeDataSection = ({ onComplete }) => {
 
       if (Object.keys(newErrors).length > 0) {
         setErrors(prev => ({ ...prev, ...newErrors }));
+        // Show format popup animation for the failed employee
+        setShowFormatPopup(employeeId);
+        // Hide popup after 4 seconds
+        setTimeout(() => setShowFormatPopup(null), 4000);
         setSavingEmployeeId(null);
         return;
       }
@@ -191,6 +207,13 @@ const MissingEmployeeDataSection = ({ onComplete }) => {
 
       if (Object.keys(newErrors).length > 0) {
         setErrors(newErrors);
+        // Show format popup animation for the first failed employee
+        const firstFailedEmployeeId = Object.keys(newErrors)[0];
+        if (firstFailedEmployeeId) {
+          setShowFormatPopup(parseInt(firstFailedEmployeeId));
+          // Hide popup after 4 seconds
+          setTimeout(() => setShowFormatPopup(null), 4000);
+        }
         setSaving(false);
         return;
       }
@@ -271,23 +294,61 @@ const MissingEmployeeDataSection = ({ onComplete }) => {
                   {row.first_name} {row.second_name} {row.third_name} {row.fourth_name}
                 </td>
                 <td>
-                  <input
-                    type="text"
-                    className={`text-input ${errors[row.id] ? 'input-error' : ''}`}
-                    placeholder="dd/mm/yyyy"
-                    value={drafts[row.id]?.contract_start_date || ''}
-                    onChange={(e) => handleDateChange(row.id, e.target.value, 'contract_start_date')}
-                  />
+                  <div className="date-input-wrapper">
+                    <input
+                      type="text"
+                      className={`text-input ${errors[row.id] ? 'input-error' : ''}`}
+                      placeholder="dd/mm/yyyy"
+                      value={drafts[row.id]?.contract_start_date || ''}
+                      onChange={(e) => handleDateChange(row.id, e.target.value, 'contract_start_date')}
+                    />
+                    {showFormatPopup === row.id && (row.missing_start && !isValidDDMMYYYY(drafts[row.id]?.contract_start_date)) && (
+                      <div className="date-format-popup">
+                        <div className="format-popup-icon">📅</div>
+                        <div className="format-popup-content">
+                          <div className="format-popup-title">صيغة التاريخ الصحيحة:</div>
+                          <div className="format-popup-example">
+                            <span className="format-number">2026</span>
+                            <span className="format-slash">/</span>
+                            <span className="format-number">7</span>
+                            <span className="format-slash">/</span>
+                            <span className="format-number">18</span>
+                          </div>
+                          <div className="format-popup-description">يمكن استخدام رقم واحد أو رقمين (1/8/2026 أو 01/08/2026)</div>
+                        </div>
+                        <div className="format-popup-arrow"></div>
+                      </div>
+                    )}
+                  </div>
                   <div className="subtext">أدخل التاريخ بصيغة مثل 19/5/2025 (ميلادي فقط)</div>
                   </td>
                 <td>
-                  <input
-                    type="text"
-                    className={`text-input ${errors[row.id] ? 'input-error' : ''}`}
-                    placeholder="dd/mm/yyyy"
-                    value={drafts[row.id]?.contract_end_date || ''}
-                    onChange={(e) => handleDateChange(row.id, e.target.value, 'contract_end_date')}
-                  />
+                  <div className="date-input-wrapper">
+                    <input
+                      type="text"
+                      className={`text-input ${errors[row.id] ? 'input-error' : ''}`}
+                      placeholder="dd/mm/yyyy"
+                      value={drafts[row.id]?.contract_end_date || ''}
+                      onChange={(e) => handleDateChange(row.id, e.target.value, 'contract_end_date')}
+                    />
+                    {showFormatPopup === row.id && (row.missing_end && !isValidDDMMYYYY(drafts[row.id]?.contract_end_date)) && (
+                      <div className="date-format-popup">
+                        <div className="format-popup-icon">📅</div>
+                        <div className="format-popup-content">
+                          <div className="format-popup-title">صيغة التاريخ الصحيحة مثل :</div>
+                          <div className="format-popup-example">
+                            <span className="format-number">2025</span>
+                            <span className="format-slash">/</span>
+                            <span className="format-number">10</span>
+                            <span className="format-slash">/</span>
+                            <span className="format-number">26</span>
+                          </div>
+                          <div className="format-popup-description">يمكن استخدام رقم واحد أو رقمين (1/8/2026 أو 01/08/2026)</div>
+                        </div>
+                        <div className="format-popup-arrow"></div>
+                      </div>
+                    )}
+                  </div>
                   <div className="subtext">أدخل التاريخ بصيغة مثل 19/5/2025 (ميلادي فقط)</div>
                 </td>
                 <td>

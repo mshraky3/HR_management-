@@ -5,9 +5,5 @@
  */
 
 export const RESTRICTED_DOCUMENT_TYPES = [
-  'staff_cadre',
-  'dropped_students',
-  'free_seats',
-  'acceptance_notifications',
-  'other'
+  // All previously restricted documents have been removed from the system
 ];

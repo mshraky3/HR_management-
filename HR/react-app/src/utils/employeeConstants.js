@@ -204,19 +204,8 @@ export const BRANCH_DOCUMENT_TYPE_LABELS = {
   'municipality_certificate': 'شهادة بلدي',
   'insurance_certificate': 'شهادة التامينات',
   'operational_plan': 'الخطة التشغلية للمركز',
-  'decision_obligation': 'قرار و الزام',
-  'decision_commitment': 'قرار و تعهد',
-  'staff_cadre': 'الكادر',
   'owner_civil_id_copy': 'نسخه من هوية الاحوال الشخصية لمالك المركز',
-  'disclosure_commitment': 'افصاح و تعهد',
-  'certification_commitment_form': 'نموذج تصديق و تعاقد',
-  'financial_platform_declaration': 'ملف اقرار المنصة المالية',
-  'financial_claim_form': 'نموذج مطالبة مالية',
-  'student_cadre_file': 'بيانات الطلاب',
-  'dropped_students': 'الطلاب المنقطعين',
-  'free_seats': 'المقاعد المجانية',
-  'acceptance_notifications': 'ملف اشعارات القبول',
-  'other': 'أخرى'
+  'student_cadre_file': 'بيانات الطلاب'
 };
 
 /**

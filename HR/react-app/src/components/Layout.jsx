@@ -73,6 +73,7 @@ const Layout = ({ children }) => {
       items: [
         { path: '/employees', label: 'البحث عن موظف' },
         { path: '/payroll-absence-admin', label: 'المسيرات' },
+        { path: '/employee-statistics', label: 'احصائيات' },
       ]
     },
     reports: {
@@ -80,12 +81,13 @@ const Layout = ({ children }) => {
       items: [
         { path: '/employee-file', label: 'ملف موظف' },
         { path: '/reports', label: 'التقارير' },
+        { path: '/experience-certificate', label: 'شهادات الخبرة' },
       ]
     },
     monitoring: {
       label: 'متابعة الفروع',
       items: [
-        { path: '/branches-monitoring', label: 'الفروع' },
+        { path: '/branches-monitoring', label: 'المستندات' },
         { path: '/branch-statistics', label: 'إحصائيات الفروع' },
         { path: '/term-management', label: 'إدارة الفصول' },
         { path: '/fix-missing-dates', label: 'البيانات غير الدقيقة' },

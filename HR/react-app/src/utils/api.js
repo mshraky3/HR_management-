@@ -688,6 +688,15 @@ export const employeesAPI = {
 
   saveMissingRequiredData: (data, config = {}) =>
     api.post('/api/employees/missing-required-data', data, config),
+
+  getStatistics: (filters = {}) =>
+    api.get('/api/employees/statistics', { params: filters }),
+
+  generateCertificate: (data, config = {}) =>
+    api.post('/api/employees/certificates/generate', data, {
+      ...config,
+      responseType: config.responseType || 'blob',
+    }),
 };
 
 // Documents API
