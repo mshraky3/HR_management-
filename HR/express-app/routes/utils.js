@@ -15,7 +15,7 @@ router.use(authenticate);
 /**
  * POST /api/utils/convert-date
  * Convert date between Hijri and Gregorian calendars with validation
- * Request: { date: string, calendar_type: 'hijri' | 'gregorian', date_type?: 'birth_date' | 'general' }
+ * Request: { date: string, calendar_type: 'hijri' | 'gregorian', date_type?: 'birth_date' | 'expiry_date' | 'general' }
  * Response: { success, data: { hijri, gregorian, valid, errors, warnings, age? } }
  */
 router.post('/convert-date', async (req, res) => {
@@ -50,13 +50,13 @@ router.post('/convert-date', async (req, res) => {
       });
     }
 
-    if (date_type && !['birth_date', 'general'].includes(date_type)) {
+    if (date_type && !['birth_date', 'expiry_date', 'general'].includes(date_type)) {
       return res.status(400).json({
         success: false,
-        message: 'date_type must be "birth_date" or "general"',
+        message: 'date_type must be "birth_date", "expiry_date" or "general"',
         data: {
           valid: false,
-          errors: ['date_type must be "birth_date" or "general"'],
+          errors: ['date_type must be "birth_date", "expiry_date" or "general"'],
           warnings: [],
           hijri: null,
           gregorian: null
@@ -68,9 +68,11 @@ router.post('/convert-date', async (req, res) => {
     const result = validateDate(date, calendar_type, date_type);
 
     if (!result.valid) {
+      const firstError = Array.isArray(result.errors) ? result.errors[0] : null;
       return res.status(400).json({
         success: false,
-        message: ' تأكد من صحة  اليوم او سنة او الشهر',
+        // Prefer a specific, user-friendly message (e.g. expired date)
+        message: firstError || 'تأكد من صحة اليوم أو السنة أو الشهر',
         data: result
       });
     }

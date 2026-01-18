@@ -20,6 +20,14 @@ import {
   getEmployeesWithInvalidDataCount
 } from '../utils/getInvalidDataEmployees.js';
 import { Notification } from '../models/Notification.js';
+import sql from '../config/database.js';
+import { 
+  gregorianToHijri, 
+  hijriToGregorian, 
+  formatHijriToString, 
+  parseHijriString 
+} from '../utils/dateConverter.js';
+import { BranchDocument } from '../models/BranchDocument.js';
 
 const router = express.Router();
 router.use(authenticate);
@@ -241,5 +249,282 @@ ${invalidFieldsText}`;
 });
 
 // Removed: Attendance system has been removed
+
+// Get branch documents with date status (missing calendar types)
+router.get('/branch-documents/date-status', async (req, res) => {
+  try {
+    const documents = await sql`
+      SELECT 
+        bd.id,
+        bd.branch_id,
+        b.branch_name,
+        bd.document_type,
+        bd.file_name,
+        bd.issue_date,
+        bd.issue_date_hijri,
+        bd.expiry_date,
+        bd.expiry_date_hijri,
+        (bd.issue_date IS NOT NULL) as has_issue_gregorian,
+        (bd.issue_date_hijri IS NOT NULL AND bd.issue_date_hijri != '') as has_issue_hijri,
+        (bd.expiry_date IS NOT NULL) as has_expiry_gregorian,
+        (bd.expiry_date_hijri IS NOT NULL AND bd.expiry_date_hijri != '') as has_expiry_hijri
+      FROM branch_documents bd
+      INNER JOIN branches b ON bd.branch_id = b.id
+      WHERE bd.is_active = true
+        AND (
+          (bd.issue_date IS NOT NULL AND (bd.issue_date_hijri IS NULL OR bd.issue_date_hijri = '')) OR
+          (bd.issue_date_hijri IS NOT NULL AND bd.issue_date_hijri != '' AND bd.issue_date IS NULL) OR
+          (bd.expiry_date IS NOT NULL AND (bd.expiry_date_hijri IS NULL OR bd.expiry_date_hijri = '')) OR
+          (bd.expiry_date_hijri IS NOT NULL AND bd.expiry_date_hijri != '' AND bd.expiry_date IS NULL)
+        )
+      ORDER BY b.branch_name, bd.document_type, bd.uploaded_at DESC
+    `;
+
+    res.json({
+      success: true,
+      data: documents || [],
+      count: documents?.length || 0
+    });
+  } catch (error) {
+    console.error('Error fetching branch documents date status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch branch documents date status',
+      error: error.message
+    });
+  }
+});
+
+// Get branch documents with abnormal dates (years under 2000 Gregorian or under 1400 Hijri)
+router.get('/branch-documents/abnormal-dates', async (req, res) => {
+  try {
+    const documents = await sql`
+      SELECT 
+        bd.id,
+        bd.branch_id,
+        b.branch_name,
+        bd.document_type,
+        bd.file_name,
+        bd.issue_date,
+        bd.issue_date_hijri,
+        bd.expiry_date,
+        bd.expiry_date_hijri,
+        CASE 
+          WHEN bd.issue_date IS NOT NULL AND EXTRACT(YEAR FROM bd.issue_date) < 2000 THEN true
+          ELSE false
+        END as issue_gregorian_abnormal,
+        CASE 
+          WHEN bd.issue_date_hijri IS NOT NULL AND bd.issue_date_hijri != '' THEN
+            CASE 
+              WHEN CAST(SPLIT_PART(bd.issue_date_hijri, '/', 3) AS INTEGER) < 1400 THEN true
+              ELSE false
+            END
+          ELSE false
+        END as issue_hijri_abnormal,
+        CASE 
+          WHEN bd.expiry_date IS NOT NULL AND EXTRACT(YEAR FROM bd.expiry_date) < 2000 THEN true
+          ELSE false
+        END as expiry_gregorian_abnormal,
+        CASE 
+          WHEN bd.expiry_date_hijri IS NOT NULL AND bd.expiry_date_hijri != '' THEN
+            CASE 
+              WHEN CAST(SPLIT_PART(bd.expiry_date_hijri, '/', 3) AS INTEGER) < 1400 THEN true
+              ELSE false
+            END
+          ELSE false
+        END as expiry_hijri_abnormal
+      FROM branch_documents bd
+      INNER JOIN branches b ON bd.branch_id = b.id
+      WHERE bd.is_active = true
+        AND (
+          (bd.issue_date IS NOT NULL AND EXTRACT(YEAR FROM bd.issue_date) < 2000) OR
+          (bd.issue_date_hijri IS NOT NULL AND bd.issue_date_hijri != '' AND 
+           CAST(SPLIT_PART(bd.issue_date_hijri, '/', 3) AS INTEGER) < 1400) OR
+          (bd.expiry_date IS NOT NULL AND EXTRACT(YEAR FROM bd.expiry_date) < 2000) OR
+          (bd.expiry_date_hijri IS NOT NULL AND bd.expiry_date_hijri != '' AND 
+           CAST(SPLIT_PART(bd.expiry_date_hijri, '/', 3) AS INTEGER) < 1400)
+        )
+      ORDER BY b.branch_name, bd.document_type, bd.uploaded_at DESC
+    `;
+
+    res.json({
+      success: true,
+      data: documents || [],
+      count: documents?.length || 0
+    });
+  } catch (error) {
+    console.error('Error fetching branch documents with abnormal dates:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch branch documents with abnormal dates',
+      error: error.message
+    });
+  }
+});
+
+// Convert and update branch document dates
+router.post('/branch-documents/:id/convert-dates', async (req, res) => {
+  try {
+    const documentId = parseInt(req.params.id);
+    const { convert_issue_date = false, convert_expiry_date = false } = req.body;
+
+    if (isNaN(documentId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid document ID'
+      });
+    }
+
+    // Get document from database
+    const [document] = await sql`
+      SELECT * FROM branch_documents
+      WHERE id = ${documentId} AND is_active = true
+    `;
+
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: 'Document not found'
+      });
+    }
+
+    const updates = {};
+    let hasUpdates = false;
+
+    // Convert issue_date if needed
+    if (convert_issue_date) {
+      // If Gregorian exists but Hijri missing
+      if (document.issue_date && (!document.issue_date_hijri || document.issue_date_hijri === '')) {
+        const hijriObj = gregorianToHijri(document.issue_date);
+        if (hijriObj) {
+          updates.issue_date_hijri = formatHijriToString(hijriObj);
+          hasUpdates = true;
+        }
+      }
+      // If Hijri exists but Gregorian missing
+      else if (document.issue_date_hijri && document.issue_date_hijri !== '' && !document.issue_date) {
+        const hijriObj = parseHijriString(document.issue_date_hijri);
+        if (hijriObj) {
+          const gregorianDate = hijriToGregorian(hijriObj.day, hijriObj.month, hijriObj.year);
+          if (gregorianDate) {
+            updates.issue_date = gregorianDate;
+            hasUpdates = true;
+          }
+        }
+      }
+    }
+
+    // Convert expiry_date if needed
+    if (convert_expiry_date) {
+      // If Gregorian exists but Hijri missing
+      if (document.expiry_date && (!document.expiry_date_hijri || document.expiry_date_hijri === '')) {
+        const hijriObj = gregorianToHijri(document.expiry_date);
+        if (hijriObj) {
+          updates.expiry_date_hijri = formatHijriToString(hijriObj);
+          hasUpdates = true;
+        }
+      }
+      // If Hijri exists but Gregorian missing
+      else if (document.expiry_date_hijri && document.expiry_date_hijri !== '' && !document.expiry_date) {
+        const hijriObj = parseHijriString(document.expiry_date_hijri);
+        if (hijriObj) {
+          const gregorianDate = hijriToGregorian(hijriObj.day, hijriObj.month, hijriObj.year);
+          if (gregorianDate) {
+            updates.expiry_date = gregorianDate;
+            hasUpdates = true;
+          }
+        }
+      }
+    }
+
+    if (!hasUpdates) {
+      return res.json({
+        success: true,
+        message: 'No conversion needed - both calendar types already present or conversion not possible',
+        data: document
+      });
+    }
+
+    // Update document in database
+    const [updated] = await sql`
+      UPDATE branch_documents
+      SET 
+        issue_date = ${updates.issue_date !== undefined ? updates.issue_date : sql`issue_date`},
+        issue_date_hijri = ${updates.issue_date_hijri !== undefined ? updates.issue_date_hijri : sql`issue_date_hijri`},
+        expiry_date = ${updates.expiry_date !== undefined ? updates.expiry_date : sql`expiry_date`},
+        expiry_date_hijri = ${updates.expiry_date_hijri !== undefined ? updates.expiry_date_hijri : sql`expiry_date_hijri`},
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${documentId}
+      RETURNING *
+    `;
+
+    res.json({
+      success: true,
+      message: 'Dates converted successfully',
+      data: updated
+    });
+  } catch (error) {
+    console.error('Error converting branch document dates:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to convert dates',
+      error: error.message
+    });
+  }
+});
+
+// Update branch document dates (admin only - no password required)
+router.put('/branch-documents/:id/dates', async (req, res) => {
+  try {
+    const documentId = parseInt(req.params.id);
+    const { issue_date, issue_date_hijri, expiry_date, expiry_date_hijri } = req.body;
+
+    if (isNaN(documentId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid document ID'
+      });
+    }
+
+    // Get document from database
+    const [document] = await sql`
+      SELECT * FROM branch_documents
+      WHERE id = ${documentId} AND is_active = true
+    `;
+
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        message: 'Document not found'
+      });
+    }
+
+    // Update only date fields
+    const [updated] = await sql`
+      UPDATE branch_documents
+      SET 
+        issue_date = ${issue_date !== undefined ? issue_date : sql`issue_date`},
+        issue_date_hijri = ${issue_date_hijri !== undefined ? issue_date_hijri : sql`issue_date_hijri`},
+        expiry_date = ${expiry_date !== undefined ? expiry_date : sql`expiry_date`},
+        expiry_date_hijri = ${expiry_date_hijri !== undefined ? expiry_date_hijri : sql`expiry_date_hijri`},
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${documentId}
+      RETURNING *
+    `;
+
+    res.json({
+      success: true,
+      message: 'Dates updated successfully',
+      data: updated
+    });
+  } catch (error) {
+    console.error('Error updating branch document dates:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update dates',
+      error: error.message
+    });
+  }
+});
 
 export default router;

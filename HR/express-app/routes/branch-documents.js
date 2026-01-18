@@ -20,6 +20,7 @@ import { uploadBranchDocumentToBlob, deleteFromBlob, fetchFromBlob } from '../ut
 import { clearByPrefix } from '../utils/simpleCache.js';
 import { formatDate } from '../utils/dateConverter.js';
 import { validateDateFields } from '../middleware/dateValidation.js';
+import { validateBranchDocumentDates } from '../middleware/branchDocumentDateValidation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -279,9 +280,36 @@ const getDocumentsByRole = async (user, filters) => {
 
 router.get('/', verifyBranchDocumentsPassword, async (req, res) => {
   try {
+    // Archive expired documents before loading (on-demand check)
+    const archiveResult = await BranchDocument.archiveExpiredDocuments();
+    if (archiveResult.archivedCount > 0) {
+      console.log(`[BRANCH DOCS] Auto-archived ${archiveResult.archivedCount} expired documents`);
+    }
+
     const filters = buildFilters(req.query);
     const documents = await getDocumentsByRole(req.user, filters);
-    return res.json({ success: true, data: documents || [] });
+    
+    // Filter documents to only include those with valid file paths
+    // This ensures uploaded files are actually present
+    const validDocuments = (documents || []).filter(doc => {
+      // Check if file_path exists and is valid (blob URL or local path)
+      const hasValidFile = doc.file_path && (
+        doc.file_path.startsWith('https://') || 
+        doc.file_path.startsWith('http://') ||
+        doc.file_path.length > 0
+      );
+      return hasValidFile;
+    });
+
+    return res.json({ 
+      success: true, 
+      data: validDocuments,
+      metadata: {
+        archivedCount: archiveResult.archivedCount,
+        totalReturned: validDocuments.length,
+        filteredOut: (documents || []).length - validDocuments.length
+      }
+    });
   } catch (error) {
     console.error('Error fetching branch documents:', error);
     res.status(500).json({
@@ -306,6 +334,7 @@ router.post('/',
     'issue_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false },
     'expiry_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false }
   }),
+  validateBranchDocumentDates,
   async (req, res) => {
   try {
     const { branch_id, document_type, description, document_number, issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, iban_number, bank_name } = req.body;
@@ -401,10 +430,20 @@ router.post('/',
     const fileName = fixedFileName;
 
     // Date conversion and validation is handled by validateDateFields middleware
-    const finalIssueDate = issue_date || null;
-    const finalIssueDateHijri = issue_date_hijri || null;
-    const finalExpiryDate = expiry_date || null;
-    const finalExpiryDateHijri = expiry_date_hijri || null;
+    // IMPORTANT: Use req.body values after validation middleware has normalized both dates
+    // The middleware ensures both Hijri and Gregorian are set even if only one was provided
+    const finalIssueDate = req.body.issue_date || null;
+    const finalIssueDateHijri = req.body.issue_date_hijri || null;
+    const finalExpiryDate = req.body.expiry_date || null;
+    const finalExpiryDateHijri = req.body.expiry_date_hijri || null;
+    
+    // Log date conversion for verification
+    console.log('[BRANCH DOC UPLOAD] Dates after validation:', {
+      issue_date: finalIssueDate,
+      issue_date_hijri: finalIssueDateHijri,
+      expiry_date: finalExpiryDate,
+      expiry_date_hijri: finalExpiryDateHijri
+    });
 
     // Create document record - store blob URL
     const document = await BranchDocument.create({
@@ -711,6 +750,7 @@ router.put('/:id',
     'issue_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false },
     'expiry_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false }
   }),
+  validateBranchDocumentDates,
   async (req, res) => {
     try {
       const idResult = parseDocumentId(req);

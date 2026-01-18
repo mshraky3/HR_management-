@@ -4,11 +4,11 @@
  * Supports both Hijri and Gregorian dates
  */
 
-import { 
-  gregorianToHijri, 
-  hijriToGregorian, 
-  formatHijriToString, 
-  parseHijriString 
+import {
+  gregorianToHijri,
+  hijriToGregorian,
+  formatHijriToString,
+  parseHijriString
 } from './dateConverter.js';
 
 /**
@@ -16,16 +16,16 @@ import {
  */
 function calculateAge(gregorianDate) {
   if (!gregorianDate) return null;
-  
+
   let birthDate;
   if (typeof gregorianDate === 'string') {
     birthDate = new Date(gregorianDate);
   } else {
     birthDate = new Date(gregorianDate);
   }
-  
+
   if (isNaN(birthDate.getTime())) return null;
-  
+
   const today = new Date();
   let age = today.getFullYear() - birthDate.getFullYear();
   const monthDiff = today.getMonth() - birthDate.getMonth();
@@ -39,7 +39,7 @@ function calculateAge(gregorianDate) {
  * Validate and convert date
  * @param {string} input - Date string (Hijri: dd/mm/yyyy or Gregorian: yyyy-mm-dd)
  * @param {string} calendarType - 'hijri' | 'gregorian'
- * @param {string} dateType - 'birth_date' | 'general'
+ * @param {string} dateType - 'birth_date' | 'expiry_date' | 'general'
  * @returns {Object} { valid, errors, warnings, hijri, gregorian, age? }
  */
 export function validateDate(input, calendarType, dateType = 'general') {
@@ -48,6 +48,21 @@ export function validateDate(input, calendarType, dateType = 'general') {
   let hijri = null;
   let gregorian = null;
   let age = null;
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const parseGregorianSlashDate = (value) => {
+    // Accept d/m/yyyy, dd/m/yyyy, d/mm/yyyy, dd/mm/yyyy and return YYYY-MM-DD
+    const parts = String(value).trim().split('/').map((p) => p.trim());
+    if (parts.length !== 3) return null;
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const year = parseInt(parts[2], 10);
+    if ([day, month, year].some((n) => Number.isNaN(n))) return null;
+    if (year < 1000 || year > 2500) return null;
+    if (month < 1 || month > 12) return null;
+    if (day < 1 || day > 31) return null;
+    return `${year}-${pad2(month)}-${pad2(day)}`;
+  };
 
   if (!input || typeof input !== 'string' || input.trim() === '') {
     return {
@@ -64,7 +79,7 @@ export function validateDate(input, calendarType, dateType = 'general') {
     if (calendarType === 'hijri') {
       // Parse Hijri date (dd/mm/yyyy)
       const hijriParts = parseHijriString(input);
-      
+
       if (!hijriParts || isNaN(hijriParts.day) || isNaN(hijriParts.month) || isNaN(hijriParts.year)) {
         return {
           valid: false,
@@ -112,9 +127,12 @@ export function validateDate(input, calendarType, dateType = 'general') {
       }
 
     } else if (calendarType === 'gregorian') {
-      // Parse Gregorian date (yyyy-mm-dd)
-      const date = new Date(input);
-      
+      // Parse Gregorian date (YYYY-MM-DD) OR (D/M/YYYY)
+      const normalizedInput = String(input).trim();
+      const isoInput = normalizedInput.includes('/') ? parseGregorianSlashDate(normalizedInput) : normalizedInput;
+
+      const date = new Date(isoInput);
+
       if (isNaN(date.getTime())) {
         return {
           valid: false,
@@ -132,7 +150,7 @@ export function validateDate(input, calendarType, dateType = 'general') {
         errors.push('Year must be 4 digits. 3-digit years (like 812) are not valid.');
       }
 
-      gregorian = input.split('T')[0]; // Ensure YYYY-MM-DD format
+      gregorian = (isoInput || normalizedInput).split('T')[0]; // Ensure YYYY-MM-DD format
 
       // Convert to Hijri
       const hijriDate = gregorianToHijri(gregorian);
@@ -165,7 +183,8 @@ export function validateDate(input, calendarType, dateType = 'general') {
       };
     }
 
-    const gregDate = new Date(gregorian);
+    // Parse as local midnight to avoid timezone shifting issues with YYYY-MM-DD parsing
+    const gregDate = new Date(`${gregorian}T00:00:00`);
     if (isNaN(gregDate.getTime())) {
       return {
         valid: false,
@@ -191,20 +210,32 @@ export function validateDate(input, calendarType, dateType = 'general') {
       errors.push('Year is too far in the future (maximum 2500)');
     }
 
-    if (gregDate > oneYearFromNow) {
+    // General dates: check if more than 1 year in future (but allow expiry dates to be further)
+    if (dateType !== 'expiry_date' && gregDate > oneYearFromNow) {
       errors.push('Date is too far in the future (more than 1 year ahead)');
     }
 
     // Calculate age for birth dates
     if (dateType === 'birth_date') {
       age = calculateAge(gregorian);
-      
+
       if (age === null) {
         errors.push('Could not calculate age from date');
       } else if (age < 20) {
         errors.push(`Employee age (${age} years) must be at least 20 years`);
       } else if (age > 100) {
         errors.push(`Employee age (${age} years) must not exceed 100 years`);
+      }
+    }
+
+    // Validate expiry dates - must be in the future
+    if (dateType === 'expiry_date') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Must be strictly after today (no expired/today)
+      if (gregDate <= today) {
+        errors.push('تاريخ الانتهاء يجب أن يكون في المستقبل (غير منتهي الصلاحية)');
       }
     }
 

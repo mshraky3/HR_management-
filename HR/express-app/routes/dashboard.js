@@ -47,25 +47,27 @@ router.get('/summary', async (req, res) => {
         let incompleteEmployees = [];
 
         if (branchId) {
-            const totalRes = await sql`SELECT COUNT(*)::int as total FROM employees WHERE branch_id = ${branchId} AND (status IS NULL OR status IN ('active','pending'))`;
+            // Only count active employees (exclude pending and inactive)
+            const totalRes = await sql`SELECT COUNT(*)::int as total FROM employees WHERE branch_id = ${branchId} AND (status IS NULL OR status = 'active')`;
             totalEmployees = parseInt(totalRes[0]?.total || 0, 10);
-            const incompleteRes = await sql`SELECT COUNT(*)::int as incomplete_count FROM employees WHERE branch_id = ${branchId} AND (data_completion_status IS NULL OR data_completion_status != 'complete')`;
+            const incompleteRes = await sql`SELECT COUNT(*)::int as incomplete_count FROM employees WHERE branch_id = ${branchId} AND (status IS NULL OR status = 'active') AND (data_completion_status IS NULL OR data_completion_status != 'complete')`;
             incompleteCount = parseInt(incompleteRes[0]?.incomplete_count || 0, 10);
 
-            // Small list of incomplete employees for quick preview
+            // Small list of incomplete employees for quick preview (only active employees)
             incompleteEmployees = await sql`
         SELECT id, employee_id_number, branch_id, first_name, second_name, third_name, fourth_name, data_completion_status
         FROM employees
         WHERE branch_id = ${branchId}
+        AND (status IS NULL OR status = 'active')
         AND (data_completion_status IS NULL OR data_completion_status != 'complete')
         ORDER BY updated_at DESC
         LIMIT 10
       `;
         } else {
-            // Global summary for main manager
-            const totalRes = await sql`SELECT COUNT(*)::int as total FROM employees WHERE (status IS NULL OR status IN ('active','pending'))`;
+            // Global summary for main manager (only active employees)
+            const totalRes = await sql`SELECT COUNT(*)::int as total FROM employees WHERE (status IS NULL OR status = 'active')`;
             totalEmployees = parseInt(totalRes[0]?.total || 0, 10);
-            const incompleteRes = await sql`SELECT COUNT(*)::int as incomplete_count FROM employees WHERE (data_completion_status IS NULL OR data_completion_status != 'complete')`;
+            const incompleteRes = await sql`SELECT COUNT(*)::int as incomplete_count FROM employees WHERE (status IS NULL OR status = 'active') AND (data_completion_status IS NULL OR data_completion_status != 'complete')`;
             incompleteCount = parseInt(incompleteRes[0]?.incomplete_count || 0, 10);
             // For global view, don't return full lists (only counts)
             incompleteEmployees = [];
