@@ -311,6 +311,79 @@ export const BranchDocument = {
       console.error('Error finding unverified branch documents:', error);
       throw error;
     }
+  },
+
+  /**
+   * Archive expired branch documents
+   * Checks both Gregorian and Hijri expiry dates
+   * Sets is_active = false for documents where either expiry date is in the past
+   * @returns {Object} { archivedCount: number, archivedIds: number[] }
+   */
+  async archiveExpiredDocuments() {
+    try {
+      const { hijriToGregorian, parseHijriString } = await import('../utils/dateConverter.js');
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Get all active documents with expiry dates
+      const activeDocuments = await sql`
+        SELECT id, expiry_date, expiry_date_hijri
+        FROM branch_documents
+        WHERE is_active = true
+        AND (expiry_date IS NOT NULL OR expiry_date_hijri IS NOT NULL)
+      `;
+
+      const expiredIds = [];
+
+      for (const doc of activeDocuments) {
+        let isExpired = false;
+
+        // Check Gregorian expiry date
+        if (doc.expiry_date) {
+          const expiryDate = new Date(doc.expiry_date);
+          expiryDate.setHours(0, 0, 0, 0);
+          if (expiryDate < today) {
+            isExpired = true;
+          }
+        }
+
+        // Check Hijri expiry date (convert to Gregorian for comparison)
+        if (!isExpired && doc.expiry_date_hijri && doc.expiry_date_hijri !== '') {
+          const hijriParts = parseHijriString(doc.expiry_date_hijri);
+          if (hijriParts) {
+            const gregorianExpiry = hijriToGregorian(hijriParts.day, hijriParts.month, hijriParts.year);
+            if (gregorianExpiry) {
+              const expiryDate = new Date(gregorianExpiry);
+              expiryDate.setHours(0, 0, 0, 0);
+              if (expiryDate < today) {
+                isExpired = true;
+              }
+            }
+          }
+        }
+
+        if (isExpired) {
+          expiredIds.push(doc.id);
+        }
+      }
+
+      // Archive expired documents
+      if (expiredIds.length > 0) {
+        await sql`
+          UPDATE branch_documents
+          SET is_active = false, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ANY(${expiredIds})
+        `;
+      }
+
+      return {
+        archivedCount: expiredIds.length,
+        archivedIds: expiredIds
+      };
+    } catch (error) {
+      console.error('Error archiving expired branch documents:', error);
+      throw error;
+    }
   }
 };
 

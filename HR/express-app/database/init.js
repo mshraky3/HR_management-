@@ -21,6 +21,9 @@ export async function initializeDatabase() {
       username VARCHAR(255) UNIQUE NOT NULL,
       password VARCHAR(255) NOT NULL,
       branch_documents_password VARCHAR(255) DEFAULT 'test',
+      phone_number VARCHAR(50),
+      email VARCHAR(255),
+      number_of_employees INTEGER,
       is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -35,6 +38,19 @@ export async function initializeDatabase() {
       'CREATE INDEX IF NOT EXISTS idx_branches_username ON branches(username)',
       'Created index on branches.username'
     );
+
+    // Migration safety net: add branch contact columns (for older DBs)
+    try {
+      await executeQuery(
+        `ALTER TABLE branches
+         ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS number_of_employees INTEGER`,
+        'Added phone_number/email/number_of_employees columns to branches'
+      );
+    } catch (error) {
+      // Silent error handling - columns may already exist
+    }
 
     // 2. Create users table (depends on branches)
     await createTable('users', `
@@ -67,30 +83,8 @@ export async function initializeDatabase() {
       'Created index on users.role'
     );
 
-    // 3. Create schools table
-    await createTable('schools', `
-      id SERIAL PRIMARY KEY,
-      branch_id INTEGER UNIQUE NOT NULL,
-      school_code VARCHAR(50) UNIQUE,
-      education_level VARCHAR(100),
-      additional_info TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
-    `);
-
-    // 4. Create healthcare_centers table
-    await createTable('healthcare_centers', `
-      id SERIAL PRIMARY KEY,
-      branch_id INTEGER UNIQUE NOT NULL,
-      center_code VARCHAR(50) UNIQUE,
-      center_type VARCHAR(100),
-      license_number VARCHAR(100),
-      additional_info TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
-    `);
+    // NOTE: We no longer create `schools` / `healthcare_centers` tables.
+    // The app uses `branches.branch_type` instead. Keeping init lean avoids unused tables.
 
     // 5. Create employees table
     await createTable('employees', `
@@ -267,7 +261,13 @@ export async function initializeDatabase() {
       file_extension VARCHAR(10),
       thumbnail_path VARCHAR(500),
       description TEXT,
+      document_number VARCHAR(100),
+      issue_date DATE,
+      issue_date_hijri VARCHAR(50),
       expiry_date DATE,
+      expiry_date_hijri VARCHAR(50),
+      iban_number VARCHAR(50),
+      bank_name VARCHAR(200),
       is_verified BOOLEAN DEFAULT false,
       verified_at TIMESTAMP,
       verified_by INTEGER,
@@ -328,6 +328,15 @@ export async function initializeDatabase() {
           'Added issue_date column to branch_documents'
         );
       }
+
+      // Add metadata columns used by the app (safe for older DBs)
+      await executeQuery(
+        `ALTER TABLE branch_documents
+         ADD COLUMN IF NOT EXISTS document_number VARCHAR(100),
+         ADD COLUMN IF NOT EXISTS iban_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS bank_name VARCHAR(200)`,
+        'Added document_number/iban_number/bank_name columns to branch_documents'
+      );
       
       // Add Hijri columns
       await executeQuery(
@@ -1326,17 +1335,19 @@ export async function initializeDatabase() {
           'Added foreign key for term_id'
         );
 
-        // Drop is_active column if it exists
-        await executeQuery(
-          `ALTER TABLE bus_transportation DROP COLUMN IF EXISTS is_active`,
-          'Dropped is_active column from bus_transportation'
-        );
-
-        // Drop is_active index if it exists
-        await executeQuery(
-          `DROP INDEX IF EXISTS idx_bus_transportation_is_active`,
-          'Dropped is_active index'
-        );
+        // Destructive schema cleanup should never run by default on startup.
+        // If you REALLY want to run destructive cleanup, set:
+        //   ALLOW_DESTRUCTIVE_DB_MIGRATIONS=true
+        if (process.env.ALLOW_DESTRUCTIVE_DB_MIGRATIONS === 'true') {
+          await executeQuery(
+            `ALTER TABLE bus_transportation DROP COLUMN IF EXISTS is_active`,
+            'Dropped is_active column from bus_transportation'
+          );
+          await executeQuery(
+            `DROP INDEX IF EXISTS idx_bus_transportation_is_active`,
+            'Dropped is_active index'
+          );
+        }
 
         // Add lease contract document columns (if not exist)
         await executeQuery(
@@ -1437,17 +1448,17 @@ export async function initializeDatabase() {
           'Added foreign key for term_id in bus_students'
         );
 
-        // Drop is_active column if it exists
-        await executeQuery(
-          `ALTER TABLE bus_students DROP COLUMN IF EXISTS is_active`,
-          'Dropped is_active column from bus_students'
-        );
-
-        // Drop is_active index if it exists
-        await executeQuery(
-          `DROP INDEX IF EXISTS idx_bus_students_is_active`,
-          'Dropped is_active index from bus_students'
-        );
+        // Destructive schema cleanup should never run by default on startup.
+        if (process.env.ALLOW_DESTRUCTIVE_DB_MIGRATIONS === 'true') {
+          await executeQuery(
+            `ALTER TABLE bus_students DROP COLUMN IF EXISTS is_active`,
+            'Dropped is_active column from bus_students'
+          );
+          await executeQuery(
+            `DROP INDEX IF EXISTS idx_bus_students_is_active`,
+            'Dropped is_active index from bus_students'
+          );
+        }
 
         // Create indexes for term_id (now that column exists)
         await executeQuery(
@@ -1465,39 +1476,10 @@ export async function initializeDatabase() {
     }
 
     // Migration: Drop removed bus transportation fields (keep schema aligned with simplified UI)
+    // IMPORTANT: dropping columns is destructive; do not run by default.
+    // Keep additive compatibility migrations outside the destructive gate.
     try {
-      await executeQuery(
-        `ALTER TABLE bus_registration_data
-         DROP COLUMN IF EXISTS registration_authority,
-         DROP COLUMN IF EXISTS engine_number,
-         DROP COLUMN IF EXISTS vehicle_make,
-         DROP COLUMN IF EXISTS vehicle_type,
-         DROP COLUMN IF EXISTS vehicle_category,
-         DROP COLUMN IF EXISTS registration_date_hijri,
-         DROP COLUMN IF EXISTS registration_date_gregorian,
-         DROP COLUMN IF EXISTS expiry_date_hijri,
-         DROP COLUMN IF EXISTS owner_name,
-         DROP COLUMN IF EXISTS owner_id_number,
-         DROP COLUMN IF EXISTS owner_type,
-         DROP COLUMN IF EXISTS notes`,
-        'Dropped removed columns from bus_registration_data'
-      );
-
-      await executeQuery(
-        `ALTER TABLE driver_license_data
-         DROP COLUMN IF EXISTS license_category,
-         DROP COLUMN IF EXISTS license_authority,
-         DROP COLUMN IF EXISTS issue_date_hijri,
-         DROP COLUMN IF EXISTS expiry_date_hijri,
-         DROP COLUMN IF EXISTS issue_place,
-         DROP COLUMN IF EXISTS driver_address,
-         DROP COLUMN IF EXISTS driver_date_of_birth_hijri,
-         DROP COLUMN IF EXISTS notes,
-         DROP COLUMN IF EXISTS license_type`,
-        'Dropped removed columns from driver_license_data'
-      );
-
-      // Add assistant driver fields (if table already exists)
+      // Always add assistant driver fields (non-destructive, needed for older DBs)
       await executeQuery(
         `ALTER TABLE driver_license_data
          ADD COLUMN IF NOT EXISTS has_assistant BOOLEAN DEFAULT false,
@@ -1506,35 +1488,68 @@ export async function initializeDatabase() {
         'Added assistant driver fields to driver_license_data'
       );
 
-      await executeQuery(
-        `ALTER TABLE license_plate_data
-         DROP COLUMN IF EXISTS plate_region,
-         DROP COLUMN IF EXISTS plate_type,
-         DROP COLUMN IF EXISTS plate_color`,
-        'Dropped removed columns from license_plate_data'
-      );
+      if (process.env.ALLOW_DESTRUCTIVE_DB_MIGRATIONS === 'true') {
+        await executeQuery(
+          `ALTER TABLE bus_registration_data
+           DROP COLUMN IF EXISTS registration_authority,
+           DROP COLUMN IF EXISTS engine_number,
+           DROP COLUMN IF EXISTS vehicle_make,
+           DROP COLUMN IF EXISTS vehicle_type,
+           DROP COLUMN IF EXISTS vehicle_category,
+           DROP COLUMN IF EXISTS registration_date_hijri,
+           DROP COLUMN IF EXISTS registration_date_gregorian,
+           DROP COLUMN IF EXISTS expiry_date_hijri,
+           DROP COLUMN IF EXISTS owner_name,
+           DROP COLUMN IF EXISTS owner_id_number,
+           DROP COLUMN IF EXISTS owner_type,
+           DROP COLUMN IF EXISTS notes`,
+          'Dropped removed columns from bus_registration_data'
+        );
 
-      await executeQuery(
-        `ALTER TABLE bus_details
-         DROP COLUMN IF EXISTS insurance_expiry_date_hijri,
-         DROP COLUMN IF EXISTS maintenance_schedule,
-         DROP COLUMN IF EXISTS notes`,
-        'Dropped removed columns from bus_details'
-      );
+        await executeQuery(
+          `ALTER TABLE driver_license_data
+           DROP COLUMN IF EXISTS license_category,
+           DROP COLUMN IF EXISTS license_authority,
+           DROP COLUMN IF EXISTS issue_date_hijri,
+           DROP COLUMN IF EXISTS expiry_date_hijri,
+           DROP COLUMN IF EXISTS issue_place,
+           DROP COLUMN IF EXISTS driver_address,
+           DROP COLUMN IF EXISTS driver_date_of_birth_hijri,
+           DROP COLUMN IF EXISTS notes,
+           DROP COLUMN IF EXISTS license_type`,
+          'Dropped removed columns from driver_license_data'
+        );
 
-      // Drop removed columns from bus_students (UI only uses name, mobile, address)
-      await executeQuery(
-        `ALTER TABLE bus_students
-         DROP COLUMN IF EXISTS pickup_location,
-         DROP COLUMN IF EXISTS dropoff_location,
-         DROP COLUMN IF EXISTS pickup_time,
-         DROP COLUMN IF EXISTS dropoff_time,
-         DROP COLUMN IF EXISTS guardian_name,
-         DROP COLUMN IF EXISTS guardian_relationship,
-         DROP COLUMN IF EXISTS guardian_phone,
-         DROP COLUMN IF EXISTS notes`,
-        'Dropped removed columns from bus_students'
-      );
+        await executeQuery(
+          `ALTER TABLE license_plate_data
+           DROP COLUMN IF EXISTS plate_region,
+           DROP COLUMN IF EXISTS plate_type,
+           DROP COLUMN IF EXISTS plate_color`,
+          'Dropped removed columns from license_plate_data'
+        );
+
+        await executeQuery(
+          `ALTER TABLE bus_details
+           DROP COLUMN IF EXISTS insurance_expiry_date_hijri,
+           DROP COLUMN IF EXISTS maintenance_schedule,
+           DROP COLUMN IF EXISTS notes`,
+          'Dropped removed columns from bus_details'
+        );
+
+        // Drop removed columns from bus_students (UI only uses name, mobile, address)
+        await executeQuery(
+          `ALTER TABLE bus_students
+           DROP COLUMN IF EXISTS pickup_location,
+           DROP COLUMN IF EXISTS dropoff_location,
+           DROP COLUMN IF EXISTS pickup_time,
+           DROP COLUMN IF EXISTS dropoff_time,
+           DROP COLUMN IF EXISTS guardian_name,
+           DROP COLUMN IF EXISTS guardian_relationship,
+           DROP COLUMN IF EXISTS guardian_phone,
+           DROP COLUMN IF EXISTS notes`,
+          'Dropped removed columns from bus_students'
+        );
+      }
 
       // Enforce ownership_type to only owned/leased (normalize old rented -> leased)
       await executeQuery(
