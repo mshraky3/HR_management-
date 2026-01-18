@@ -8,6 +8,10 @@
  * 3. Or use environment variable: Create .env file with VITE_API_URL=your-url
  * 
  * Priority: Environment variable > CURRENT setting > Default LOCAL
+ * 
+ * AUTO-FALLBACK:
+ * If CURRENT is set to 'LOCAL' and localhost connection fails,
+ * automatically switches to PRODUCTION URL via axios interceptor
  */
 
 const API_CONFIG = {
@@ -19,19 +23,31 @@ const API_CONFIG = {
   // Current environment - Change this to switch between LOCAL and PRODUCTION
   // Options: 'LOCAL' or 'PRODUCTION'
   // For production deployment, set to 'PRODUCTION' or use VITE_API_URL env variable
-  CURRENT: 'PRODUCTION'
+  CURRENT: 'LOCAL'
 };
 
+// Track if we've already switched to production (prevent infinite retry loops)
+let switchedToProduction = false;
 
 const getApiUrl = () => {
-  // First check for environment variable (Vite .env file)
-  // This takes highest priority
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
+
+  if (switchedToProduction) {
+    return API_CONFIG.PRODUCTION;
   }
 
   return API_CONFIG[API_CONFIG.CURRENT] || API_CONFIG.LOCAL;
 };
+
+// Export function to switch to production URL (used by axios interceptor)
+export const switchToProductionUrl = () => {
+  if (!switchedToProduction && API_CONFIG.CURRENT === 'LOCAL') {
+    switchedToProduction = true;
+    console.warn('[API Config] Localhost connection failed, switching to PRODUCTION URL');
+  }
+};
+
+// Export function to get current API URL (can change dynamically)
+export const getCurrentApiUrl = () => getApiUrl();
 
 // Export the API URL (used throughout the app)
 export const API_URL = getApiUrl();
@@ -39,11 +55,12 @@ export const API_URL = getApiUrl();
 // Export config object for easy access and debugging
 export default {
   API_URL,
+  getCurrentApiUrl,
+  switchToProductionUrl,
   config: API_CONFIG,
-  isLocal: () => API_CONFIG.CURRENT === 'LOCAL',
-  isProduction: () => API_CONFIG.CURRENT === 'PRODUCTION',
+  isLocal: () => API_CONFIG.CURRENT === 'LOCAL' && !switchedToProduction,
+  isProduction: () => switchedToProduction || API_CONFIG.CURRENT === 'PRODUCTION',
   // Helper to get current environment name
-  getCurrentEnv: () => API_CONFIG.CURRENT,
+  getCurrentEnv: () => switchedToProduction ? 'PRODUCTION' : API_CONFIG.CURRENT,
 };
-
 

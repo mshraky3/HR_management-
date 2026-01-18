@@ -24,8 +24,23 @@ const UnifiedDatePicker = ({
   const [currentHijriMonth, setCurrentHijriMonth] = useState(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [validationError, setValidationError] = useState(null);
+  const [calculatedAge, setCalculatedAge] = useState(null);
   const [loading, setLoading] = useState(false);
   const calendarRef = useRef(null);
+
+  // Calculate age from date (helper function)
+  const calculateAgeFromDate = (dateString) => {
+    if (!dateString) return null;
+    const birthDate = new Date(dateString);
+    if (isNaN(birthDate.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age >= 0 ? age : null;
+  };
 
   // Initialize current month based on existing values
   useEffect(() => {
@@ -50,7 +65,15 @@ const UnifiedDatePicker = ({
         }
       }
     }
-  }, [hijriValue, gregorianValue, activeCalendar]);
+    
+    // Calculate age automatically for birth dates when gregorian date is available
+    if (dateType === 'birth_date' && gregorianValue) {
+      const age = calculateAgeFromDate(gregorianValue);
+      setCalculatedAge(age);
+    } else if (dateType !== 'birth_date') {
+      setCalculatedAge(null);
+    }
+  }, [hijriValue, gregorianValue, activeCalendar, dateType]);
 
   // Close calendar when clicking outside
   useEffect(() => {
@@ -186,30 +209,83 @@ const UnifiedDatePicker = ({
       } else {
         // For Hijri, use current Hijri month/year
         if (!currentHijriMonth) {
+          // Try to initialize currentHijriMonth before proceeding
+          const today = new Date();
+          const todayHijri = gregorianToHijri(today.toISOString().split('T')[0]);
+          if (todayHijri) {
+            setCurrentHijriMonth({ month: todayHijri.month, year: todayHijri.year });
+            dateString = formatHijriToString({ 
+              day, 
+              month: todayHijri.month, 
+              year: todayHijri.year 
+            });
+          } else {
+            setLoading(false);
+            setValidationError('فشل تهيئة التقويم الهجري');
+            return;
+          }
+        } else {
+          dateString = formatHijriToString({ 
+            day, 
+            month: currentHijriMonth.month, 
+            year: currentHijriMonth.year 
+          });
+        }
+        
+        // Ensure dateString is not empty
+        if (!dateString || dateString.trim() === '') {
           setLoading(false);
+          setValidationError('فشل بناء التاريخ الهجري');
           return;
         }
-        dateString = formatHijriToString({ 
-          day, 
-          month: currentHijriMonth.month, 
-          year: currentHijriMonth.year 
-        });
       }
 
       // Call conversion API
       const response = await utilsAPI.convertDate(dateString, activeCalendar, dateType);
       
       if (response.data.success && response.data.data.valid) {
-        const { hijri, gregorian } = response.data.data;
-        onChange(hijri, gregorian);
+        const { hijri, gregorian, age } = response.data.data;
+        
+        // Ensure both hijri and gregorian are valid strings before calling onChange
+        if (!hijri || !gregorian) {
+          setLoading(false);
+          setValidationError('فشل تحويل التاريخ: القيم مفقودة من الاستجابة');
+          return;
+        }
+        
+        // Call onChange with both values (ensure they are strings, not null)
+        onChange(hijri || '', gregorian || '');
         setSelectedDate(new Date(gregorian));
         setCalendarOpen(false);
+        setValidationError(null); // Clear error on success
+        // Store calculated age for birth dates (to display to user)
+        if (dateType === 'birth_date' && age !== null && age !== undefined) {
+          setCalculatedAge(age);
+        } else {
+          setCalculatedAge(null);
+        }
       } else {
-        setValidationError(response.data.data.errors?.[0] || 'تاريخ غير صحيح');
+        // Validation failed - show first error from response
+        const errors = response.data?.data?.errors;
+        const firstError = Array.isArray(errors) && errors.length > 0 ? errors[0] : null;
+        setValidationError(firstError || response.data?.message || 'تاريخ غير صحيح');
+        setCalculatedAge(null); // Clear age on validation error
+        // Keep calendar open so user can see the error and select a different date
       }
     } catch (error) {
-      console.error('Error converting date:', error);
-      setValidationError(error.response?.data?.message || 'فشل تحويل التاريخ');
+      // For validation errors (400), show the specific backend error (e.g. expired date)
+      // Check multiple possible locations for error message
+      const apiErrors = error.response?.data?.data?.errors;
+      const firstApiError = Array.isArray(apiErrors) && apiErrors.length > 0 ? apiErrors[0] : null;
+      const apiMessage = error.response?.data?.message;
+      
+      setValidationError(
+        firstApiError ||
+        apiMessage ||
+        'فشل تحويل التاريخ'
+      );
+      setCalculatedAge(null); // Clear age on error
+      // Keep calendar open so user can see the error and select a different date
     } finally {
       setLoading(false);
     }
@@ -250,13 +326,34 @@ const UnifiedDatePicker = ({
     setCurrentHijriMonth({ month: currentHijriMonth.month, year });
   };
 
-  // Get display value
+  // Get display value - show the date based on active calendar type
+  // When Hijri calendar is active: show Hijri date in button (converted Gregorian below)
+  // When Gregorian calendar is active: show Gregorian date in button (converted Hijri below)
   const getDisplayValue = () => {
-    if (activeCalendar === 'hijri' && hijriValue) {
-      return hijriValue;
-    } else if (activeCalendar === 'gregorian' && gregorianValue) {
-      return formatDate(gregorianValue);
+    // Priority 1: If Hijri calendar is active, show Hijri value
+    if (activeCalendar === 'hijri') {
+      // Check if hijriValue exists and is not empty
+      const hijriStr = hijriValue ? String(hijriValue).trim() : '';
+      if (hijriStr !== '') {
+        return hijriStr;
+      }
+      // If no Hijri value but Gregorian exists, still show empty (will convert on selection)
+      return '';
     }
+    
+    // Priority 2: If Gregorian calendar is active, show Gregorian value (formatted)
+    if (activeCalendar === 'gregorian') {
+      // Check if gregorianValue exists and is not empty
+      if (gregorianValue) {
+        const formatted = formatDate(gregorianValue);
+        if (formatted && formatted !== '-') {
+          return formatted;
+        }
+      }
+      // If no Gregorian value but Hijri exists, still show empty (will convert on selection)
+      return '';
+    }
+    
     return '';
   };
 
@@ -482,21 +579,52 @@ const UnifiedDatePicker = ({
               </div>
             )
           )}
-          
-          {validationError && (
-            <div className="validation-error">{validationError}</div>
-          )}
         </div>
       )}
 
-      {/* Show converted date */}
-      {hijriValue && gregorianValue && (
+      {/* Validation Error - Always visible (not inside calendar popup) */}
+      {validationError && (
+        <div className="validation-error">{validationError}</div>
+      )}
+
+      {/* Show calculated age for birth dates */}
+      {dateType === 'birth_date' && calculatedAge !== null && !validationError && (
+        <div className="age-display">
+          <span className="age-label">العمر:</span>
+          <span className="age-value">{calculatedAge} سنة</span>
+        </div>
+      )}
+
+      {/* Show converted date - always show the opposite calendar when both values exist */}
+      {/* When Hijri calendar is active: show Hijri in button, Gregorian below */}
+      {/* When Gregorian calendar is active: show Gregorian in button, Hijri below */}
+      {(hijriValue && String(hijriValue).trim() !== '') && (gregorianValue && String(gregorianValue).trim() !== '') && (
         <div className="converted-date-display">
           <span className="converted-date">
             {activeCalendar === 'hijri' 
               ? `الموافق ميلادي: ${formatDate(gregorianValue)}`
-              : `الموافق هجري: ${hijriValue}`
+              : `الموافق هجري: ${String(hijriValue).trim()}`
             }
+          </span>
+        </div>
+      )}
+      {/* Show partial conversion if only one value exists (during conversion) */}
+      {((hijriValue && !gregorianValue) || (gregorianValue && !hijriValue)) && activeCalendar !== 'hijri' && gregorianValue && (
+        <div className="converted-date-display" style={{ opacity: 0.6 }}>
+          <span className="converted-date">
+            جاري التحويل...
+          </span>
+        </div>
+      )}
+      {/* Show when only one calendar type is available (during conversion) */}
+      {((hijriValue && !gregorianValue) || (gregorianValue && !hijriValue)) && (
+        <div className="converted-date-display" style={{ opacity: 0.6 }}>
+          <span className="converted-date">
+            {activeCalendar === 'hijri' && gregorianValue
+              ? `الموافق ميلادي: ${formatDate(gregorianValue)}`
+              : activeCalendar === 'gregorian' && hijriValue
+                ? `الموافق هجري: ${hijriValue}`
+                : ''}
           </span>
         </div>
       )}

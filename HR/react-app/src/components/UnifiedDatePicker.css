@@ -272,9 +272,37 @@
 
 .validation-error {
   margin-top: var(--spacing-sm, 0.5rem);
-  padding: var(--spacing-xs, 0.5rem);
+  padding: var(--spacing-sm, 0.5rem) var(--spacing-md, 0.75rem);
   background: var(--error-light, #f8d7da);
   color: var(--error, #dc3545);
+  border: 1px solid var(--error, #dc3545);
   border-radius: var(--radius-sm, 4px);
   font-size: var(--font-size-sm, 0.875rem);
+  display: block;
+  text-align: right;
+  direction: rtl;
+}
+
+.age-display {
+  margin-top: var(--spacing-xs, 0.5rem);
+  padding: var(--spacing-xs, 0.5rem) var(--spacing-sm, 0.75rem);
+  background: var(--info-light, #d1ecf1);
+  color: var(--info, #0c5460);
+  border: 1px solid var(--info, #0c5460);
+  border-radius: var(--radius-sm, 4px);
+  font-size: var(--font-size-sm, 0.875rem);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 0.5rem);
+  text-align: right;
+  direction: rtl;
+}
+
+.age-label {
+  font-weight: 600;
+}
+
+.age-value {
+  font-weight: 700;
+  font-size: var(--font-size-base, 1rem);
 }
