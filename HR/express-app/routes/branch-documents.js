@@ -920,6 +920,14 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
       });
     }
 
+    // This report only supports payroll_file. salary_deposit_file is deprecated/removed.
+    if (document_type !== 'payroll_file') {
+      return res.status(400).json({
+        success: false,
+        message: 'نوع المستند غير مدعوم'
+      });
+    }
+
     if (!branch_ids || !Array.isArray(branch_ids) || branch_ids.length === 0) {
       return res.status(400).json({
         success: false,
@@ -929,8 +937,7 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
 
     // Document type labels
     const documentTypeLabels = {
-      payroll_file: 'ملف مسيرات الرواتب',
-      salary_deposit_file: 'ملف ايداع الرواتب (التحويلات البنكية)'
+      payroll_file: 'ملف مسيرات الرواتب'
     };
 
     const documentLabel = documentTypeLabels[document_type] || document_type;
