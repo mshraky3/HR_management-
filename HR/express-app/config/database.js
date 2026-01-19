@@ -40,7 +40,7 @@ const sql = postgres({
     undefined: null, // Convert undefined to null for consistency
   },
   // Connection retry settings
-  onnotice: () => {}, // Suppress PostgreSQL notices in production
+  onnotice: () => { }, // Suppress PostgreSQL notices in production
   debug: process.env.LOG_DB_QUERIES === 'true' ? (connection, query) => log.debug('DB Query', { query: query?.substring?.(0, 100) }) : undefined,
 });
 
