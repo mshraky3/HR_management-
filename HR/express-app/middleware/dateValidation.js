@@ -17,41 +17,41 @@ export const validateDateFields = (dateFields) => {
       console.log('[DATE VALIDATION] Starting date field validation');
       console.log('[DATE VALIDATION] Fields to validate:', Object.keys(dateFields));
       const errors = [];
-      
+
       for (const [fieldName, config] of Object.entries(dateFields)) {
         const { calendarType, dateType = 'general', required = false } = config;
         const hijriField = fieldName;
         // Try both _gregorian suffix and base field name (e.g., issue_date_gregorian or issue_date)
         const gregorianFieldWithSuffix = fieldName.replace('_hijri', '_gregorian');
         const gregorianFieldBase = fieldName.replace('_hijri', '');
-        
+
         const hijriValue = req.body[hijriField];
         // Check both possible gregorian field names (prefer _gregorian suffix, fallback to base name)
         const gregorianValue = req.body[gregorianFieldWithSuffix] || req.body[gregorianFieldBase];
-        
+
         console.log(`[DATE VALIDATION] Validating ${fieldName}:`, {
           hijri: hijriValue ? hijriValue.substring(0, 20) + '...' : null,
           gregorian: gregorianValue ? gregorianValue.substring(0, 20) + '...' : null,
           required
         });
-        
+
         // Check if at least one is provided (if required)
         if (required && !hijriValue && !gregorianValue) {
           console.log(`[DATE VALIDATION] ERROR: ${fieldName} is required but not provided`);
           errors.push(`${fieldName} is required (provide either Hijri or Gregorian date)`);
           continue;
         }
-        
+
         // If neither is provided and not required, skip validation
         if (!hijriValue && !gregorianValue) {
           console.log(`[DATE VALIDATION] Skipping ${fieldName} (not required, not provided)`);
           continue;
         }
-        
+
         // Determine which value to validate based on what's provided
         let valueToValidate = null;
         let calendarTypeToUse = null;
-        
+
         // Prefer Hijri if both are provided, but accept either
         if (hijriValue && hijriValue.trim() !== '') {
           valueToValidate = hijriValue.trim();
@@ -65,11 +65,11 @@ export const validateDateFields = (dateFields) => {
           }
           calendarTypeToUse = 'gregorian';
         }
-        
+
         if (valueToValidate && calendarTypeToUse) {
           console.log(`[DATE VALIDATION] Validating ${fieldName} as ${calendarTypeToUse}:`, valueToValidate);
           const result = validateDate(valueToValidate, calendarTypeToUse, dateType);
-          
+
           if (!result.valid) {
             console.log(`[DATE VALIDATION] ERROR: ${fieldName} validation failed:`, result.errors);
             errors.push(...result.errors.map(err => `${fieldName}: ${err}`));
@@ -87,7 +87,7 @@ export const validateDateFields = (dateFields) => {
           }
         }
       }
-      
+
       if (errors.length > 0) {
         console.log('[DATE VALIDATION] Validation failed with errors:', errors);
         return res.status(400).json({
@@ -96,7 +96,7 @@ export const validateDateFields = (dateFields) => {
           errors: errors
         });
       }
-      
+
       console.log('[DATE VALIDATION] All date fields validated successfully');
       next();
     } catch (error) {
