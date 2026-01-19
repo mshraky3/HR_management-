@@ -1,26 +1,16 @@
 {
   "version": 2,
-  "builds": [
+  "rewrites": [
     {
-      "src": "api/index.js",
-      "use": "@vercel/node",
-      "config": {
-        "maxDuration": 60,
-        "memory": 3008,
-        "includeFiles": ["files/**", "fonts/**"]
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/api/index.js"
+      "source": "/(.*)",
+      "destination": "/api/index.js"
     }
   ],
   "functions": {
     "api/index.js": {
       "maxDuration": 60,
-      "memory": 3008
+      "memory": 3008,
+      "includeFiles": ["files/**", "fonts/**"]
     }
   },
   "env": {
