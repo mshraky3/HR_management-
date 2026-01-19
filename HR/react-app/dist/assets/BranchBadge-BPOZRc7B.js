@@ -1,1 +1,0 @@
-import{j as s}from"./react-vendor-CNe5Q36V.js";const t=({branch:e,size:i=18,showName:a=!1})=>{const n={display:"inline-flex",alignItems:"center",gap:"8px"};return s.jsx("span",{style:n,className:"branch-badge-inline",children:a&&s.jsx("span",{className:"branch-badge-name",children:(e==null?void 0:e.branch_name)||e||""})})};export{t as B};
