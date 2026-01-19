@@ -3,24 +3,31 @@
  * Upload, download, list, and manage branch documents
  */
 
-import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import PdfPrinter from '@digicole/pdfmake-rtl';
-import { PDFDocument } from 'pdf-lib';
-import sql from '../config/database.js';
-import { authenticate } from '../middleware/auth.js';
-import { uploadSingle, validateUploadedFile } from '../middleware/upload.js';
-import { verifyBranchDocumentsPassword } from '../middleware/branchDocumentsPassword.js';
-import { BranchDocument } from '../models/BranchDocument.js';
-import { Branch } from '../models/Branch.js';
-import { getExtensionFromMimeType, fixFilenameEncoding } from '../utils/fileUpload.js';
-import { uploadBranchDocumentToBlob, deleteFromBlob, fetchFromBlob } from '../utils/blobStorage.js';
-import { clearByPrefix } from '../utils/simpleCache.js';
-import { formatDate } from '../utils/dateConverter.js';
-import { validateDateFields } from '../middleware/dateValidation.js';
-import { validateBranchDocumentDates } from '../middleware/branchDocumentDateValidation.js';
+import express from "express";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import PdfPrinter from "@digicole/pdfmake-rtl";
+import { PDFDocument } from "pdf-lib";
+import sql from "../config/database.js";
+import { authenticate } from "../middleware/auth.js";
+import { uploadSingle, validateUploadedFile } from "../middleware/upload.js";
+import { verifyBranchDocumentsPassword } from "../middleware/branchDocumentsPassword.js";
+import { BranchDocument } from "../models/BranchDocument.js";
+import { Branch } from "../models/Branch.js";
+import {
+  getExtensionFromMimeType,
+  fixFilenameEncoding,
+} from "../utils/fileUpload.js";
+import {
+  uploadBranchDocumentToBlob,
+  deleteFromBlob,
+  fetchFromBlob,
+} from "../utils/blobStorage.js";
+import { clearByPrefix } from "../utils/simpleCache.js";
+import { formatDate } from "../utils/dateConverter.js";
+import { validateDateFields } from "../middleware/dateValidation.js";
+import { validateBranchDocumentDates } from "../middleware/branchDocumentDateValidation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,10 +35,13 @@ const __dirname = path.dirname(__filename);
 // Create pdfmake RTL printer with fonts (same setup as reports.js)
 // Note: Font files are included in Vercel deployment, but paths may differ
 // This code handles both local development and Vercel serverless environments
-const fontsDir = path.join(__dirname, '..', 'fonts');
-const notoSansArabicDir = path.join(fontsDir, 'Noto_Sans_Arabic');
-const notoSansArabicVariable = path.join(notoSansArabicDir, 'NotoSansArabic-VariableFont_wdth,wght.ttf');
-const notoSansArabicStatic = path.join(notoSansArabicDir, 'static');
+const fontsDir = path.join(__dirname, "..", "fonts");
+const notoSansArabicDir = path.join(fontsDir, "Noto_Sans_Arabic");
+const notoSansArabicVariable = path.join(
+  notoSansArabicDir,
+  "NotoSansArabic-VariableFont_wdth,wght.ttf",
+);
+const notoSansArabicStatic = path.join(notoSansArabicDir, "static");
 let arabicFontPath = null;
 
 try {
@@ -40,33 +50,40 @@ try {
   } else if (fs.existsSync(notoSansArabicStatic)) {
     try {
       const staticFiles = fs.readdirSync(notoSansArabicStatic);
-      const regularFont = staticFiles.find(f => f.includes('Regular') && f.endsWith('.ttf'));
+      const regularFont = staticFiles.find(
+        (f) => f.includes("Regular") && f.endsWith(".ttf"),
+      );
       if (regularFont) {
         arabicFontPath = path.join(notoSansArabicStatic, regularFont);
       }
     } catch (e) {
-      console.warn('Error reading static fonts directory:', e.message);
+      console.warn("Error reading static fonts directory:", e.message);
     }
   }
 } catch (error) {
   // On Vercel or if fonts are not accessible, will use fallback fonts
-  console.warn('Font files not accessible, will use fallback fonts:', error.message);
+  console.warn(
+    "Font files not accessible, will use fallback fonts:",
+    error.message,
+  );
 }
 
-const hasArabicFont = arabicFontPath !== null && (() => {
-  try {
-    return fs.existsSync(arabicFontPath);
-  } catch {
-    return false;
-  }
-})();
+const hasArabicFont =
+  arabicFontPath !== null &&
+  (() => {
+    try {
+      return fs.existsSync(arabicFontPath);
+    } catch {
+      return false;
+    }
+  })();
 
 let fonts;
 if (hasArabicFont) {
-  const notoSansStatic = path.join(notoSansArabicDir, 'static');
-  const regularFont = path.join(notoSansStatic, 'NotoSansArabic-Regular.ttf');
-  const boldFont = path.join(notoSansStatic, 'NotoSansArabic-Bold.ttf');
-  const mediumFont = path.join(notoSansStatic, 'NotoSansArabic-Medium.ttf');
+  const notoSansStatic = path.join(notoSansArabicDir, "static");
+  const regularFont = path.join(notoSansStatic, "NotoSansArabic-Regular.ttf");
+  const boldFont = path.join(notoSansStatic, "NotoSansArabic-Bold.ttf");
+  const mediumFont = path.join(notoSansStatic, "NotoSansArabic-Medium.ttf");
 
   // Use available fonts, fallback to regular if others don't exist
   // Wrap fs.existsSync in try-catch for Vercel compatibility
@@ -81,34 +98,50 @@ if (hasArabicFont) {
   fonts = {
     Roboto: {
       normal: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bold: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath),
+      bold: fontExists(boldFont)
+        ? boldFont
+        : fontExists(mediumFont)
+          ? mediumFont
+          : arabicFontPath,
       italics: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bolditalics: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath)
+      bolditalics: fontExists(boldFont)
+        ? boldFont
+        : fontExists(mediumFont)
+          ? mediumFont
+          : arabicFontPath,
     },
     Nillima: {
       normal: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bold: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath),
+      bold: fontExists(boldFont)
+        ? boldFont
+        : fontExists(mediumFont)
+          ? mediumFont
+          : arabicFontPath,
       italics: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bolditalics: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath)
-    }
+      bolditalics: fontExists(boldFont)
+        ? boldFont
+        : fontExists(mediumFont)
+          ? mediumFont
+          : arabicFontPath,
+    },
   };
 
-  console.log('Using Noto Sans Arabic font for PDF generation');
+  console.log("Using Noto Sans Arabic font for PDF generation");
 } else {
   // Fallback to Helvetica (limited Arabic support)
   fonts = {
     Roboto: {
-      normal: 'Helvetica',
-      bold: 'Helvetica-Bold',
-      italics: 'Helvetica-Oblique',
-      bolditalics: 'Helvetica-BoldOblique'
+      normal: "Helvetica",
+      bold: "Helvetica-Bold",
+      italics: "Helvetica-Oblique",
+      bolditalics: "Helvetica-BoldOblique",
     },
     Nillima: {
-      normal: 'Helvetica',
-      bold: 'Helvetica-Bold',
-      italics: 'Helvetica-Oblique',
-      bolditalics: 'Helvetica-BoldOblique'
-    }
+      normal: "Helvetica",
+      bold: "Helvetica-Bold",
+      italics: "Helvetica-Oblique",
+      bolditalics: "Helvetica-BoldOblique",
+    },
   };
 }
 
@@ -123,16 +156,16 @@ const getUploadedByUserId = async (userId) => {
   if (!userId) return null;
 
   try {
-    const sql = (await import('../config/database.js')).default;
+    const sql = (await import("../config/database.js")).default;
     const [user] = await sql`SELECT id FROM users WHERE id = ${userId}`;
     if (user?.id) return user.id;
   } catch (error) {
-    console.error('Error verifying user:', error);
+    console.error("Error verifying user:", error);
   }
 
   // Fallback: find first active user
   try {
-    const sql = (await import('../config/database.js')).default;
+    const sql = (await import("../config/database.js")).default;
     const [fallbackUser] = await sql`
       SELECT id FROM users WHERE is_active = true ORDER BY id ASC LIMIT 1
     `;
@@ -142,7 +175,7 @@ const getUploadedByUserId = async (userId) => {
     const [anyUser] = await sql`SELECT id FROM users ORDER BY id ASC LIMIT 1`;
     return anyUser?.id || null;
   } catch (error) {
-    console.error('Error finding fallback user:', error);
+    console.error("Error finding fallback user:", error);
     return null;
   }
 };
@@ -153,7 +186,7 @@ const getUploadedByUserId = async (userId) => {
 const parseDocumentId = (req) => {
   const id = parseInt(req.params?.id);
   if (isNaN(id)) {
-    return { error: 'Invalid document ID' };
+    return { error: "Invalid document ID" };
   }
   return { documentId: id };
 };
@@ -166,7 +199,7 @@ const resolveFilePath = (filePath) => {
   if (!filePath) return null;
 
   // If it's already a URL (Blob Storage), return null (handled elsewhere)
-  if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+  if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
     return null;
   }
 
@@ -177,8 +210,8 @@ const resolveFilePath = (filePath) => {
 
   // Try different relative path combinations (for legacy files only)
   const alternatives = [
-    path.join(__dirname, '..', filePath),
-    path.join(__dirname, '..', filePath.replace(/^express-app\//, '')),
+    path.join(__dirname, "..", filePath),
+    path.join(__dirname, "..", filePath.replace(/^express-app\//, "")),
   ];
 
   for (const altPath of alternatives) {
@@ -198,14 +231,14 @@ router.use(authenticate);
  * POST /api/branch-documents/verify-password
  * Body: { branch_id, password }
  */
-router.post('/verify-password', async (req, res) => {
+router.post("/verify-password", async (req, res) => {
   try {
     const { branch_id, password } = req.body;
 
     if (!branch_id || !password) {
       return res.status(400).json({
         success: false,
-        message: 'معرف الفرع وكلمة المرور مطلوبان'
+        message: "معرف الفرع وكلمة المرور مطلوبان",
       });
     }
 
@@ -213,33 +246,40 @@ router.post('/verify-password', async (req, res) => {
     if (isNaN(parsedBranchId)) {
       return res.status(400).json({
         success: false,
-        message: 'تنسيق معرف الفرع غير صحيح'
+        message: "تنسيق معرف الفرع غير صحيح",
       });
     }
 
     // Get branch
     const branch = await Branch.findById(parsedBranchId);
     if (!branch) {
-      return res.status(404).json({ success: false, message: 'الفرع غير موجود' });
+      return res
+        .status(404)
+        .json({ success: false, message: "الفرع غير موجود" });
     }
 
     // Check access - branch managers can only verify their own branch
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== parsedBranchId) {
-      return res.status(403).json({ success: false, message: 'تم رفض الوصول' });
+    if (
+      req.user.role === "branch_manager" &&
+      req.user.branch_id !== parsedBranchId
+    ) {
+      return res.status(403).json({ success: false, message: "تم رفض الوصول" });
     }
 
     // Verify password
     if (branch.branch_documents_password !== password) {
-      return res.status(401).json({ success: false, message: 'كلمة المرور غير صحيحة' });
+      return res
+        .status(401)
+        .json({ success: false, message: "كلمة المرور غير صحيحة" });
     }
 
-    res.json({ success: true, message: 'تم التحقق من كلمة المرور بنجاح' });
+    res.json({ success: true, message: "تم التحقق من كلمة المرور بنجاح" });
   } catch (error) {
-    console.error('Error verifying password:', error);
+    console.error("Error verifying password:", error);
     res.status(500).json({
       success: false,
-      message: 'فشل التحقق من كلمة المرور',
-      error: error.message
+      message: "فشل التحقق من كلمة المرور",
+      error: error.message,
     });
   }
 });
@@ -259,7 +299,7 @@ const buildFilters = (query) => {
   if (query.document_type) filters.document_type = query.document_type;
   if (query.mime_type) filters.mime_type = query.mime_type;
   if (query.is_verified !== undefined) {
-    filters.is_verified = query.is_verified === 'true';
+    filters.is_verified = query.is_verified === "true";
   }
 
   return filters;
@@ -269,21 +309,23 @@ const buildFilters = (query) => {
  * Get documents based on user role
  */
 const getDocumentsByRole = async (user, filters) => {
-  if (user.role === 'branch_manager' && user.branch_id) {
+  if (user.role === "branch_manager" && user.branch_id) {
     return await BranchDocument.findByBranchId(user.branch_id, filters);
   }
-  if (user.role === 'main_manager') {
+  if (user.role === "main_manager") {
     return await BranchDocument.findAll(filters);
   }
   return [];
 };
 
-router.get('/', verifyBranchDocumentsPassword, async (req, res) => {
+router.get("/", verifyBranchDocumentsPassword, async (req, res) => {
   try {
     // Archive expired documents before loading (on-demand check)
     const archiveResult = await BranchDocument.archiveExpiredDocuments();
     if (archiveResult.archivedCount > 0) {
-      console.log(`[BRANCH DOCS] Auto-archived ${archiveResult.archivedCount} expired documents`);
+      console.log(
+        `[BRANCH DOCS] Auto-archived ${archiveResult.archivedCount} expired documents`,
+      );
     }
 
     const filters = buildFilters(req.query);
@@ -291,13 +333,13 @@ router.get('/', verifyBranchDocumentsPassword, async (req, res) => {
 
     // Filter documents to only include those with valid file paths
     // This ensures uploaded files are actually present
-    const validDocuments = (documents || []).filter(doc => {
+    const validDocuments = (documents || []).filter((doc) => {
       // Check if file_path exists and is valid (blob URL or local path)
-      const hasValidFile = doc.file_path && (
-        doc.file_path.startsWith('https://') ||
-        doc.file_path.startsWith('http://') ||
-        doc.file_path.length > 0
-      );
+      const hasValidFile =
+        doc.file_path &&
+        (doc.file_path.startsWith("https://") ||
+          doc.file_path.startsWith("http://") ||
+          doc.file_path.length > 0);
       return hasValidFile;
     });
 
@@ -307,15 +349,15 @@ router.get('/', verifyBranchDocumentsPassword, async (req, res) => {
       metadata: {
         archivedCount: archiveResult.archivedCount,
         totalReturned: validDocuments.length,
-        filteredOut: (documents || []).length - validDocuments.length
-      }
+        filteredOut: (documents || []).length - validDocuments.length,
+      },
     });
   } catch (error) {
-    console.error('Error fetching branch documents:', error);
+    console.error("Error fetching branch documents:", error);
     res.status(500).json({
       success: false,
-      message: 'فشل جلب مستندات الفرع',
-      error: error.message
+      message: "فشل جلب مستندات الفرع",
+      error: error.message,
     });
   }
 });
@@ -326,23 +368,43 @@ router.get('/', verifyBranchDocumentsPassword, async (req, res) => {
  * Form data: branch_id, document_type, file, description (optional), expiry_date (optional)
  * Requires: X-Branch-Documents-Password header or branch_documents_password in form data
  */
-router.post('/',
+router.post(
+  "/",
   verifyBranchDocumentsPassword,
   uploadSingle,
   validateUploadedFile,
   validateDateFields({
-    'issue_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false },
-    'expiry_date_hijri': { calendarType: 'hijri', dateType: 'expiry_date', required: false }
+    issue_date_hijri: {
+      calendarType: "hijri",
+      dateType: "general",
+      required: false,
+    },
+    expiry_date_hijri: {
+      calendarType: "hijri",
+      dateType: "expiry_date",
+      required: false,
+    },
   }),
   validateBranchDocumentDates,
   async (req, res) => {
     try {
-      const { branch_id, document_type, description, document_number, issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, iban_number, bank_name } = req.body;
+      const {
+        branch_id,
+        document_type,
+        description,
+        document_number,
+        issue_date,
+        issue_date_hijri,
+        expiry_date,
+        expiry_date_hijri,
+        iban_number,
+        bank_name,
+      } = req.body;
 
       if (!branch_id || !document_type || !req.file) {
         return res.status(400).json({
           success: false,
-          message: 'معرف الفرع ونوع المستند والملف مطلوبة'
+          message: "معرف الفرع ونوع المستند والملف مطلوبة",
         });
       }
 
@@ -351,54 +413,63 @@ router.post('/',
       if (!branch) {
         return res.status(404).json({
           success: false,
-          message: 'الفرع غير موجود'
+          message: "الفرع غير موجود",
         });
       }
 
       // Branch managers can only upload to their branch
-      if (req.user.role === 'branch_manager' && req.user.branch_id !== parseInt(branch_id)) {
+      if (
+        req.user.role === "branch_manager" &&
+        req.user.branch_id !== parseInt(branch_id)
+      ) {
         return res.status(403).json({
           success: false,
-          message: 'You can only upload documents for your branch'
+          message: "You can only upload documents for your branch",
         });
       }
 
       // Restrict certain document types from branch managers
       const restrictedDocumentTypes = [
-        'staff_cadre',
-        'dropped_students',
-        'free_seats',
-        'acceptance_notifications',
-        'other'
+        "staff_cadre",
+        "dropped_students",
+        "free_seats",
+        "acceptance_notifications",
+        "other",
       ];
 
-      if (req.user.role === 'branch_manager' && restrictedDocumentTypes.includes(document_type)) {
+      if (
+        req.user.role === "branch_manager" &&
+        restrictedDocumentTypes.includes(document_type)
+      ) {
         return res.status(403).json({
           success: false,
-          message: 'هذا النوع من المستندات غير متاح للرفع من قبل مديري الفروع'
+          message: "هذا النوع من المستندات غير متاح للرفع من قبل مديري الفروع",
         });
       }
 
       // Validate healthcare-specific documents can only be uploaded to healthcare centers
       const healthcareOnlyDocuments = [
-        'operational_plan',
-        'decision_obligation',
-        'decision_commitment',
-        'staff_cadre',
-        'owner_civil_id_copy',
-        'disclosure_commitment',
-        'certification_commitment_form',
-        'financial_platform_declaration',
-        'financial_claim_form',
-        'student_cadre_file',
-        'dropped_students',
-        'free_seats',
-        'acceptance_notifications'
+        "operational_plan",
+        "decision_obligation",
+        "decision_commitment",
+        "staff_cadre",
+        "owner_civil_id_copy",
+        "disclosure_commitment",
+        "certification_commitment_form",
+        "financial_platform_declaration",
+        "financial_claim_form",
+        "student_cadre_file",
+        "dropped_students",
+        "free_seats",
+        "acceptance_notifications",
       ];
-      if (healthcareOnlyDocuments.includes(document_type) && branch.branch_type !== 'healthcare_center') {
+      if (
+        healthcareOnlyDocuments.includes(document_type) &&
+        branch.branch_type !== "healthcare_center"
+      ) {
         return res.status(400).json({
           success: false,
-          message: 'هذا النوع من المستندات متاح فقط لمراكز الرعاية الصحية'
+          message: "هذا النوع من المستندات متاح فقط لمراكز الرعاية الصحية",
         });
       }
 
@@ -414,7 +485,7 @@ router.post('/',
         fixedFileName, // Use fixed filename for consistent encoding
         req.file.mimetype,
         parseInt(branch_id),
-        document_type
+        document_type,
       );
 
       // Get valid user ID for uploaded_by field
@@ -422,7 +493,8 @@ router.post('/',
       if (!uploadedById) {
         return res.status(500).json({
           success: false,
-          message: 'No valid user found for uploaded_by field. Please ensure at least one user exists in the system.'
+          message:
+            "No valid user found for uploaded_by field. Please ensure at least one user exists in the system.",
         });
       }
 
@@ -438,11 +510,11 @@ router.post('/',
       const finalExpiryDateHijri = req.body.expiry_date_hijri || null;
 
       // Log date conversion for verification
-      console.log('[BRANCH DOC UPLOAD] Dates after validation:', {
+      console.log("[BRANCH DOC UPLOAD] Dates after validation:", {
         issue_date: finalIssueDate,
         issue_date_hijri: finalIssueDateHijri,
         expiry_date: finalExpiryDate,
-        expiry_date_hijri: finalExpiryDateHijri
+        expiry_date_hijri: finalExpiryDateHijri,
       });
 
       // Create document record - store blob URL
@@ -462,27 +534,28 @@ router.post('/',
         expiry_date_hijri: finalExpiryDateHijri,
         iban_number: iban_number || null,
         bank_name: bank_name || null,
-        uploaded_by: uploadedById // Always set - either user.id or branch_id
+        uploaded_by: uploadedById, // Always set - either user.id or branch_id
       });
 
       // Invalidate dashboard & branch statistics caches for this branch
       clearByPrefix(`dashboard:summary:${branch_id}`);
-      clearByPrefix('branch-statistics');
+      clearByPrefix("branch-statistics");
 
       res.status(201).json({
         success: true,
-        message: 'Branch document uploaded successfully',
-        data: document
+        message: "Branch document uploaded successfully",
+        data: document,
       });
     } catch (error) {
-      console.error('Error uploading branch document:', error);
+      console.error("Error uploading branch document:", error);
       res.status(500).json({
         success: false,
-        message: 'فشل رفع مستند الفرع',
-        error: error.message
+        message: "فشل رفع مستند الفرع",
+        error: error.message,
       });
     }
-  });
+  },
+);
 
 /**
  * Download branch document file
@@ -490,7 +563,7 @@ router.post('/',
  * NOTE: This must come BEFORE the generic /:id route to avoid conflicts
  * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.get('/:id/download', verifyBranchDocumentsPassword, async (req, res) => {
+router.get("/:id/download", verifyBranchDocumentsPassword, async (req, res) => {
   try {
     const idResult = parseDocumentId(req);
     if (idResult.error) {
@@ -502,15 +575,18 @@ router.get('/:id/download', verifyBranchDocumentsPassword, async (req, res) => {
     if (!document) {
       return res.status(404).json({
         success: false,
-        message: 'Document not found'
+        message: "Document not found",
       });
     }
 
     // Check branch access
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
+    if (
+      req.user.role === "branch_manager" &&
+      req.user.branch_id !== document.branch_id
+    ) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: "Access denied",
       });
     }
 
@@ -518,30 +594,38 @@ router.get('/:id/download', verifyBranchDocumentsPassword, async (req, res) => {
     if (!document.file_path) {
       return res.status(404).json({
         success: false,
-        message: 'File path not found in database'
+        message: "File path not found in database",
       });
     }
 
     // Helper function to sanitize filename for Content-Disposition header
     const sanitizeFilename = (filename) => {
       // Remove control characters, newlines, and other invalid header characters
-      return filename.replace(/[\x00-\x1F\x7F-\x9F]/g, '').replace(/[\r\n]/g, '');
+      return filename
+        .replace(/[\x00-\x1F\x7F-\x9F]/g, "")
+        .replace(/[\r\n]/g, "");
     };
 
     // If file_path is a URL (Blob), fetch and proxy it to maintain password protection
-    if (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) {
+    if (
+      document.file_path.startsWith("http://") ||
+      document.file_path.startsWith("https://")
+    ) {
       try {
         const { buffer, contentType } = await fetchFromBlob(document.file_path);
         const safeFilename = sanitizeFilename(document.file_name);
-        res.setHeader('Content-Type', contentType || document.mime_type);
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeFilename)}"`);
+        res.setHeader("Content-Type", contentType || document.mime_type);
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${encodeURIComponent(safeFilename)}"`,
+        );
         return res.send(buffer);
       } catch (error) {
-        console.error('Error fetching blob file:', error);
+        console.error("Error fetching blob file:", error);
         return res.status(500).json({
           success: false,
-          message: 'فشل جلب ملف المستند',
-          error: error.message
+          message: "فشل جلب ملف المستند",
+          error: error.message,
         });
       }
     }
@@ -551,20 +635,23 @@ router.get('/:id/download', verifyBranchDocumentsPassword, async (req, res) => {
     if (!filePath) {
       return res.status(404).json({
         success: false,
-        message: 'File not found on server'
+        message: "File not found on server",
       });
     }
 
     const safeFilename = sanitizeFilename(document.file_name);
-    res.setHeader('Content-Type', document.mime_type);
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeFilename)}"`);
+    res.setHeader("Content-Type", document.mime_type);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(safeFilename)}"`,
+    );
     res.sendFile(path.resolve(filePath));
   } catch (error) {
-    console.error('Error downloading branch document:', error);
+    console.error("Error downloading branch document:", error);
     res.status(500).json({
       success: false,
-      message: 'فشل تحميل المستند',
-      error: error.message
+      message: "فشل تحميل المستند",
+      error: error.message,
     });
   }
 });
@@ -575,13 +662,13 @@ router.get('/:id/download', verifyBranchDocumentsPassword, async (req, res) => {
  * NOTE: This must come BEFORE the generic /:id route to avoid conflicts
  * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.get('/:id/preview', verifyBranchDocumentsPassword, async (req, res) => {
+router.get("/:id/preview", verifyBranchDocumentsPassword, async (req, res) => {
   try {
     const documentId = parseInt(req.params?.id);
     if (isNaN(documentId)) {
       return res.status(400).json({
         success: false,
-        message: 'معرف المستند غير صحيح'
+        message: "معرف المستند غير صحيح",
       });
     }
 
@@ -589,37 +676,44 @@ router.get('/:id/preview', verifyBranchDocumentsPassword, async (req, res) => {
     if (!document) {
       return res.status(404).json({
         success: false,
-        message: 'Document not found'
+        message: "Document not found",
       });
     }
 
     // Check branch access
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
+    if (
+      req.user.role === "branch_manager" &&
+      req.user.branch_id !== document.branch_id
+    ) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: "Access denied",
       });
     }
 
     // For images, return the file directly
-    if (document.mime_type && document.mime_type.startsWith('image/')) {
+    if (document.mime_type && document.mime_type.startsWith("image/")) {
       // If file_path is a URL (Blob Storage), return it in JSON response for frontend to use
-      if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
+      if (
+        document.file_path &&
+        (document.file_path.startsWith("http://") ||
+          document.file_path.startsWith("https://"))
+      ) {
         return res.json({
           success: true,
           data: {
             id: document.id,
             file_name: document.file_name,
             mime_type: document.mime_type,
-            file_url: document.file_path
-          }
+            file_url: document.file_path,
+          },
         });
       }
 
       // Fallback for local files
       const filePath = resolveFilePath(document.file_path);
       if (filePath) {
-        res.setHeader('Content-Type', document.mime_type);
+        res.setHeader("Content-Type", document.mime_type);
         res.sendFile(path.resolve(filePath));
         return;
       }
@@ -628,23 +722,26 @@ router.get('/:id/preview', verifyBranchDocumentsPassword, async (req, res) => {
     // For PDFs or if preview not available, return document info
     res.json({
       success: true,
-      message: 'معاينة غير متاحة لهذا النوع من المستندات',
+      message: "معاينة غير متاحة لهذا النوع من المستندات",
       data: {
         id: document.id,
         file_name: document.file_name,
         mime_type: document.mime_type,
         download_url: `/api/branch-documents/${document.id}/download`,
-        file_url: document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))
-          ? document.file_path
-          : null
-      }
+        file_url:
+          document.file_path &&
+          (document.file_path.startsWith("http://") ||
+            document.file_path.startsWith("https://"))
+            ? document.file_path
+            : null,
+      },
     });
   } catch (error) {
-    console.error('Error getting branch document preview:', error);
+    console.error("Error getting branch document preview:", error);
     res.status(500).json({
       success: false,
-      message: 'فشل الحصول على معاينة المستند',
-      error: error.message
+      message: "فشل الحصول على معاينة المستند",
+      error: error.message,
     });
   }
 });
@@ -655,13 +752,13 @@ router.get('/:id/preview', verifyBranchDocumentsPassword, async (req, res) => {
  * NOTE: This must come AFTER specific routes like /:id/download and /:id/preview
  * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.get('/:id', verifyBranchDocumentsPassword, async (req, res) => {
+router.get("/:id", verifyBranchDocumentsPassword, async (req, res) => {
   try {
     const documentId = parseInt(req.params?.id);
     if (isNaN(documentId)) {
       return res.status(400).json({
         success: false,
-        message: 'معرف المستند غير صحيح'
+        message: "معرف المستند غير صحيح",
       });
     }
 
@@ -669,25 +766,28 @@ router.get('/:id', verifyBranchDocumentsPassword, async (req, res) => {
     if (!document) {
       return res.status(404).json({
         success: false,
-        message: 'Document not found'
+        message: "Document not found",
       });
     }
 
     // Check branch access
-    if (req.user?.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
+    if (
+      req.user?.role === "branch_manager" &&
+      req.user.branch_id !== document.branch_id
+    ) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: "Access denied",
       });
     }
 
     res.json({ success: true, data: document });
   } catch (error) {
-    console.error('Error fetching branch document:', error);
+    console.error("Error fetching branch document:", error);
     res.status(500).json({
       success: false,
-      message: 'فشل جلب المستند',
-      error: error.message
+      message: "فشل جلب المستند",
+      error: error.message,
     });
   }
 });
@@ -697,7 +797,7 @@ router.get('/:id', verifyBranchDocumentsPassword, async (req, res) => {
  * POST /api/branch-documents/:id/verify
  * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.post('/:id/verify', verifyBranchDocumentsPassword, async (req, res) => {
+router.post("/:id/verify", verifyBranchDocumentsPassword, async (req, res) => {
   try {
     const idResult = parseDocumentId(req);
     if (idResult.error) {
@@ -708,31 +808,34 @@ router.post('/:id/verify', verifyBranchDocumentsPassword, async (req, res) => {
     if (!document) {
       return res.status(404).json({
         success: false,
-        message: 'Document not found'
+        message: "Document not found",
       });
     }
 
     // Only main manager can verify
-    if (req.user?.role !== 'main_manager') {
+    if (req.user?.role !== "main_manager") {
       return res.status(403).json({
         success: false,
-        message: 'Only main manager can verify documents'
+        message: "Only main manager can verify documents",
       });
     }
 
-    const verifiedDocument = await BranchDocument.verify(idResult.documentId, req.user.id);
+    const verifiedDocument = await BranchDocument.verify(
+      idResult.documentId,
+      req.user.id,
+    );
 
     res.json({
       success: true,
-      message: 'Document verified successfully',
-      data: verifiedDocument
+      message: "Document verified successfully",
+      data: verifiedDocument,
     });
   } catch (error) {
-    console.error('Error verifying branch document:', error);
+    console.error("Error verifying branch document:", error);
     res.status(500).json({
       success: false,
-      message: 'فشل التحقق من المستند',
-      error: error.message
+      message: "فشل التحقق من المستند",
+      error: error.message,
     });
   }
 });
@@ -743,34 +846,48 @@ router.post('/:id/verify', verifyBranchDocumentsPassword, async (req, res) => {
  * If file is provided, it will replace the old file and deactivate old documents of same type
  * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.put('/:id',
+router.put(
+  "/:id",
   verifyBranchDocumentsPassword,
   uploadSingle,
   validateDateFields({
-    'issue_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false },
-    'expiry_date_hijri': { calendarType: 'hijri', dateType: 'expiry_date', required: false }
+    issue_date_hijri: {
+      calendarType: "hijri",
+      dateType: "general",
+      required: false,
+    },
+    expiry_date_hijri: {
+      calendarType: "hijri",
+      dateType: "expiry_date",
+      required: false,
+    },
   }),
   validateBranchDocumentDates,
   async (req, res) => {
     try {
       const idResult = parseDocumentId(req);
       if (idResult.error) {
-        return res.status(400).json({ success: false, message: idResult.error });
+        return res
+          .status(400)
+          .json({ success: false, message: idResult.error });
       }
 
       const document = await BranchDocument.findById(idResult.documentId);
       if (!document) {
         return res.status(404).json({
           success: false,
-          message: 'Document not found'
+          message: "Document not found",
         });
       }
 
       // Check branch access
-      if (req.user?.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
+      if (
+        req.user?.role === "branch_manager" &&
+        req.user.branch_id !== document.branch_id
+      ) {
         return res.status(403).json({
           success: false,
-          message: 'Access denied'
+          message: "Access denied",
         });
       }
 
@@ -779,24 +896,31 @@ router.put('/:id',
       // If file is provided, replace the document file
       if (req.file) {
         // Validate file if provided
-        const { isValidMimeType, isValidFileSize } = await import('../utils/validators.js');
+        const { isValidMimeType, isValidFileSize } =
+          await import("../utils/validators.js");
 
         if (!isValidMimeType(req.file.mimetype)) {
           return res.status(400).json({
             success: false,
-            message: 'نوع الملف غير مدعوم. يُسمح فقط بملفات PDF والصور.'
+            message: "نوع الملف غير مدعوم. يُسمح فقط بملفات PDF والصور.",
           });
         }
 
         // Determine max file size based on document type
-        const highCapacityDocs = ['operational_plan', 'acceptance_notifications'];
-        const maxFileSize = highCapacityDocs.includes(document.document_type) ? 15 : 1;
+        const highCapacityDocs = [
+          "operational_plan",
+          "acceptance_notifications",
+        ];
+        const maxFileSize = highCapacityDocs.includes(document.document_type)
+          ? 15
+          : 1;
 
         if (!isValidFileSize(req.file.size, maxFileSize)) {
-          const sizeLimitMsg = maxFileSize === 15 ? '15 ميجابايت' : '1 ميجابايت';
+          const sizeLimitMsg =
+            maxFileSize === 15 ? "15 ميجابايت" : "1 ميجابايت";
           return res.status(400).json({
             success: false,
-            message: `حجم الملف يتجاوز الحد الأقصى المسموح به (${sizeLimitMsg})`
+            message: `حجم الملف يتجاوز الحد الأقصى المسموح به (${sizeLimitMsg})`,
           });
         }
 
@@ -811,15 +935,15 @@ router.put('/:id',
           fixedFileName, // Use fixed filename for consistent encoding
           req.file.mimetype,
           document.branch_id,
-          document.document_type
+          document.document_type,
         );
 
         // For license type documents, deactivate old documents of the same type
-        if (document.document_type === 'license') {
+        if (document.document_type === "license") {
           await BranchDocument.deactivateByBranchAndType(
             document.branch_id,
             document.document_type,
-            document.id
+            document.id,
           );
         }
 
@@ -832,37 +956,70 @@ router.put('/:id',
         const fileName = fixedFileName;
 
         // Date conversion and validation is handled by validateDateFields middleware
-        const finalIssueDate = req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date;
-        const finalIssueDateHijri = req.body.issue_date_hijri !== undefined ? req.body.issue_date_hijri : document.issue_date_hijri;
-        const finalExpiryDate = req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date;
-        const finalExpiryDateHijri = req.body.expiry_date_hijri !== undefined ? req.body.expiry_date_hijri : document.expiry_date_hijri;
+        const finalIssueDate =
+          req.body.issue_date !== undefined
+            ? req.body.issue_date
+            : document.issue_date;
+        const finalIssueDateHijri =
+          req.body.issue_date_hijri !== undefined
+            ? req.body.issue_date_hijri
+            : document.issue_date_hijri;
+        const finalExpiryDate =
+          req.body.expiry_date !== undefined
+            ? req.body.expiry_date
+            : document.expiry_date;
+        const finalExpiryDateHijri =
+          req.body.expiry_date_hijri !== undefined
+            ? req.body.expiry_date_hijri
+            : document.expiry_date_hijri;
 
         // Update document with new file
-        updatedDocument = await BranchDocument.updateFile(
-          idResult.documentId,
-          {
-            file_name: fileName,
-            file_path: blobUrl, // Store blob URL
-            file_size: req.file.size,
-            mime_type: req.file.mimetype,
-            file_extension: getExtensionFromMimeType(req.file.mimetype),
-            description: req.body.description !== undefined ? req.body.description : document.description,
-            document_number: req.body.document_number !== undefined ? req.body.document_number : document.document_number,
-            issue_date: finalIssueDate,
-            issue_date_hijri: finalIssueDateHijri,
-            expiry_date: finalExpiryDate,
-            expiry_date_hijri: finalExpiryDateHijri,
-            iban_number: req.body.iban_number !== undefined ? req.body.iban_number : document.iban_number,
-            bank_name: req.body.bank_name !== undefined ? req.body.bank_name : document.bank_name
-          }
-        );
+        updatedDocument = await BranchDocument.updateFile(idResult.documentId, {
+          file_name: fileName,
+          file_path: blobUrl, // Store blob URL
+          file_size: req.file.size,
+          mime_type: req.file.mimetype,
+          file_extension: getExtensionFromMimeType(req.file.mimetype),
+          description:
+            req.body.description !== undefined
+              ? req.body.description
+              : document.description,
+          document_number:
+            req.body.document_number !== undefined
+              ? req.body.document_number
+              : document.document_number,
+          issue_date: finalIssueDate,
+          issue_date_hijri: finalIssueDateHijri,
+          expiry_date: finalExpiryDate,
+          expiry_date_hijri: finalExpiryDateHijri,
+          iban_number:
+            req.body.iban_number !== undefined
+              ? req.body.iban_number
+              : document.iban_number,
+          bank_name:
+            req.body.bank_name !== undefined
+              ? req.body.bank_name
+              : document.bank_name,
+        });
       } else {
         // Just update metadata
         // Date conversion and validation is handled by validateDateFields middleware
-        const finalIssueDate = req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date;
-        const finalIssueDateHijri = req.body.issue_date_hijri !== undefined ? req.body.issue_date_hijri : document.issue_date_hijri;
-        const finalExpiryDate = req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date;
-        const finalExpiryDateHijri = req.body.expiry_date_hijri !== undefined ? req.body.expiry_date_hijri : document.expiry_date_hijri;
+        const finalIssueDate =
+          req.body.issue_date !== undefined
+            ? req.body.issue_date
+            : document.issue_date;
+        const finalIssueDateHijri =
+          req.body.issue_date_hijri !== undefined
+            ? req.body.issue_date_hijri
+            : document.issue_date_hijri;
+        const finalExpiryDate =
+          req.body.expiry_date !== undefined
+            ? req.body.expiry_date
+            : document.expiry_date;
+        const finalExpiryDateHijri =
+          req.body.expiry_date_hijri !== undefined
+            ? req.body.expiry_date_hijri
+            : document.expiry_date_hijri;
 
         updatedDocument = await BranchDocument.update(idResult.documentId, {
           description: req.body.description,
@@ -872,31 +1029,32 @@ router.put('/:id',
           expiry_date: finalExpiryDate,
           expiry_date_hijri: finalExpiryDateHijri,
           iban_number: req.body.iban_number,
-          bank_name: req.body.bank_name
+          bank_name: req.body.bank_name,
         });
       }
 
       res.json({
         success: true,
-        message: 'Document updated successfully',
-        data: updatedDocument
+        message: "Document updated successfully",
+        data: updatedDocument,
       });
     } catch (error) {
-      console.error('Error updating branch document:', error);
+      console.error("Error updating branch document:", error);
       res.status(500).json({
         success: false,
-        message: 'فشل تحديث المستند',
-        error: error.message
+        message: "فشل تحديث المستند",
+        error: error.message,
       });
     }
-  });
+  },
+);
 
 /**
  * Delete branch document (soft delete)
  * DELETE /api/branch-documents/:id
  * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.delete('/:id', verifyBranchDocumentsPassword, async (req, res) => {
+router.delete("/:id", verifyBranchDocumentsPassword, async (req, res) => {
   try {
     const idResult = parseDocumentId(req);
     if (idResult.error) {
@@ -907,15 +1065,18 @@ router.delete('/:id', verifyBranchDocumentsPassword, async (req, res) => {
     if (!document) {
       return res.status(404).json({
         success: false,
-        message: 'Document not found'
+        message: "Document not found",
       });
     }
 
     // Check branch access - branch managers can delete their own branch documents
-    if (req.user?.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
+    if (
+      req.user?.role === "branch_manager" &&
+      req.user.branch_id !== document.branch_id
+    ) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: "Access denied",
       });
     }
 
@@ -923,14 +1084,14 @@ router.delete('/:id', verifyBranchDocumentsPassword, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Document deleted successfully'
+      message: "Document deleted successfully",
     });
   } catch (error) {
-    console.error('Error deleting branch document:', error);
+    console.error("Error deleting branch document:", error);
     res.status(500).json({
       success: false,
-      message: 'فشل حذف المستند',
-      error: error.message
+      message: "فشل حذف المستند",
+      error: error.message,
     });
   }
 });
@@ -941,13 +1102,13 @@ router.delete('/:id', verifyBranchDocumentsPassword, async (req, res) => {
  * Body: { document_type: string, branch_ids: number[] }
  * Only accessible by main managers
  */
-router.post('/generate-payroll-report', authenticate, async (req, res) => {
+router.post("/generate-payroll-report", authenticate, async (req, res) => {
   try {
     // Only main managers can generate reports
-    if (req.user.role !== 'main_manager') {
+    if (req.user.role !== "main_manager") {
       return res.status(403).json({
         success: false,
-        message: 'تم رفض الوصول. يمكن للمديرين الرئيسيين فقط إنشاء التقارير.'
+        message: "تم رفض الوصول. يمكن للمديرين الرئيسيين فقط إنشاء التقارير.",
       });
     }
 
@@ -956,40 +1117,40 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
     if (!document_type) {
       return res.status(400).json({
         success: false,
-        message: 'نوع المستند مطلوب'
+        message: "نوع المستند مطلوب",
       });
     }
 
     // This report only supports payroll_file. salary_deposit_file is deprecated/removed.
-    if (document_type !== 'payroll_file') {
+    if (document_type !== "payroll_file") {
       return res.status(400).json({
         success: false,
-        message: 'نوع المستند غير مدعوم'
+        message: "نوع المستند غير مدعوم",
       });
     }
 
     if (!branch_ids || !Array.isArray(branch_ids) || branch_ids.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'At least one branch must be selected'
+        message: "At least one branch must be selected",
       });
     }
 
     // Document type labels
     const documentTypeLabels = {
-      payroll_file: 'ملف مسيرات الرواتب'
+      payroll_file: "ملف مسيرات الرواتب",
     };
 
     const documentLabel = documentTypeLabels[document_type] || document_type;
 
     // Get branches - filter by IDs
     const allBranches = await Branch.findAll({ is_active: true });
-    const branches = allBranches.filter(b => branch_ids.includes(b.id));
+    const branches = allBranches.filter((b) => branch_ids.includes(b.id));
 
     if (branches.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'No active branches found'
+        message: "No active branches found",
       });
     }
 
@@ -1000,7 +1161,7 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
 
     // Query documents for all selected branches
     const allDocuments = await sql`
-      SELECT bd.*, b.branch_name 
+      SELECT bd.*, b.branch_name
       FROM branch_documents bd
       INNER JOIN branches b ON bd.branch_id = b.id
       WHERE bd.is_active = true
@@ -1010,15 +1171,17 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
     `;
 
     // Filter documents for current month
-    const currentMonthDocuments = allDocuments.filter(doc => {
+    const currentMonthDocuments = allDocuments.filter((doc) => {
       const uploadDate = new Date(doc.uploaded_at);
-      return uploadDate.getMonth() === currentMonth &&
-        uploadDate.getFullYear() === currentYear;
+      return (
+        uploadDate.getMonth() === currentMonth &&
+        uploadDate.getFullYear() === currentYear
+      );
     });
 
     // Create a map of branch_id to document
     const branchDocumentMap = new Map();
-    currentMonthDocuments.forEach(doc => {
+    currentMonthDocuments.forEach((doc) => {
       branchDocumentMap.set(doc.branch_id, doc);
     });
 
@@ -1036,19 +1199,27 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
         let fileBuffer;
 
         // If file_path is a URL (Blob Storage)
-        if (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://')) {
+        if (
+          doc.file_path.startsWith("http://") ||
+          doc.file_path.startsWith("https://")
+        ) {
           try {
             const result = await fetchFromBlob(doc.file_path);
             fileBuffer = result.buffer;
           } catch (blobError) {
-            console.error(`Failed to fetch from blob for document ${doc.id}:`, blobError.message);
+            console.error(
+              `Failed to fetch from blob for document ${doc.id}:`,
+              blobError.message,
+            );
             continue;
           }
         } else {
           // Local file path (backward compatibility)
           // Note: On Vercel serverless, local files are not accessible
-          if (process.env.VERCEL === '1') {
-            console.warn(`Document ${doc.id} uses local file path which is not accessible on Vercel: ${doc.file_path}`);
+          if (process.env.VERCEL === "1") {
+            console.warn(
+              `Document ${doc.id} uses local file path which is not accessible on Vercel: ${doc.file_path}`,
+            );
             continue;
           }
 
@@ -1057,27 +1228,32 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
             filePath = doc.file_path;
           } else {
             let relativePath = doc.file_path;
-            if (relativePath.startsWith('express-app/')) {
-              relativePath = relativePath.replace(/^express-app\//, '');
+            if (relativePath.startsWith("express-app/")) {
+              relativePath = relativePath.replace(/^express-app\//, "");
             }
-            filePath = path.join(__dirname, '..', relativePath);
+            filePath = path.join(__dirname, "..", relativePath);
           }
 
           if (!fs.existsSync(filePath)) {
-            const altPath = doc.file_path.replace(/^express-app\//, '');
-            const altFilePath = path.join(__dirname, '..', altPath);
+            const altPath = doc.file_path.replace(/^express-app\//, "");
+            const altFilePath = path.join(__dirname, "..", altPath);
             filePath = fs.existsSync(altFilePath) ? altFilePath : filePath;
           }
 
           if (!fs.existsSync(filePath)) {
-            console.warn(`File not found for document ${doc.id}: ${doc.file_path}`);
+            console.warn(
+              `File not found for document ${doc.id}: ${doc.file_path}`,
+            );
             continue;
           }
 
           try {
             fileBuffer = fs.readFileSync(filePath);
           } catch (readError) {
-            console.error(`Failed to read file for document ${doc.id}:`, readError.message);
+            console.error(
+              `Failed to read file for document ${doc.id}:`,
+              readError.message,
+            );
             continue;
           }
         }
@@ -1088,18 +1264,18 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
         }
 
         // Convert to base64
-        const base64 = fileBuffer.toString('base64');
-        const mimeType = doc.mime_type || 'application/octet-stream';
+        const base64 = fileBuffer.toString("base64");
+        const mimeType = doc.mime_type || "application/octet-stream";
 
         documentFilesMap[doc.id] = {
           base64: base64,
           base64DataUri: `data:${mimeType};base64,${base64}`,
           mimeType: mimeType,
-          buffer: fileBuffer
+          buffer: fileBuffer,
         };
 
         // Register image if it's an image type
-        if (mimeType.startsWith('image/')) {
+        if (mimeType.startsWith("image/")) {
           const imageKey = `doc_${doc.id}`;
           // pdfmake needs data URI format: data:mimeType;base64,base64String
           images[imageKey] = `data:${mimeType};base64,${base64}`;
@@ -1112,8 +1288,8 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
 
     // Helper function to remove parentheses from text
     const removeParentheses = (text) => {
-      if (!text || typeof text !== 'string') return text;
-      return text.replace(/[()]/g, '');
+      if (!text || typeof text !== "string") return text;
+      return text.replace(/[()]/g, "");
     };
 
     // Use unified formatDate function for consistent dd/mm/yyyy format
@@ -1124,72 +1300,72 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
       // Title
       {
         text: removeParentheses(documentLabel),
-        style: 'title'
+        style: "title",
       },
       // Report info
       {
         text: [
-          { text: 'تاريخ التقرير: ', direction: 'rtl' },
-          { text: reportDate, direction: 'ltr' }
+          { text: "تاريخ التقرير: ", direction: "rtl" },
+          { text: reportDate, direction: "ltr" },
         ],
-        style: 'info'
+        style: "info",
       },
       {
         text: [
-          { text: 'عدد الفروع: ', direction: 'rtl' },
-          { text: String(branches.length), direction: 'ltr' }
+          { text: "عدد الفروع: ", direction: "rtl" },
+          { text: String(branches.length), direction: "ltr" },
         ],
-        style: 'info',
-        margin: [0, 0, 0, 20]
-      }
+        style: "info",
+        margin: [0, 0, 0, 20],
+      },
     ];
 
     // PDF document definition
     const docDefinition = {
-      pageSize: 'A4',
+      pageSize: "A4",
       pageMargins: [40, 60, 40, 60],
       images: images, // Register images for embedding
       defaultStyle: {
-        font: 'Roboto',
+        font: "Roboto",
         fontSize: 10,
-        color: 'black'
+        color: "black",
       },
       styles: {
         title: {
-          font: 'Roboto',
+          font: "Roboto",
           fontSize: 18,
           bold: true,
-          alignment: 'center',
-          margin: [0, 0, 0, 20]
+          alignment: "center",
+          margin: [0, 0, 0, 20],
         },
         info: {
-          font: 'Roboto',
+          font: "Roboto",
           fontSize: 10,
-          alignment: 'right',
-          margin: [0, 0, 0, 10]
+          alignment: "right",
+          margin: [0, 0, 0, 10],
         },
         branchHeader: {
-          font: 'Roboto',
+          font: "Roboto",
           fontSize: 14,
           bold: true,
-          alignment: 'right',
-          margin: [0, 0, 0, 5]
+          alignment: "right",
+          margin: [0, 0, 0, 5],
         },
         documentInfo: {
-          font: 'Roboto',
+          font: "Roboto",
           fontSize: 11,
-          alignment: 'right',
-          margin: [0, 0, 0, 3]
+          alignment: "right",
+          margin: [0, 0, 0, 3],
         },
         documentDescription: {
-          font: 'Roboto',
+          font: "Roboto",
           fontSize: 10,
-          alignment: 'right',
-          color: '#666',
-          margin: [0, 0, 0, 3]
-        }
+          alignment: "right",
+          color: "#666",
+          margin: [0, 0, 0, 3],
+        },
       },
-      content: content
+      content: content,
     };
 
     // Helper function to create PDF for a single branch
@@ -1199,26 +1375,26 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
           const branchContent = [
             {
               text: `الفرع: ${removeParentheses(branch.branch_name)}`,
-              style: 'branchHeader',
-              margin: [0, 0, 0, 5]
-            }
+              style: "branchHeader",
+              margin: [0, 0, 0, 5],
+            },
           ];
 
           if (document) {
             branchContent.push({
               text: `المستند: ${removeParentheses(document.file_name)}`,
-              style: 'documentInfo'
+              style: "documentInfo",
             });
             if (document.description) {
               branchContent.push({
-                text: `الوصف: ${removeParentheses(document.description || '')}`,
-                style: 'documentDescription'
+                text: `الوصف: ${removeParentheses(document.description || "")}`,
+                style: "documentDescription",
               });
             }
             branchContent.push({
               text: `تاريخ الرفع: ${formatDate(document.uploaded_at)}`,
-              style: 'documentInfo',
-              margin: [0, 0, 0, 10]
+              style: "documentInfo",
+              margin: [0, 0, 0, 10],
             });
 
             // Embed document file if available
@@ -1227,99 +1403,105 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
               const mimeType = docFileData.mimeType;
 
               // Check if it's an image
-              if (mimeType.startsWith('image/')) {
+              if (mimeType.startsWith("image/")) {
                 try {
                   const imageKey = `doc_${document.id}`;
                   branchContent.push({
                     image: imageKey,
                     width: 500,
-                    alignment: 'center',
+                    alignment: "center",
                     margin: [0, 10, 0, 20],
-                    fit: [500, 700]
+                    fit: [500, 700],
                   });
                 } catch (error) {
-                  console.error(`Error embedding image for document ${document.id}:`, error);
+                  console.error(
+                    `Error embedding image for document ${document.id}:`,
+                    error,
+                  );
                   try {
                     branchContent.push({
                       image: docFileData.base64DataUri,
                       width: 500,
-                      alignment: 'center',
+                      alignment: "center",
                       margin: [0, 10, 0, 20],
-                      fit: [500, 700]
+                      fit: [500, 700],
                     });
                   } catch (fallbackError) {
                     branchContent.push({
-                      text: removeParentheses(`[خطأ في تحميل الصورة: ${document.file_name}]`),
-                      style: 'documentDescription',
-                      margin: [0, 10, 0, 20]
+                      text: removeParentheses(
+                        `[خطأ في تحميل الصورة: ${document.file_name}]`,
+                      ),
+                      style: "documentDescription",
+                      margin: [0, 10, 0, 20],
                     });
                   }
                 }
               }
             } else {
               branchContent.push({
-                text: removeParentheses('[لم يتم العثور على ملف المستند]'),
-                style: 'documentDescription',
+                text: removeParentheses("[لم يتم العثور على ملف المستند]"),
+                style: "documentDescription",
                 margin: [0, 10, 0, 20],
-                color: '#d32f2f'
+                color: "#d32f2f",
               });
             }
           } else {
             branchContent.push({
-              text: 'المستند: غير متوفر',
-              style: 'documentInfo',
-              color: '#666',
-              margin: [0, 0, 0, 20]
+              text: "المستند: غير متوفر",
+              style: "documentInfo",
+              color: "#666",
+              margin: [0, 0, 0, 20],
             });
           }
 
           const branchDocDefinition = {
-            pageSize: 'A4',
+            pageSize: "A4",
             pageMargins: [40, 60, 40, 60],
             images: images,
             defaultStyle: {
-              font: 'Roboto',
+              font: "Roboto",
               fontSize: 10,
-              color: 'black'
+              color: "black",
             },
             styles: {
               branchHeader: {
-                font: 'Roboto',
+                font: "Roboto",
                 fontSize: 14,
                 bold: true,
-                alignment: 'right',
-                margin: [0, 0, 0, 5]
+                alignment: "right",
+                margin: [0, 0, 0, 5],
               },
               documentInfo: {
-                font: 'Roboto',
+                font: "Roboto",
                 fontSize: 11,
-                alignment: 'right',
-                margin: [0, 0, 0, 3]
+                alignment: "right",
+                margin: [0, 0, 0, 3],
               },
               documentDescription: {
-                font: 'Roboto',
+                font: "Roboto",
                 fontSize: 10,
-                alignment: 'right',
-                color: '#666',
-                margin: [0, 0, 0, 3]
-              }
+                alignment: "right",
+                color: "#666",
+                margin: [0, 0, 0, 3],
+              },
             },
-            content: branchContent
+            content: branchContent,
           };
 
-          const branchPdfDoc = printer.createPdfKitDocument(branchDocDefinition);
+          const branchPdfDoc =
+            printer.createPdfKitDocument(branchDocDefinition);
           const chunks = [];
 
-          branchPdfDoc.on('data', (chunk) => {
+          branchPdfDoc.on("data", (chunk) => {
             chunks.push(chunk);
           });
 
-          branchPdfDoc.on('end', () => {
+          branchPdfDoc.on("end", () => {
             const buffer = Buffer.concat(chunks);
             resolve(buffer);
           });
 
-          branchPdfDoc.on('error', (error) => {
+          branchPdfDoc.on("error", (error) => {
             reject(error);
           });
 
@@ -1346,7 +1528,10 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
             const branchPdf = await PDFDocument.load(branchPdfBuffer);
 
             // Copy all pages from branch PDF to final PDF
-            const pages = await finalPdf.copyPages(branchPdf, branchPdf.getPageIndices());
+            const pages = await finalPdf.copyPages(
+              branchPdf,
+              branchPdf.getPageIndices(),
+            );
             pages.forEach((page) => {
               finalPdf.addPage(page);
             });
@@ -1354,15 +1539,21 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
             // If branch has a PDF document, merge it too
             if (document) {
               const docFileData = documentFilesMap[document.id];
-              if (docFileData && docFileData.mimeType === 'application/pdf') {
+              if (docFileData && docFileData.mimeType === "application/pdf") {
                 try {
                   const pdfToMerge = await PDFDocument.load(docFileData.buffer);
-                  const pdfPages = await finalPdf.copyPages(pdfToMerge, pdfToMerge.getPageIndices());
+                  const pdfPages = await finalPdf.copyPages(
+                    pdfToMerge,
+                    pdfToMerge.getPageIndices(),
+                  );
                   pdfPages.forEach((page) => {
                     finalPdf.addPage(page);
                   });
                 } catch (error) {
-                  console.error(`Error merging PDF document ${document.id}:`, error);
+                  console.error(
+                    `Error merging PDF document ${document.id}:`,
+                    error,
+                  );
                 }
               }
             }
@@ -1376,7 +1567,7 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
         const mergedPdfBytes = await finalPdf.save();
         return Buffer.from(mergedPdfBytes);
       } catch (error) {
-        console.error('Error in mergePdfDocuments:', error);
+        console.error("Error in mergePdfDocuments:", error);
         throw error;
       }
     };
@@ -1388,17 +1579,17 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
       const sendError = (error) => {
         if (!responseSent) {
           responseSent = true;
-          console.error('PDF generation error:', error);
+          console.error("PDF generation error:", error);
           try {
             if (!res.headersSent) {
               res.status(500).json({
                 success: false,
-                message: 'فشل إنشاء تقرير PDF',
-                error: error.message
+                message: "فشل إنشاء تقرير PDF",
+                error: error.message,
               });
             }
           } catch (sendErr) {
-            console.error('Error sending error response:', sendErr);
+            console.error("Error sending error response:", sendErr);
           }
           reject(error);
         }
@@ -1408,11 +1599,11 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
         const pdfDoc = printer.createPdfKitDocument(docDefinition);
 
         const chunks = [];
-        pdfDoc.on('data', (chunk) => {
+        pdfDoc.on("data", (chunk) => {
           chunks.push(chunk);
         });
 
-        pdfDoc.on('end', async () => {
+        pdfDoc.on("end", async () => {
           if (!responseSent) {
             responseSent = true;
             try {
@@ -1423,25 +1614,31 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
               try {
                 finalPdfBuffer = await mergePdfDocuments(mainPdfBuffer);
               } catch (mergeError) {
-                console.error('Error merging PDFs, using main PDF only:', mergeError);
+                console.error(
+                  "Error merging PDFs, using main PDF only:",
+                  mergeError,
+                );
                 // If merging fails, return main PDF without merged documents
                 finalPdfBuffer = mainPdfBuffer;
               }
 
               if (!res.headersSent) {
-                res.setHeader('Content-Type', 'application/pdf');
-                res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(documentLabel)}.pdf"`);
+                res.setHeader("Content-Type", "application/pdf");
+                res.setHeader(
+                  "Content-Disposition",
+                  `attachment; filename="${encodeURIComponent(documentLabel)}.pdf"`,
+                );
                 res.send(finalPdfBuffer);
               }
               resolve();
             } catch (error) {
-              console.error('Error sending PDF response:', error);
+              console.error("Error sending PDF response:", error);
               reject(error);
             }
           }
         });
 
-        pdfDoc.on('error', (error) => {
+        pdfDoc.on("error", (error) => {
           sendError(error);
         });
 
@@ -1450,18 +1647,774 @@ router.post('/generate-payroll-report', authenticate, async (req, res) => {
         sendError(error);
       }
     });
-
   } catch (error) {
-    console.error('Error generating payroll report:', error);
+    console.error("Error generating payroll report:", error);
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
-        message: 'فشل إنشاء التقرير',
-        error: error.message
+        message: "فشل إنشاء التقرير",
+        error: error.message,
+      });
+    }
+  }
+});
+
+/**
+ * Generate PDF for a single document type across all branches
+ * POST /api/branch-documents/generate-pdf-by-type
+ * Body: { document_type: string }
+ * Only accessible by main managers
+ */
+router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
+  try {
+    // Only main managers can generate reports
+    if (req.user.role !== "main_manager") {
+      return res.status(403).json({
+        success: false,
+        message: "تم رفض الوصول. يمكن للمديرين الرئيسيين فقط إنشاء التقارير.",
+      });
+    }
+
+    const { document_type } = req.body;
+
+    if (!document_type) {
+      return res.status(400).json({
+        success: false,
+        message: "نوع المستند مطلوب",
+      });
+    }
+
+    // Get all active branches
+    const branches = await Branch.findAll({ is_active: true });
+
+    if (branches.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "لا توجد فروع نشطة",
+      });
+    }
+
+    // Query all documents of this type
+    const documents = await sql`
+      SELECT bd.*, b.branch_name, b.branch_type
+      FROM branch_documents bd
+      INNER JOIN branches b ON bd.branch_id = b.id
+      WHERE bd.is_active = true
+        AND bd.document_type = ${document_type}
+        AND b.is_active = true
+      ORDER BY b.branch_name ASC
+    `;
+
+    // Create a map of branch_id to document
+    const branchDocumentMap = new Map();
+    documents.forEach((doc) => {
+      branchDocumentMap.set(doc.branch_id, doc);
+    });
+
+    // Document type labels
+    const documentTypeLabels = {
+      license: "الترخيص",
+      permit: "التصريح",
+      insurance: "التأمين",
+      insurance_print: "كشف التأمينات",
+      contract: "العقد",
+      rental_contract: "عقد الايجار",
+      registration: "السجل التجاري",
+      security_contract: "عقد الامن والسلامة",
+      civil_defense_certificate: "شهادة الدفاع المدني",
+      municipality_certificate: "شهادة بلدي",
+      insurance_certificate: "شهادة التامينات",
+      insurance_statement: "كشف التأمينات",
+      operational_plan: "الخطة التشغلية",
+      owner_civil_id_copy: "نسخة هوية المالك",
+      payroll_file: "ملف مسيرات الرواتب",
+    };
+
+    const documentLabel = documentTypeLabels[document_type] || document_type;
+
+    // Prepare images map for document files
+    const images = {};
+    const documentFilesMap = {};
+
+    for (const doc of documents) {
+      if (!doc.file_path) continue;
+
+      let fileBuffer;
+
+      // Fetch file from blob or local storage
+      if (
+        doc.file_path.startsWith("http://") ||
+        doc.file_path.startsWith("https://")
+      ) {
+        try {
+          const result = await fetchFromBlob(doc.file_path);
+          fileBuffer = result.buffer;
+        } catch (blobError) {
+          console.error(
+            `Failed to fetch from blob for document ${doc.id}:`,
+            blobError.message,
+          );
+          continue;
+        }
+      } else {
+        if (process.env.VERCEL === "1") {
+          console.warn(
+            `Document ${doc.id} uses local file path which is not accessible on Vercel: ${doc.file_path}`,
+          );
+          continue;
+        }
+
+        let filePath;
+        if (path.isAbsolute(doc.file_path)) {
+          filePath = doc.file_path;
+        } else {
+          let relativePath = doc.file_path;
+          if (relativePath.startsWith("express-app/")) {
+            relativePath = relativePath.replace(/^express-app\//, "");
+          }
+          filePath = path.join(__dirname, "..", relativePath);
+        }
+
+        if (!fs.existsSync(filePath)) {
+          const altPath = doc.file_path.replace(/^express-app\//, "");
+          const altFilePath = path.join(__dirname, "..", altPath);
+          filePath = fs.existsSync(altFilePath) ? altFilePath : filePath;
+        }
+
+        if (!fs.existsSync(filePath)) {
+          console.warn(
+            `File not found for document ${doc.id}: ${doc.file_path}`,
+          );
+          continue;
+        }
+
+        try {
+          fileBuffer = fs.readFileSync(filePath);
+        } catch (readError) {
+          console.error(
+            `Failed to read file for document ${doc.id}:`,
+            readError.message,
+          );
+          continue;
+        }
+      }
+
+      if (!fileBuffer || fileBuffer.length === 0) {
+        continue;
+      }
+
+      const base64 = fileBuffer.toString("base64");
+      const mimeType = doc.mime_type || "application/octet-stream";
+
+      documentFilesMap[doc.id] = {
+        base64: base64,
+        base64DataUri: `data:${mimeType};base64,${base64}`,
+        mimeType: mimeType,
+        buffer: fileBuffer,
+      };
+
+      if (mimeType.startsWith("image/")) {
+        const imageKey = `doc_${doc.id}`;
+        images[imageKey] = `data:${mimeType};base64,${base64}`;
+      }
+    }
+
+    // Helper function to remove parentheses
+    const removeParentheses = (text) => {
+      if (!text || typeof text !== "string") return text;
+      return text.replace(/[()]/g, "");
+    };
+
+    const reportDate = formatDate(new Date());
+
+    // Build PDF content
+    const content = [
+      {
+        text: removeParentheses(`تقرير: ${documentLabel}`),
+        style: "title",
+      },
+      {
+        text: [
+          { text: "تاريخ التقرير: ", direction: "rtl" },
+          { text: reportDate, direction: "ltr" },
+        ],
+        style: "info",
+      },
+      {
+        text: [
+          { text: "عدد الفروع: ", direction: "rtl" },
+          { text: String(documents.length), direction: "ltr" },
+        ],
+        style: "info",
+        margin: [0, 0, 0, 20],
+      },
+    ];
+
+    // Add each branch (show all branches, mark missing as red)
+    for (const branch of branches) {
+      content.push({
+        text: `الفرع: ${removeParentheses(branch.branch_name)}`,
+        style: "branchHeader",
+        margin: [0, 10, 0, 5],
+      });
+
+      const doc = branchDocumentMap.get(branch.id);
+
+      if (doc) {
+        // Document exists
+        content.push({
+          text: `المستند: ${removeParentheses(doc.file_name)}`,
+          style: "documentInfo",
+        });
+
+        if (doc.description) {
+          content.push({
+            text: `الوصف: ${removeParentheses(doc.description || "")}`,
+            style: "documentDescription",
+          });
+        }
+
+        content.push({
+          text: `تاريخ الرفع: ${formatDate(doc.uploaded_at)}`,
+          style: "documentInfo",
+          margin: [0, 0, 0, 10],
+        });
+
+        const docFileData = documentFilesMap[doc.id];
+        if (docFileData) {
+          const mimeType = docFileData.mimeType;
+
+          if (mimeType.startsWith("image/")) {
+            try {
+              const imageKey = `doc_${doc.id}`;
+              content.push({
+                image: imageKey,
+                width: 500,
+                alignment: "center",
+                margin: [0, 10, 0, 20],
+                fit: [500, 700],
+              });
+            } catch (error) {
+              content.push({
+                text: removeParentheses(
+                  `[خطأ في تحميل الصورة: ${doc.file_name}]`,
+                ),
+                style: "documentDescription",
+                margin: [0, 10, 0, 20],
+                color: "#d32f2f",
+              });
+            }
+          }
+        } else {
+          content.push({
+            text: removeParentheses("[لم يتم العثور على ملف المستند]"),
+            style: "documentDescription",
+            margin: [0, 10, 0, 20],
+            color: "#d32f2f",
+          });
+        }
+      } else {
+        // Document is missing
+        content.push({
+          text: "⚠ المستند غير متوفر - لم يتم رفع هذا المستند",
+          style: "missingDocument",
+          margin: [0, 5, 0, 10],
+        });
+      }
+
+      content.push({
+        text: "",
+        margin: [0, 0, 0, 10],
+        pageBreak: "after",
+      });
+    }
+
+    const docDefinition = {
+      pageSize: "A4",
+      pageMargins: [40, 60, 40, 60],
+      images: images,
+      defaultStyle: {
+        font: "Roboto",
+        fontSize: 10,
+        color: "black",
+      },
+      styles: {
+        title: {
+          font: "Roboto",
+          fontSize: 18,
+          bold: true,
+          alignment: "center",
+          margin: [0, 0, 0, 20],
+        },
+        info: {
+          font: "Roboto",
+          fontSize: 10,
+          alignment: "right",
+          margin: [0, 0, 0, 10],
+        },
+        branchHeader: {
+          font: "Roboto",
+          fontSize: 14,
+          bold: true,
+          alignment: "right",
+          margin: [0, 0, 0, 5],
+        },
+        documentInfo: {
+          font: "Roboto",
+          fontSize: 11,
+          alignment: "right",
+          margin: [0, 0, 0, 3],
+        },
+        documentDescription: {
+          font: "Roboto",
+          fontSize: 10,
+          alignment: "right",
+          color: "#666",
+          margin: [0, 0, 0, 3],
+        },
+        missingDocument: {
+          font: "Roboto",
+          fontSize: 12,
+          bold: true,
+          alignment: "right",
+          color: "#d32f2f",
+          margin: [0, 5, 0, 10],
+        },
+      },
+      content: content,
+    };
+
+    const pdfDoc = printer.createPdfKitDocument(docDefinition);
+    const chunks = [];
+
+    pdfDoc.on("data", (chunk) => {
+      chunks.push(chunk);
+    });
+
+    pdfDoc.on("end", () => {
+      const buffer = Buffer.concat(chunks);
+      res.setHeader("Content-Type", "application/pdf");
+      const filename = `${documentLabel}_جميع_الفروع.pdf`;
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="document.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      );
+      res.send(buffer);
+    });
+
+    pdfDoc.on("error", (error) => {
+      console.error("PDF generation error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          message: "فشل إنشاء ملف PDF",
+          error: error.message,
+        });
+      }
+    });
+
+    pdfDoc.end();
+  } catch (error) {
+    console.error("Error generating PDF by type:", error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "فشل إنشاء ملف PDF",
+        error: error.message,
+      });
+    }
+  }
+});
+
+/**
+ * Generate PDF for all documents of a single branch
+ * POST /api/branch-documents/generate-pdf-by-branch
+ * Body: { branch_id: number }
+ * Only accessible by main managers
+ */
+router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
+  try {
+    // Only main managers can generate reports
+    if (req.user.role !== "main_manager") {
+      return res.status(403).json({
+        success: false,
+        message: "تم رفض الوصول. يمكن للمديرين الرئيسيين فقط إنشاء التقارير.",
+      });
+    }
+
+    const { branch_id } = req.body;
+
+    if (!branch_id) {
+      return res.status(400).json({
+        success: false,
+        message: "معرف الفرع مطلوب",
+      });
+    }
+
+    // Get branch
+    const branch = await Branch.findById(branch_id);
+    if (!branch) {
+      return res.status(404).json({
+        success: false,
+        message: "الفرع غير موجود",
+      });
+    }
+
+    // Query all documents for this branch
+    const documents = await sql`
+      SELECT bd.*
+      FROM branch_documents bd
+      WHERE bd.is_active = true
+        AND bd.branch_id = ${branch_id}
+      ORDER BY bd.document_type ASC, bd.uploaded_at DESC
+    `;
+
+    // Get required documents for this branch type
+    const { getRequiredBranchDocuments } =
+      await import("../utils/dataCompletionUtils.js");
+    const requiredDocTypes = getRequiredBranchDocuments(branch.branch_type);
+
+    // Create a map of document_type to document (get latest of each type)
+    const documentTypeMap = new Map();
+    documents.forEach((doc) => {
+      if (!documentTypeMap.has(doc.document_type)) {
+        documentTypeMap.set(doc.document_type, doc);
+      }
+    });
+
+    // Document type labels
+    const documentTypeLabels = {
+      license: "الترخيص",
+      permit: "التصريح",
+      insurance: "التأمين",
+      insurance_print: "كشف التأمينات",
+      contract: "العقد",
+      rental_contract: "عقد الايجار",
+      registration: "السجل التجاري",
+      security_contract: "عقد الامن والسلامة",
+      civil_defense_certificate: "شهادة الدفاع المدني",
+      municipality_certificate: "شهادة بلدي",
+      insurance_certificate: "شهادة التامينات",
+      insurance_statement: "كشف التأمينات",
+      operational_plan: "الخطة التشغلية",
+      owner_civil_id_copy: "نسخة هوية المالك",
+      payroll_file: "ملف مسيرات الرواتب",
+    };
+
+    // Prepare images map for document files
+    const images = {};
+    const documentFilesMap = {};
+
+    for (const doc of documents) {
+      if (!doc.file_path) continue;
+
+      let fileBuffer;
+
+      // Fetch file from blob or local storage
+      if (
+        doc.file_path.startsWith("http://") ||
+        doc.file_path.startsWith("https://")
+      ) {
+        try {
+          const result = await fetchFromBlob(doc.file_path);
+          fileBuffer = result.buffer;
+        } catch (blobError) {
+          console.error(
+            `Failed to fetch from blob for document ${doc.id}:`,
+            blobError.message,
+          );
+          continue;
+        }
+      } else {
+        if (process.env.VERCEL === "1") {
+          console.warn(
+            `Document ${doc.id} uses local file path which is not accessible on Vercel: ${doc.file_path}`,
+          );
+          continue;
+        }
+
+        let filePath;
+        if (path.isAbsolute(doc.file_path)) {
+          filePath = doc.file_path;
+        } else {
+          let relativePath = doc.file_path;
+          if (relativePath.startsWith("express-app/")) {
+            relativePath = relativePath.replace(/^express-app\//, "");
+          }
+          filePath = path.join(__dirname, "..", relativePath);
+        }
+
+        if (!fs.existsSync(filePath)) {
+          const altPath = doc.file_path.replace(/^express-app\//, "");
+          const altFilePath = path.join(__dirname, "..", altPath);
+          filePath = fs.existsSync(altFilePath) ? altFilePath : filePath;
+        }
+
+        if (!fs.existsSync(filePath)) {
+          console.warn(
+            `File not found for document ${doc.id}: ${doc.file_path}`,
+          );
+          continue;
+        }
+
+        try {
+          fileBuffer = fs.readFileSync(filePath);
+        } catch (readError) {
+          console.error(
+            `Failed to read file for document ${doc.id}:`,
+            readError.message,
+          );
+          continue;
+        }
+      }
+
+      if (!fileBuffer || fileBuffer.length === 0) {
+        continue;
+      }
+
+      const base64 = fileBuffer.toString("base64");
+      const mimeType = doc.mime_type || "application/octet-stream";
+
+      documentFilesMap[doc.id] = {
+        base64: base64,
+        base64DataUri: `data:${mimeType};base64,${base64}`,
+        mimeType: mimeType,
+        buffer: fileBuffer,
+      };
+
+      if (mimeType.startsWith("image/")) {
+        const imageKey = `doc_${doc.id}`;
+        images[imageKey] = `data:${mimeType};base64,${base64}`;
+      }
+    }
+
+    // Helper function to remove parentheses
+    const removeParentheses = (text) => {
+      if (!text || typeof text !== "string") return text;
+      return text.replace(/[()]/g, "");
+    };
+
+    const reportDate = formatDate(new Date());
+
+    // Build PDF content
+    const uploadedCount = requiredDocTypes.filter((type) =>
+      documentTypeMap.has(type),
+    ).length;
+
+    const content = [
+      {
+        text: removeParentheses(`تقرير مستندات: ${branch.branch_name}`),
+        style: "title",
+      },
+      {
+        text: [
+          { text: "تاريخ التقرير: ", direction: "rtl" },
+          { text: reportDate, direction: "ltr" },
+        ],
+        style: "info",
+      },
+      {
+        text: [
+          { text: "المستندات المطلوبة: ", direction: "rtl" },
+          { text: String(requiredDocTypes.length), direction: "ltr" },
+        ],
+        style: "info",
+      },
+      {
+        text: [
+          { text: "المستندات المرفوعة: ", direction: "rtl" },
+          { text: String(uploadedCount), direction: "ltr" },
+        ],
+        style: "info",
+      },
+      {
+        text: [
+          { text: "المستندات الناقصة: ", direction: "rtl" },
+          {
+            text: String(requiredDocTypes.length - uploadedCount),
+            direction: "ltr",
+          },
+        ],
+        style: "info",
+        margin: [0, 0, 0, 20],
+      },
+    ];
+
+    // Add each required document (show all, mark missing)
+    for (const docType of requiredDocTypes) {
+      const docLabel = documentTypeLabels[docType] || docType;
+      const doc = documentTypeMap.get(docType);
+
+      content.push({
+        text: `نوع المستند: ${removeParentheses(docLabel)}`,
+        style: "branchHeader",
+        margin: [0, 10, 0, 5],
+      });
+
+      if (doc) {
+        // Document exists
+        content.push({
+          text: `اسم الملف: ${removeParentheses(doc.file_name)}`,
+          style: "documentInfo",
+        });
+
+        if (doc.description) {
+          content.push({
+            text: `الوصف: ${removeParentheses(doc.description || "")}`,
+            style: "documentDescription",
+          });
+        }
+
+        content.push({
+          text: `تاريخ الرفع: ${formatDate(doc.uploaded_at)}`,
+          style: "documentInfo",
+          margin: [0, 0, 0, 10],
+        });
+
+        const docFileData = documentFilesMap[doc.id];
+        if (docFileData) {
+          const mimeType = docFileData.mimeType;
+
+          if (mimeType.startsWith("image/")) {
+            try {
+              const imageKey = `doc_${doc.id}`;
+              content.push({
+                image: imageKey,
+                width: 500,
+                alignment: "center",
+                margin: [0, 10, 0, 20],
+                fit: [500, 700],
+              });
+            } catch (error) {
+              content.push({
+                text: removeParentheses(
+                  `[خطأ في تحميل الصورة: ${doc.file_name}]`,
+                ),
+                style: "documentDescription",
+                margin: [0, 10, 0, 20],
+                color: "#d32f2f",
+              });
+            }
+          }
+        } else {
+          content.push({
+            text: removeParentheses("[لم يتم العثور على ملف المستند]"),
+            style: "documentDescription",
+            margin: [0, 10, 0, 20],
+            color: "#d32f2f",
+          });
+        }
+      } else {
+        // Document is missing
+        content.push({
+          text: "⚠ المستند غير متوفر - لم يتم رفع هذا المستند",
+          style: "missingDocument",
+          margin: [0, 5, 0, 10],
+        });
+      }
+
+      content.push({
+        text: "",
+        margin: [0, 0, 0, 10],
+        pageBreak: "after",
+      });
+    }
+
+    const docDefinition = {
+      pageSize: "A4",
+      pageMargins: [40, 60, 40, 60],
+      images: images,
+      defaultStyle: {
+        font: "Roboto",
+        fontSize: 10,
+        color: "black",
+      },
+      styles: {
+        title: {
+          font: "Roboto",
+          fontSize: 18,
+          bold: true,
+          alignment: "center",
+          margin: [0, 0, 0, 20],
+        },
+        info: {
+          font: "Roboto",
+          fontSize: 10,
+          alignment: "right",
+          margin: [0, 0, 0, 10],
+        },
+        branchHeader: {
+          font: "Roboto",
+          fontSize: 14,
+          bold: true,
+          alignment: "right",
+          margin: [0, 0, 0, 5],
+        },
+        documentInfo: {
+          font: "Roboto",
+          fontSize: 11,
+          alignment: "right",
+          margin: [0, 0, 0, 3],
+        },
+        documentDescription: {
+          font: "Roboto",
+          fontSize: 10,
+          alignment: "right",
+          color: "#666",
+          margin: [0, 0, 0, 3],
+        },
+        missingDocument: {
+          font: "Roboto",
+          fontSize: 12,
+          bold: true,
+          alignment: "right",
+          color: "#d32f2f",
+          margin: [0, 5, 0, 10],
+        },
+      },
+      content: content,
+    };
+
+    const pdfDoc = printer.createPdfKitDocument(docDefinition);
+    const chunks = [];
+
+    pdfDoc.on("data", (chunk) => {
+      chunks.push(chunk);
+    });
+
+    pdfDoc.on("end", () => {
+      const buffer = Buffer.concat(chunks);
+      res.setHeader("Content-Type", "application/pdf");
+      const filename = `مستندات_${branch.branch_name}.pdf`;
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="document.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      );
+      res.send(buffer);
+    });
+
+    pdfDoc.on("error", (error) => {
+      console.error("PDF generation error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          message: "فشل إنشاء ملف PDF",
+          error: error.message,
+        });
+      }
+    });
+
+    pdfDoc.end();
+  } catch (error) {
+    console.error("Error generating PDF by branch:", error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "فشل إنشاء ملف PDF",
+        error: error.message,
       });
     }
   }
 });
 
 export default router;
-
