@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" type="image/png" href="/logo-for-tab/Gemini_Generated_Image_rpacgjrpacgjrpac-removebg-preview.png" />
+    <link rel="shortcut icon" type="image/png" href="/logo-for-tab/Gemini_Generated_Image_rpacgjrpacgjrpac-removebg-preview.png" />
+    <title>نظام إدارة الموارد البشرية</title>
+  </head>
+  <body>
+    <div id="root">
+      <div style="padding: 20px; text-align: center; font-family: Arial;">
+        <p>Loading application...</p>
+      </div>
+    </div>
+    <script>
+      // Debug: Check if JavaScript is running
+      console.log('HTML loaded, JavaScript is running');
+      window.appLoaded = true;
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Fallback: If React doesn't load after 3 seconds, show error with more details
+      setTimeout(function() {
+        if (!window.reactMounted) {
+          const root = document.getElementById('root');
+          if (root && root.children.length === 1 && root.children[0].textContent.includes('Loading')) {
+            // Check if scripts are loading
+            const scripts = document.querySelectorAll('script[type="module"]');
+            let scriptStatus = 'No module scripts found';
+            if (scripts.length > 0) {
+              scriptStatus = scripts[0].src + ' - Check Network tab for loading status';
+            }
+            root.innerHTML = `
+              <div style="padding: 20px; text-align: center; font-family: Arial; max-width: 600px; margin: 50px auto;">
+                <h1 style="color: red;">Error: React app failed to load</h1>
+                <p><strong>Diagnostic Information:</strong></p>
+                <ul style="text-align: left; background: #f3f4f6; padding: 15px; border-radius: 8px;">
+                  <li>Script: ${scriptStatus}</li>
+                  <li>Please open DevTools (F12) → Network tab</li>
+                  <li>Refresh the page and check if /assets/*.js files are loading</li>
+                  <li>Look for 404 errors on JavaScript files</li>
+                </ul>
+                <p style="margin-top: 20px;">If assets are 404, Vercel may not be serving the dist folder correctly.</p>
+                <button onclick="window.location.reload()" style="padding: 12px 24px; background: #b9d2cf; color: white; border: none; border-radius: 8px; cursor: pointer; margin-top: 20px;">
+                  Reload Page
+                </button>
+              </div>
+            `;
+          }
+        }
+      }, 3000);
+    </script>
+  </body>
+</html>
