@@ -21,10 +21,13 @@ export const validateDateFields = (dateFields) => {
       for (const [fieldName, config] of Object.entries(dateFields)) {
         const { calendarType, dateType = 'general', required = false } = config;
         const hijriField = fieldName;
-        const gregorianField = fieldName.replace('_hijri', '_gregorian');
+        // Try both _gregorian suffix and base field name (e.g., issue_date_gregorian or issue_date)
+        const gregorianFieldWithSuffix = fieldName.replace('_hijri', '_gregorian');
+        const gregorianFieldBase = fieldName.replace('_hijri', '');
         
         const hijriValue = req.body[hijriField];
-        const gregorianValue = req.body[gregorianField];
+        // Check both possible gregorian field names (prefer _gregorian suffix, fallback to base name)
+        const gregorianValue = req.body[gregorianFieldWithSuffix] || req.body[gregorianFieldBase];
         
         console.log(`[DATE VALIDATION] Validating ${fieldName}:`, {
           hijri: hijriValue ? hijriValue.substring(0, 20) + '...' : null,
@@ -74,7 +77,13 @@ export const validateDateFields = (dateFields) => {
             console.log(`[DATE VALIDATION] ${fieldName} validated successfully`);
             // Update request body with validated and normalized dates
             req.body[hijriField] = result.hijri;
-            req.body[gregorianField] = result.gregorian;
+            // Update the gregorian field that was actually provided (or both if both exist)
+            // Always update the base field name (e.g., issue_date) as that's what the frontend sends
+            req.body[gregorianFieldBase] = result.gregorian;
+            // Also update the suffixed version if it exists
+            if (req.body[gregorianFieldWithSuffix] !== undefined) {
+              req.body[gregorianFieldWithSuffix] = result.gregorian;
+            }
           }
         }
       }
