@@ -324,6 +324,89 @@ router.delete('/employee-documents/:id', async (req, res) => {
 });
 
 /**
+ * DELETE /api/archive/:id
+ * Permanently delete archived employee (hard delete from database)
+ * Main manager only
+ * This will also delete all employee documents due to ON DELETE CASCADE
+ */
+router.delete('/:id', async (req, res) => {
+  try {
+    // Only main manager can permanently delete employees
+    if (req.user?.role !== 'main_manager') {
+      return res.status(403).json({
+        success: false,
+        message: 'يمكن للمدير الرئيسي فقط حذف الموظفين نهائياً'
+      });
+    }
+
+    const employeeId = parseInt(req.params.id);
+    if (isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'معرف الموظف غير صحيح'
+      });
+    }
+
+    // Check if employee exists
+    const employee = await Employee.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'الموظف غير موجود'
+      });
+    }
+
+    // Get employee documents to delete from blob storage
+    const documents = await sql`
+      SELECT id, file_path 
+      FROM employee_documents 
+      WHERE employee_id = ${employeeId}
+    `;
+
+    // Delete files from blob storage if they exist
+    for (const doc of documents) {
+      if (doc.file_path && (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://'))) {
+        try {
+          const { deleteFromBlob } = await import('../utils/blobStorage.js');
+          await deleteFromBlob(doc.file_path);
+        } catch (deleteError) {
+          console.error('Error deleting file from blob storage:', deleteError);
+          // Continue with database deletion even if blob deletion fails
+        }
+      }
+    }
+
+    // Permanently delete employee from database
+    // This will cascade delete all employee_documents due to ON DELETE CASCADE
+    const [deletedEmployee] = await sql`
+      DELETE FROM employees 
+      WHERE id = ${employeeId}
+      RETURNING id, first_name, second_name, third_name, fourth_name, employee_id_number
+    `;
+
+    if (!deletedEmployee) {
+      return res.status(404).json({
+        success: false,
+        message: 'الموظف غير موجود'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'تم حذف الموظف وبياناته ومستنداته نهائياً',
+      data: deletedEmployee
+    });
+  } catch (error) {
+    console.error('Error permanently deleting employee:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل حذف الموظف',
+      error: error.message
+    });
+  }
+});
+
+/**
  * GET /api/archive/statistics
  * Get archive statistics grouped by branch, academic year, status, etc.
  */
