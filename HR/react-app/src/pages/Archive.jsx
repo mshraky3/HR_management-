@@ -264,10 +264,9 @@ const Archive = () => {
   };
 
   const handlePermanentDeleteEmployee = async (employeeId, employeeName) => {
-    const confirmMessage = `هل أنت متأكد من رغبتك في حذف الموظف "${employeeName}" نهائياً؟\n\nسيتم حذف جميع بيانات الموظف ومستنداته بشكل دائم.\nلا يمكن التراجع عن هذا الإجراء.\n\nاكتب "حذف" للتأكيد:`;
+    const confirmMessage = `هل أنت متأكد من رغبتك في حذف الموظف "${employeeName}" نهائياً؟\n\nسيتم حذف جميع بيانات الموظف ومستنداته بشكل دائم.\nلا يمكن التراجع عن هذا الإجراء.`;
     
-    const userInput = prompt(confirmMessage);
-    if (userInput !== 'حذف') {
+    if (!confirm(confirmMessage)) {
       return;
     }
 

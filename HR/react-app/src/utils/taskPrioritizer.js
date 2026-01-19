@@ -436,6 +436,29 @@ const calculateEmployeeContractDataTask = (missingEmployeeContractData) => {
 };
 
 /**
+ * Calculate total salary for an employee
+ */
+const calculateTotalSalary = (employee) => {
+  const baseSalary = parseFloat(employee.base_salary || 0);
+  const housingAllowance = parseFloat(employee.housing_allowance || 0);
+  const transportationAllowance = parseFloat(employee.transportation_allowance || 0);
+  const endOfServiceAllowance = parseFloat(employee.end_of_service_allowance || 0);
+  const annualLeaveAllowance = parseFloat(employee.annual_leave_allowance || 0);
+  const otherAllowances = parseFloat(employee.other_allowances || 0);
+  const deductions = parseFloat(employee.deductions || 0);
+  
+  return baseSalary + housingAllowance + transportationAllowance + 
+         endOfServiceAllowance + annualLeaveAllowance + otherAllowances - deductions;
+};
+
+/**
+ * Get employee full name
+ */
+const getEmployeeFullName = (employee) => {
+  return `${employee.first_name || ''} ${employee.second_name || ''} ${employee.third_name || ''} ${employee.fourth_name || ''}`.trim();
+};
+
+/**
  * Calculate add employee task (when branch info employee count doesn't match records)
  */
 const calculateAddEmployeeTask = (branchInfo, employees = []) => {
@@ -473,6 +496,88 @@ const calculateAddEmployeeTask = (branchInfo, employees = []) => {
     urgency: 'no_deadline',
     estimatedTime: '10 min لكل موظف',
     dependencies: []
+  };
+};
+
+/**
+ * Calculate salary review task (employees with salary issues)
+ */
+const calculateSalaryReviewTask = (employees = []) => {
+  if (!employees || employees.length === 0) {
+    return null;
+  }
+
+  // Filter to only active employees
+  const activeEmployees = employees.filter(emp => 
+    !emp.status || emp.status === 'active'
+  );
+
+  if (activeEmployees.length === 0) {
+    return null;
+  }
+
+  // Calculate total salary for each employee and identify issues
+  const employeeList = [];
+  
+  activeEmployees.forEach(employee => {
+    const totalSalary = calculateTotalSalary(employee);
+    let issueType = null;
+    
+    // Check for low salary (<= 0 or < 1000)
+    if (totalSalary <= 0 || totalSalary < 1000) {
+      issueType = 'low';
+    }
+    // Check for high salary (>= 13000)
+    else if (totalSalary >= 13000) {
+      issueType = 'high';
+    }
+    
+    if (issueType) {
+      employeeList.push({
+        employee,
+        totalSalary,
+        issueType,
+        employeeName: getEmployeeFullName(employee)
+      });
+    }
+  });
+
+  // Only create task if there are employees with salary issues
+  if (employeeList.length === 0) {
+    return null;
+  }
+
+  const lowSalaryCount = employeeList.filter(item => item.issueType === 'low').length;
+  const highSalaryCount = employeeList.filter(item => item.issueType === 'high').length;
+
+  // Build description
+  let description = '';
+  if (lowSalaryCount > 0 && highSalaryCount > 0) {
+    description = `${lowSalaryCount} موظف براتب منخفض (0 أو أقل من 1000 ريال)، ${highSalaryCount} موظف براتب مرتفع (13000 ريال أو أكثر)`;
+  } else if (lowSalaryCount > 0) {
+    description = `${lowSalaryCount} موظف براتب منخفض (0 أو أقل من 1000 ريال) يحتاج إضافة راتب`;
+  } else {
+    description = `${highSalaryCount} موظف براتب مرتفع (13000 ريال أو أكثر) يحتاج مراجعة`;
+  }
+
+  return {
+    id: 'employee-salary-review',
+    type: 'salary_review',
+    category: 'employees',
+    priority: 'should_do',
+    title: 'مراجعة رواتب الموظفين',
+    description: description,
+    totalItems: employeeList.length,
+    completedItems: 0,
+    remainingItems: employeeList.length,
+    progress: 0,
+    actionUrl: '/employees',
+    actionLabel: 'عرض الموظفين',
+    urgency: 'no_deadline',
+    estimatedTime: '5 min',
+    dependencies: [],
+    hasInlineEditor: true,
+    employeeList: employeeList
   };
 };
 
@@ -626,6 +731,10 @@ export const calculateTasks = ({
   // 2.5. Add Employee Task - When branch info employee count doesn't match records
   const addEmployeeTask = calculateAddEmployeeTask(branchInfo, employees);
   if (addEmployeeTask) tasks.push(addEmployeeTask);
+
+  // 2.6. Salary Review Task - Employees with salary issues
+  const salaryReviewTask = calculateSalaryReviewTask(employees);
+  if (salaryReviewTask) tasks.push(salaryReviewTask);
 
   // 3. Employees (Must Do) - Employee related, comes before bus
   const employeeTasks = calculateEmployeeTasks(incompleteEmployees);

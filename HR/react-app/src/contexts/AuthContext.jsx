@@ -3,24 +3,33 @@
  * Manages authentication state across the app
  */
 
-import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { authAPI } from '../utils/api';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
+import { authAPI } from "../utils/api";
 
 // Ensure a single context instance even if Vite loads this module twice
 // (e.g. different dev query strings like `?v=dev` causing duplicate module ids).
-const AUTH_CONTEXT_KEY = '__HR_APP_AUTH_CONTEXT__';
+const AUTH_CONTEXT_KEY = "__HR_APP_AUTH_CONTEXT__";
+
 const AuthContext =
-  (typeof globalThis !== 'undefined' && globalThis[AUTH_CONTEXT_KEY])
+  typeof globalThis !== "undefined" && globalThis[AUTH_CONTEXT_KEY]
     ? globalThis[AUTH_CONTEXT_KEY]
     : createContext(null);
-if (typeof globalThis !== 'undefined' && !globalThis[AUTH_CONTEXT_KEY]) {
+
+if (typeof globalThis !== "undefined" && !globalThis[AUTH_CONTEXT_KEY]) {
   globalThis[AUTH_CONTEXT_KEY] = AuthContext;
 }
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
+    throw new Error("useAuth must be used within AuthProvider");
   }
   return context;
 };
@@ -28,13 +37,15 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(localStorage.getItem("token"));
   const logoutInProgressRef = useRef(false);
 
   // Inactivity auto-logout configuration
   const getEnv = (name, fallback) => {
     // Support Vite's import.meta.env (VITE_*) and legacy REACT_APP_* names; fallback to process.env if available
-    const viteName = name.startsWith('REACT_APP_') ? name.replace(/^REACT_APP_/, 'VITE_') : name;
+    const viteName = name.startsWith("REACT_APP_")
+      ? name.replace(/^REACT_APP_/, "VITE_")
+      : name;
     // Safely access import.meta.env using try/catch to avoid parser errors in environments that don't support it
     let metaEnv;
     try {
@@ -47,20 +58,36 @@ export const AuthProvider = ({ children }) => {
       const v = metaEnv[viteName] ?? metaEnv[name];
       if (v !== undefined) return v;
     }
-    if (typeof process !== 'undefined' && process.env && process.env[name] !== undefined) {
+    if (
+      typeof process !== "undefined" &&
+      process.env &&
+      process.env[name] !== undefined
+    ) {
       return process.env[name];
     }
     return fallback;
   };
 
-  const IDLE_TIMEOUT_MS = parseInt(getEnv('REACT_APP_IDLE_TIMEOUT_MS', String(10 * 60 * 1000)), 10); // default 10 minutes
-  const WARNING_MS = parseInt(getEnv('REACT_APP_IDLE_WARNING_MS', String(1 * 60 * 1000)), 10); // default 1 minute warning
+  const IDLE_TIMEOUT_MS = parseInt(
+    getEnv("REACT_APP_IDLE_TIMEOUT_MS", String(10 * 60 * 1000)),
+    10,
+  ); // default 10 minutes
+  const WARNING_MS = parseInt(
+    getEnv("REACT_APP_IDLE_WARNING_MS", String(1 * 60 * 1000)),
+    10,
+  ); // default 1 minute warning
 
-  const IS_DEV = (import.meta?.env?.MODE === 'development') || (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'development');
+  const IS_DEV =
+    import.meta?.env?.MODE === "development" ||
+    (typeof process !== "undefined" &&
+      process.env &&
+      process.env.NODE_ENV === "development");
 
   // Idle UI state
   const [idleWarningVisible, setIdleWarningVisible] = useState(false);
-  const [idleCountdownSeconds, setIdleCountdownSeconds] = useState(Math.ceil(WARNING_MS / 1000));
+  const [idleCountdownSeconds, setIdleCountdownSeconds] = useState(
+    Math.ceil(WARNING_MS / 1000),
+  );
 
   // Timer refs
   const warningTimerRef = useRef(null);
@@ -69,9 +96,9 @@ export const AuthProvider = ({ children }) => {
 
   const setLastActivity = useCallback((ts = Date.now()) => {
     try {
-      localStorage.setItem('lastActivity', String(ts));
+      localStorage.setItem("lastActivity", String(ts));
       // Write a separate signal key to ensure storage events fire across tabs
-      localStorage.setItem('activitySignal', String(ts));
+      localStorage.setItem("activitySignal", String(ts));
     } catch (err) {
       // ignore storage errors (e.g., private mode)
     }
@@ -95,7 +122,10 @@ export const AuthProvider = ({ children }) => {
   const scheduleTimers = useCallback(() => {
     clearTimers();
 
-    const last = parseInt(localStorage.getItem('lastActivity') || String(Date.now()), 10);
+    const last = parseInt(
+      localStorage.getItem("lastActivity") || String(Date.now()),
+      10,
+    );
     const elapsed = Date.now() - last;
     const remaining = Math.max(0, IDLE_TIMEOUT_MS - elapsed);
 
@@ -126,8 +156,8 @@ export const AuthProvider = ({ children }) => {
       }
       // broadcast force logout to other tabs
       try {
-        localStorage.setItem('forceLogout', String(Date.now()));
-      } catch (err) { }
+        localStorage.setItem("forceLogout", String(Date.now()));
+      } catch (err) {}
     }, remaining + 50); // small buffer
   }, [IDLE_TIMEOUT_MS, WARNING_MS, clearTimers]);
 
@@ -143,25 +173,32 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const onStorage = (e) => {
       if (!e.key) return;
-      if (e.key === 'activitySignal' || e.key === 'lastActivity') {
+      if (e.key === "activitySignal" || e.key === "lastActivity") {
         // Another tab registered activity - reset timers
         setIdleWarningVisible(false);
         setIdleCountdownSeconds(Math.ceil(WARNING_MS / 1000));
         scheduleTimers();
       }
-      if (e.key === 'forceLogout') {
+      if (e.key === "forceLogout") {
         // Another tab forced logout
         logout();
       }
     };
 
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, [scheduleTimers, WARNING_MS]);
 
   // Set up activity listeners on mount
   useEffect(() => {
-    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+    const events = [
+      "mousemove",
+      "mousedown",
+      "keydown",
+      "touchstart",
+      "scroll",
+      "click",
+    ];
     for (const ev of events) {
       window.addEventListener(ev, userActivityHandler, { passive: true });
     }
@@ -172,10 +209,10 @@ export const AuthProvider = ({ children }) => {
         userActivityHandler();
       }
     };
-    document.addEventListener('visibilitychange', onVisibility);
+    document.addEventListener("visibilitychange", onVisibility);
 
     // Initialize lastActivity and schedules
-    if (!localStorage.getItem('lastActivity')) {
+    if (!localStorage.getItem("lastActivity")) {
       setLastActivity();
     }
     scheduleTimers();
@@ -184,7 +221,7 @@ export const AuthProvider = ({ children }) => {
       for (const ev of events) {
         window.removeEventListener(ev, userActivityHandler);
       }
-      document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener("visibilitychange", onVisibility);
       clearTimers();
     };
   }, [userActivityHandler, scheduleTimers, clearTimers, setLastActivity]);
@@ -192,7 +229,7 @@ export const AuthProvider = ({ children }) => {
   // Load user on mount if token exists
   useEffect(() => {
     const loadUser = async () => {
-      const storedToken = localStorage.getItem('token');
+      const storedToken = localStorage.getItem("token");
       if (storedToken) {
         try {
           const response = await authAPI.getMe();
@@ -200,11 +237,11 @@ export const AuthProvider = ({ children }) => {
             setUser(response.data.user);
             setToken(storedToken);
             // Update stored user data with fresh data from server
-            localStorage.setItem('user', JSON.stringify(response.data.user));
+            localStorage.setItem("user", JSON.stringify(response.data.user));
           } else {
             // Invalid token or user data - only clear if API explicitly says so
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
             setToken(null);
           }
         } catch (error) {
@@ -214,21 +251,24 @@ export const AuthProvider = ({ children }) => {
 
           if (isAuthError) {
             // Token is invalid or expired - clear it
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
+            localStorage.removeItem("token");
+            localStorage.removeItem("user");
             setToken(null);
           } else if (isNetworkError) {
             // Network error - keep token and use stored user data as fallback
             // This prevents logout on page reload when network is temporarily unavailable
             try {
-              const storedUser = localStorage.getItem('user');
+              const storedUser = localStorage.getItem("user");
               if (storedUser) {
                 const parsedUser = JSON.parse(storedUser);
                 setUser(parsedUser);
                 setToken(storedToken);
                 // Log warning in development
                 if (IS_DEV) {
-                  console.warn('Network error loading user, using stored data:', error);
+                  console.warn(
+                    "Network error loading user, using stored data:",
+                    error,
+                  );
                 }
               } else {
                 // No stored user data, but keep token for retry
@@ -238,13 +278,13 @@ export const AuthProvider = ({ children }) => {
               // Stored user data is invalid, but keep token for retry
               setToken(storedToken);
               if (IS_DEV) {
-                console.warn('Could not parse stored user data:', parseError);
+                console.warn("Could not parse stored user data:", parseError);
               }
             }
           } else {
             // Other error (500, etc.) - keep token, might be temporary server issue
             try {
-              const storedUser = localStorage.getItem('user');
+              const storedUser = localStorage.getItem("user");
               if (storedUser) {
                 const parsedUser = JSON.parse(storedUser);
                 setUser(parsedUser);
@@ -256,7 +296,7 @@ export const AuthProvider = ({ children }) => {
               setToken(storedToken);
             }
             if (IS_DEV) {
-              console.warn('Failed to load user, but keeping session:', error);
+              console.warn("Failed to load user, but keeping session:", error);
             }
           }
         }
@@ -274,8 +314,8 @@ export const AuthProvider = ({ children }) => {
       const response = await authAPI.login(username, password);
       if (response.data.success) {
         const { token: newToken, user: userData } = response.data;
-        localStorage.setItem('token', newToken);
-        localStorage.setItem('user', JSON.stringify(userData));
+        localStorage.setItem("token", newToken);
+        localStorage.setItem("user", JSON.stringify(userData));
         setToken(newToken);
         setUser(userData);
         return { success: true };
@@ -284,7 +324,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       return {
         success: false,
-        message: error.response?.data?.message || 'Login failed',
+        message: error.response?.data?.message || "Login failed",
       };
     }
   };
@@ -302,12 +342,14 @@ export const AuthProvider = ({ children }) => {
       // Silently handle logout errors (token might be expired, which is fine)
       // Only log in development
       if (IS_DEV) {
-        console.error('Logout error:', error);
+        console.error("Logout error:", error);
       }
     } finally {
-      try { localStorage.setItem('forceLogout', String(Date.now())); } catch (err) { }
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      try {
+        localStorage.setItem("forceLogout", String(Date.now()));
+      } catch (err) {}
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
       setToken(null);
       setUser(null);
       logoutInProgressRef.current = false;
@@ -317,18 +359,17 @@ export const AuthProvider = ({ children }) => {
   // Keep-alive helper to mark activity (useful for API calls)
   const markActivity = useCallback(() => {
     try {
-      localStorage.setItem('lastActivity', String(Date.now()));
-      localStorage.setItem('activitySignal', String(Date.now()));
-    } catch (err) { }
+      localStorage.setItem("lastActivity", String(Date.now()));
+      localStorage.setItem("activitySignal", String(Date.now()));
+    } catch (err) {}
   }, []);
 
-
   const isMainManager = () => {
-    return user?.role === 'main_manager';
+    return user?.role === "main_manager";
   };
 
   const isBranchManager = () => {
-    return user?.role === 'branch_manager';
+    return user?.role === "branch_manager";
   };
 
   const value = {
@@ -348,13 +389,43 @@ export const AuthProvider = ({ children }) => {
       {children}
       {/* Idle warning modal */}
       {idleWarningVisible && (
-        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, zIndex: 9999 }}>
-          <div className="modal-content" style={{ maxWidth: 420, margin: '10% auto', padding: 20 }}>
+        <div
+          className="modal-overlay"
+          style={{ position: "fixed", inset: 0, zIndex: 9999 }}
+        >
+          <div
+            className="modal-content"
+            style={{ maxWidth: 420, margin: "10% auto", padding: 20 }}
+          >
             <h3>سيتم تسجيل الخروج لعدم النشاط</h3>
-            <p>سيتم تسجيل الخروج خلال <strong>{idleCountdownSeconds}</strong> ثانية إن لم تقم بأي نشاط.</p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
-              <button onClick={() => { userActivityHandler(); }} className="btn">ابق مسجلاً</button>
-              <button onClick={() => { logout(); }} className="btn btn-danger">تسجيل الخروج الآن</button>
+            <p>
+              سيتم تسجيل الخروج خلال <strong>{idleCountdownSeconds}</strong>{" "}
+              ثانية إن لم تقم بأي نشاط.
+            </p>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                justifyContent: "flex-end",
+                marginTop: 12,
+              }}
+            >
+              <button
+                onClick={() => {
+                  userActivityHandler();
+                }}
+                className="btn"
+              >
+                ابق مسجلاً
+              </button>
+              <button
+                onClick={() => {
+                  logout();
+                }}
+                className="btn btn-danger"
+              >
+                تسجيل الخروج الآن
+              </button>
             </div>
           </div>
         </div>
@@ -362,4 +433,3 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
-

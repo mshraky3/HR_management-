@@ -21,6 +21,7 @@ import { formatDate, hijriToGregorian, parseHijriString } from '../utils/dateCon
 import DashboardProgress from './DashboardProgress';
 import MissingEmployeeDataSection from '../components/MissingEmployeeDataSection.jsx';
 import PayrollAbsenceBranchSection from '../components/PayrollAbsenceBranchSection.jsx';
+import SalaryReviewSection from '../components/SalaryReviewSection.jsx';
 import TaskProgressOverview from '../components/TaskProgressOverview';
 import FocusTaskCard from '../components/FocusTaskCard';
 import TaskQueue from '../components/TaskQueue';
@@ -1419,6 +1420,14 @@ const Dashboard = () => {
                       {currentTask.type === 'payroll_absence' && (
                         <TaskCardWrapper key={currentTask.id} task={currentTask} defaultExpanded={true}>
                           <PayrollAbsenceBranchSection 
+                            onComplete={() => handleTaskComplete(currentTask.id)}
+                          />
+                        </TaskCardWrapper>
+                      )}
+                      {currentTask.type === 'salary_review' && (
+                        <TaskCardWrapper key={currentTask.id} task={currentTask} defaultExpanded={true}>
+                          <SalaryReviewSection 
+                            employeeList={currentTask.employeeList || []}
                             onComplete={() => handleTaskComplete(currentTask.id)}
                           />
                         </TaskCardWrapper>

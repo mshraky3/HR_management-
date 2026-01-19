@@ -1,52 +1,63 @@
 /**
  * Main App Component
- * 
+ *
  * Performance Optimization: Code Splitting & Lazy Loading
  * All page components are lazy-loaded to reduce initial bundle size by 50-70%
  */
-import { Analytics } from "@vercel/analytics/react"
-import { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { NotificationProvider } from './contexts/NotificationContext';
-import { PushNotificationProvider } from './contexts/PushNotificationContext';
-import { BackendErrorProvider, useBackendError } from './contexts/BackendErrorContext';
-import ProtectedRoute from './components/ProtectedRoute';
-import Layout from './components/Layout';
-import BranchManagerLayout from './components/BranchManagerLayout';
-import MaintenancePage from './pages/MaintenancePage';
-import './App.css';
+import { Analytics } from "@vercel/analytics/react";
+import { lazy, Suspense } from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { NotificationProvider } from "./contexts/NotificationContext";
+import {
+  BackendErrorProvider,
+  useBackendError,
+} from "./contexts/BackendErrorContext";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Layout from "./components/Layout";
+import BranchManagerLayout from "./components/BranchManagerLayout";
+import MaintenancePage from "./pages/MaintenancePage";
+import "./App.css";
 // Load shared page CSS immediately to prevent FOUC (Flash of Unstyled Content)
 // This ensures table styles are available before lazy-loaded pages render
-import './pages/TablePage.css';
+import "./pages/TablePage.css";
 
 // Login page - loaded immediately (critical for first render)
-import Login from './pages/Login';
+import Login from "./pages/Login";
 
 // Loading component for Suspense fallback
 // This is shown while lazy-loaded components are being fetched
 const PageLoading = () => (
-  <div style={{
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: '60vh',
-    flexDirection: 'column',
-    gap: '20px',
-    padding: '40px'
-  }}>
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      minHeight: "60vh",
+      flexDirection: "column",
+      gap: "20px",
+      padding: "40px",
+    }}
+  >
     <div
       className="spinner-large"
       style={{
-        border: '4px solid rgba(73, 136, 196, 0.3)',
-        borderTop: '4px solid var(--primary, #4988C4)'
+        border: "4px solid rgba(73, 136, 196, 0.3)",
+        borderTop: "4px solid var(--primary, #4988C4)",
       }}
     ></div>
-    <div style={{
-      color: 'var(--text-secondary, #334155)',
-      fontSize: '16px',
-      fontWeight: '500'
-    }}>
+    <div
+      style={{
+        color: "var(--text-secondary, #334155)",
+        fontSize: "16px",
+        fontWeight: "500",
+      }}
+    >
       جاري التحميل...
     </div>
   </div>
@@ -54,40 +65,48 @@ const PageLoading = () => (
 
 // Lazy load all page components (code splitting)
 // These will be loaded on-demand when user navigates to each route
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const AccountManagement = lazy(() => import('./pages/AccountManagement'));
-const Branches = lazy(() => import('./pages/Branches'));
-const Employees = lazy(() => import('./pages/Employees'));
-const EmployeeDetails = lazy(() => import('./pages/EmployeeDetails/index.jsx'));
-const BranchDocuments = lazy(() => import('./pages/BranchDocuments'));
-const Reports = lazy(() => import('./pages/Reports'));
-const EmployeeFile = lazy(() => import('./pages/EmployeeFile'));
-const NotifyBranches = lazy(() => import('./pages/NotifyBranches'));
-const Archive = lazy(() => import('./pages/Archive'));
-const BranchStatistics = lazy(() => import('./pages/BranchStatistics'));
-const TermManagement = lazy(() => import('./pages/TermManagement'));
-const BranchDocumentsManagement = lazy(() => import('./pages/BranchDocumentsManagement'));
-const BranchInfo = lazy(() => import('./pages/BranchInfo'));
-const DirectContact = lazy(() => import('./pages/DirectContact'));
-const BranchRequests = lazy(() => import('./pages/BranchRequests'));
-const ManageRequests = lazy(() => import('./pages/ManageRequests'));
-const FixMissingDates = lazy(() => import('./pages/FixMissingDates'));
-const PayrollAbsenceAdmin = lazy(() => import('./pages/PayrollAbsenceAdmin'));
-const EmployeeStatistics = lazy(() => import('./pages/EmployeeStatistics'));
-const ExperienceCertificate = lazy(() => import('./pages/ExperienceCertificate'));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const AccountManagement = lazy(() => import("./pages/AccountManagement"));
+const Branches = lazy(() => import("./pages/Branches"));
+const Employees = lazy(() => import("./pages/Employees"));
+const EmployeeDetails = lazy(() => import("./pages/EmployeeDetails/index.jsx"));
+const BranchDocuments = lazy(() => import("./pages/BranchDocuments"));
+const Reports = lazy(() => import("./pages/Reports"));
+const EmployeeFile = lazy(() => import("./pages/EmployeeFile"));
+const NotifyBranches = lazy(() => import("./pages/NotifyBranches"));
+const Archive = lazy(() => import("./pages/Archive"));
+const BranchStatistics = lazy(() => import("./pages/BranchStatistics"));
+const TermManagement = lazy(() => import("./pages/TermManagement"));
+const BranchDocumentsManagement = lazy(
+  () => import("./pages/BranchDocumentsManagement"),
+);
+const BranchInfo = lazy(() => import("./pages/BranchInfo"));
+const DirectContact = lazy(() => import("./pages/DirectContact"));
+const BranchRequests = lazy(() => import("./pages/BranchRequests"));
+const ManageRequests = lazy(() => import("./pages/ManageRequests"));
+const FixMissingDates = lazy(() => import("./pages/FixMissingDates"));
+const PayrollAbsenceAdmin = lazy(() => import("./pages/PayrollAbsenceAdmin"));
+const EmployeeStatistics = lazy(() => import("./pages/EmployeeStatistics"));
+const ExperienceCertificate = lazy(
+  () => import("./pages/ExperienceCertificate"),
+);
 // NOTE: Vite dev-server can sometimes cache an empty transform for this large file
 // (serving 200 with Content-Length: 0), which breaks React.lazy with "{}".
 // Adding a harmless query string in DEV forces a fresh module id and avoids the issue.
 const BusTransportation = lazy(() =>
   import.meta.env.DEV
     ? import(/* @vite-ignore */ `./pages/BusTransportation.jsx?v=dev`)
-    : import('./pages/BusTransportation.jsx')
+    : import("./pages/BusTransportation.jsx"),
 );
 
 // Wrapper component to choose layout based on role
 const RoleBasedLayout = ({ children }) => {
   const { isMainManager } = useAuth();
-  return isMainManager() ? <Layout>{children}</Layout> : <BranchManagerLayout>{children}</BranchManagerLayout>;
+  return isMainManager() ? (
+    <Layout>{children}</Layout>
+  ) : (
+    <BranchManagerLayout>{children}</BranchManagerLayout>
+  );
 };
 
 // App content component that checks for backend errors
@@ -324,10 +343,7 @@ const AppContent = () => {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/"
-          element={<Navigate to="/login" replace />}
-        />
+        <Route path="/" element={<Navigate to="/login" replace />} />
       </Routes>
     </Suspense>
   );
@@ -353,12 +369,10 @@ function App() {
     <BackendErrorProvider>
       <AuthProvider>
         <NotificationProvider>
-          <PushNotificationProvider>
-            <Router>
-              <AppContent />
-              <Analytics />
-            </Router>
-          </PushNotificationProvider>
+          <Router>
+            <AppContent />
+            <Analytics />
+          </Router>
         </NotificationProvider>
       </AuthProvider>
     </BackendErrorProvider>
