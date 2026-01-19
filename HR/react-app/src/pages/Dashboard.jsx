@@ -1259,7 +1259,8 @@ const Dashboard = () => {
           documentsWithExpiry,
           buses,
           missingEmployeeContractData,
-          payrollAbsenceState
+          payrollAbsenceState,
+          employees: employeesList
         });
 
         // Filter out actually completed tasks (not just skipped)

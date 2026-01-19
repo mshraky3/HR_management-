@@ -43,6 +43,12 @@
   background: linear-gradient(135deg, var(--bg) 0%, rgba(244, 67, 54, 0.05) 100%);
 }
 
+.document-card.document-expired {
+  border-color: #FF9800;
+  background: linear-gradient(135deg, var(--bg) 0%, rgba(255, 152, 0, 0.08) 100%);
+  border-width: 2px;
+}
+
 .document-card-header {
   display: flex;
   align-items: center;
@@ -454,14 +460,14 @@ tbody tr:last-child td:last-child {
 }
 
 .table-actions .btn-edit {
-  background: linear-gradient(135deg, var(--info) 0%, var(--info-hover) 100%);
+  background: linear-gradient(135deg, var(--success) 0%, var(--success-hover) 100%);
   color: white;
-  box-shadow: 0 2px 4px rgba(6, 182, 212, 0.2);
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
 }
 
 .table-actions .btn-edit:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(6, 182, 212, 0.3);
+  box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
 }
 
 .table-actions .btn-delete {
@@ -473,6 +479,17 @@ tbody tr:last-child td:last-child {
 .table-actions .btn-delete:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
+}
+
+.table-actions .btn-complete {
+  background: linear-gradient(135deg, var(--warning) 0%, var(--warning-hover) 100%);
+  color: white;
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
+}
+
+.table-actions .btn-complete:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
 }
 
 /* Badge Styles */

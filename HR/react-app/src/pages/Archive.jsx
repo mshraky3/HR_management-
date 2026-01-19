@@ -263,6 +263,34 @@ const Archive = () => {
     }
   };
 
+  const handlePermanentDeleteEmployee = async (employeeId, employeeName) => {
+    const confirmMessage = `هل أنت متأكد من رغبتك في حذف الموظف "${employeeName}" نهائياً؟\n\nسيتم حذف جميع بيانات الموظف ومستنداته بشكل دائم.\nلا يمكن التراجع عن هذا الإجراء.\n\nاكتب "حذف" للتأكيد:`;
+    
+    const userInput = prompt(confirmMessage);
+    if (userInput !== 'حذف') {
+      return;
+    }
+
+    try {
+      await archiveAPI.permanentDelete(employeeId);
+      showSuccess('تم حذف الموظف وبياناته ومستنداته نهائياً');
+      // Reload archived employees list
+      loadArchivedEmployees(currentPage);
+      // Clear selected employee if it was the deleted one
+      if (selectedEmployee === employeeId) {
+        setSelectedEmployee(null);
+        setEmployeeDetails(null);
+      }
+    } catch (error) {
+      console.error('Error deleting employee:', error);
+      if (error.response?.data?.message) {
+        showError(error.response.data.message);
+      } else {
+        showError('فشل حذف الموظف');
+      }
+    }
+  };
+
   const handleViewEmployee = async (employeeId) => {
     if (selectedEmployee === employeeId && employeeDetails) {
       setSelectedEmployee(null);
@@ -827,6 +855,15 @@ const Archive = () => {
                             onClick={() => handleStatusUpdateClick(employee)}
                           >
                             تعديل الحالة
+                          </button>
+                          <button
+                            className="btn btn-sm btn-delete"
+                            onClick={() => handlePermanentDeleteEmployee(
+                              employee.id,
+                              `${employee.first_name} ${employee.second_name} ${employee.third_name} ${employee.fourth_name}`
+                            )}
+                          >
+                            حذف نهائي
                           </button>
                         </div>
                       </td>

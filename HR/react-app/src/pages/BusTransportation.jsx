@@ -193,7 +193,7 @@ const BusTransportation = () => {
         setBranches(sorted);
       }
     } catch (error) {
-      console.error('Error loading branches:', error);
+      // Error loading branches
     }
   };
 
@@ -208,20 +208,17 @@ const BusTransportation = () => {
         const branchResponse = await branchesAPI.getById(user.branch_id);
         if (branchResponse.data.success && branchResponse.data.data?.branch_type) {
           branchType = branchResponse.data.data.branch_type;
-          console.log('[BusTransportation] Branch manager - branch_type:', branchType);
           
           // Get current term first
           try {
             currentTermResponse = await termsAPI.getCurrent(branchType);
-            console.log('[BusTransportation] Current term response:', currentTermResponse?.data);
           } catch (e) {
-            console.warn('[BusTransportation] Failed to get current term:', e);
+            // Failed to get current term
           }
           
           response = await termsAPI.getAll({ is_active: true, branch_type: branchType });
           if (response.data.success) {
             const activeTerms = deduplicateTerms(response.data.data || []);
-            console.log('[BusTransportation] All active terms:', activeTerms.map(t => ({ id: t.id, name: t.term_name, year: t.academic_year_label, term_number: t.term_number })));
             setTerms(activeTerms);
             
             // Don't set term filter automatically - let user choose
@@ -246,14 +243,12 @@ const BusTransportation = () => {
               // Get current term for selected branch
               try {
                 currentTermResponse = await termsAPI.getCurrent(branchType);
-                console.log('[BusTransportation] Main manager - current term for branch:', currentTermResponse?.data);
               } catch (e) {
-                console.warn('[BusTransportation] Failed to get current term:', e);
+                // Failed to get current term
               }
             }
           }
           
-          console.log('[BusTransportation] All terms (main manager):', allTerms.map(t => ({ id: t.id, name: t.term_name, year: t.academic_year_label, term_number: t.term_number })));
           setTerms(allTerms);
           
           // Don't set term filter automatically - let user choose
@@ -261,7 +256,6 @@ const BusTransportation = () => {
         }
       }
     } catch (error) {
-      console.error('[BusTransportation] Error loading terms:', error);
       showError('فشل تحميل الفصول الدراسية');
     }
   };
@@ -290,7 +284,6 @@ const BusTransportation = () => {
         setBuses(response.data.data || []);
       }
     } catch (error) {
-      console.error('Error loading buses:', error);
       showError('فشل تحميل بيانات الحافلات');
     } finally {
       setLoading(false);
@@ -1164,6 +1157,7 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
   const [loadingTerm, setLoadingTerm] = useState(false);
   const [createdBusId, setCreatedBusId] = useState(bus?.id || null);
   const formSectionRef = useRef(null);
+  const termLoadedRef = useRef(false);
   
   // Basic bus info
   const [basicFormData, setBasicFormData] = useState({
@@ -1584,57 +1578,78 @@ const BusFormModal = ({ bus, branches, terms, isMainManager, userBranchId, initi
     const loadCurrentTerm = async () => {
       // If editing, use the bus's term_id
       if (bus?.term_id) {
-        console.log('[BusFormModal] Editing bus, using bus.term_id:', bus.term_id);
         setBasicFormData(prev => ({ ...prev, term_id: bus.term_id }));
+        termLoadedRef.current = true;
         return;
+      }
+
+      // Skip if term already loaded for this branch
+      if (termLoadedRef.current) {
+        // Only reload if branch_id changed and we don't have a term set
+        if (!basicFormData.term_id && (basicFormData.branch_id || userBranchId)) {
+          termLoadedRef.current = false;
+        } else {
+          return;
+        }
       }
 
       // If creating, get current term for the branch
       const branchId = basicFormData.branch_id || userBranchId;
-      if (branchId) {
-        try {
-          setLoadingTerm(true);
-          const branchResponse = await branchesAPI.getById(branchId);
-          console.log('[BusFormModal] Branch response:', branchResponse?.data);
+      if (!branchId) {
+        termLoadedRef.current = false;
+        return; // Wait for branch selection
+      }
+
+      // Guard: Don't reload if term is already correctly set
+      if (basicFormData.term_id && currentTerm?.id === basicFormData.term_id) {
+        termLoadedRef.current = true;
+        return;
+      }
+
+      try {
+        setLoadingTerm(true);
+        const branchResponse = await branchesAPI.getById(branchId);
+        
+        if (branchResponse.data.success && branchResponse.data.data?.branch_type) {
+          const branchType = branchResponse.data.data.branch_type;
           
-          if (branchResponse.data.success && branchResponse.data.data?.branch_type) {
-            const branchType = branchResponse.data.data.branch_type;
-            console.log('[BusFormModal] Branch type:', branchType);
-            
-            // Get current term using the proper API
-            const currentTermResponse = await termsAPI.getCurrent(branchType);
-            console.log('[BusFormModal] Current term response:', currentTermResponse?.data);
-            
-            if (currentTermResponse?.data?.success && currentTermResponse.data.data) {
-              const term = currentTermResponse.data.data;
-              console.log('[BusFormModal] Setting current term:', term.id, term.term_name, term.academic_year_label, 'term_number:', term.term_number);
+          // Get current term using the proper API
+          const currentTermResponse = await termsAPI.getCurrent(branchType);
+          
+          if (currentTermResponse?.data?.success && currentTermResponse.data.data) {
+            const term = currentTermResponse.data.data;
+            // Validate term matches branch_type
+            if (term.branch_type === branchType) {
               setCurrentTerm(term);
               setBasicFormData(prev => ({ ...prev, term_id: term.id }));
-            } else {
-              // Fallback: get all active terms and use first one
-              console.warn('[BusFormModal] No current term found, falling back to getAll');
-              const termResponse = await termsAPI.getAll({ 
-                is_active: true, 
-                branch_type: branchType
-              });
-              if (termResponse.data.success && termResponse.data.data && termResponse.data.data.length > 0) {
-                const term = termResponse.data.data[0];
-                console.log('[BusFormModal] Using first active term as fallback:', term.id, term.term_name, term.academic_year_label);
-                setCurrentTerm(term);
-                setBasicFormData(prev => ({ ...prev, term_id: term.id }));
-              }
+              termLoadedRef.current = true;
             }
+          } else {
+            // Don't auto-select wrong term - let user manually select if no current term found
+            setCurrentTerm(null);
+            setBasicFormData(prev => ({ ...prev, term_id: '' }));
+            termLoadedRef.current = true; // Mark as loaded even if no term found
           }
-        } catch (error) {
-          console.error('[BusFormModal] Error loading current term:', error);
-        } finally {
-          setLoadingTerm(false);
         }
+      } catch (error) {
+        setCurrentTerm(null);
+        setBasicFormData(prev => ({ ...prev, term_id: '' }));
+        termLoadedRef.current = true; // Mark as loaded even on error
+      } finally {
+        setLoadingTerm(false);
       }
     };
 
+    // Reset ref when branch_id changes to allow reload
+    if (basicFormData.branch_id) {
+      const prevBranchId = termLoadedRef.current ? null : null; // Track previous branch_id if needed
+      if (basicFormData.branch_id !== prevBranchId) {
+        termLoadedRef.current = false;
+      }
+    }
+
     loadCurrentTerm();
-  }, [basicFormData.branch_id, userBranchId, bus, user]);
+  }, [basicFormData.branch_id, userBranchId, bus]);
 
   // Legacy per-tab save removed: saving happens only at the final step
 
@@ -2694,11 +2709,14 @@ const DriverLicenseFormTab = ({ formData, setFormData, busId }) => {
           label="تاريخ الإصدار"
           hijriValue={formData.issue_date_hijri || ''}
           gregorianValue={formData.issue_date_gregorian || ''}
-          onChange={(hijri, gregorian) => setFormData({ 
-            ...formData, 
-            issue_date_hijri: hijri || null,
-            issue_date_gregorian: gregorian || null 
-          })}
+          onChange={(hijri, gregorian) => {
+            console.log('[DATE_DEBUG] Driver issue date onChange', { hijri, gregorian, oldHijri: formData.issue_date_hijri, oldGregorian: formData.issue_date_gregorian });
+            setFormData({ 
+              ...formData, 
+              issue_date_hijri: hijri || null,
+              issue_date_gregorian: gregorian || null 
+            });
+          }}
           dateType="general"
           defaultCalendarType="gregorian"
         />
@@ -2706,11 +2724,14 @@ const DriverLicenseFormTab = ({ formData, setFormData, busId }) => {
           label="تاريخ الانتهاء"
           hijriValue={formData.expiry_date_hijri || ''}
           gregorianValue={formData.expiry_date_gregorian || ''}
-          onChange={(hijri, gregorian) => setFormData({ 
-            ...formData, 
-            expiry_date_hijri: hijri || null,
-            expiry_date_gregorian: gregorian || null 
-          })}
+          onChange={(hijri, gregorian) => {
+            console.log('[DATE_DEBUG] Driver expiry date onChange', { hijri, gregorian, oldHijri: formData.expiry_date_hijri, oldGregorian: formData.expiry_date_gregorian });
+            setFormData({ 
+              ...formData, 
+              expiry_date_hijri: hijri || null,
+              expiry_date_gregorian: gregorian || null 
+            });
+          }}
           required
           dateType="general"
           defaultCalendarType="gregorian"
@@ -3062,13 +3083,14 @@ const BusDetailsFormTab = ({ formData, setFormData, isMainManager }) => {
               label="تاريخ نهاية التأجير"
               hijriValue={formData.lease_end_date_hijri || ''}
               gregorianValue={formData.lease_end_date_gregorian || ''}
-              onChange={(hijri, gregorian) =>
+              onChange={(hijri, gregorian) => {
+                console.log('[DATE_DEBUG] Lease end date onChange', { hijri, gregorian, oldHijri: formData.lease_end_date_hijri, oldGregorian: formData.lease_end_date_gregorian });
                 setFormData({
                   ...formData,
                   lease_end_date_hijri: hijri || '',
                   lease_end_date_gregorian: gregorian || null
-                })
-              }
+                });
+              }}
               dateType="general"
               defaultCalendarType="gregorian"
             />
@@ -3697,11 +3719,14 @@ const DriverLicenseTab = ({ bus, onReload }) => {
           label="تاريخ الإصدار"
           hijriValue={formData.issue_date_hijri || ''}
           gregorianValue={formData.issue_date_gregorian || ''}
-          onChange={(hijri, gregorian) => setFormData({ 
-            ...formData, 
-            issue_date_hijri: hijri || null,
-            issue_date_gregorian: gregorian || null 
-          })}
+          onChange={(hijri, gregorian) => {
+            console.log('[DATE_DEBUG] Registration issue date onChange', { hijri, gregorian, oldHijri: formData.issue_date_hijri, oldGregorian: formData.issue_date_gregorian });
+            setFormData({ 
+              ...formData, 
+              issue_date_hijri: hijri || null,
+              issue_date_gregorian: gregorian || null 
+            });
+          }}
           dateType="general"
           defaultCalendarType="gregorian"
         />
@@ -3709,11 +3734,14 @@ const DriverLicenseTab = ({ bus, onReload }) => {
           label="تاريخ الانتهاء"
           hijriValue={formData.expiry_date_hijri || ''}
           gregorianValue={formData.expiry_date_gregorian || ''}
-          onChange={(hijri, gregorian) => setFormData({ 
-            ...formData, 
-            expiry_date_hijri: hijri || null,
-            expiry_date_gregorian: gregorian || null 
-          })}
+          onChange={(hijri, gregorian) => {
+            console.log('[DATE_DEBUG] Registration expiry date onChange', { hijri, gregorian, oldHijri: formData.expiry_date_hijri, oldGregorian: formData.expiry_date_gregorian });
+            setFormData({ 
+              ...formData, 
+              expiry_date_hijri: hijri || null,
+              expiry_date_gregorian: gregorian || null 
+            });
+          }}
           dateType="general"
           defaultCalendarType="gregorian"
         />
@@ -3740,11 +3768,14 @@ const DriverLicenseTab = ({ bus, onReload }) => {
           label="تاريخ الميلاد"
           hijriValue={formData.driver_date_of_birth_hijri || ''}
           gregorianValue={formData.driver_date_of_birth_gregorian || ''}
-          onChange={(hijri, gregorian) => setFormData({ 
-            ...formData, 
-            driver_date_of_birth_hijri: hijri || null,
-            driver_date_of_birth_gregorian: gregorian || null 
-          })}
+          onChange={(hijri, gregorian) => {
+            console.log('[DATE_DEBUG] Driver date of birth onChange (legacy form)', { hijri, gregorian, oldHijri: formData.driver_date_of_birth_hijri, oldGregorian: formData.driver_date_of_birth_gregorian });
+            setFormData({ 
+              ...formData, 
+              driver_date_of_birth_hijri: hijri || null,
+              driver_date_of_birth_gregorian: gregorian || null 
+            });
+          }}
           dateType="birth_date"
           defaultCalendarType="gregorian"
         />
@@ -4011,13 +4042,14 @@ const BusDetailsTab = ({ bus, onReload }) => {
               label="تاريخ بداية التأجير"
               hijriValue={formData.lease_start_date_hijri || ''}
               gregorianValue={formData.lease_start_date_gregorian || ''}
-              onChange={(hijri, gregorian) =>
+              onChange={(hijri, gregorian) => {
+                console.log('[DATE_DEBUG] Lease start date onChange (main manager)', { hijri, gregorian, oldHijri: formData.lease_start_date_hijri, oldGregorian: formData.lease_start_date_gregorian });
                 setFormData({
                   ...formData,
                   lease_start_date_hijri: hijri || '',
                   lease_start_date_gregorian: gregorian || null
-                })
-              }
+                });
+              }}
               dateType="general"
               defaultCalendarType="gregorian"
             />
@@ -4025,13 +4057,14 @@ const BusDetailsTab = ({ bus, onReload }) => {
               label="تاريخ نهاية التأجير"
               hijriValue={formData.lease_end_date_hijri || ''}
               gregorianValue={formData.lease_end_date_gregorian || ''}
-              onChange={(hijri, gregorian) =>
+              onChange={(hijri, gregorian) => {
+                console.log('[DATE_DEBUG] Lease end date onChange (main manager)', { hijri, gregorian, oldHijri: formData.lease_end_date_hijri, oldGregorian: formData.lease_end_date_gregorian });
                 setFormData({
                   ...formData,
                   lease_end_date_hijri: hijri || '',
                   lease_end_date_gregorian: gregorian || null
-                })
-              }
+                });
+              }}
               dateType="general"
               defaultCalendarType="gregorian"
             />

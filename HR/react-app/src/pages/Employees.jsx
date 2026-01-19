@@ -2007,7 +2007,7 @@ const Employees = () => {
                         </td>
                         <td>
                           <button onClick={() => handleViewDetails(employee)} className="btn btn-primary btn-sm"> التفاصيل</button>
-                          <button onClick={() => handleEdit(employee)} className="btn-sm btn-edit">تعديل</button>
+                          <button onClick={() => handleEdit(employee)} className={`btn-sm ${isComplete ? 'btn-edit' : 'btn-complete'}`}>{isComplete ? 'تعديل' : 'إكمال'}</button>
                           {isMainManager() && (
                             <button onClick={() => handleDelete(employee.id)} className="btn-sm btn-delete">حذف</button>
                           )}

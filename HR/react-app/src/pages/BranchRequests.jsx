@@ -16,6 +16,7 @@ const BranchRequests = () => {
   const [requests, setRequests] = useState([]);
   const [mainManagers, setMainManagers] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [employeeSearchTerm, setEmployeeSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -203,17 +204,37 @@ const BranchRequests = () => {
 
             <div className="form-group">
               <label htmlFor="employee_id">الموظف المعني (اختياري)</label>
+              <input
+                type="text"
+                placeholder="ابحث عن الموظف بالاسم..."
+                value={employeeSearchTerm}
+                onChange={(e) => setEmployeeSearchTerm(e.target.value)}
+                style={{ marginBottom: '8px', padding: '8px', width: '100%' }}
+              />
               <select
                 id="employee_id"
                 value={formData.employee_id}
                 onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
               >
                 <option value="">لا يوجد</option>
-                {employees.map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
-                  </option>
-                ))}
+                {employees
+                  .filter((employee) => {
+                    if (!employeeSearchTerm.trim()) return true;
+                    const searchLower = employeeSearchTerm.toLowerCase();
+                    const fullName = `${employee.first_name || ''} ${employee.second_name || ''} ${employee.third_name || ''} ${employee.fourth_name || ''}`.toLowerCase();
+                    return (
+                      (employee.first_name && employee.first_name.toLowerCase().includes(searchLower)) ||
+                      (employee.second_name && employee.second_name.toLowerCase().includes(searchLower)) ||
+                      (employee.third_name && employee.third_name.toLowerCase().includes(searchLower)) ||
+                      (employee.fourth_name && employee.fourth_name.toLowerCase().includes(searchLower)) ||
+                      fullName.includes(searchLower)
+                    );
+                  })
+                  .map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
+                    </option>
+                  ))}
               </select>
             </div>
 

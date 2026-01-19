@@ -998,10 +998,24 @@ const BranchDocuments = () => {
           <div className="document-cards-grid">
             {documentCards.map((card) => {
               const docType = allBranchDocumentTypes.find(dt => dt.value === card.value);
+              
+              // Check if document is expired
+              const isExpired = card.exists && card.document?.expiry_date ? (() => {
+                try {
+                  const expiryDate = new Date(card.document.expiry_date);
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  expiryDate.setHours(0, 0, 0, 0);
+                  return expiryDate < today;
+                } catch (e) {
+                  return false;
+                }
+              })() : false;
+              
               return (
                 <div
                   key={card.value}
-                  className={`document-card ${card.exists ? 'document-exists' : 'document-missing'}`}
+                  className={`document-card ${card.exists ? 'document-exists' : 'document-missing'} ${isExpired ? 'document-expired' : ''}`}
                 >
                   <div className="document-card-header">
                     <div className="document-card-icon">
@@ -1027,15 +1041,16 @@ const BranchDocuments = () => {
                             {formatDate(card.document.uploaded_at)}
                           </span>
                         </div>
-                        {/* Expiry date display - temporarily hidden until date calculations are fixed */}
-                        {false && card.document.expiry_date && (
+                        {/* Expiry date display */}
+                        {(card.document.expiry_date || card.document.expiry_date_hijri) && (
                           <div className="document-info-item">
                             <span className="info-label">تاريخ الانتهاء:</span>
                             <span className="info-value">
-                              {formatDate(card.document.expiry_date)}
+                              {card.document.expiry_date && formatDate(card.document.expiry_date)}
+                              {card.document.expiry_date && card.document.expiry_date_hijri && ' / '}
                               {card.document.expiry_date_hijri && (
-                                <span style={{ marginRight: '10px', color: '#666' }}>
-                                  ({card.document.expiry_date_hijri} هجري)
+                                <span>
+                                  {card.document.expiry_date_hijri} هجري
                                 </span>
                               )}
                             </span>
