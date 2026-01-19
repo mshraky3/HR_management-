@@ -288,21 +288,21 @@ router.get('/', verifyBranchDocumentsPassword, async (req, res) => {
 
     const filters = buildFilters(req.query);
     const documents = await getDocumentsByRole(req.user, filters);
-    
+
     // Filter documents to only include those with valid file paths
     // This ensures uploaded files are actually present
     const validDocuments = (documents || []).filter(doc => {
       // Check if file_path exists and is valid (blob URL or local path)
       const hasValidFile = doc.file_path && (
-        doc.file_path.startsWith('https://') || 
+        doc.file_path.startsWith('https://') ||
         doc.file_path.startsWith('http://') ||
         doc.file_path.length > 0
       );
       return hasValidFile;
     });
 
-    return res.json({ 
-      success: true, 
+    return res.json({
+      success: true,
       data: validDocuments,
       metadata: {
         archivedCount: archiveResult.archivedCount,
@@ -326,163 +326,163 @@ router.get('/', verifyBranchDocumentsPassword, async (req, res) => {
  * Form data: branch_id, document_type, file, description (optional), expiry_date (optional)
  * Requires: X-Branch-Documents-Password header or branch_documents_password in form data
  */
-router.post('/', 
-  verifyBranchDocumentsPassword, 
-  uploadSingle, 
+router.post('/',
+  verifyBranchDocumentsPassword,
+  uploadSingle,
   validateUploadedFile,
   validateDateFields({
     'issue_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false },
-    'expiry_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false }
+    'expiry_date_hijri': { calendarType: 'hijri', dateType: 'expiry_date', required: false }
   }),
   validateBranchDocumentDates,
   async (req, res) => {
-  try {
-    const { branch_id, document_type, description, document_number, issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, iban_number, bank_name } = req.body;
+    try {
+      const { branch_id, document_type, description, document_number, issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, iban_number, bank_name } = req.body;
 
-    if (!branch_id || !document_type || !req.file) {
-      return res.status(400).json({
+      if (!branch_id || !document_type || !req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'معرف الفرع ونوع المستند والملف مطلوبة'
+        });
+      }
+
+      // Check branch exists and user has access
+      const branch = await Branch.findById(parseInt(branch_id));
+      if (!branch) {
+        return res.status(404).json({
+          success: false,
+          message: 'الفرع غير موجود'
+        });
+      }
+
+      // Branch managers can only upload to their branch
+      if (req.user.role === 'branch_manager' && req.user.branch_id !== parseInt(branch_id)) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only upload documents for your branch'
+        });
+      }
+
+      // Restrict certain document types from branch managers
+      const restrictedDocumentTypes = [
+        'staff_cadre',
+        'dropped_students',
+        'free_seats',
+        'acceptance_notifications',
+        'other'
+      ];
+
+      if (req.user.role === 'branch_manager' && restrictedDocumentTypes.includes(document_type)) {
+        return res.status(403).json({
+          success: false,
+          message: 'هذا النوع من المستندات غير متاح للرفع من قبل مديري الفروع'
+        });
+      }
+
+      // Validate healthcare-specific documents can only be uploaded to healthcare centers
+      const healthcareOnlyDocuments = [
+        'operational_plan',
+        'decision_obligation',
+        'decision_commitment',
+        'staff_cadre',
+        'owner_civil_id_copy',
+        'disclosure_commitment',
+        'certification_commitment_form',
+        'financial_platform_declaration',
+        'financial_claim_form',
+        'student_cadre_file',
+        'dropped_students',
+        'free_seats',
+        'acceptance_notifications'
+      ];
+      if (healthcareOnlyDocuments.includes(document_type) && branch.branch_type !== 'healthcare_center') {
+        return res.status(400).json({
+          success: false,
+          message: 'هذا النوع من المستندات متاح فقط لمراكز الرعاية الصحية'
+        });
+      }
+
+      // Fix filename encoding for Arabic characters BEFORE upload
+      // This ensures correct encoding for both blob path and database record
+      const fixedFileName = fixFilenameEncoding(req.file.originalname);
+
+      // Upload file to Vercel Blob Storage
+      // Note: uploadBranchDocumentToBlob uses generateFileName which sanitizes the filename
+      // This ensures blob paths are safe for Vercel Blob Storage (no special characters)
+      const blobUrl = await uploadBranchDocumentToBlob(
+        req.file.buffer,
+        fixedFileName, // Use fixed filename for consistent encoding
+        req.file.mimetype,
+        parseInt(branch_id),
+        document_type
+      );
+
+      // Get valid user ID for uploaded_by field
+      const uploadedById = await getUploadedByUserId(req.user?.id);
+      if (!uploadedById) {
+        return res.status(500).json({
+          success: false,
+          message: 'No valid user found for uploaded_by field. Please ensure at least one user exists in the system.'
+        });
+      }
+
+      // Use the fixed filename for database record
+      const fileName = fixedFileName;
+
+      // Date conversion and validation is handled by validateDateFields middleware
+      // IMPORTANT: Use req.body values after validation middleware has normalized both dates
+      // The middleware ensures both Hijri and Gregorian are set even if only one was provided
+      const finalIssueDate = req.body.issue_date || null;
+      const finalIssueDateHijri = req.body.issue_date_hijri || null;
+      const finalExpiryDate = req.body.expiry_date || null;
+      const finalExpiryDateHijri = req.body.expiry_date_hijri || null;
+
+      // Log date conversion for verification
+      console.log('[BRANCH DOC UPLOAD] Dates after validation:', {
+        issue_date: finalIssueDate,
+        issue_date_hijri: finalIssueDateHijri,
+        expiry_date: finalExpiryDate,
+        expiry_date_hijri: finalExpiryDateHijri
+      });
+
+      // Create document record - store blob URL
+      const document = await BranchDocument.create({
+        branch_id: parseInt(branch_id),
+        document_type: document_type,
+        file_name: fileName,
+        file_path: blobUrl, // Store blob URL instead of local path
+        file_size: req.file.size,
+        mime_type: req.file.mimetype,
+        file_extension: getExtensionFromMimeType(req.file.mimetype),
+        description: description || null,
+        document_number: document_number || null,
+        issue_date: finalIssueDate,
+        issue_date_hijri: finalIssueDateHijri,
+        expiry_date: finalExpiryDate,
+        expiry_date_hijri: finalExpiryDateHijri,
+        iban_number: iban_number || null,
+        bank_name: bank_name || null,
+        uploaded_by: uploadedById // Always set - either user.id or branch_id
+      });
+
+      // Invalidate dashboard & branch statistics caches for this branch
+      clearByPrefix(`dashboard:summary:${branch_id}`);
+      clearByPrefix('branch-statistics');
+
+      res.status(201).json({
+        success: true,
+        message: 'Branch document uploaded successfully',
+        data: document
+      });
+    } catch (error) {
+      console.error('Error uploading branch document:', error);
+      res.status(500).json({
         success: false,
-        message: 'معرف الفرع ونوع المستند والملف مطلوبة'
+        message: 'فشل رفع مستند الفرع',
+        error: error.message
       });
     }
-
-    // Check branch exists and user has access
-    const branch = await Branch.findById(parseInt(branch_id));
-    if (!branch) {
-      return res.status(404).json({
-        success: false,
-        message: 'الفرع غير موجود'
-      });
-    }
-
-    // Branch managers can only upload to their branch
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== parseInt(branch_id)) {
-      return res.status(403).json({
-        success: false,
-        message: 'You can only upload documents for your branch'
-      });
-    }
-
-    // Restrict certain document types from branch managers
-    const restrictedDocumentTypes = [
-      'staff_cadre',
-      'dropped_students',
-      'free_seats',
-      'acceptance_notifications',
-      'other'
-    ];
-
-    if (req.user.role === 'branch_manager' && restrictedDocumentTypes.includes(document_type)) {
-      return res.status(403).json({
-        success: false,
-        message: 'هذا النوع من المستندات غير متاح للرفع من قبل مديري الفروع'
-      });
-    }
-
-    // Validate healthcare-specific documents can only be uploaded to healthcare centers
-    const healthcareOnlyDocuments = [
-      'operational_plan',
-      'decision_obligation',
-      'decision_commitment',
-      'staff_cadre',
-      'owner_civil_id_copy',
-      'disclosure_commitment',
-      'certification_commitment_form',
-      'financial_platform_declaration',
-      'financial_claim_form',
-      'student_cadre_file',
-      'dropped_students',
-      'free_seats',
-      'acceptance_notifications'
-    ];
-    if (healthcareOnlyDocuments.includes(document_type) && branch.branch_type !== 'healthcare_center') {
-      return res.status(400).json({
-        success: false,
-        message: 'هذا النوع من المستندات متاح فقط لمراكز الرعاية الصحية'
-      });
-    }
-
-    // Fix filename encoding for Arabic characters BEFORE upload
-    // This ensures correct encoding for both blob path and database record
-    const fixedFileName = fixFilenameEncoding(req.file.originalname);
-
-    // Upload file to Vercel Blob Storage
-    // Note: uploadBranchDocumentToBlob uses generateFileName which sanitizes the filename
-    // This ensures blob paths are safe for Vercel Blob Storage (no special characters)
-    const blobUrl = await uploadBranchDocumentToBlob(
-      req.file.buffer,
-      fixedFileName, // Use fixed filename for consistent encoding
-      req.file.mimetype,
-      parseInt(branch_id),
-      document_type
-    );
-
-    // Get valid user ID for uploaded_by field
-    const uploadedById = await getUploadedByUserId(req.user?.id);
-    if (!uploadedById) {
-      return res.status(500).json({
-        success: false,
-        message: 'No valid user found for uploaded_by field. Please ensure at least one user exists in the system.'
-      });
-    }
-
-    // Use the fixed filename for database record
-    const fileName = fixedFileName;
-
-    // Date conversion and validation is handled by validateDateFields middleware
-    // IMPORTANT: Use req.body values after validation middleware has normalized both dates
-    // The middleware ensures both Hijri and Gregorian are set even if only one was provided
-    const finalIssueDate = req.body.issue_date || null;
-    const finalIssueDateHijri = req.body.issue_date_hijri || null;
-    const finalExpiryDate = req.body.expiry_date || null;
-    const finalExpiryDateHijri = req.body.expiry_date_hijri || null;
-    
-    // Log date conversion for verification
-    console.log('[BRANCH DOC UPLOAD] Dates after validation:', {
-      issue_date: finalIssueDate,
-      issue_date_hijri: finalIssueDateHijri,
-      expiry_date: finalExpiryDate,
-      expiry_date_hijri: finalExpiryDateHijri
-    });
-
-    // Create document record - store blob URL
-    const document = await BranchDocument.create({
-      branch_id: parseInt(branch_id),
-      document_type: document_type,
-      file_name: fileName,
-      file_path: blobUrl, // Store blob URL instead of local path
-      file_size: req.file.size,
-      mime_type: req.file.mimetype,
-      file_extension: getExtensionFromMimeType(req.file.mimetype),
-      description: description || null,
-      document_number: document_number || null,
-      issue_date: finalIssueDate,
-      issue_date_hijri: finalIssueDateHijri,
-      expiry_date: finalExpiryDate,
-      expiry_date_hijri: finalExpiryDateHijri,
-      iban_number: iban_number || null,
-      bank_name: bank_name || null,
-      uploaded_by: uploadedById // Always set - either user.id or branch_id
-    });
-
-    // Invalidate dashboard & branch statistics caches for this branch
-    clearByPrefix(`dashboard:summary:${branch_id}`);
-    clearByPrefix('branch-statistics');
-
-    res.status(201).json({
-      success: true,
-      message: 'Branch document uploaded successfully',
-      data: document
-    });
-  } catch (error) {
-    console.error('Error uploading branch document:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل رفع مستند الفرع',
-      error: error.message
-    });
-  }
-});
+  });
 
 /**
  * Download branch document file
@@ -743,153 +743,153 @@ router.post('/:id/verify', verifyBranchDocumentsPassword, async (req, res) => {
  * If file is provided, it will replace the old file and deactivate old documents of same type
  * Requires: X-Branch-Documents-Password header or branch_documents_password query parameter
  */
-router.put('/:id', 
-  verifyBranchDocumentsPassword, 
+router.put('/:id',
+  verifyBranchDocumentsPassword,
   uploadSingle,
   validateDateFields({
     'issue_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false },
-    'expiry_date_hijri': { calendarType: 'hijri', dateType: 'general', required: false }
+    'expiry_date_hijri': { calendarType: 'hijri', dateType: 'expiry_date', required: false }
   }),
   validateBranchDocumentDates,
   async (req, res) => {
     try {
       const idResult = parseDocumentId(req);
-    if (idResult.error) {
-      return res.status(400).json({ success: false, message: idResult.error });
-    }
+      if (idResult.error) {
+        return res.status(400).json({ success: false, message: idResult.error });
+      }
 
-    const document = await BranchDocument.findById(idResult.documentId);
-    if (!document) {
-      return res.status(404).json({
-        success: false,
-        message: 'Document not found'
-      });
-    }
-
-    // Check branch access
-    if (req.user?.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied'
-      });
-    }
-
-    let updatedDocument;
-
-    // If file is provided, replace the document file
-    if (req.file) {
-      // Validate file if provided
-      const { isValidMimeType, isValidFileSize } = await import('../utils/validators.js');
-
-      if (!isValidMimeType(req.file.mimetype)) {
-        return res.status(400).json({
+      const document = await BranchDocument.findById(idResult.documentId);
+      if (!document) {
+        return res.status(404).json({
           success: false,
-          message: 'نوع الملف غير مدعوم. يُسمح فقط بملفات PDF والصور.'
+          message: 'Document not found'
         });
       }
 
-      // Determine max file size based on document type
-      const highCapacityDocs = ['operational_plan', 'acceptance_notifications'];
-      const maxFileSize = highCapacityDocs.includes(document.document_type) ? 15 : 1;
-
-      if (!isValidFileSize(req.file.size, maxFileSize)) {
-        const sizeLimitMsg = maxFileSize === 15 ? '15 ميجابايت' : '1 ميجابايت';
-        return res.status(400).json({
+      // Check branch access
+      if (req.user?.role === 'branch_manager' && req.user.branch_id !== document.branch_id) {
+        return res.status(403).json({
           success: false,
-          message: `حجم الملف يتجاوز الحد الأقصى المسموح به (${sizeLimitMsg})`
+          message: 'Access denied'
         });
       }
 
-      // Fix filename encoding for Arabic characters BEFORE upload
-      const fixedFileName = fixFilenameEncoding(req.file.originalname);
+      let updatedDocument;
 
-      // Upload new file to Blob Storage
-      // Note: uploadBranchDocumentToBlob uses generateFileName which sanitizes the filename
-      // This ensures blob paths are safe for Vercel Blob Storage (no special characters)
-      const blobUrl = await uploadBranchDocumentToBlob(
-        req.file.buffer,
-        fixedFileName, // Use fixed filename for consistent encoding
-        req.file.mimetype,
-        document.branch_id,
-        document.document_type
-      );
+      // If file is provided, replace the document file
+      if (req.file) {
+        // Validate file if provided
+        const { isValidMimeType, isValidFileSize } = await import('../utils/validators.js');
 
-      // For license type documents, deactivate old documents of the same type
-      if (document.document_type === 'license') {
-        await BranchDocument.deactivateByBranchAndType(
+        if (!isValidMimeType(req.file.mimetype)) {
+          return res.status(400).json({
+            success: false,
+            message: 'نوع الملف غير مدعوم. يُسمح فقط بملفات PDF والصور.'
+          });
+        }
+
+        // Determine max file size based on document type
+        const highCapacityDocs = ['operational_plan', 'acceptance_notifications'];
+        const maxFileSize = highCapacityDocs.includes(document.document_type) ? 15 : 1;
+
+        if (!isValidFileSize(req.file.size, maxFileSize)) {
+          const sizeLimitMsg = maxFileSize === 15 ? '15 ميجابايت' : '1 ميجابايت';
+          return res.status(400).json({
+            success: false,
+            message: `حجم الملف يتجاوز الحد الأقصى المسموح به (${sizeLimitMsg})`
+          });
+        }
+
+        // Fix filename encoding for Arabic characters BEFORE upload
+        const fixedFileName = fixFilenameEncoding(req.file.originalname);
+
+        // Upload new file to Blob Storage
+        // Note: uploadBranchDocumentToBlob uses generateFileName which sanitizes the filename
+        // This ensures blob paths are safe for Vercel Blob Storage (no special characters)
+        const blobUrl = await uploadBranchDocumentToBlob(
+          req.file.buffer,
+          fixedFileName, // Use fixed filename for consistent encoding
+          req.file.mimetype,
           document.branch_id,
-          document.document_type,
-          document.id
+          document.document_type
         );
-      }
 
-      // Delete old file from Blob Storage if it exists
-      if (document.file_path) {
-        await deleteFromBlob(document.file_path);
-      }
+        // For license type documents, deactivate old documents of the same type
+        if (document.document_type === 'license') {
+          await BranchDocument.deactivateByBranchAndType(
+            document.branch_id,
+            document.document_type,
+            document.id
+          );
+        }
 
-      // Use the fixed filename for database record
-      const fileName = fixedFileName;
+        // Delete old file from Blob Storage if it exists
+        if (document.file_path) {
+          await deleteFromBlob(document.file_path);
+        }
 
-      // Date conversion and validation is handled by validateDateFields middleware
-      const finalIssueDate = req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date;
-      const finalIssueDateHijri = req.body.issue_date_hijri !== undefined ? req.body.issue_date_hijri : document.issue_date_hijri;
-      const finalExpiryDate = req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date;
-      const finalExpiryDateHijri = req.body.expiry_date_hijri !== undefined ? req.body.expiry_date_hijri : document.expiry_date_hijri;
+        // Use the fixed filename for database record
+        const fileName = fixedFileName;
 
-      // Update document with new file
-      updatedDocument = await BranchDocument.updateFile(
-        idResult.documentId,
-        {
-          file_name: fileName,
-          file_path: blobUrl, // Store blob URL
-          file_size: req.file.size,
-          mime_type: req.file.mimetype,
-          file_extension: getExtensionFromMimeType(req.file.mimetype),
-          description: req.body.description !== undefined ? req.body.description : document.description,
-          document_number: req.body.document_number !== undefined ? req.body.document_number : document.document_number,
+        // Date conversion and validation is handled by validateDateFields middleware
+        const finalIssueDate = req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date;
+        const finalIssueDateHijri = req.body.issue_date_hijri !== undefined ? req.body.issue_date_hijri : document.issue_date_hijri;
+        const finalExpiryDate = req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date;
+        const finalExpiryDateHijri = req.body.expiry_date_hijri !== undefined ? req.body.expiry_date_hijri : document.expiry_date_hijri;
+
+        // Update document with new file
+        updatedDocument = await BranchDocument.updateFile(
+          idResult.documentId,
+          {
+            file_name: fileName,
+            file_path: blobUrl, // Store blob URL
+            file_size: req.file.size,
+            mime_type: req.file.mimetype,
+            file_extension: getExtensionFromMimeType(req.file.mimetype),
+            description: req.body.description !== undefined ? req.body.description : document.description,
+            document_number: req.body.document_number !== undefined ? req.body.document_number : document.document_number,
+            issue_date: finalIssueDate,
+            issue_date_hijri: finalIssueDateHijri,
+            expiry_date: finalExpiryDate,
+            expiry_date_hijri: finalExpiryDateHijri,
+            iban_number: req.body.iban_number !== undefined ? req.body.iban_number : document.iban_number,
+            bank_name: req.body.bank_name !== undefined ? req.body.bank_name : document.bank_name
+          }
+        );
+      } else {
+        // Just update metadata
+        // Date conversion and validation is handled by validateDateFields middleware
+        const finalIssueDate = req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date;
+        const finalIssueDateHijri = req.body.issue_date_hijri !== undefined ? req.body.issue_date_hijri : document.issue_date_hijri;
+        const finalExpiryDate = req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date;
+        const finalExpiryDateHijri = req.body.expiry_date_hijri !== undefined ? req.body.expiry_date_hijri : document.expiry_date_hijri;
+
+        updatedDocument = await BranchDocument.update(idResult.documentId, {
+          description: req.body.description,
+          document_number: req.body.document_number,
           issue_date: finalIssueDate,
           issue_date_hijri: finalIssueDateHijri,
           expiry_date: finalExpiryDate,
           expiry_date_hijri: finalExpiryDateHijri,
-          iban_number: req.body.iban_number !== undefined ? req.body.iban_number : document.iban_number,
-          bank_name: req.body.bank_name !== undefined ? req.body.bank_name : document.bank_name
-        }
-      );
-    } else {
-      // Just update metadata
-      // Date conversion and validation is handled by validateDateFields middleware
-      const finalIssueDate = req.body.issue_date !== undefined ? req.body.issue_date : document.issue_date;
-      const finalIssueDateHijri = req.body.issue_date_hijri !== undefined ? req.body.issue_date_hijri : document.issue_date_hijri;
-      const finalExpiryDate = req.body.expiry_date !== undefined ? req.body.expiry_date : document.expiry_date;
-      const finalExpiryDateHijri = req.body.expiry_date_hijri !== undefined ? req.body.expiry_date_hijri : document.expiry_date_hijri;
+          iban_number: req.body.iban_number,
+          bank_name: req.body.bank_name
+        });
+      }
 
-      updatedDocument = await BranchDocument.update(idResult.documentId, {
-        description: req.body.description,
-        document_number: req.body.document_number,
-        issue_date: finalIssueDate,
-        issue_date_hijri: finalIssueDateHijri,
-        expiry_date: finalExpiryDate,
-        expiry_date_hijri: finalExpiryDateHijri,
-        iban_number: req.body.iban_number,
-        bank_name: req.body.bank_name
+      res.json({
+        success: true,
+        message: 'Document updated successfully',
+        data: updatedDocument
+      });
+    } catch (error) {
+      console.error('Error updating branch document:', error);
+      res.status(500).json({
+        success: false,
+        message: 'فشل تحديث المستند',
+        error: error.message
       });
     }
-
-    res.json({
-      success: true,
-      message: 'Document updated successfully',
-      data: updatedDocument
-    });
-  } catch (error) {
-    console.error('Error updating branch document:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل تحديث المستند',
-      error: error.message
-    });
-  }
-});
+  });
 
 /**
  * Delete branch document (soft delete)
