@@ -436,6 +436,47 @@ const calculateEmployeeContractDataTask = (missingEmployeeContractData) => {
 };
 
 /**
+ * Calculate add employee task (when branch info employee count doesn't match records)
+ */
+const calculateAddEmployeeTask = (branchInfo, employees = []) => {
+  if (!branchInfo || !branchInfo.number_of_employees) {
+    return null;
+  }
+
+  // Count only active employees (status is null or 'active')
+  const activeEmployees = employees.filter(emp => 
+    !emp.status || emp.status === 'active'
+  );
+  const activeCount = activeEmployees.length;
+  const expectedCount = branchInfo.number_of_employees;
+
+  // Only create task if expected count is greater than active count
+  if (expectedCount <= activeCount) {
+    return null;
+  }
+
+  const missingCount = expectedCount - activeCount;
+
+  return {
+    id: 'employee-add-mismatch',
+    type: 'employee_add',
+    category: 'employees',
+    priority: 'should_do',
+    title: 'عدد الموظفين في معلومات الفرع لا يتطابق مع السجلات',
+    description: `عدد الموظفين المحدد في معلومات الفرع: ${expectedCount}، عدد السجلات الفعلية: ${activeCount}، المطلوب إضافة: ${missingCount} موظف`,
+    totalItems: expectedCount,
+    completedItems: activeCount,
+    remainingItems: missingCount,
+    progress: (activeCount / expectedCount) * 100,
+    actionUrl: '/employees',
+    actionLabel: 'إضافة موظف',
+    urgency: 'no_deadline',
+    estimatedTime: '10 min لكل موظف',
+    dependencies: []
+  };
+};
+
+/**
  * Calculate payroll absence task
  */
 const calculatePayrollAbsenceTask = (payrollAbsenceState) => {
@@ -566,7 +607,8 @@ export const calculateTasks = ({
   documentsWithExpiry,
   buses = [],
   missingEmployeeContractData = [],
-  payrollAbsenceState = null
+  payrollAbsenceState = null,
+  employees = []
 }) => {
   const branchId = branchInfo?.id;
   if (!branchId) return [];
@@ -580,6 +622,10 @@ export const calculateTasks = ({
   // 2. Employee Contract Data (Critical) - Employee related, comes before bus
   const employeeContractDataTask = calculateEmployeeContractDataTask(missingEmployeeContractData);
   if (employeeContractDataTask) tasks.push(employeeContractDataTask);
+
+  // 2.5. Add Employee Task - When branch info employee count doesn't match records
+  const addEmployeeTask = calculateAddEmployeeTask(branchInfo, employees);
+  if (addEmployeeTask) tasks.push(addEmployeeTask);
 
   // 3. Employees (Must Do) - Employee related, comes before bus
   const employeeTasks = calculateEmployeeTasks(incompleteEmployees);

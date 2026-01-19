@@ -5,7 +5,7 @@
  */
 
 import axios from 'axios';
-import { API_URL, getCurrentApiUrl, switchToProductionUrl } from '../config/api.js';
+import { API_URL, getCurrentApiUrl } from '../config/api.js';
 
 // In-memory storage for branch documents passwords (not persistent, cleared on page reload)
 // Key: branchId, Value: password
@@ -137,7 +137,7 @@ const getCacheTTL = (url) => {
   if (url.includes('/api/notifications')) {
     return CACHE_TTL.NONE; // Notifications must be real-time
   }
-  
+
   // Attendance period status endpoints - NO CACHE (must reflect manual-open immediately)
   if (url.includes('/api/attendance-periods/check') || url.includes('/api/attendance-periods/check-current')) {
     return CACHE_TTL.NONE; // Status must be real-time to reflect manual-open changes
@@ -488,32 +488,8 @@ api.interceptors.response.use(
     const url = config?.url || '';
     const method = (config?.method || 'get').toUpperCase();
 
-    // Auto-fallback from LOCAL to PRODUCTION if localhost fails
-    // Only trigger once per page load and only if CURRENT is set to LOCAL
-    const currentUrl = getCurrentApiUrl();
-    if (!error.config.__hasRetried && currentUrl.includes('localhost')) {
-      // Check for network errors or connection refused (localhost not available)
-      const isLocalhostConnectionError = 
-        error.code === 'ERR_NETWORK' ||
-        error.code === 'ECONNREFUSED' ||
-        error.message?.includes('Network Error') ||
-        error.message?.includes('ERR_NETWORK');
-
-      if (isLocalhostConnectionError) {
-        // Switch to production URL
-        switchToProductionUrl();
-        updateApiBaseUrl();
-
-        // Retry the request with production URL (only once)
-        error.config.__hasRetried = true;
-        error.config.baseURL = getCurrentApiUrl();
-
-        console.warn(`[API] Localhost connection failed, switching to PRODUCTION URL: ${error.config.baseURL}${url}`);
-        
-        // Retry the request
-        return api.request(error.config);
-      }
-    }
+    // No auto-switching - if connection fails, show the error
+    // To switch environments, change API_CONFIG.CURRENT in config/api.js
 
     // Detect backend/database connection errors
     const isBackendError = detectBackendError(error);
@@ -954,6 +930,9 @@ export const archiveAPI = {
   restore: (id, data) =>
     api.post(`/api/archive/${id}/restore`, data),
 
+  permanentDelete: (id) =>
+    api.delete(`/api/archive/${id}`),
+
   getArchivedBranchDocuments: (filters = {}) =>
     api.get('/api/archive/branch-documents/all', { params: filters }),
 
@@ -1021,13 +1000,13 @@ export const utilsAPI = {
 // Admin API
 export const adminAPI = {
   getEmployeesWithMissingDates: (limit = 100, offset = 0) =>
-    api.get('/api/admin/employees-missing-dates', { 
-      params: { limit, offset } 
+    api.get('/api/admin/employees-missing-dates', {
+      params: { limit, offset }
     }),
 
   getEmployeesWithInvalidData: (limit = 100, offset = 0) =>
-    api.get('/api/admin/employees-invalid-data', { 
-      params: { limit, offset } 
+    api.get('/api/admin/employees-invalid-data', {
+      params: { limit, offset }
     }),
 
   fixEmployeeDate: (employeeId, action) =>

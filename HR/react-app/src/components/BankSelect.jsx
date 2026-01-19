@@ -91,7 +91,6 @@ const BankSelect = ({
             value={ibanValue}
             onChange={handleIbanChange}
             placeholder="SAXX XXXX XXXX XXXX XXXX XXXX"
-            required={required}
             className="iban-input"
             style={{ textTransform: 'uppercase' }}
             maxLength={29}

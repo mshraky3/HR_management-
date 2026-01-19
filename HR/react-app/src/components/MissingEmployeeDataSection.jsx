@@ -298,7 +298,7 @@ const MissingEmployeeDataSection = ({ onComplete }) => {
                     <input
                       type="text"
                       className={`text-input ${errors[row.id] ? 'input-error' : ''}`}
-                      placeholder="dd/mm/yyyy"
+                      placeholder="سنة/ شهر /يوم"
                       value={drafts[row.id]?.contract_start_date || ''}
                       onChange={(e) => handleDateChange(row.id, e.target.value, 'contract_start_date')}
                     />
@@ -327,7 +327,7 @@ const MissingEmployeeDataSection = ({ onComplete }) => {
                     <input
                       type="text"
                       className={`text-input ${errors[row.id] ? 'input-error' : ''}`}
-                      placeholder="dd/mm/yyyy"
+                      placeholder="سنة/ شهر /يوم"
                       value={drafts[row.id]?.contract_end_date || ''}
                       onChange={(e) => handleDateChange(row.id, e.target.value, 'contract_end_date')}
                     />

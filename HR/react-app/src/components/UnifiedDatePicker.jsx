@@ -44,24 +44,39 @@ const UnifiedDatePicker = ({
 
   // Initialize current month based on existing values
   useEffect(() => {
+    console.log('[DATE_DEBUG] Component state sync useEffect', { 
+      activeCalendar, 
+      gregorianValue, 
+      hijriValue, 
+      label, 
+      dateType 
+    });
+
     if (activeCalendar === 'gregorian' && gregorianValue) {
       const date = new Date(gregorianValue);
       if (!isNaN(date.getTime())) {
         setSelectedDate(new Date(date));
         setCurrentMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+      } else {
+        console.warn('[DATE_DEBUG] Invalid gregorian date value', { gregorianValue, label });
       }
     } else if (activeCalendar === 'hijri') {
       if (hijriValue) {
         const parts = parseHijriString(hijriValue);
         if (parts) {
           setCurrentHijriMonth({ month: parts.month, year: parts.year });
+        } else {
+          console.warn('[DATE_DEBUG] Failed to parse hijriValue', { hijriValue, label });
         }
       } else {
         // Initialize to current Hijri date
         const today = new Date();
         const todayHijri = gregorianToHijri(today.toISOString().split('T')[0]);
         if (todayHijri) {
+          console.log('[DATE_DEBUG] Initializing hijri month from today', { month: todayHijri.month, year: todayHijri.year, label });
           setCurrentHijriMonth({ month: todayHijri.month, year: todayHijri.year });
+        } else {
+          console.warn('[DATE_DEBUG] Failed to convert today to hijri for initialization', { label });
         }
       }
     }
@@ -197,6 +212,8 @@ const UnifiedDatePicker = ({
   const handleDateSelect = async (day) => {
     if (!day) return;
 
+    console.log('[DATE_DEBUG] handleDateSelect called', { day, activeCalendar, currentHijriMonth, label, dateType });
+
     setLoading(true);
     setValidationError(null);
 
@@ -210,9 +227,11 @@ const UnifiedDatePicker = ({
         // For Hijri, use current Hijri month/year
         if (!currentHijriMonth) {
           // Try to initialize currentHijriMonth before proceeding
+          console.log('[DATE_DEBUG] Hijri month not initialized, attempting initialization');
           const today = new Date();
           const todayHijri = gregorianToHijri(today.toISOString().split('T')[0]);
           if (todayHijri) {
+            console.log('[DATE_DEBUG] Hijri month initialization successful', { month: todayHijri.month, year: todayHijri.year });
             setCurrentHijriMonth({ month: todayHijri.month, year: todayHijri.year });
             dateString = formatHijriToString({ 
               day, 
@@ -220,6 +239,7 @@ const UnifiedDatePicker = ({
               year: todayHijri.year 
             });
           } else {
+            console.error('[DATE_DEBUG] Hijri month initialization failed - gregorianToHijri returned null');
             setLoading(false);
             setValidationError('فشل تهيئة التقويم الهجري');
             return;
@@ -234,25 +254,39 @@ const UnifiedDatePicker = ({
         
         // Ensure dateString is not empty
         if (!dateString || dateString.trim() === '') {
+          console.error('[DATE_DEBUG] Hijri dateString is empty after formatHijriToString');
           setLoading(false);
           setValidationError('فشل بناء التاريخ الهجري');
           return;
         }
       }
 
+      console.log('[DATE_DEBUG] API conversion request', { dateString, activeCalendar, dateType, label });
+
       // Call conversion API
       const response = await utilsAPI.convertDate(dateString, activeCalendar, dateType);
       
+      console.log('[DATE_DEBUG] API conversion response', { 
+        success: response.data.success, 
+        valid: response.data.data?.valid,
+        hasHijri: !!response.data.data?.hijri,
+        hasGregorian: !!response.data.data?.gregorian,
+        errors: response.data.data?.errors,
+        label 
+      });
+
       if (response.data.success && response.data.data.valid) {
         const { hijri, gregorian, age } = response.data.data;
         
         // Ensure both hijri and gregorian are valid strings before calling onChange
         if (!hijri || !gregorian) {
+          console.error('[DATE_DEBUG] Missing values in API response', { hijri, gregorian, label });
           setLoading(false);
           setValidationError('فشل تحويل التاريخ: القيم مفقودة من الاستجابة');
           return;
         }
         
+        console.log('[DATE_DEBUG] onChange callback invocation', { hijri, gregorian, label, dateType });
         // Call onChange with both values (ensure they are strings, not null)
         onChange(hijri || '', gregorian || '');
         setSelectedDate(new Date(gregorian));
@@ -268,6 +302,7 @@ const UnifiedDatePicker = ({
         // Validation failed - show first error from response
         const errors = response.data?.data?.errors;
         const firstError = Array.isArray(errors) && errors.length > 0 ? errors[0] : null;
+        console.warn('[DATE_DEBUG] API validation failed', { errors, firstError, message: response.data?.message, label });
         setValidationError(firstError || response.data?.message || 'تاريخ غير صحيح');
         setCalculatedAge(null); // Clear age on validation error
         // Keep calendar open so user can see the error and select a different date
@@ -278,6 +313,15 @@ const UnifiedDatePicker = ({
       const apiErrors = error.response?.data?.data?.errors;
       const firstApiError = Array.isArray(apiErrors) && apiErrors.length > 0 ? apiErrors[0] : null;
       const apiMessage = error.response?.data?.message;
+      
+      console.error('[DATE_DEBUG] API conversion exception', { 
+        error: error.message, 
+        status: error.response?.status,
+        apiErrors,
+        firstApiError,
+        apiMessage,
+        label 
+      });
       
       setValidationError(
         firstApiError ||
