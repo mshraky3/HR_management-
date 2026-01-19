@@ -1,51 +1,38 @@
 {
-  "name": "react-app",
-  "private": true,
-  "version": "0.0.0",
+  "name": "express-app",
+  "version": "1.0.0",
   "type": "module",
+  "main": "server.js",
   "scripts": {
-    "dev": "vite",
-    "dev:clean": "rm -rf node_modules/.vite dist && vite",
-    "dev:clean:win": "if exist node_modules\\.vite rmdir /s /q node_modules\\.vite && if exist dist rmdir /s /q dist && vite",
-    "clean": "rm -rf node_modules/.vite dist",
-    "clean:win": "if exist node_modules\\.vite rmdir /s /q node_modules\\.vite && if exist dist rmdir /s /q dist",
-    "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "dev": "node server.js",
+    "start": "node server.js",
+    "init-db": "node scripts/init-db.js",
+    "create-admin": "node scripts/create-admin.js",
+    "add-branches": "node scripts/add-branches.js",
+    "migrate:performance-indexes": "node scripts/migrate-add-performance-indexes.js",
+    "recalculate:completion-status": "node scripts/recalculate-all-employees-completion-status.js",
+    "archive:old-documents": "node scripts/archive-old-documents.js"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
   "dependencies": {
-    "@vercel/analytics": "^1.6.1",
-    "axios": "^1.7.9",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-router-dom": "7.12.0",
-    "react-window": "^2.2.3",
-    "react-window-infinite-loader": "^2.0.0",
-    "recharts": "^3.6.0"
+    "@digicole/pdfmake-rtl": "^1.2.0",
+    "@vercel/blob": "^2.0.0",
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
+    "express": "^5.1.0",
+    "ioredis": "^5.8.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "pdf-lib": "^1.17.1",
+    "pdfkit": "^0.17.2",
+    "pdfmake": "^0.2.20",
+    "postgres": "^3.4.7",
+    "winston": "^3.19.0"
   },
-  "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@types/react": "^19.2.5",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.1",
-    "eslint": "^9.39.1",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.4.24",
-    "globals": "^16.5.0",
-    "vite": "^5.4.0"
-  },
-  "overrides": {
-    "react-window": {
-      "react": "19.2.3",
-      "react-dom": "19.2.3"
-    },
-    "react-window-infinite-loader": {
-      "react": "19.2.3",
-      "react-dom": "19.2.3"
-    }
-  },
-  "resolutions": {
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
-  }
+  "devDependencies": {}
 }
