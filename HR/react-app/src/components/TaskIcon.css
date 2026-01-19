@@ -1,0 +1,28 @@
+/* Task Icon */
+.task-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+.task-icon-small {
+  width: 20px;
+  height: 20px;
+}
+
+.task-icon-medium {
+  width: 32px;
+  height: 32px;
+}
+
+.task-icon-large {
+  width: 48px;
+  height: 48px;
+}
+
+.task-icon svg {
+  width: 100%;
+  height: 100%;
+}
