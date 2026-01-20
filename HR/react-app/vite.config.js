@@ -26,8 +26,8 @@ export default defineConfig({
   build: {
     // Optimize chunk splitting for better code splitting
     rollupOptions: {
-      // Disable aggressive tree shaking to prevent breaking variable references
-      treeshake: false,
+      // Enable tree shaking for better optimization
+      // Only disable if absolutely necessary for specific dependencies
       output: {
         // Manual chunks for better caching and code splitting
         manualChunks: (id) => {
@@ -75,7 +75,11 @@ export default defineConfig({
       minifyIdentifiers: false, // Prevent minification issues with closures
     },
     // Target modern browsers for better optimization
-    target: "es2015",
+    target: "es2020",
+    // Ensure proper module format for browser compatibility
+    modulePreload: {
+      polyfill: true
+    },
   },
   // Optimize CSS loading
   css: {
