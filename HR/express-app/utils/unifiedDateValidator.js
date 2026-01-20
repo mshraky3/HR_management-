@@ -227,9 +227,6 @@ export function validateDate(input, calendarType, dateType = "general") {
     }
 
     const gregYear = gregDate.getFullYear();
-    const today = new Date();
-    const oneYearFromNow = new Date(today);
-    oneYearFromNow.setFullYear(today.getFullYear() + 1);
 
     // General date validation
     if (gregYear < 1000) {
@@ -243,14 +240,8 @@ export function validateDate(input, calendarType, dateType = "general") {
       errors.push("Year is too far in the future (maximum 2500)");
     }
 
-    // General dates: check if more than 1 year in future (but allow expiry dates and contract dates to be any future date)
-    if (
-      dateType !== "expiry_date" &&
-      dateType !== "contract_date" &&
-      gregDate > oneYearFromNow
-    ) {
-      errors.push("Date is too far in the future (more than 1 year ahead)");
-    }
+    // Removed: "Date is too far in the future (more than 1 year ahead)" validation
+    // Dates can now be any date in the future (no 1-year restriction)
 
     // Calculate age for birth dates
     if (dateType === "birth_date") {
