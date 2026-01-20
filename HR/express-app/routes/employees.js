@@ -1101,22 +1101,22 @@ router.get("/statistics", async (req, res) => {
         })),
         ...(branchDistributionResult && branchDistributionResult.length > 0
           ? {
-              branches: (branchDistributionResult || []).map((item) => ({
-                branch_name: item.branch_name,
-                branch_id: parseInt(item.branch_id),
-                count: parseInt(item.count || 0),
-              })),
-            }
+            branches: (branchDistributionResult || []).map((item) => ({
+              branch_name: item.branch_name,
+              branch_id: parseInt(item.branch_id),
+              count: parseInt(item.count || 0),
+            })),
+          }
           : {}),
         ...(salaryByBranchResult && salaryByBranchResult.length > 0
           ? {
-              salaryByBranch: (salaryByBranchResult || []).map((item) => ({
-                branch_name: item.branch_name,
-                branch_id: parseInt(item.branch_id),
-                average_salary: parseFloat(item.average_salary || 0),
-                count: parseInt(item.count || 0),
-              })),
-            }
+            salaryByBranch: (salaryByBranchResult || []).map((item) => ({
+              branch_name: item.branch_name,
+              branch_id: parseInt(item.branch_id),
+              average_salary: parseFloat(item.average_salary || 0),
+              count: parseInt(item.count || 0),
+            })),
+          }
           : {}),
       },
     });
@@ -2360,7 +2360,6 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     let backgroundImageBytes = null;
     let backgroundPdfBytes = null;
     let usePngBackground = false;
-    let signatureImageBytes = null;
 
     // Try to find and load background PNG
     for (const basePath of possibleBasePaths) {
@@ -2399,32 +2398,10 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
       }
     }
 
-    // Try to find and load signature image
-    for (const basePath of possibleBasePaths) {
-      const signatureImagePath = path.join(basePath, "files", "image.png");
-      if (fs.existsSync(signatureImagePath)) {
-        try {
-          signatureImageBytes = fs.readFileSync(signatureImagePath);
-          console.log(`✓ Signature image loaded from: ${signatureImagePath}`);
-          break;
-        } catch (error) {
-          console.error(
-            `✗ Error reading signature from ${signatureImagePath}:`,
-            error.message,
-          );
-        }
-      }
-    }
-
     // Log warning if assets are missing (but continue - PDF will still be generated)
     if (!backgroundImageBytes && !backgroundPdfBytes) {
       console.warn(
         "⚠ Warning: No background image found. Certificate will be generated without background.",
-      );
-    }
-    if (!signatureImageBytes) {
-      console.warn(
-        "⚠ Warning: No signature image found. Certificate will be generated without signature.",
       );
     }
 
@@ -2812,7 +2789,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
       });
     }
 
-    // Signature and stamp section (will be added using pdf-lib)
+    // Signature and stamp are now included in the background image
     const certificateDocDefinition = {
       pageSize: "A4",
       pageMargins: [40, 30, 40, 120], // Reduced margins to fit on one page
@@ -2881,7 +2858,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
       certificatePdfDoc.end();
     });
 
-    // Load certificate PDF and merge with background and signature
+    // Load certificate PDF and merge with background (which includes signature and stamp)
     // IMPORTANT: To put background BEHIND text, we need to:
     // 1. Create a new PDF
     // 2. Draw background first
@@ -2889,8 +2866,8 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
 
     let finalPdfBytes = certificatePdfBuffer;
 
-    // If we have background or signature, merge them
-    if (backgroundImageBytes || backgroundPdfBytes || signatureImageBytes) {
+    // If we have background, merge it with content
+    if (backgroundImageBytes || backgroundPdfBytes) {
       // Load content PDF
       const contentPdf = await PDFDocument.load(certificatePdfBuffer);
       const contentPages = contentPdf.getPages();
@@ -2935,21 +2912,6 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
         } catch (error) {
           console.warn("Error loading background PDF:", error.message);
           console.error("Full error:", error);
-        }
-      }
-
-      // Load signature image if available
-      let signatureImage = null;
-      if (signatureImageBytes) {
-        try {
-          // Try PNG first, then JPEG
-          try {
-            signatureImage = await finalPdf.embedPng(signatureImageBytes);
-          } catch {
-            signatureImage = await finalPdf.embedJpg(signatureImageBytes);
-          }
-        } catch (error) {
-          console.warn("Error embedding signature image:", error.message);
         }
       }
 
@@ -3017,28 +2979,6 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
         } catch (error) {
           console.warn("Error embedding content page:", error.message);
           console.error("Full error:", error);
-        }
-
-        // Draw signature and stamp image at bottom (on top of everything)
-        // Position at bottom, spanning left (HR signature) and right (company stamp)
-        if (signatureImage) {
-          try {
-            // Scale to 80-90% of page width
-            const signatureWidth = width * 0.85; // Use 85% of page width (between 80-90%)
-            const signatureHeight =
-              signatureImage.height * (signatureWidth / signatureImage.width);
-
-            // Position at bottom center, moved up a little
-            // The image contains both signature (left) and stamp (right)
-            newPage.drawImage(signatureImage, {
-              x: (width - signatureWidth) / 2, // Center horizontally
-              y: 80, // Bottom margin (80 points from bottom - moved up)
-              width: signatureWidth,
-              height: signatureHeight,
-            });
-          } catch (error) {
-            console.warn("Error drawing signature on page:", error.message);
-          }
         }
       }
 

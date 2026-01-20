@@ -10,7 +10,10 @@
     "api/index.js": {
       "maxDuration": 60,
       "memory": 3008,
-      "includeFiles": "fonts/**"
+      "includeFiles": [
+        "fonts/**",
+        "files/**"
+      ]
     }
   },
   "env": {
