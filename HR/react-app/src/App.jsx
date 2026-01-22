@@ -90,14 +90,7 @@ const EmployeeStatistics = lazy(() => import("./pages/EmployeeStatistics"));
 const ExperienceCertificate = lazy(
   () => import("./pages/ExperienceCertificate"),
 );
-// NOTE: Vite dev-server can sometimes cache an empty transform for this large file
-// (serving 200 with Content-Length: 0), which breaks React.lazy with "{}".
-// Adding a harmless query string in DEV forces a fresh module id and avoids the issue.
-const BusTransportation = lazy(() =>
-  import.meta.env.DEV
-    ? import(/* @vite-ignore */ `./pages/BusTransportation.jsx?v=dev`)
-    : import("./pages/BusTransportation.jsx"),
-);
+const BusTransportation = lazy(() => import("./pages/BusTransportation.jsx"));
 
 // Wrapper component to choose layout based on role
 const RoleBasedLayout = ({ children }) => {
