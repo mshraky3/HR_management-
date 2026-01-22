@@ -2251,7 +2251,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
       });
     }
 
-    if (certificate_type !== "experience" && certificate_type !== "salary") {
+    if (certificate_type !== "experience" && certificate_type !== "salary" && certificate_type !== "specialties") {
       return res.status(400).json({
         success: false,
         message: "نوع الشهادة غير مدعوم",
@@ -2282,6 +2282,9 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
       employee.job_title ||
       employee.occupation ||
       "";
+    // For specialties certificate, use profession field or fallback to jobTitle
+    const profession =
+      certificate_data?.profession || jobTitle || "";
     const employeeGender = employee.gender || "male"; // Get gender for هو/هي
     const employeeSalary = certificate_data?.salary || employee.salary || "";
     const basicSalary = certificate_data?.basic_salary || "";
@@ -2324,6 +2327,24 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     const contractEndDateFormatted = contractEndDateGregorian
       ? formatDateEnglish(contractEndDateGregorian)
       : null;
+    
+    // Format date as yyyy-mm-dd for specialties certificate table
+    const formatDateForSpecialtiesTable = (gregorianDate) => {
+      if (!gregorianDate) return "";
+      try {
+        const date = new Date(gregorianDate);
+        if (isNaN(date.getTime())) return "";
+        const day = date.getDate();
+        const month = date.getMonth() + 1;
+        const year = date.getFullYear();
+        return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      } catch (error) {
+        return "";
+      }
+    };
+    const contractStartDateForSpecialties = contractStartDateGregorian
+      ? formatDateForSpecialtiesTable(contractStartDateGregorian)
+      : null;
 
     // Determine ID/Residency label based on nationality
     // Check if nationality is Saudi (سعودي, السعودية, Saudi, etc.)
@@ -2334,7 +2355,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
       nationalityLower === "saudi" ||
       nationalityLower === "saudi arabia" ||
       nationalityLower.includes("سعودي");
-    const idLabel = isSaudi ? "هوية" : "الإقامة";
+    const idLabel = isSaudi ? "الهوية" : "الإقامة";
 
     // Determine gender-specific words
     const isFemale = employeeGender === "female";
@@ -2344,6 +2365,11 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     const hisHerPerformance = isFemale ? "أداؤها" : "أداؤه";
     const madeHimHer = isFemale ? "جعلها" : "جعله";
     const hisHerRequest = isFemale ? "طلبها" : "طلبه";
+    
+    // Gender-specific words for specialties certificate
+    const mentionedBelow = isFemale ? "الموضحة بياناتها" : "الموضح بياناته";
+    const worksWord = isFemale ? "تعمل" : "يعمل";
+    const hisHerRequestSpecialties = isFemale ? "طلبها" : "طلبه";
 
     // Load background PNG image (preferred) or PDF
     // Use multiple path resolution strategies for compatibility with different environments
@@ -2410,7 +2436,9 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
 
     // Title - different for each certificate type
     const titleText =
-      certificate_type === "salary" ? "خطاب تعريف راتب" : "شهادة خبرة";
+      certificate_type === "salary" ? "خطاب تعريف راتب" :
+      certificate_type === "specialties" ? "تعريف هيئة التخصصات" :
+      "شهادة خبرة";
     certificateContent.push({
       text: titleText,
       style: "certificateTitle",
@@ -2480,8 +2508,153 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
       });
     }
 
-    // Employee Information Table - Different structure for salary certificate
-    const employeeInfoTableBody = [
+    // For specialties certificate, add recipient info
+    if (certificate_type === "specialties") {
+      const recipientTable = {
+        table: {
+          widths: ["auto", "*"],
+          body: [
+            [
+              {
+                text: "إلى:",
+                style: "infoLabel",
+                alignment: "right",
+                border: [true, true, false, true],
+              },
+              {
+                text: "سعادة مدير / هيئة التخصصات الطبية",
+                style: "infoValue",
+                alignment: "right",
+                border: [false, true, true, true],
+              },
+            ],
+          ],
+        },
+        layout: {
+          paddingLeft: () => 6,
+          paddingRight: () => 6,
+          paddingTop: () => 6,
+          paddingBottom: () => 6,
+          hLineWidth: (i, node) =>
+            i === 0 || i === node.table.body.length ? 1 : 0.5,
+          vLineWidth: (i, node) =>
+            i === 0 || i === node.table.widths.length ? 1 : 0.5,
+          hLineColor: () => "#000000",
+          vLineColor: () => "#000000",
+        },
+        margin: [40, 0, 40, 15],
+      };
+      certificateContent.push(recipientTable);
+    }
+
+    // Handle profession gender variation for specialties certificate
+    let professionWithGender = profession;
+    if (certificate_type === "specialties" && profession) {
+      // Convert masculine profession to feminine if employee is female
+      // Example: "اخصائي نفسي" -> "اخصائية نفسية"
+      if (isFemale) {
+        // Replace "اخصائي" with "اخصائية"
+        professionWithGender = profession.replace(/اخصائي/g, "اخصائية");
+        // If profession ends with a masculine form, try to convert to feminine
+        // This is a basic conversion - may need refinement based on actual profession names
+      }
+    }
+
+    // Employee Information Table - Different structure for specialties certificate
+    let employeeInfoTable;
+    
+    if (certificate_type === "specialties") {
+      // Specialties certificate uses a 5-column table
+      const specialtiesTableBody = [
+        // Header row
+        [
+          {
+            text: `رقم ${idLabel}`,
+            style: "infoLabel",
+            alignment: "right",
+            border: [true, true, true, true],
+          },
+          {
+            text: "الاسم",
+            style: "infoLabel",
+            alignment: "right",
+            border: [true, true, true, true],
+          },
+          {
+            text: "المهنة",
+            style: "infoLabel",
+            alignment: "right",
+            border: [true, true, true, true],
+          },
+          {
+            text: "الجنسية",
+            style: "infoLabel",
+            alignment: "right",
+            border: [true, true, true, true],
+          },
+          {
+            text: "تاريخ المباشرة",
+            style: "infoLabel",
+            alignment: "right",
+            border: [true, true, true, true],
+          },
+        ],
+        // Data row
+        [
+          {
+            text: employeeIdNumber || "",
+            style: "infoValue",
+            alignment: "right",
+            border: [true, true, true, true],
+          },
+          {
+            text: employeeFullName || "",
+            style: "infoValue",
+            alignment: "right",
+            border: [true, true, true, true],
+          },
+          {
+            text: professionWithGender || "غير محدد",
+            style: "infoValue",
+            alignment: "right",
+            border: [true, true, true, true],
+          },
+          {
+            text: nationality || "",
+            style: "infoValue",
+            alignment: "right",
+            border: [true, true, true, true],
+          },
+          {
+            text: contractStartDateForSpecialties || "غير محدد",
+            style: "infoValue",
+            alignment: "right",
+            border: [true, true, true, true],
+          },
+        ],
+      ];
+      
+      employeeInfoTable = {
+        table: {
+          widths: ["*", "*", "*", "*", "*"],
+          body: specialtiesTableBody,
+        },
+        layout: {
+          paddingLeft: () => 6,
+          paddingRight: () => 6,
+          paddingTop: () => 6,
+          paddingBottom: () => 6,
+          hLineWidth: (i, node) =>
+            i === 0 || i === node.table.body.length ? 1 : 0.5,
+          vLineWidth: () => 0.5,
+          hLineColor: () => "#000000",
+          vLineColor: () => "#000000",
+        },
+        margin: [40, 0, 40, 15],
+      };
+    } else {
+      // Original 2-column table for experience and salary certificates
+      const employeeInfoTableBody = [
       [
         {
           text: certificate_type === "salary" ? "الموظف:" : "الاسم الكامل:",
@@ -2608,25 +2781,26 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
       );
     }
 
-    const employeeInfoTable = {
-      table: {
-        widths: ["auto", "*"],
-        body: employeeInfoTableBody,
-      },
-      layout: {
-        paddingLeft: (i) => (i === 0 || i === 5 ? 6 : 6),
-        paddingRight: (i) => (i === 0 || i === 5 ? 6 : 6),
-        paddingTop: (i) => (i === 0 ? 6 : 4),
-        paddingBottom: (i) => (i === 5 ? 6 : 4),
-        hLineWidth: (i, node) =>
-          i === 0 || i === node.table.body.length ? 1 : 0.5,
-        vLineWidth: (i, node) =>
-          i === 0 || i === node.table.widths.length ? 1 : 0.5,
-        hLineColor: () => "#000000",
-        vLineColor: () => "#000000",
-      },
-      margin: [40, 0, 40, 15],
-    };
+      employeeInfoTable = {
+        table: {
+          widths: ["auto", "*"],
+          body: employeeInfoTableBody,
+        },
+        layout: {
+          paddingLeft: (i) => (i === 0 || i === 5 ? 6 : 6),
+          paddingRight: (i) => (i === 0 || i === 5 ? 6 : 6),
+          paddingTop: (i) => (i === 0 ? 6 : 4),
+          paddingBottom: (i) => (i === 5 ? 6 : 4),
+          hLineWidth: (i, node) =>
+            i === 0 || i === node.table.body.length ? 1 : 0.5,
+          vLineWidth: (i, node) =>
+            i === 0 || i === node.table.widths.length ? 1 : 0.5,
+          hLineColor: () => "#000000",
+          vLineColor: () => "#000000",
+        },
+        margin: [40, 0, 40, 15],
+      };
+    }
 
     certificateContent.push(employeeInfoTable);
 
@@ -2760,6 +2934,9 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     if (certificate_type === "salary") {
       // Salary certificate text - no elaborate description
       certificateTextContent = "";
+    } else if (certificate_type === "specialties") {
+      // Specialties certificate text with gender variations
+      certificateTextContent = `نفيدكم نحن شركة الرعاية المتناهية للتأهيل بان ${mentionedBelow} ادناه ${worksWord} لدينا وما زال على راس العمل وقد اعطي هذا التعريف بناء على ${hisHerRequestSpecialties} لغرض الحصول على تصنيف ${professionWithGender} ولا مانع لدينا من ذلك دون ادنى مسؤولية على الشركة .`;
     } else {
       // Experience certificate text
       const verbShowed = isFemale ? "أظهرت" : "أظهر";
@@ -2790,9 +2967,74 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     }
 
     // Signature and stamp are now included in the background image
+    // Get today's date in both calendars for header
+    const today = new Date();
+    const todayGregorian = formatDate(today.toISOString().split('T')[0]);
+    const todayHijri = convertGregorianToHijri(today.toISOString().split('T')[0]);
+    const todayHijriFormatted = todayHijri ? formatHijriToString(todayHijri) : '';
+    
+    // For specialties certificate, format date as dd-mm-yyyy م
+    let dateText;
+    let documentNumber;
+    if (certificate_type === "specialties") {
+      // Get document number from certificate_data or auto-generate
+      documentNumber = certificate_data?.document_number || "1";
+      // Format date as dd-mm-yyyy م (e.g., "٨-٥ - ٢٠٢٥ م")
+      const todayFormattedEnglish = formatDateEnglish(today.toISOString().split('T')[0]);
+      dateText = `التاريخ : ${todayFormattedEnglish} م`;
+    } else {
+      dateText = todayHijriFormatted
+        ? `تاريخ اليوم: ${todayHijriFormatted} / ${todayGregorian}`
+        : `تاريخ اليوم: ${todayGregorian}`;
+    }
+
     const certificateDocDefinition = {
       pageSize: "A4",
-      pageMargins: [40, 30, 40, 120], // Reduced margins to fit on one page
+      pageMargins: [40, 50, 40, 120], // Increased top margin to accommodate header
+      header: function (currentPage, pageCount, pageSize) {
+        if (certificate_type === "specialties") {
+          // Special header for specialties certificate with document number and date
+          return [
+            {
+              text: `الرقم : ${documentNumber}`,
+              alignment: "right",
+              margin: [40, 10, 40, 0],
+              fontSize: 10,
+              color: "#000000"
+            },
+            {
+              text: dateText,
+              alignment: "right",
+              margin: [40, 2, 40, 0],
+              fontSize: 10,
+              color: "#000000"
+            },
+            {
+              text: "سعادة مدير / هيئة التخصصات الطبية",
+              alignment: "right",
+              margin: [40, 5, 40, 0],
+              fontSize: 10,
+              color: "#000000"
+            },
+            {
+              text: "السلام عليكم ورحمة الله وبركاته",
+              alignment: "right",
+              margin: [40, 2, 40, 0],
+              fontSize: 10,
+              color: "#000000"
+            }
+          ];
+        } else {
+          // Standard header for other certificate types
+          return {
+            text: dateText,
+            alignment: "right",
+            margin: [40, 10, 40, 0],
+            fontSize: 10,
+            color: "#000000"
+          };
+        }
+      },
       defaultStyle: {
         font: "Roboto",
         fontSize: 12,
