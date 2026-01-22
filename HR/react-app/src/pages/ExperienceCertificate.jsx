@@ -64,6 +64,7 @@ const ExperienceCertificate = () => {
   const certificateTypes = [
     { value: "experience", label: "شهادة الخبرة" },
     { value: "salary", label: "تعريف الراتب" },
+    { value: "specialties", label: "تعريف هيئة التخصصات" },
   ];
 
   // Redirect if not main manager
@@ -745,6 +746,27 @@ const ExperienceCertificate = () => {
           </div>
         )}
 
+        {/* Certificate Type Selection */}
+        {selectedEmployeeId && (
+          <div className="form-section">
+            <h2>نوع الشهادة</h2>
+            <div className="certificate-type-selection">
+              {certificateTypes.map((type) => (
+                <label key={type.value} className="certificate-type-option">
+                  <input
+                    type="radio"
+                    name="certificateType"
+                    value={type.value}
+                    checked={certificateType === type.value}
+                    onChange={(e) => setCertificateType(e.target.value)}
+                  />
+                  <span>{type.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Data Review Section */}
         {selectedEmployeeId && selectedEmployee && (
           <div className="form-section">
@@ -1114,27 +1136,6 @@ const ExperienceCertificate = () => {
               >
                 تعديل البيانات
               </button>
-            </div>
-          </div>
-        )}
-
-        {/* Certificate Type Selection */}
-        {selectedEmployeeId && (
-          <div className="form-section">
-            <h2>نوع الشهادة</h2>
-            <div className="certificate-type-selection">
-              {certificateTypes.map((type) => (
-                <label key={type.value} className="certificate-type-option">
-                  <input
-                    type="radio"
-                    name="certificateType"
-                    value={type.value}
-                    checked={certificateType === type.value}
-                    onChange={(e) => setCertificateType(e.target.value)}
-                  />
-                  <span>{type.label}</span>
-                </label>
-              ))}
             </div>
           </div>
         )}

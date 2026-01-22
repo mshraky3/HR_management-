@@ -467,9 +467,8 @@ const BusTransportation = () => {
         bus.student_count === undefined;
       const missingRegDoc = !bus.registration_document_url;
       const missingDriverDoc = !bus.license_document_url;
-      const missingLeaseDoc =
-        bus.ownership_type === "leased" && !bus.lease_contract_document_url;
-      const missingDocs = missingRegDoc || missingDriverDoc || missingLeaseDoc;
+      // Lease contract is optional - not required for completion
+      const missingDocs = missingRegDoc || missingDriverDoc;
 
       if (missingDocs || missingStudents) {
         incomplete++;
@@ -962,10 +961,10 @@ const BusTransportation = () => {
                               : "0%",
                           background:
                             stats.totalSeats > 0 &&
-                            stats.totalStudents / stats.totalSeats >= 0.9
+                              stats.totalStudents / stats.totalSeats >= 0.9
                               ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
                               : stats.totalSeats > 0 &&
-                                  stats.totalStudents / stats.totalSeats >= 0.7
+                                stats.totalStudents / stats.totalSeats >= 0.7
                                 ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
                                 : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
                         }}
@@ -973,8 +972,8 @@ const BusTransportation = () => {
                         <span className="capacity-bar-text">
                           {stats.totalSeats > 0
                             ? Math.round(
-                                (stats.totalStudents / stats.totalSeats) * 100,
-                              )
+                              (stats.totalStudents / stats.totalSeats) * 100,
+                            )
                             : 0}
                           %
                         </span>
@@ -1208,33 +1207,33 @@ const BusTransportation = () => {
               selectedBranchId ||
               filterMissingInsurance ||
               filterMissingLease) && (
-              <button
-                className="clear-filters-btn"
-                onClick={() => {
-                  setSearchTerm("");
-                  setSelectedTermId("");
-                  setSelectedBranchId("");
-                  setFilterMissingInsurance(false);
-                  setFilterMissingLease(false);
-                }}
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  style={{ marginLeft: "0.5rem" }}
+                <button
+                  className="clear-filters-btn"
+                  onClick={() => {
+                    setSearchTerm("");
+                    setSelectedTermId("");
+                    setSelectedBranchId("");
+                    setFilterMissingInsurance(false);
+                    setFilterMissingLease(false);
+                  }}
                 >
-                  <path
-                    d="M18 6L6 18M6 6l12 12"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                إلغاء الفلاتر
-              </button>
-            )}
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    style={{ marginLeft: "0.5rem" }}
+                  >
+                    <path
+                      d="M18 6L6 18M6 6l12 12"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  إلغاء الفلاتر
+                </button>
+              )}
           </div>
 
           <div className="filters-content-wrapper">
@@ -1541,11 +1540,9 @@ const BusTransportation = () => {
                         bus.student_count === undefined;
                       const missingRegDoc = !bus.registration_document_url;
                       const missingDriverDoc = !bus.license_document_url;
-                      const missingLeaseDoc =
-                        bus.ownership_type === "leased" &&
-                        !bus.lease_contract_document_url;
+                      // Lease contract is optional - not required for completion
                       const missingDocs =
-                        missingRegDoc || missingDriverDoc || missingLeaseDoc;
+                        missingRegDoc || missingDriverDoc;
                       return missingDocs || missingStudents
                         ? "incomplete"
                         : "complete";
@@ -1559,11 +1556,9 @@ const BusTransportation = () => {
                         bus.student_count === undefined;
                       const missingRegDoc = !bus.registration_document_url;
                       const missingDriverDoc = !bus.license_document_url;
-                      const missingLeaseDoc =
-                        bus.ownership_type === "leased" &&
-                        !bus.lease_contract_document_url;
+                      // Lease contract is optional - not required for completion
                       const missingDocs =
-                        missingRegDoc || missingDriverDoc || missingLeaseDoc;
+                        missingRegDoc || missingDriverDoc;
 
                       setBusFormInitialTab(
                         missingDocs
@@ -1583,11 +1578,9 @@ const BusTransportation = () => {
                         bus.student_count === undefined;
                       const missingRegDoc = !bus.registration_document_url;
                       const missingDriverDoc = !bus.license_document_url;
-                      const missingLeaseDoc =
-                        bus.ownership_type === "leased" &&
-                        !bus.lease_contract_document_url;
+                      // Lease contract is optional - not required for completion
                       const missingDocs =
-                        missingRegDoc || missingDriverDoc || missingLeaseDoc;
+                        missingRegDoc || missingDriverDoc;
                       return missingDocs || missingStudents ? "إكمال" : "تعديل";
                     })()}
                   </button>
@@ -1645,11 +1638,9 @@ const BusTransportation = () => {
               selectedBus.student_count === undefined;
             const missingRegDoc = !selectedBus.registration_document_url;
             const missingDriverDoc = !selectedBus.license_document_url;
-            const missingLeaseDoc =
-              selectedBus.ownership_type === "leased" &&
-              !selectedBus.lease_contract_document_url;
+            // Lease contract is optional - not required for completion
             const missingDocs =
-              missingRegDoc || missingDriverDoc || missingLeaseDoc;
+              missingRegDoc || missingDriverDoc;
             setBusFormInitialTab(
               missingDocs
                 ? "documents"
@@ -1714,20 +1705,20 @@ const BusFormModal = ({
   const [uploadedDocs, setUploadedDocs] = useState(() => ({
     registration:
       bus?.registration?.registration_document_url ||
-      bus?.registration_document_url
+        bus?.registration_document_url
         ? {
-            url:
-              bus?.registration?.registration_document_url ||
-              bus?.registration_document_url,
-          }
+          url:
+            bus?.registration?.registration_document_url ||
+            bus?.registration_document_url,
+        }
         : null,
     driverLicense:
       bus?.driver_license?.license_document_url || bus?.license_document_url
         ? {
-            url:
-              bus?.driver_license?.license_document_url ||
-              bus?.license_document_url,
-          }
+          url:
+            bus?.driver_license?.license_document_url ||
+            bus?.license_document_url,
+        }
         : null,
     leaseContract: bus?.lease_contract_document_url
       ? { url: bus.lease_contract_document_url }
@@ -1942,24 +1933,24 @@ const BusFormModal = ({
         setUploadedDocs({
           registration: full.registration?.registration_document_url
             ? {
-                url: full.registration.registration_document_url,
-                name: full.registration.registration_document_name,
-                mime_type: full.registration.registration_document_mime_type,
-              }
+              url: full.registration.registration_document_url,
+              name: full.registration.registration_document_name,
+              mime_type: full.registration.registration_document_mime_type,
+            }
             : null,
           driverLicense: full.driver_license?.license_document_url
             ? {
-                url: full.driver_license.license_document_url,
-                name: full.driver_license.license_document_name,
-                mime_type: full.driver_license.license_document_mime_type,
-              }
+              url: full.driver_license.license_document_url,
+              name: full.driver_license.license_document_name,
+              mime_type: full.driver_license.license_document_mime_type,
+            }
             : null,
           leaseContract: full.lease_contract_document_url
             ? {
-                url: full.lease_contract_document_url,
-                name: full.lease_contract_document_name,
-                mime_type: full.lease_contract_document_mime_type,
-              }
+              url: full.lease_contract_document_url,
+              name: full.lease_contract_document_name,
+              mime_type: full.lease_contract_document_mime_type,
+            }
             : null,
         });
 
@@ -2632,8 +2623,8 @@ const BusFormModal = ({
     } catch (error) {
       showError(
         error.response?.data?.message ||
-          error.message ||
-          "حدث خطأ أثناء حفظ البيانات",
+        error.message ||
+        "حدث خطأ أثناء حفظ البيانات",
       );
     } finally {
       setSaving(false);
@@ -3011,8 +3002,8 @@ const BusFormModal = ({
                   } catch (e) {
                     showError(
                       e.response?.data?.message ||
-                        e.message ||
-                        "حدث خطأ أثناء الحفظ",
+                      e.message ||
+                      "حدث خطأ أثناء الحفظ",
                     );
                   } finally {
                     setSaving(false);
@@ -3208,13 +3199,13 @@ const DocumentsFormTab = ({
           ? await busTransportationAPI.uploadRegistrationDocument(busId, file)
           : kind === "driverLicense"
             ? await busTransportationAPI.uploadDriverLicenseDocument(
-                busId,
-                file,
-              )
+              busId,
+              file,
+            )
             : await busTransportationAPI.uploadLeaseContractDocument(
-                busId,
-                file,
-              );
+              busId,
+              file,
+            );
 
       if (response.data?.success) {
         if (typeof setUploadedDocs === "function") {
