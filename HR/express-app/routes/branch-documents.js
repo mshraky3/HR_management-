@@ -35,30 +35,17 @@ const __dirname = path.dirname(__filename);
 // Create pdfmake RTL printer with fonts (same setup as reports.js)
 // Note: Font files are included in Vercel deployment, but paths may differ
 // This code handles both local development and Vercel serverless environments
-const fontsDir = path.join(__dirname, "..", "fonts");
-const notoSansArabicDir = path.join(fontsDir, "Noto_Sans_Arabic");
-const notoSansArabicVariable = path.join(
-  notoSansArabicDir,
-  "NotoSansArabic-VariableFont_wdth,wght.ttf",
-);
-const notoSansArabicStatic = path.join(notoSansArabicDir, "static");
+const fontsDir = path.join(__dirname, '..', 'fonts');
+const amiriDir = path.join(fontsDir, 'Amiri');
+const amiriRegular = path.join(amiriDir, 'Amiri-Regular.ttf');
+const amiriBold = path.join(amiriDir, 'Amiri-Bold.ttf');
+const amiriItalic = path.join(amiriDir, 'Amiri-Italic.ttf');
+const amiriBoldItalic = path.join(amiriDir, 'Amiri-BoldItalic.ttf');
 let arabicFontPath = null;
 
 try {
-  if (fs.existsSync(notoSansArabicVariable)) {
-    arabicFontPath = notoSansArabicVariable;
-  } else if (fs.existsSync(notoSansArabicStatic)) {
-    try {
-      const staticFiles = fs.readdirSync(notoSansArabicStatic);
-      const regularFont = staticFiles.find(
-        (f) => f.includes("Regular") && f.endsWith(".ttf"),
-      );
-      if (regularFont) {
-        arabicFontPath = path.join(notoSansArabicStatic, regularFont);
-      }
-    } catch (e) {
-      console.warn("Error reading static fonts directory:", e.message);
-    }
+  if (fs.existsSync(amiriRegular)) {
+    arabicFontPath = amiriRegular;
   }
 } catch (error) {
   // On Vercel or if fonts are not accessible, will use fallback fonts
@@ -68,24 +55,11 @@ try {
   );
 }
 
-const hasArabicFont =
-  arabicFontPath !== null &&
-  (() => {
-    try {
-      return fs.existsSync(arabicFontPath);
-    } catch {
-      return false;
-    }
-  })();
+const hasArabicFont = arabicFontPath !== null;
 
 let fonts;
 if (hasArabicFont) {
-  const notoSansStatic = path.join(notoSansArabicDir, "static");
-  const regularFont = path.join(notoSansStatic, "NotoSansArabic-Regular.ttf");
-  const boldFont = path.join(notoSansStatic, "NotoSansArabic-Bold.ttf");
-  const mediumFont = path.join(notoSansStatic, "NotoSansArabic-Medium.ttf");
-
-  // Use available fonts, fallback to regular if others don't exist
+  // Use Amiri font
   // Wrap fs.existsSync in try-catch for Vercel compatibility
   const fontExists = (fontPath) => {
     try {
@@ -95,38 +69,27 @@ if (hasArabicFont) {
     }
   };
 
+  const regular = amiriRegular;
+  const bold = fontExists(amiriBold) ? amiriBold : amiriRegular;
+  const italics = fontExists(amiriItalic) ? amiriItalic : amiriRegular;
+  const bolditalics = fontExists(amiriBoldItalic) ? amiriBoldItalic : (fontExists(amiriBold) ? amiriBold : amiriRegular);
+
   fonts = {
     Roboto: {
-      normal: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bold: fontExists(boldFont)
-        ? boldFont
-        : fontExists(mediumFont)
-          ? mediumFont
-          : arabicFontPath,
-      italics: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bolditalics: fontExists(boldFont)
-        ? boldFont
-        : fontExists(mediumFont)
-          ? mediumFont
-          : arabicFontPath,
+      normal: regular,
+      bold: bold,
+      italics: italics,
+      bolditalics: bolditalics,
     },
     Nillima: {
-      normal: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bold: fontExists(boldFont)
-        ? boldFont
-        : fontExists(mediumFont)
-          ? mediumFont
-          : arabicFontPath,
-      italics: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bolditalics: fontExists(boldFont)
-        ? boldFont
-        : fontExists(mediumFont)
-          ? mediumFont
-          : arabicFontPath,
+      normal: regular,
+      bold: bold,
+      italics: italics,
+      bolditalics: bolditalics,
     },
   };
 
-  console.log("Using Noto Sans Arabic font for PDF generation");
+  console.log("Using Amiri font for PDF generation");
 } else {
   // Fallback to Helvetica (limited Arabic support)
   fonts = {
@@ -730,8 +693,8 @@ router.get("/:id/preview", verifyBranchDocumentsPassword, async (req, res) => {
         download_url: `/api/branch-documents/${document.id}/download`,
         file_url:
           document.file_path &&
-          (document.file_path.startsWith("http://") ||
-            document.file_path.startsWith("https://"))
+            (document.file_path.startsWith("http://") ||
+              document.file_path.startsWith("https://"))
             ? document.file_path
             : null,
       },
@@ -1666,6 +1629,18 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
  * Only accessible by main managers
  */
 router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
+  // Helper to create PDF buffer from pdfmake
+  const createPdfBuffer = (printer, docDefinition) => {
+    return new Promise((resolve, reject) => {
+      const pdfDoc = printer.createPdfKitDocument(docDefinition);
+      const chunks = [];
+      pdfDoc.on("data", (chunk) => chunks.push(chunk));
+      pdfDoc.on("end", () => resolve(Buffer.concat(chunks)));
+      pdfDoc.on("error", reject);
+      pdfDoc.end();
+    });
+  };
+
   try {
     // Only main managers can generate reports
     if (req.user.role !== "main_manager") {
@@ -1685,30 +1660,29 @@ router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
     }
 
     // Get all active branches
-    const branches = await Branch.findAll({ is_active: true });
+    let branches = await Branch.findAll({ is_active: true });
+    // Sort by branch name
+    branches.sort((a, b) => (a.branch_name || "").localeCompare(b.branch_name || "", "ar"));
 
-    if (branches.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "لا توجد فروع نشطة",
-      });
-    }
-
-    // Query all documents of this type
+    // Query documents for this type
     const documents = await sql`
-      SELECT bd.*, b.branch_name, b.branch_type
+      SELECT bd.*
       FROM branch_documents bd
-      INNER JOIN branches b ON bd.branch_id = b.id
       WHERE bd.is_active = true
         AND bd.document_type = ${document_type}
-        AND b.is_active = true
-      ORDER BY b.branch_name ASC
     `;
 
-    // Create a map of branch_id to document
+    // Map documents by branch_id
     const branchDocumentMap = new Map();
     documents.forEach((doc) => {
-      branchDocumentMap.set(doc.branch_id, doc);
+      // If multiple docs for same branch/type, take the latest uploaded
+      if (
+        !branchDocumentMap.has(doc.branch_id) ||
+        new Date(doc.uploaded_at) >
+        new Date(branchDocumentMap.get(doc.branch_id).uploaded_at)
+      ) {
+        branchDocumentMap.set(doc.branch_id, doc);
+      }
     });
 
     // Document type labels
@@ -1727,97 +1701,18 @@ router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
       insurance_statement: "كشف التأمينات",
       operational_plan: "الخطة التشغلية",
       owner_civil_id_copy: "نسخة هوية المالك",
+      disclosure_commitment: "إفصاح وتعهد",
+      certification_commitment_form: "نموذج تصديق وتعاقد",
+      financial_platform_declaration: "ملف إقرار المنصة المالية",
+      financial_claim_form: "نموذج مطالبة مالية",
+      student_cadre_file: "بيانات الطلاب",
+      dropped_students: "الطلاب المنقطعين",
+      free_seats: "المقاعد المتاحة",
+      acceptance_notifications: "إشعارات القبول",
       payroll_file: "ملف مسيرات الرواتب",
     };
 
     const documentLabel = documentTypeLabels[document_type] || document_type;
-
-    // Prepare images map for document files
-    const images = {};
-    const documentFilesMap = {};
-
-    for (const doc of documents) {
-      if (!doc.file_path) continue;
-
-      let fileBuffer;
-
-      // Fetch file from blob or local storage
-      if (
-        doc.file_path.startsWith("http://") ||
-        doc.file_path.startsWith("https://")
-      ) {
-        try {
-          const result = await fetchFromBlob(doc.file_path);
-          fileBuffer = result.buffer;
-        } catch (blobError) {
-          console.error(
-            `Failed to fetch from blob for document ${doc.id}:`,
-            blobError.message,
-          );
-          continue;
-        }
-      } else {
-        if (process.env.VERCEL === "1") {
-          console.warn(
-            `Document ${doc.id} uses local file path which is not accessible on Vercel: ${doc.file_path}`,
-          );
-          continue;
-        }
-
-        let filePath;
-        if (path.isAbsolute(doc.file_path)) {
-          filePath = doc.file_path;
-        } else {
-          let relativePath = doc.file_path;
-          if (relativePath.startsWith("express-app/")) {
-            relativePath = relativePath.replace(/^express-app\//, "");
-          }
-          filePath = path.join(__dirname, "..", relativePath);
-        }
-
-        if (!fs.existsSync(filePath)) {
-          const altPath = doc.file_path.replace(/^express-app\//, "");
-          const altFilePath = path.join(__dirname, "..", altPath);
-          filePath = fs.existsSync(altFilePath) ? altFilePath : filePath;
-        }
-
-        if (!fs.existsSync(filePath)) {
-          console.warn(
-            `File not found for document ${doc.id}: ${doc.file_path}`,
-          );
-          continue;
-        }
-
-        try {
-          fileBuffer = fs.readFileSync(filePath);
-        } catch (readError) {
-          console.error(
-            `Failed to read file for document ${doc.id}:`,
-            readError.message,
-          );
-          continue;
-        }
-      }
-
-      if (!fileBuffer || fileBuffer.length === 0) {
-        continue;
-      }
-
-      const base64 = fileBuffer.toString("base64");
-      const mimeType = doc.mime_type || "application/octet-stream";
-
-      documentFilesMap[doc.id] = {
-        base64: base64,
-        base64DataUri: `data:${mimeType};base64,${base64}`,
-        mimeType: mimeType,
-        buffer: fileBuffer,
-      };
-
-      if (mimeType.startsWith("image/")) {
-        const imageKey = `doc_${doc.id}`;
-        images[imageKey] = `data:${mimeType};base64,${base64}`;
-      }
-    }
 
     // Helper function to remove parentheses
     const removeParentheses = (text) => {
@@ -1825,43 +1720,44 @@ router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
       return text.replace(/[()]/g, "");
     };
 
+    // Create a new PDF Document (final merged document)
+    const finalPdf = await PDFDocument.create();
+
     const reportDate = formatDate(new Date());
 
-    // Build PDF content
-    const content = [
-      {
+    // Iterate through branches and build the PDF
+    for (const branch of branches) {
+      const doc = branchDocumentMap.get(branch.id);
+
+      // Prepare content for this branch's section (Metadata Page)
+      const content = [];
+      const images = {};
+
+      // Header
+      content.push({
         text: removeParentheses(`تقرير: ${documentLabel}`),
         style: "title",
-      },
-      {
+      });
+
+      content.push({
         text: [
           { text: "تاريخ التقرير: ", direction: "rtl" },
           { text: reportDate, direction: "ltr" },
         ],
         style: "info",
-      },
-      {
-        text: [
-          { text: "عدد الفروع: ", direction: "rtl" },
-          { text: String(documents.length), direction: "ltr" },
-        ],
-        style: "info",
-        margin: [0, 0, 0, 20],
-      },
-    ];
+      });
 
-    // Add each branch (show all branches, mark missing as red)
-    for (const branch of branches) {
       content.push({
         text: `الفرع: ${removeParentheses(branch.branch_name)}`,
         style: "branchHeader",
         margin: [0, 10, 0, 5],
       });
 
-      const doc = branchDocumentMap.get(branch.id);
+      let attachmentBuffer = null;
+      let isPdfAttachment = false;
 
       if (doc) {
-        // Document exists
+        // Document Info
         content.push({
           text: `المستند: ${removeParentheses(doc.file_name)}`,
           style: "documentInfo",
@@ -1880,41 +1776,102 @@ router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
           margin: [0, 0, 0, 10],
         });
 
-        const docFileData = documentFilesMap[doc.id];
-        if (docFileData) {
-          const mimeType = docFileData.mimeType;
+        // ---------------------------------------------------------
+        // Fetch File Content
+        // ---------------------------------------------------------
+        if (doc.file_path) {
+          try {
+            let fileBuffer;
+            // Fetch file from blob or local storage
+            if (
+              doc.file_path.startsWith("http://") ||
+              doc.file_path.startsWith("https://")
+            ) {
+              const result = await fetchFromBlob(doc.file_path);
+              fileBuffer = result.buffer;
+            } else {
+              // Local file logic
+              if (process.env.VERCEL !== "1") {
+                let filePath;
+                if (path.isAbsolute(doc.file_path)) {
+                  filePath = doc.file_path;
+                } else {
+                  let relativePath = doc.file_path;
+                  if (relativePath.startsWith("express-app/")) {
+                    relativePath = relativePath.replace(/^express-app\//, "");
+                  }
+                  filePath = path.join(__dirname, "..", relativePath);
+                }
 
-          if (mimeType.startsWith("image/")) {
-            try {
-              const imageKey = `doc_${doc.id}`;
+                if (!fs.existsSync(filePath)) {
+                  const altPath = doc.file_path.replace(/^express-app\//, "");
+                  const altFilePath = path.join(__dirname, "..", altPath);
+                  filePath = fs.existsSync(altFilePath) ? altFilePath : filePath;
+                }
+
+                if (fs.existsSync(filePath)) {
+                  fileBuffer = fs.readFileSync(filePath);
+                }
+              }
+            }
+
+            if (fileBuffer && fileBuffer.length > 0) {
+              const mimeType = doc.mime_type || "application/octet-stream";
+
+              if (mimeType.startsWith("image/")) {
+                // It's an image - embed in pdfmake
+                const base64 = fileBuffer.toString("base64");
+                const imageKey = `doc_${doc.id}`;
+                images[imageKey] = `data:${mimeType};base64,${base64}`;
+
+                content.push({
+                  image: imageKey,
+                  width: 500,
+                  alignment: "center",
+                  margin: [0, 10, 0, 20],
+                  fit: [500, 700],
+                });
+              } else if (mimeType === "application/pdf") {
+                // It's a PDF - save buffer to append later
+                attachmentBuffer = fileBuffer;
+                isPdfAttachment = true;
+
+                content.push({
+                  text: "--- (تم إرفاق ملف PDF في الصفحات التالية) ---",
+                  style: "documentDescription",
+                  alignment: "center",
+                  color: "#4988c4",
+                  margin: [0, 20, 0, 20],
+                  bold: true
+                });
+              } else {
+                // Unsupported type
+                content.push({
+                  text: `[نوع الملف غير مدعوم للعرض المباشر: ${mimeType}]`,
+                  style: "documentDescription",
+                  color: "#d32f2f"
+                });
+              }
+            } else {
               content.push({
-                image: imageKey,
-                width: 500,
-                alignment: "center",
-                margin: [0, 10, 0, 20],
-                fit: [500, 700],
-              });
-            } catch (error) {
-              content.push({
-                text: removeParentheses(
-                  `[خطأ في تحميل الصورة: ${doc.file_name}]`,
-                ),
+                text: "[لم يتم العثور على محتوى الملف]",
                 style: "documentDescription",
-                margin: [0, 10, 0, 20],
-                color: "#d32f2f",
+                color: "#d32f2f"
               });
             }
+
+          } catch (err) {
+            console.error(`Error fetching document ${doc.id}:`, err);
+            content.push({
+              text: "[خطأ في جلب الملف]",
+              style: "documentDescription",
+              color: "#d32f2f"
+            });
           }
-        } else {
-          content.push({
-            text: removeParentheses("[لم يتم العثور على ملف المستند]"),
-            style: "documentDescription",
-            margin: [0, 10, 0, 20],
-            color: "#d32f2f",
-          });
         }
+
       } else {
-        // Document is missing
+        // Missing
         content.push({
           text: "⚠ المستند غير متوفر - لم يتم رفع هذا المستند",
           style: "missingDocument",
@@ -1922,98 +1879,96 @@ router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
         });
       }
 
-      content.push({
-        text: "",
-        margin: [0, 0, 0, 10],
-        pageBreak: "after",
-      });
+      // Generate the "Cover Page" using pdfmake
+      const docDefinition = {
+        pageSize: "A4",
+        pageMargins: [40, 60, 40, 60],
+        images: images,
+        defaultStyle: {
+          font: "Roboto",
+          fontSize: 14, // Adjusted base size
+          color: "black",
+        },
+        styles: {
+          title: {
+            font: "Roboto",
+            fontSize: 16, // Title 16 Bold
+            bold: true,
+            alignment: "center",
+            margin: [0, 0, 0, 20],
+          },
+          info: {
+            font: "Roboto",
+            fontSize: 14,
+            alignment: "right",
+            margin: [0, 0, 0, 10],
+          },
+          branchHeader: {
+            font: "Roboto",
+            fontSize: 16, // Title 16 Bold
+            bold: true,
+            alignment: "right",
+            margin: [0, 0, 0, 5],
+          },
+          documentInfo: {
+            font: "Roboto",
+            fontSize: 14,
+            alignment: "right",
+            margin: [0, 0, 0, 3],
+          },
+          documentDescription: {
+            font: "Roboto",
+            fontSize: 14,
+            alignment: "right",
+            color: "#666",
+            margin: [0, 0, 0, 3],
+          },
+          missingDocument: {
+            font: "Roboto",
+            fontSize: 14,
+            bold: true,
+            alignment: "right",
+            color: "#d32f2f",
+            margin: [0, 5, 0, 10],
+          },
+        },
+        content: content,
+      };
+
+      try {
+        const coverPdfBuffer = await createPdfBuffer(printer, docDefinition);
+        const coverPdfDoc = await PDFDocument.load(coverPdfBuffer);
+        const copiedPages = await finalPdf.copyPages(coverPdfDoc, coverPdfDoc.getPageIndices());
+        copiedPages.forEach((page) => finalPdf.addPage(page));
+
+        // If there is a PDF attachment, append its pages
+        if (isPdfAttachment && attachmentBuffer) {
+          try {
+            // We need to catch invalid PDF errors
+            const attachmentPdf = await PDFDocument.load(attachmentBuffer);
+            const attachmentPages = await finalPdf.copyPages(attachmentPdf, attachmentPdf.getPageIndices());
+            attachmentPages.forEach((page) => finalPdf.addPage(page));
+          } catch (pdfErr) {
+            console.error("Error merging attached PDF:", pdfErr);
+          }
+        }
+      } catch (genError) {
+        console.error("Error generating cover page:", genError);
+      }
     }
 
-    const docDefinition = {
-      pageSize: "A4",
-      pageMargins: [40, 60, 40, 60],
-      images: images,
-      defaultStyle: {
-        font: "Roboto",
-        fontSize: 10,
-        color: "black",
-      },
-      styles: {
-        title: {
-          font: "Roboto",
-          fontSize: 18,
-          bold: true,
-          alignment: "center",
-          margin: [0, 0, 0, 20],
-        },
-        info: {
-          font: "Roboto",
-          fontSize: 10,
-          alignment: "right",
-          margin: [0, 0, 0, 10],
-        },
-        branchHeader: {
-          font: "Roboto",
-          fontSize: 14,
-          bold: true,
-          alignment: "right",
-          margin: [0, 0, 0, 5],
-        },
-        documentInfo: {
-          font: "Roboto",
-          fontSize: 11,
-          alignment: "right",
-          margin: [0, 0, 0, 3],
-        },
-        documentDescription: {
-          font: "Roboto",
-          fontSize: 10,
-          alignment: "right",
-          color: "#666",
-          margin: [0, 0, 0, 3],
-        },
-        missingDocument: {
-          font: "Roboto",
-          fontSize: 12,
-          bold: true,
-          alignment: "right",
-          color: "#d32f2f",
-          margin: [0, 5, 0, 10],
-        },
-      },
-      content: content,
-    };
+    // Serialize the final PDF
+    const pdfBytes = await finalPdf.save();
+    const buffer = Buffer.from(pdfBytes);
 
-    const pdfDoc = printer.createPdfKitDocument(docDefinition);
-    const chunks = [];
+    res.setHeader("Content-Type", "application/pdf");
+    const filename = `${documentLabel}_جميع_الفروع.pdf`;
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="document.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    );
+    res.send(buffer);
 
-    pdfDoc.on("data", (chunk) => {
-      chunks.push(chunk);
-    });
-
-    pdfDoc.on("end", () => {
-      const buffer = Buffer.concat(chunks);
-      res.setHeader("Content-Type", "application/pdf");
-      const filename = `${documentLabel}_جميع_الفروع.pdf`;
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="document.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      );
-      res.send(buffer);
-    });
-
-    pdfDoc.on("error", (error) => {
-      console.error("PDF generation error:", error);
-      if (!res.headersSent) {
-        res.status(500).json({
-          success: false,
-          message: "فشل إنشاء ملف PDF",
-          error: error.message,
-        });
-      }
-    });
-
-    pdfDoc.end();
   } catch (error) {
     console.error("Error generating PDF by type:", error);
     if (!res.headersSent) {
@@ -2033,6 +1988,18 @@ router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
  * Only accessible by main managers
  */
 router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
+  // Helper to create PDF buffer from pdfmake
+  const createPdfBuffer = (printer, docDefinition) => {
+    return new Promise((resolve, reject) => {
+      const pdfDoc = printer.createPdfKitDocument(docDefinition);
+      const chunks = [];
+      pdfDoc.on("data", (chunk) => chunks.push(chunk));
+      pdfDoc.on("end", () => resolve(Buffer.concat(chunks)));
+      pdfDoc.on("error", reject);
+      pdfDoc.end();
+    });
+  };
+
   try {
     // Only main managers can generate reports
     if (req.user.role !== "main_manager") {
@@ -2098,95 +2065,16 @@ router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
       insurance_statement: "كشف التأمينات",
       operational_plan: "الخطة التشغلية",
       owner_civil_id_copy: "نسخة هوية المالك",
+      disclosure_commitment: "إفصاح وتعهد",
+      certification_commitment_form: "نموذج تصديق وتعاقد",
+      financial_platform_declaration: "ملف إقرار المنصة المالية",
+      financial_claim_form: "نموذج مطالبة مالية",
+      student_cadre_file: "بيانات الطلاب",
+      dropped_students: "الطلاب المنقطعين",
+      free_seats: "المقاعد المتاحة",
+      acceptance_notifications: "إشعارات القبول",
       payroll_file: "ملف مسيرات الرواتب",
     };
-
-    // Prepare images map for document files
-    const images = {};
-    const documentFilesMap = {};
-
-    for (const doc of documents) {
-      if (!doc.file_path) continue;
-
-      let fileBuffer;
-
-      // Fetch file from blob or local storage
-      if (
-        doc.file_path.startsWith("http://") ||
-        doc.file_path.startsWith("https://")
-      ) {
-        try {
-          const result = await fetchFromBlob(doc.file_path);
-          fileBuffer = result.buffer;
-        } catch (blobError) {
-          console.error(
-            `Failed to fetch from blob for document ${doc.id}:`,
-            blobError.message,
-          );
-          continue;
-        }
-      } else {
-        if (process.env.VERCEL === "1") {
-          console.warn(
-            `Document ${doc.id} uses local file path which is not accessible on Vercel: ${doc.file_path}`,
-          );
-          continue;
-        }
-
-        let filePath;
-        if (path.isAbsolute(doc.file_path)) {
-          filePath = doc.file_path;
-        } else {
-          let relativePath = doc.file_path;
-          if (relativePath.startsWith("express-app/")) {
-            relativePath = relativePath.replace(/^express-app\//, "");
-          }
-          filePath = path.join(__dirname, "..", relativePath);
-        }
-
-        if (!fs.existsSync(filePath)) {
-          const altPath = doc.file_path.replace(/^express-app\//, "");
-          const altFilePath = path.join(__dirname, "..", altPath);
-          filePath = fs.existsSync(altFilePath) ? altFilePath : filePath;
-        }
-
-        if (!fs.existsSync(filePath)) {
-          console.warn(
-            `File not found for document ${doc.id}: ${doc.file_path}`,
-          );
-          continue;
-        }
-
-        try {
-          fileBuffer = fs.readFileSync(filePath);
-        } catch (readError) {
-          console.error(
-            `Failed to read file for document ${doc.id}:`,
-            readError.message,
-          );
-          continue;
-        }
-      }
-
-      if (!fileBuffer || fileBuffer.length === 0) {
-        continue;
-      }
-
-      const base64 = fileBuffer.toString("base64");
-      const mimeType = doc.mime_type || "application/octet-stream";
-
-      documentFilesMap[doc.id] = {
-        base64: base64,
-        base64DataUri: `data:${mimeType};base64,${base64}`,
-        mimeType: mimeType,
-        buffer: fileBuffer,
-      };
-
-      if (mimeType.startsWith("image/")) {
-        const imageKey = `doc_${doc.id}`;
-        images[imageKey] = `data:${mimeType};base64,${base64}`;
-      }
-    }
 
     // Helper function to remove parentheses
     const removeParentheses = (text) => {
@@ -2201,7 +2089,21 @@ router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
       documentTypeMap.has(type),
     ).length;
 
-    const content = [
+    // Create a new PDF Document (final merged document)
+    const finalPdf = await PDFDocument.create();
+
+    // Loop through required doc types (or uploaded docs if we prefer showing only uploaded? 
+    // The requirement says "contains the documents", implying all relevant ones.)
+    // We will show all required docs, indicating missing ones.
+
+    // First, let's create a Summary Page (optional, or just start with first doc)
+    // Actually, let's stick to the pattern: For each doc, create a cover page.
+    // Maybe a main cover page for the whole report?
+    // The previous implementation had a summary at the start of the single PDF. 
+    // We can do the same: First "Item" is the summary page.
+
+    // Summary Page Content
+    const summaryContent = [
       {
         text: removeParentheses(`تقرير مستندات: ${branch.branch_name}`),
         style: "title",
@@ -2240,10 +2142,36 @@ router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
       },
     ];
 
-    // Add each required document (show all, mark missing)
+    const summaryDocDefinition = {
+      pageSize: "A4",
+      pageMargins: [40, 60, 40, 60],
+      defaultStyle: { font: "Roboto", fontSize: 14, color: "black" },
+      styles: {
+        title: { font: "Roboto", fontSize: 18, bold: true, alignment: "center", margin: [0, 0, 0, 20] },
+        info: { font: "Roboto", fontSize: 14, alignment: "right", margin: [0, 0, 0, 10] },
+      },
+      content: summaryContent
+    };
+
+    try {
+      const summaryPdfBuffer = await createPdfBuffer(printer, summaryDocDefinition);
+      const summaryDoc = await PDFDocument.load(summaryPdfBuffer);
+      const pages = await finalPdf.copyPages(summaryDoc, summaryDoc.getPageIndices());
+      pages.forEach(page => finalPdf.addPage(page));
+    } catch (err) {
+      console.error("Error creating summary page:", err);
+    }
+
+    // Now iterate required documents
     for (const docType of requiredDocTypes) {
       const docLabel = documentTypeLabels[docType] || docType;
       const doc = documentTypeMap.get(docType);
+
+      // Prepare Cover Page for this Document
+      const content = [];
+      const images = {};
+      let attachmentBuffer = null;
+      let isPdfAttachment = false;
 
       content.push({
         text: `نوع المستند: ${removeParentheses(docLabel)}`,
@@ -2271,39 +2199,83 @@ router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
           margin: [0, 0, 0, 10],
         });
 
-        const docFileData = documentFilesMap[doc.id];
-        if (docFileData) {
-          const mimeType = docFileData.mimeType;
+        // Fetch File
+        if (doc.file_path) {
+          try {
+            let fileBuffer;
+            if (doc.file_path.startsWith("http://") || doc.file_path.startsWith("https://")) {
+              const result = await fetchFromBlob(doc.file_path);
+              fileBuffer = result.buffer;
+            } else {
+              if (process.env.VERCEL !== "1") {
+                let filePath;
+                if (path.isAbsolute(doc.file_path)) {
+                  filePath = doc.file_path;
+                } else {
+                  let relativePath = doc.file_path;
+                  if (relativePath.startsWith("express-app/")) {
+                    relativePath = relativePath.replace(/^express-app\//, "");
+                  }
+                  filePath = path.join(__dirname, "..", relativePath);
+                }
 
-          if (mimeType.startsWith("image/")) {
-            try {
-              const imageKey = `doc_${doc.id}`;
+                if (!fs.existsSync(filePath)) {
+                  const altPath = doc.file_path.replace(/^express-app\//, "");
+                  const altFilePath = path.join(__dirname, "..", altPath);
+                  filePath = fs.existsSync(altFilePath) ? altFilePath : filePath;
+                }
+
+                if (fs.existsSync(filePath)) {
+                  fileBuffer = fs.readFileSync(filePath);
+                }
+              }
+            }
+
+            if (fileBuffer && fileBuffer.length > 0) {
+              const mimeType = doc.mime_type || "application/octet-stream";
+
+              if (mimeType.startsWith("image/")) {
+                const base64 = fileBuffer.toString("base64");
+                const imageKey = `doc_${doc.id}`;
+                images[imageKey] = `data:${mimeType};base64,${base64}`;
+                content.push({
+                  image: imageKey,
+                  width: 500,
+                  alignment: "center",
+                  margin: [0, 10, 0, 20],
+                  fit: [500, 700],
+                });
+              } else if (mimeType === "application/pdf") {
+                attachmentBuffer = fileBuffer;
+                isPdfAttachment = true;
+                content.push({
+                  text: "--- (تم إرفاق ملف PDF في الصفحات التالية) ---",
+                  style: "documentDescription",
+                  alignment: "center",
+                  color: "#4988c4",
+                  margin: [0, 20, 0, 20],
+                  bold: true
+                });
+              } else {
+                content.push({
+                  text: `[نوع الملف غير مدعوم للعرض المباشر: ${mimeType}]`,
+                  style: "documentDescription",
+                  color: "#d32f2f"
+                });
+              }
+            } else {
               content.push({
-                image: imageKey,
-                width: 500,
-                alignment: "center",
-                margin: [0, 10, 0, 20],
-                fit: [500, 700],
-              });
-            } catch (error) {
-              content.push({
-                text: removeParentheses(
-                  `[خطأ في تحميل الصورة: ${doc.file_name}]`,
-                ),
+                text: "[لم يتم العثور على محتوى الملف]",
                 style: "documentDescription",
-                margin: [0, 10, 0, 20],
-                color: "#d32f2f",
+                color: "#d32f2f"
               });
             }
+          } catch (err) {
+            console.error(`Error fetching doc ${doc.id}:`, err);
+            content.push({ text: "[خطأ في جلب الملف]", style: "documentDescription", color: "#d32f2f" });
           }
-        } else {
-          content.push({
-            text: removeParentheses("[لم يتم العثور على ملف المستند]"),
-            style: "documentDescription",
-            margin: [0, 10, 0, 20],
-            color: "#d32f2f",
-          });
         }
+
       } else {
         // Document is missing
         content.push({
@@ -2313,100 +2285,371 @@ router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
         });
       }
 
-      content.push({
-        text: "",
-        margin: [0, 0, 0, 10],
-        pageBreak: "after",
+      // Generate Cover Page for this doc
+      const docDefinition = {
+        pageSize: "A4",
+        pageMargins: [40, 60, 40, 60],
+        images: images,
+        defaultStyle: { font: "Roboto", fontSize: 14, color: "black" },
+        styles: {
+          title: { font: "Roboto", fontSize: 16, bold: true, alignment: "center", margin: [0, 0, 0, 20] },
+          branchHeader: { font: "Roboto", fontSize: 16, bold: true, alignment: "right", margin: [0, 0, 0, 5] },
+          documentInfo: { font: "Roboto", fontSize: 14, alignment: "right", margin: [0, 0, 0, 3] },
+          documentDescription: { font: "Roboto", fontSize: 14, alignment: "right", color: "#666", margin: [0, 0, 0, 3] },
+          missingDocument: { font: "Roboto", fontSize: 14, bold: true, alignment: "right", color: "#d32f2f", margin: [0, 5, 0, 10] },
+        },
+        content: content,
+      };
+
+      try {
+        const coverPdfBuffer = await createPdfBuffer(printer, docDefinition);
+        const coverPdfDoc = await PDFDocument.load(coverPdfBuffer);
+        const copiedPages = await finalPdf.copyPages(coverPdfDoc, coverPdfDoc.getPageIndices());
+        copiedPages.forEach((page) => finalPdf.addPage(page));
+
+        if (isPdfAttachment && attachmentBuffer) {
+          try {
+            const attachmentPdf = await PDFDocument.load(attachmentBuffer);
+            const attachmentPages = await finalPdf.copyPages(attachmentPdf, attachmentPdf.getPageIndices());
+            attachmentPages.forEach((page) => finalPdf.addPage(page));
+          } catch (pdfErr) {
+            console.error("Error merging attached PDF:", pdfErr);
+          }
+        }
+      } catch (genError) {
+        console.error("Error generating doc page:", genError);
+      }
+    }
+
+    const pdfBytes = await finalPdf.save();
+    const buffer = Buffer.from(pdfBytes);
+
+    res.setHeader("Content-Type", "application/pdf");
+    const filename = `مستندات_${branch.branch_name}.pdf`;
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="document.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    );
+    res.send(buffer);
+
+  } catch (error) {
+    console.error("Error generating PDF by branch:", error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "فشل إنشاء ملف PDF",
+        error: error.message,
+      });
+    }
+  }
+});
+
+/**
+ * POST /api/branch-documents/generate-pdf-stats
+ * Generate PDF report with statistics about document expiration
+ * Body: { branch_ids: number[], days_threshold: number }
+ * Only accessible by main managers
+ */
+router.post("/generate-pdf-stats", authenticate, async (req, res) => {
+  const createPdfBuffer = (printer, docDefinition) => {
+    return new Promise((resolve, reject) => {
+      const pdfDoc = printer.createPdfKitDocument(docDefinition);
+      const chunks = [];
+      pdfDoc.on("data", (chunk) => chunks.push(chunk));
+      pdfDoc.on("end", () => resolve(Buffer.concat(chunks)));
+      pdfDoc.on("error", reject);
+      pdfDoc.end();
+    });
+  };
+
+  try {
+    // Only main managers can generate reports
+    if (req.user.role !== "main_manager") {
+      return res.status(403).json({
+        success: false,
+        message: "تم رفض الوصول. يمكن للمديرين الرئيسيين فقط إنشاء التقارير.",
       });
     }
 
-    const docDefinition = {
-      pageSize: "A4",
-      pageMargins: [40, 60, 40, 60],
-      images: images,
-      defaultStyle: {
-        font: "Roboto",
-        fontSize: 10,
-        color: "black",
-      },
-      styles: {
-        title: {
-          font: "Roboto",
-          fontSize: 18,
-          bold: true,
-          alignment: "center",
-          margin: [0, 0, 0, 20],
-        },
-        info: {
-          font: "Roboto",
-          fontSize: 10,
-          alignment: "right",
-          margin: [0, 0, 0, 10],
-        },
-        branchHeader: {
-          font: "Roboto",
-          fontSize: 14,
-          bold: true,
-          alignment: "right",
-          margin: [0, 0, 0, 5],
-        },
-        documentInfo: {
-          font: "Roboto",
-          fontSize: 11,
-          alignment: "right",
-          margin: [0, 0, 0, 3],
-        },
-        documentDescription: {
-          font: "Roboto",
-          fontSize: 10,
-          alignment: "right",
-          color: "#666",
-          margin: [0, 0, 0, 3],
-        },
-        missingDocument: {
-          font: "Roboto",
-          fontSize: 12,
-          bold: true,
-          alignment: "right",
-          color: "#d32f2f",
-          margin: [0, 5, 0, 10],
-        },
-      },
-      content: content,
+    const { branch_ids = [], days_threshold = 30 } = req.body;
+    const now = new Date();
+
+    // Get all branches if no specific ones selected
+    let branches = await Branch.findAll({ is_active: true });
+    if (branch_ids.length > 0) {
+      branches = branches.filter(b => branch_ids.includes(b.id));
+    }
+
+    // Get all active branch documents
+    const documents = await sql`
+      SELECT bd.*
+      FROM branch_documents bd
+      WHERE bd.is_active = true
+      ORDER BY bd.expiry_date ASC
+    `;
+
+    // Calculate statistics
+    const stats = {
+      total: 0,
+      expired: 0,
+      expiring: 0,
+      byBranch: {},
     };
 
-    const pdfDoc = printer.createPdfKitDocument(docDefinition);
-    const chunks = [];
+    const selectedBranchIds = branches.map(b => b.id);
 
-    pdfDoc.on("data", (chunk) => {
-      chunks.push(chunk);
-    });
+    documents.forEach(doc => {
+      if (!selectedBranchIds.includes(doc.branch_id)) return;
 
-    pdfDoc.on("end", () => {
-      const buffer = Buffer.concat(chunks);
-      res.setHeader("Content-Type", "application/pdf");
-      const filename = `مستندات_${branch.branch_name}.pdf`;
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="document.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      );
-      res.send(buffer);
-    });
+      stats.total++;
+      if (!stats.byBranch[doc.branch_id]) {
+        stats.byBranch[doc.branch_id] = { total: 0, expired: 0, expiring: 0 };
+      }
+      stats.byBranch[doc.branch_id].total++;
 
-    pdfDoc.on("error", (error) => {
-      console.error("PDF generation error:", error);
-      if (!res.headersSent) {
-        res.status(500).json({
-          success: false,
-          message: "فشل إنشاء ملف PDF",
-          error: error.message,
-        });
+      if (doc.expiry_date) {
+        const expiryDate = new Date(doc.expiry_date);
+        const daysUntilExpiry = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+
+        if (daysUntilExpiry < 0) {
+          stats.expired++;
+          stats.byBranch[doc.branch_id].expired++;
+        } else if (daysUntilExpiry <= days_threshold) {
+          stats.expiring++;
+          stats.byBranch[doc.branch_id].expiring++;
+        }
       }
     });
 
-    pdfDoc.end();
+    // Build PDF content
+    const reportDate = formatDate(new Date());
+    const summaryData = [
+      { text: 'إجمالي المستندات', bold: true },
+      { text: stats.total.toString() },
+      { text: 'المستندات منتهية الصلاحية', bold: true },
+      { text: stats.expired.toString() },
+      { text: `المستندات قريبة الانتهاء (${days_threshold} يوم)`, bold: true },
+      { text: stats.expiring.toString() },
+    ];
+
+    const branchStatsData = branches.map(branch => {
+      const branchStat = stats.byBranch[branch.id] || { total: 0, expired: 0, expiring: 0 };
+      return [
+        branch.branch_name,
+        branchStat.total.toString(),
+        branchStat.expired.toString(),
+        branchStat.expiring.toString(),
+      ];
+    });
+
+    const docDefinition = {
+      pageSize: 'A4',
+      pageMargins: [40, 40, 40, 40],
+      content: [
+        { text: 'تقرير إحصائيات مستندات الفروع', style: 'header', alignment: 'center' },
+        { text: `تاريخ التقرير: ${reportDate}`, style: 'subheader', alignment: 'center' },
+        { text: '\n' },
+        { text: 'ملخص الإحصائيات', style: 'subheader' },
+        {
+          table: {
+            headerRows: 0,
+            widths: ['60%', '40%'],
+            body: [
+              ['إجمالي المستندات', stats.total.toString()],
+              ['المستندات منتهية الصلاحية', stats.expired.toString()],
+              [`المستندات قريبة الانتهاء (${days_threshold} يوم)`, stats.expiring.toString()],
+            ],
+          },
+        },
+        { text: '\n' },
+        { text: 'الإحصائيات حسب الفرع', style: 'subheader' },
+        {
+          table: {
+            headerRows: 1,
+            widths: ['40%', '20%', '20%', '20%'],
+            body: [
+              ['الفرع', 'إجمالي', 'منتهي', 'قريب'],
+              ...branchStatsData,
+            ],
+          },
+        },
+      ],
+      styles: {
+        header: { fontSize: 18, bold: true, margin: [0, 0, 0, 10] },
+        subheader: { fontSize: 12, bold: true, margin: [0, 10, 0, 5] },
+      },
+      defaultStyle: { font: 'Roboto', fontSize: 10 },
+    };
+
+    const pdfBuffer = await createPdfBuffer(printer, docDefinition);
+    res.setHeader("Content-Type", "application/pdf");
+    const filename = `تقرير-مستندات-الفروع-${reportDate}.pdf`;
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="document.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`
+    );
+    res.send(pdfBuffer);
+
   } catch (error) {
-    console.error("Error generating PDF by branch:", error);
+    console.error("Error generating stats PDF:", error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "فشل إنشاء ملف PDF",
+        error: error.message,
+      });
+    }
+  }
+});
+
+/**
+ * POST /api/branch-documents/generate-pdf-documents
+ * Generate PDF report with documents close to expiration
+ * Body: { branch_ids: number[], days_threshold: number }
+ * Only accessible by main managers
+ */
+router.post("/generate-pdf-documents", authenticate, async (req, res) => {
+  const createPdfBuffer = (printer, docDefinition) => {
+    return new Promise((resolve, reject) => {
+      const pdfDoc = printer.createPdfKitDocument(docDefinition);
+      const chunks = [];
+      pdfDoc.on("data", (chunk) => chunks.push(chunk));
+      pdfDoc.on("end", () => resolve(Buffer.concat(chunks)));
+      pdfDoc.on("error", reject);
+      pdfDoc.end();
+    });
+  };
+
+  try {
+    // Only main managers can generate reports
+    if (req.user.role !== "main_manager") {
+      return res.status(403).json({
+        success: false,
+        message: "تم رفض الوصول. يمكن للمديرين الرئيسيين فقط إنشاء التقارير.",
+      });
+    }
+
+    const { branch_ids = [], days_threshold = 30 } = req.body;
+    const now = new Date();
+
+    // Get all branches if no specific ones selected
+    let branches = await Branch.findAll({ is_active: true });
+    if (branch_ids.length > 0) {
+      branches = branches.filter(b => branch_ids.includes(b.id));
+    }
+
+    // Get all active branch documents
+    const documents = await sql`
+      SELECT bd.*
+      FROM branch_documents bd
+      WHERE bd.is_active = true
+      ORDER BY bd.expiry_date ASC
+    `;
+
+    // Filter documents that are expired or expiring
+    const selectedBranchIds = branches.map(b => b.id);
+    const relevantDocs = documents.filter(doc => {
+      if (!selectedBranchIds.includes(doc.branch_id)) return false;
+      if (!doc.expiry_date) return false;
+
+      const expiryDate = new Date(doc.expiry_date);
+      const daysUntilExpiry = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+
+      return daysUntilExpiry <= days_threshold; // Include both expired and expiring
+    }).sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date));
+
+    // Create branch name lookup
+    const branchLookup = new Map(branches.map(b => [b.id, b.branch_name]));
+
+    // Build table data
+    const tableData = [
+      ['الفرع', 'نوع المستند', 'رقم المستند', 'تاريخ الإصدار', 'تاريخ الانتهاء', 'الحالة'],
+      ...relevantDocs.map(doc => {
+        const branchName = branchLookup.get(doc.branch_id) || 'غير محدد';
+        const expiryDate = new Date(doc.expiry_date);
+        const daysUntilExpiry = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+        const status = daysUntilExpiry < 0 ? `منتهي (${Math.abs(daysUntilExpiry)} يوم)` : `${daysUntilExpiry} يوم`;
+
+        // Document type labels mapping
+        const documentTypeLabels = {
+          license: 'الترخيص',
+          permit: 'التصريح',
+          insurance: 'التأمين',
+          insurance_print: 'كشف التأمينات',
+          contract: 'العقد',
+          rental_contract: 'عقد الايجار',
+          registration: 'السجل التجاري',
+          security_contract: 'عقد الامن والسلامة',
+          civil_defense_certificate: 'شهادة الدفاع المدني',
+          municipality_certificate: 'شهادة بلدي',
+          insurance_certificate: 'شهادة التامينات',
+          insurance_statement: 'كشف التأمينات',
+          operational_plan: 'الخطة التشغلية',
+          owner_civil_id_copy: 'نسخة هوية المالك',
+          disclosure_commitment: 'إفصاح وتعهد',
+          certification_commitment_form: 'نموذج تصديق وتعاقد',
+          financial_platform_declaration: 'ملف إقرار المنصة المالية',
+          financial_claim_form: 'نموذج مطالبة مالية',
+          student_cadre_file: 'بيانات الطلاب',
+          dropped_students: 'الطلاب المنقطعين',
+          free_seats: 'المقاعد المتاحة',
+          acceptance_notifications: 'إشعارات القبول',
+          payroll_file: 'ملف مسيرات الرواتب',
+        };
+
+        const docTypeLabel = documentTypeLabels[doc.document_type] || doc.document_type;
+
+        return [
+          branchName,
+          docTypeLabel,
+          doc.document_number || '-',
+          doc.issue_date ? formatDate(new Date(doc.issue_date)) : '-',
+          doc.expiry_date ? formatDate(new Date(doc.expiry_date)) : '-',
+          status,
+        ];
+      }),
+    ];
+
+    const reportDate = formatDate(new Date());
+
+    const docDefinition = {
+      pageSize: 'A4',
+      pageOrientation: 'landscape',
+      pageMargins: [30, 30, 30, 30],
+      content: [
+        { text: 'المستندات المنتهية والقريبة من الانتهاء', style: 'header', alignment: 'center' },
+        { text: `تاريخ التقرير: ${reportDate}`, style: 'subheader', alignment: 'center' },
+        { text: '\n' },
+        {
+          table: {
+            headerRows: 1,
+            widths: ['15%', '15%', '12%', '12%', '12%', '17%'],
+            body: tableData,
+          },
+        },
+      ],
+      styles: {
+        header: { fontSize: 16, bold: true, margin: [0, 0, 0, 10] },
+        subheader: { fontSize: 10, margin: [0, 5, 0, 5] },
+      },
+      defaultStyle: { font: 'Roboto', fontSize: 9 },
+    };
+
+    if (relevantDocs.length === 0) {
+      docDefinition.content.push({ text: 'لا توجد مستندات منتهية أو قريبة من الانتهاء', style: 'subheader' });
+    }
+
+    const pdfBuffer = await createPdfBuffer(printer, docDefinition);
+    res.setHeader("Content-Type", "application/pdf");
+    const filename = `مستندات-الفروع-${reportDate}.pdf`;
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="document.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`
+    );
+    res.send(pdfBuffer);
+
+  } catch (error) {
+    console.error("Error generating documents PDF:", error);
     if (!res.headersSent) {
       res.status(500).json({
         success: false,

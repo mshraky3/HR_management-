@@ -38,30 +38,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Setup PDF fonts for certificate generation (similar to employee-file.js)
-const fontsDir = path.join(__dirname, "..", "fonts");
-const notoSansArabicDir = path.join(fontsDir, "Noto_Sans_Arabic");
-const notoSansArabicVariable = path.join(
-  notoSansArabicDir,
-  "NotoSansArabic-VariableFont_wdth,wght.ttf",
-);
-const notoSansArabicStatic = path.join(notoSansArabicDir, "static");
+const fontsDir = path.join(__dirname, '..', 'fonts');
+const amiriDir = path.join(fontsDir, 'Amiri');
+const amiriRegular = path.join(amiriDir, 'Amiri-Regular.ttf');
+const amiriBold = path.join(amiriDir, 'Amiri-Bold.ttf');
+const amiriItalic = path.join(amiriDir, 'Amiri-Italic.ttf');
+const amiriBoldItalic = path.join(amiriDir, 'Amiri-BoldItalic.ttf');
 let arabicFontPath = null;
 
 try {
-  if (fs.existsSync(notoSansArabicVariable)) {
-    arabicFontPath = notoSansArabicVariable;
-  } else if (fs.existsSync(notoSansArabicStatic)) {
-    try {
-      const staticFiles = fs.readdirSync(notoSansArabicStatic);
-      const regularFont = staticFiles.find(
-        (f) => f.includes("Regular") && f.endsWith(".ttf"),
-      );
-      if (regularFont) {
-        arabicFontPath = path.join(notoSansArabicStatic, regularFont);
-      }
-    } catch (e) {
-      console.warn("Error reading static fonts directory:", e.message);
-    }
+  if (fs.existsSync(amiriRegular)) {
+    arabicFontPath = amiriRegular;
   }
 } catch (error) {
   console.warn(
@@ -70,23 +57,10 @@ try {
   );
 }
 
-const hasArabicFont =
-  arabicFontPath !== null &&
-  (() => {
-    try {
-      return fs.existsSync(arabicFontPath);
-    } catch {
-      return false;
-    }
-  })();
+const hasArabicFont = arabicFontPath !== null;
 
 let certificateFonts;
 if (hasArabicFont) {
-  const notoSansStatic = path.join(notoSansArabicDir, "static");
-  const regularFont = path.join(notoSansStatic, "NotoSansArabic-Regular.ttf");
-  const boldFont = path.join(notoSansStatic, "NotoSansArabic-Bold.ttf");
-  const mediumFont = path.join(notoSansStatic, "NotoSansArabic-Medium.ttf");
-
   const fontExists = (fontPath) => {
     try {
       return fs.existsSync(fontPath);
@@ -95,34 +69,23 @@ if (hasArabicFont) {
     }
   };
 
+  const regular = amiriRegular;
+  const bold = fontExists(amiriBold) ? amiriBold : amiriRegular;
+  const italics = fontExists(amiriItalic) ? amiriItalic : amiriRegular;
+  const bolditalics = fontExists(amiriBoldItalic) ? amiriBoldItalic : (fontExists(amiriBold) ? amiriBold : amiriRegular);
+
   certificateFonts = {
     Roboto: {
-      normal: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bold: fontExists(boldFont)
-        ? boldFont
-        : fontExists(mediumFont)
-          ? mediumFont
-          : arabicFontPath,
-      italics: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bolditalics: fontExists(boldFont)
-        ? boldFont
-        : fontExists(mediumFont)
-          ? mediumFont
-          : arabicFontPath,
+      normal: regular,
+      bold: bold,
+      italics: italics,
+      bolditalics: bolditalics,
     },
     Nillima: {
-      normal: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bold: fontExists(boldFont)
-        ? boldFont
-        : fontExists(mediumFont)
-          ? mediumFont
-          : arabicFontPath,
-      italics: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bolditalics: fontExists(boldFont)
-        ? boldFont
-        : fontExists(mediumFont)
-          ? mediumFont
-          : arabicFontPath,
+      normal: regular,
+      bold: bold,
+      italics: italics,
+      bolditalics: bolditalics,
     },
   };
 } else {
@@ -143,6 +106,224 @@ if (hasArabicFont) {
 }
 
 const certificatePrinter = new PdfPrinter(certificateFonts);
+
+/**
+ * Calculate comprehensive employee statistics
+ * Used for statistics reporting and PDF generation
+ */
+const calculateEmployeeStatistics = (employees) => {
+  const stats = {
+    overview: {
+      total: employees.length,
+      male: 0,
+      female: 0,
+      avgSalary: 0,
+      totalSalaryBudget: 0,
+      completionRate: 0,
+      active: 0,
+      pending: 0,
+      minSalary: 0,
+      maxSalary: 0,
+    },
+    gender: [],
+    salary: {
+      min: 0,
+      max: 0,
+      avg: 0,
+      ranges: [],
+    },
+    jobTitles: [],
+    contractTypes: [],
+    maritalStatus: [],
+    nationalities: [],
+    educationalQualifications: [],
+    status: [],
+    ageGroups: [],
+    experienceLevels: [],
+    companyExperience: [],
+    branches: [],
+    idTypes: [],
+    salaryByBranch: [],
+  };
+
+  if (!employees || employees.length === 0) return stats;
+
+  const genderMap = {};
+  const jobTitleMap = {};
+  const contractMap = {};
+  const maritalMap = {};
+  const nationalityMap = {};
+  const eduMap = {};
+  const statusMap = {};
+  const ageGroupMap = {};
+  const experienceLevelMap = {};
+  const branchMap = {};
+  const salaryRanges = { '0-5000': 0, '5000-10000': 0, '10000-20000': 0, '20000+': 0 };
+  const salaryByBranchMap = {};
+  let totalSalary = 0;
+  let salaryCount = 0;
+  let completionCount = 0;
+
+  employees.forEach((emp) => {
+    // Gender
+    const gender = (emp.gender || 'unknown').toLowerCase();
+    genderMap[gender] = (genderMap[gender] || 0) + 1;
+    if (gender === 'male') stats.overview.male++;
+    else if (gender === 'female') stats.overview.female++;
+
+    // Salary calculations
+    if (emp.salary) {
+      totalSalary += emp.salary;
+      salaryCount++;
+
+      // Salary ranges
+      const salary = parseInt(emp.salary);
+      if (salary < 5000) salaryRanges['0-5000']++;
+      else if (salary < 10000) salaryRanges['5000-10000']++;
+      else if (salary < 20000) salaryRanges['10000-20000']++;
+      else salaryRanges['20000+']++;
+
+      // Min/Max salary
+      if (!stats.salary.min || salary < stats.salary.min) stats.salary.min = salary;
+      if (!stats.salary.max || salary > stats.salary.max) stats.salary.max = salary;
+    }
+
+    // Job titles
+    const jobTitle = emp.job_title || 'بدون مسمى';
+    jobTitleMap[jobTitle] = (jobTitleMap[jobTitle] || 0) + 1;
+
+    // Contract types
+    const contractType = emp.contract_type || 'بدون';
+    contractMap[contractType] = (contractMap[contractType] || 0) + 1;
+
+    // Marital status
+    const maritalStatus = emp.marital_status || 'بدون';
+    maritalMap[maritalStatus] = (maritalMap[maritalStatus] || 0) + 1;
+
+    // Nationality
+    const nationality = emp.nationality || 'بدون';
+    nationalityMap[nationality] = (nationalityMap[nationality] || 0) + 1;
+
+    // Educational qualification
+    const edu = emp.educational_qualification || 'بدون';
+    eduMap[edu] = (eduMap[edu] || 0) + 1;
+
+    // Status
+    const empStatus = emp.status || 'pending';
+    statusMap[empStatus] = (statusMap[empStatus] || 0) + 1;
+    if (empStatus === 'active') stats.overview.active++;
+    else if (empStatus === 'pending') stats.overview.pending++;
+
+    // Completion status
+    if (emp.data_completion_status === 'complete') completionCount++;
+
+    // Branch distribution
+    if (emp.branch_id) {
+      branchMap[emp.branch_id] = (branchMap[emp.branch_id] || 0) + 1;
+
+      // Salary by branch
+      if (!salaryByBranchMap[emp.branch_id]) {
+        salaryByBranchMap[emp.branch_id] = {
+          branch_id: emp.branch_id,
+          totalSalary: 0,
+          salaryCount: 0,
+          avgSalary: 0,
+        };
+      }
+      if (emp.salary) {
+        salaryByBranchMap[emp.branch_id].totalSalary += emp.salary;
+        salaryByBranchMap[emp.branch_id].salaryCount++;
+        salaryByBranchMap[emp.branch_id].avgSalary = Math.round(
+          salaryByBranchMap[emp.branch_id].totalSalary / salaryByBranchMap[emp.branch_id].salaryCount
+        );
+      }
+    }
+
+    // Age groups
+    if (emp.age) {
+      let ageGroup = '18-25';
+      if (emp.age >= 26 && emp.age <= 35) ageGroup = '26-35';
+      else if (emp.age >= 36 && emp.age <= 45) ageGroup = '36-45';
+      else if (emp.age >= 46 && emp.age <= 55) ageGroup = '46-55';
+      else if (emp.age > 55) ageGroup = '55+';
+
+      ageGroupMap[ageGroup] = (ageGroupMap[ageGroup] || 0) + 1;
+    }
+
+    // Experience levels
+    const experienceYears = emp.years_of_experience_in_company || 0;
+    let experienceLevel = 'junior';
+    if (experienceYears >= 1 && experienceYears < 3) experienceLevel = 'junior';
+    else if (experienceYears >= 3 && experienceYears < 7) experienceLevel = 'mid-level';
+    else if (experienceYears >= 7) experienceLevel = 'senior';
+
+    experienceLevelMap[experienceLevel] = (experienceLevelMap[experienceLevel] || 0) + 1;
+  });
+
+  // Calculate averages
+  stats.overview.avgSalary = salaryCount > 0 ? Math.round(totalSalary / salaryCount) : 0;
+  stats.overview.totalSalaryBudget = totalSalary;
+  stats.overview.completionRate = employees.length > 0 ? Math.round((completionCount / employees.length) * 100) : 0;
+
+  // Convert maps to arrays
+  stats.gender = Object.entries(genderMap).map(([gender, count]) => ({
+    gender,
+    count,
+    percentage: ((count / employees.length) * 100).toFixed(1),
+  }));
+
+  stats.salary.ranges = Object.entries(salaryRanges).map(([range, count]) => ({
+    range,
+    count,
+  }));
+
+  stats.jobTitles = Object.entries(jobTitleMap)
+    .map(([job_title, count]) => ({ job_title, count }))
+    .sort((a, b) => b.count - a.count);
+
+  stats.contractTypes = Object.entries(contractMap)
+    .map(([contract_type, count]) => ({ contract_type, count }))
+    .sort((a, b) => b.count - a.count);
+
+  stats.maritalStatus = Object.entries(maritalMap)
+    .map(([status, count]) => ({ status, count }))
+    .sort((a, b) => b.count - a.count);
+
+  stats.nationalities = Object.entries(nationalityMap)
+    .map(([nationality, count]) => ({ nationality, count }))
+    .sort((a, b) => b.count - a.count);
+
+  stats.educationalQualifications = Object.entries(eduMap)
+    .map(([qualification, count]) => ({ qualification, count }))
+    .sort((a, b) => b.count - a.count);
+
+  stats.status = Object.entries(statusMap)
+    .map(([status, count]) => ({ status, count }))
+    .sort((a, b) => b.count - a.count);
+
+  stats.ageGroups = Object.entries(ageGroupMap)
+    .map(([age_group, count]) => ({ age_group, count }))
+    .sort((a, b) => {
+      const order = ['18-25', '26-35', '36-45', '46-55', '55+'];
+      return order.indexOf(a.age_group) - order.indexOf(b.age_group);
+    });
+
+  stats.experienceLevels = Object.entries(experienceLevelMap)
+    .map(([level, count]) => ({ level, count }))
+    .sort((a, b) => {
+      const order = ['junior', 'mid-level', 'senior'];
+      return order.indexOf(a.level) - order.indexOf(b.level);
+    });
+
+  stats.branches = Object.entries(branchMap)
+    .map(([branch_id, count]) => ({ branch_id: parseInt(branch_id), count }))
+    .sort((a, b) => b.count - a.count);
+
+  stats.salaryByBranch = Object.values(salaryByBranchMap)
+    .sort((a, b) => b.totalSalary - a.totalSalary);
+
+  return stats;
+};
 
 const employeeHasBranchAccess = (employee, branchId) => {
   if (!employee || !branchId) return false;
@@ -1125,6 +1306,546 @@ router.get("/statistics", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "فشل جلب إحصائيات الموظفين",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/employees/statistics/generate-pdf
+ * Generate PDF report with selected statistics
+ * Main Manager only
+ */
+router.post("/statistics/generate-pdf", async (req, res) => {
+  try {
+    // Check authorization
+    if (!req.user || !req.user.role) {
+      return res.status(401).json({
+        success: false,
+        message: "غير مصرح",
+      });
+    }
+
+    // Only main manager can generate reports
+    if (req.user.role !== 'main_manager') {
+      return res.status(403).json({
+        success: false,
+        message: "صلاحية غير كافية",
+      });
+    }
+
+    const { selectedSections = {} } = req.body;
+
+    // Get full statistics data
+    const { Employee } = await import("../models/Employee.js");
+    const { Branch } = await import("../models/Branch.js");
+
+    const employees = await Employee.findAll();
+    const branches = await Branch.findAll();
+
+    if (!employees || employees.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "لا توجد بيانات موظفين",
+      });
+    }
+
+    // Calculate statistics
+    const statistics = calculateEmployeeStatistics(employees);
+
+    // Use the certificatePrinter that's already initialized at the top of this file
+    const printer = certificatePrinter;
+
+    const docContent = [];
+    const now = new Date();
+    // Use Gregorian date format: dd/mm/yyyy
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const dateStr = `${day}/${month}/${year}`;
+
+    // Helper function to generate text summary with data
+    // Add title and date
+    docContent.push({
+      text: 'تقرير إحصائيات الموظفين',
+      style: 'title',
+    });
+
+    docContent.push({
+      text: `التاريخ: ${dateStr}`,
+      style: 'subtitle',
+      margin: [0, 0, 0, 20],
+    });
+
+    // Overview Stats in card format
+    if (selectedSections.overview && statistics.overview) {
+      docContent.push({
+        text: 'ملخص عام',
+        style: 'heading',
+      });
+
+      docContent.push({
+        columns: [
+          {
+            stack: [
+              { text: 'إجمالي الموظفين', style: 'cardLabel' },
+              { text: statistics.overview.total || 0, style: 'cardValue' }
+            ],
+            width: '25%'
+          },
+          {
+            stack: [
+              { text: 'الذكور', style: 'cardLabel' },
+              { text: statistics.overview.male || 0, style: 'cardValue', color: '#4facfe' }
+            ],
+            width: '25%'
+          },
+          {
+            stack: [
+              { text: 'الإناث', style: 'cardLabel' },
+              { text: statistics.overview.female || 0, style: 'cardValue', color: '#fa709a' }
+            ],
+            width: '25%'
+          },
+          {
+            stack: [
+              { text: 'إكمال البيانات', style: 'cardLabel' },
+              { text: (statistics.overview.completionRate || 0) + '%', style: 'cardValue', color: '#43e97b' }
+            ],
+            width: '25%'
+          }
+        ],
+        margin: [0, 0, 0, 20]
+      });
+
+      docContent.push({
+        columns: [
+          {
+            stack: [
+              { text: 'متوسط الراتب', style: 'cardLabel' },
+              { text: (statistics.overview.avgSalary || 0).toLocaleString('en-US') + ' ريال', style: 'cardValue' }
+            ],
+            width: '33%'
+          },
+          {
+            stack: [
+              { text: 'إجمالي الرواتب', style: 'cardLabel' },
+              { text: (statistics.overview.totalSalaryBudget || 0).toLocaleString('en-US') + ' ريال', style: 'cardValue' }
+            ],
+            width: '33%'
+          },
+          {
+            stack: [
+              { text: 'نسبة التوظيف النشط', style: 'cardLabel' },
+              { text: (statistics.overview.active || 0) + ' موظف', style: 'cardValue' }
+            ],
+            width: '34%'
+          }
+        ],
+        margin: [0, 0, 0, 30]
+      });
+    }
+
+    // Gender Distribution Chart
+    if (selectedSections.gender && statistics.gender && statistics.gender.length > 0) {
+      docContent.push({
+        text: 'توزيع الموظفين حسب الجنس',
+        style: 'heading',
+      });
+
+      const genderRows = statistics.gender.map(item => [
+        { text: item.gender === 'male' ? 'ذكور' : 'إناث', fontSize: 11 },
+        { text: item.count || 0, fontSize: 11, alignment: 'center' },
+        { text: item.percentage + '%', fontSize: 11, alignment: 'center' }
+      ]);
+
+      docContent.push({
+        table: {
+          headerRows: 1,
+          widths: ['50%', '25%', '25%'],
+          body: [
+            [
+              { text: 'الجنس', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
+            ],
+            ...genderRows
+          ]
+        },
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // Salary Ranges Chart
+    if (selectedSections.salary && statistics.salary?.ranges && statistics.salary.ranges.length > 0) {
+      docContent.push({
+        text: 'توزيع الرواتب حسب الفئات',
+        style: 'heading',
+      });
+
+      const salaryRows = statistics.salary.ranges.map(item => {
+        const percentage = ((item.count / statistics.overview.total) * 100).toFixed(1);
+        return [
+          { text: item.range || 'بدون', fontSize: 11 },
+          { text: item.count || 0, fontSize: 11, alignment: 'center' },
+          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+        ];
+      });
+
+      docContent.push({
+        table: {
+          headerRows: 1,
+          widths: ['50%', '25%', '25%'],
+          body: [
+            [
+              { text: 'فئة الراتب', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
+            ],
+            ...salaryRows
+          ]
+        },
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // Job Titles Chart (top 10)
+    if (selectedSections.jobTitles && statistics.jobTitles && statistics.jobTitles.length > 0) {
+      docContent.push({
+        text: 'أكثر 10 مسميات وظيفية',
+        style: 'heading',
+      });
+
+      const jobRows = statistics.jobTitles.slice(0, 10).map(item => {
+        const percentage = ((item.count / statistics.overview.total) * 100).toFixed(1);
+        return [
+          { text: item.job_title || 'بدون', fontSize: 11 },
+          { text: item.count || 0, fontSize: 11, alignment: 'center' },
+          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+        ];
+      });
+
+      docContent.push({
+        table: {
+          headerRows: 1,
+          widths: ['50%', '25%', '25%'],
+          body: [
+            [
+              { text: 'المسمى الوظيفي', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
+            ],
+            ...jobRows
+          ]
+        },
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // Contract Types Chart
+    if (selectedSections.contractTypes && statistics.contractTypes && statistics.contractTypes.length > 0) {
+      docContent.push({
+        text: 'توزيع الموظفين حسب نوع العقد',
+        style: 'heading',
+      });
+
+      const contractRows = statistics.contractTypes.map(item => {
+        const percentage = ((item.count / statistics.overview.total) * 100).toFixed(1);
+        return [
+          { text: item.contract_type || 'بدون', fontSize: 11 },
+          { text: item.count || 0, fontSize: 11, alignment: 'center' },
+          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+        ];
+      });
+
+      docContent.push({
+        table: {
+          headerRows: 1,
+          widths: ['50%', '25%', '25%'],
+          body: [
+            [
+              { text: 'نوع العقد', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
+            ],
+            ...contractRows
+          ]
+        },
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // Marital Status Chart
+    if (selectedSections.maritalStatus && statistics.maritalStatus && statistics.maritalStatus.length > 0) {
+      docContent.push({
+        text: 'توزيع الموظفين حسب الحالة الاجتماعية',
+        style: 'heading',
+      });
+
+      const maritalRows = statistics.maritalStatus.map(item => {
+        const percentage = ((item.count / statistics.overview.total) * 100).toFixed(1);
+        return [
+          { text: item.status || 'بدون', fontSize: 11 },
+          { text: item.count || 0, fontSize: 11, alignment: 'center' },
+          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+        ];
+      });
+
+      docContent.push({
+        table: {
+          headerRows: 1,
+          widths: ['50%', '25%', '25%'],
+          body: [
+            [
+              { text: 'الحالة الاجتماعية', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
+            ],
+            ...maritalRows
+          ]
+        },
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // Nationalities Chart (top 10)
+    if (selectedSections.nationalities && statistics.nationalities && statistics.nationalities.length > 0) {
+      docContent.push({
+        text: 'أكثر 10 جنسيات',
+        style: 'heading',
+      });
+
+      const nationalityRows = statistics.nationalities.slice(0, 10).map(item => {
+        const percentage = ((item.count / statistics.overview.total) * 100).toFixed(1);
+        return [
+          { text: item.nationality || 'بدون', fontSize: 11 },
+          { text: item.count || 0, fontSize: 11, alignment: 'center' },
+          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+        ];
+      });
+
+      docContent.push({
+        table: {
+          headerRows: 1,
+          widths: ['50%', '25%', '25%'],
+          body: [
+            [
+              { text: 'الجنسية', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
+            ],
+            ...nationalityRows
+          ]
+        },
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // Educational Qualifications Chart
+    if (selectedSections.educationalQualifications && statistics.educationalQualifications && statistics.educationalQualifications.length > 0) {
+      docContent.push({
+        text: 'توزيع الموظفين حسب المؤهل التعليمي',
+        style: 'heading',
+      });
+
+      const eduRows = statistics.educationalQualifications.map(item => {
+        const percentage = ((item.count / statistics.overview.total) * 100).toFixed(1);
+        return [
+          { text: item.qualification || 'بدون', fontSize: 11 },
+          { text: item.count || 0, fontSize: 11, alignment: 'center' },
+          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+        ];
+      });
+
+      docContent.push({
+        table: {
+          headerRows: 1,
+          widths: ['50%', '25%', '25%'],
+          body: [
+            [
+              { text: 'المؤهل التعليمي', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
+            ],
+            ...eduRows
+          ]
+        },
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // Employee Status Chart
+    if (selectedSections.status && statistics.status && statistics.status.length > 0) {
+    }
+
+    // Age Groups Chart
+    if (selectedSections.ageGroups && statistics.ageGroups && statistics.ageGroups.length > 0) {
+      docContent.push({
+        text: 'توزيع الموظفين حسب فئات العمر',
+        style: 'heading',
+      });
+
+      const ageRows = statistics.ageGroups.map(item => {
+        const percentage = ((item.count / statistics.overview.total) * 100).toFixed(1);
+        return [
+          { text: item.age_group || 'بدون', fontSize: 11 },
+          { text: item.count || 0, fontSize: 11, alignment: 'center' },
+          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+        ];
+      });
+
+      docContent.push({
+        table: {
+          headerRows: 1,
+          widths: ['50%', '25%', '25%'],
+          body: [
+            [
+              { text: 'فئة العمر', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
+            ],
+            ...ageRows
+          ]
+        },
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // Experience Levels Chart
+    if (selectedSections.experienceLevels && statistics.experienceLevels && statistics.experienceLevels.length > 0) {
+      docContent.push({
+        text: 'توزيع الموظفين حسب مستويات الخبرة',
+        style: 'heading',
+      });
+
+      const expRows = statistics.experienceLevels.map(item => {
+        const percentage = ((item.count / statistics.overview.total) * 100).toFixed(1);
+        return [
+          { text: item.level || 'بدون', fontSize: 11 },
+          { text: item.count || 0, fontSize: 11, alignment: 'center' },
+          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+        ];
+      });
+
+      docContent.push({
+        table: {
+          headerRows: 1,
+          widths: ['50%', '25%', '25%'],
+          body: [
+            [
+              { text: 'مستوى الخبرة', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
+            ],
+            ...expRows
+          ]
+        },
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // Branches Chart
+    if (selectedSections.branches && statistics.branches && statistics.branches.length > 0) {
+      docContent.push({
+        text: 'توزيع الموظفين حسب الفروع',
+        style: 'heading',
+      });
+
+      const branchRows = statistics.branches.map(item => {
+        const branchName = branches.find(b => b.id === item.branch_id)?.name || 'فرع مجهول';
+        const percentage = ((item.count / statistics.overview.total) * 100).toFixed(1);
+        return [
+          { text: branchName, fontSize: 11 },
+          { text: item.count, fontSize: 11, alignment: 'center' },
+          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+        ];
+      });
+
+      docContent.push({
+        table: {
+          headerRows: 1,
+          widths: ['50%', '25%', '25%'],
+          body: [
+            [
+              { text: 'اسم الفرع', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'عدد الموظفين', bold: true, alignment: 'center', fontSize: 12 },
+              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
+            ],
+            ...branchRows
+          ]
+        },
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // PDF definition
+    const docDefinition = {
+      content: docContent,
+      styles: {
+        title: {
+          fontSize: 24,
+          bold: true,
+          alignment: 'center',
+          margin: [0, 0, 0, 20],
+          color: '#1e293b',
+          font: 'Amiri',
+        },
+        subtitle: {
+          fontSize: 12,
+          alignment: 'center',
+          color: '#64748b',
+          font: 'Amiri',
+        },
+        heading: {
+          fontSize: 14,
+          bold: true,
+          margin: [0, 15, 0, 10],
+          color: '#2c3e50',
+          font: 'Amiri',
+          border: [false, false, false, true],
+          borderColor: '#667eea',
+          borderWidth: 2,
+          paddingBottom: 8,
+        },
+        cardLabel: {
+          fontSize: 10,
+          color: '#64748b',
+          font: 'Roboto',
+          margin: [0, 0, 5, 0],
+        },
+        cardValue: {
+          fontSize: 18,
+          bold: true,
+          color: '#667eea',
+          font: 'Roboto',
+        },
+        dataTable: {
+          font: 'Roboto',
+        },
+      },
+      defaultStyle: {
+        font: 'Roboto',
+        fontSize: 11,
+        color: '#1e293b',
+      },
+    };
+
+    // Generate PDF
+    const pdfDoc = printer.createPdfKitDocument(docDefinition);
+
+    // Set response headers
+    // Use ASCII filename with UTC-8 encoded filename* parameter for Arabic support
+    const dateStrForFilename = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="statistics_report_${dateStrForFilename}.pdf"; filename*=UTF-8''%D8%AA%D9%82%D8%B1%D9%8A%D8%B1_%D8%A7%D8%AD%D8%B5%D8%A7%D8%A6%D9%8A%D8%A7%D8%AA_%D8%A7%D9%84%D9%85%D9%88%D8%B8%D9%81%D9%8A%D9%86.pdf`);
+    // Pipe to response
+    pdfDoc.pipe(res);
+    pdfDoc.end();
+  } catch (error) {
+    log.error('Error generating statistics PDF', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'فشل إنشاء التقرير',
       error: error.message,
     });
   }
@@ -2327,7 +3048,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     const contractEndDateFormatted = contractEndDateGregorian
       ? formatDateEnglish(contractEndDateGregorian)
       : null;
-    
+
     // Format date as yyyy-mm-dd for specialties certificate table
     const formatDateForSpecialtiesTable = (gregorianDate) => {
       if (!gregorianDate) return "";
@@ -2365,7 +3086,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     const hisHerPerformance = isFemale ? "أداؤها" : "أداؤه";
     const madeHimHer = isFemale ? "جعلها" : "جعله";
     const hisHerRequest = isFemale ? "طلبها" : "طلبه";
-    
+
     // Gender-specific words for specialties certificate
     const mentionedBelow = isFemale ? "الموضحة بياناتها" : "الموضح بياناته";
     const worksWord = isFemale ? "تعمل" : "يعمل";
@@ -2437,8 +3158,8 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     // Title - different for each certificate type
     const titleText =
       certificate_type === "salary" ? "خطاب تعريف راتب" :
-      certificate_type === "specialties" ? "تعريف هيئة التخصصات" :
-      "شهادة خبرة";
+        certificate_type === "specialties" ? "تعريف هيئة التخصصات" :
+          "شهادة خبرة";
     certificateContent.push({
       text: titleText,
       style: "certificateTitle",
@@ -2562,7 +3283,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
 
     // Employee Information Table - Different structure for specialties certificate
     let employeeInfoTable;
-    
+
     if (certificate_type === "specialties") {
       // Specialties certificate uses a 5-column table
       const specialtiesTableBody = [
@@ -2633,7 +3354,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
           },
         ],
       ];
-      
+
       employeeInfoTable = {
         table: {
           widths: ["*", "*", "*", "*", "*"],
@@ -2655,110 +3376,29 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     } else {
       // Original 2-column table for experience and salary certificates
       const employeeInfoTableBody = [
-      [
-        {
-          text: certificate_type === "salary" ? "الموظف:" : "الاسم الكامل:",
-          style: "infoLabel",
-          alignment: "right",
-          border: [true, true, false, true],
-        },
-        {
-          text: employeeFullName,
-          style: "infoValue",
-          alignment: "right",
-          border: [false, true, true, true],
-        },
-      ],
-      [
-        {
-          text: "الجنسية:",
-          style: "infoLabel",
-          alignment: "right",
-          border: [true, false, false, false],
-        },
-        {
-          text: nationality,
-          style: "infoValue",
-          alignment: "right",
-          border: [false, false, true, false],
-        },
-      ],
-      [
-        {
-          text: `رقم ${idLabel}:`,
-          style: "infoLabel",
-          alignment: "right",
-          border: [true, false, false, false],
-        },
-        {
-          text: employeeIdNumber,
-          style: "infoValue",
-          alignment: "right",
-          border: [false, false, true, false],
-        },
-      ],
-      [
-        {
-          text: "المسمى الوظيفي:",
-          style: "infoLabel",
-          alignment: "right",
-          border: [true, false, false, false],
-        },
-        {
-          text: jobTitle || "غير محدد",
-          style: "infoValue",
-          alignment: "right",
-          border: [false, false, true, false],
-        },
-      ],
-    ];
-
-    // Add occupation/job title row for salary certificate
-    if (certificate_type === "salary") {
-      employeeInfoTableBody.push([
-        {
-          text: "المهنة:",
-          style: "infoLabel",
-          alignment: "right",
-          border: [true, false, false, false],
-        },
-        {
-          text: jobTitle || "غير محدد",
-          style: "infoValue",
-          alignment: "right",
-          border: [false, false, true, false],
-        },
-      ]);
-    }
-
-    // Add working since date for salary certificate, or contract dates for experience
-    if (certificate_type === "salary") {
-      employeeInfoTableBody.push([
-        {
-          text: "تاريخ الالتحاق:",
-          style: "infoLabel",
-          alignment: "right",
-          border: [true, false, false, true],
-        },
-        {
-          text: contractStartDateFormatted || "غير محدد",
-          style: "infoValue",
-          alignment: "right",
-          border: [false, false, true, true],
-        },
-      ]);
-    } else {
-      // Experience certificate - add both contract dates
-      employeeInfoTableBody.push(
         [
           {
-            text: "تاريخ بداية العقد:",
+            text: certificate_type === "salary" ? "الموظف:" : "الاسم الكامل:",
+            style: "infoLabel",
+            alignment: "right",
+            border: [true, true, false, true],
+          },
+          {
+            text: employeeFullName,
+            style: "infoValue",
+            alignment: "right",
+            border: [false, true, true, true],
+          },
+        ],
+        [
+          {
+            text: "الجنسية:",
             style: "infoLabel",
             alignment: "right",
             border: [true, false, false, false],
           },
           {
-            text: contractStartDateFormatted || "غير محدد",
+            text: nationality,
             style: "infoValue",
             alignment: "right",
             border: [false, false, true, false],
@@ -2766,20 +3406,101 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
         ],
         [
           {
-            text: "تاريخ نهاية العقد:",
+            text: `رقم ${idLabel}:`,
+            style: "infoLabel",
+            alignment: "right",
+            border: [true, false, false, false],
+          },
+          {
+            text: employeeIdNumber,
+            style: "infoValue",
+            alignment: "right",
+            border: [false, false, true, false],
+          },
+        ],
+        [
+          {
+            text: "المسمى الوظيفي:",
+            style: "infoLabel",
+            alignment: "right",
+            border: [true, false, false, false],
+          },
+          {
+            text: jobTitle || "غير محدد",
+            style: "infoValue",
+            alignment: "right",
+            border: [false, false, true, false],
+          },
+        ],
+      ];
+
+      // Add occupation/job title row for salary certificate
+      if (certificate_type === "salary") {
+        employeeInfoTableBody.push([
+          {
+            text: "المهنة:",
+            style: "infoLabel",
+            alignment: "right",
+            border: [true, false, false, false],
+          },
+          {
+            text: jobTitle || "غير محدد",
+            style: "infoValue",
+            alignment: "right",
+            border: [false, false, true, false],
+          },
+        ]);
+      }
+
+      // Add working since date for salary certificate, or contract dates for experience
+      if (certificate_type === "salary") {
+        employeeInfoTableBody.push([
+          {
+            text: "تاريخ الالتحاق:",
             style: "infoLabel",
             alignment: "right",
             border: [true, false, false, true],
           },
           {
-            text: contractEndDateFormatted || "غير محدد",
+            text: contractStartDateFormatted || "غير محدد",
             style: "infoValue",
             alignment: "right",
             border: [false, false, true, true],
           },
-        ],
-      );
-    }
+        ]);
+      } else {
+        // Experience certificate - add both contract dates
+        employeeInfoTableBody.push(
+          [
+            {
+              text: "تاريخ بداية العقد:",
+              style: "infoLabel",
+              alignment: "right",
+              border: [true, false, false, false],
+            },
+            {
+              text: contractStartDateFormatted || "غير محدد",
+              style: "infoValue",
+              alignment: "right",
+              border: [false, false, true, false],
+            },
+          ],
+          [
+            {
+              text: "تاريخ نهاية العقد:",
+              style: "infoLabel",
+              alignment: "right",
+              border: [true, false, false, true],
+            },
+            {
+              text: contractEndDateFormatted || "غير محدد",
+              style: "infoValue",
+              alignment: "right",
+              border: [false, false, true, true],
+            },
+          ],
+        );
+      }
 
       employeeInfoTable = {
         table: {
@@ -2972,7 +3693,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     const todayGregorian = formatDate(today.toISOString().split('T')[0]);
     const todayHijri = convertGregorianToHijri(today.toISOString().split('T')[0]);
     const todayHijriFormatted = todayHijri ? formatHijriToString(todayHijri) : '';
-    
+
     // For specialties certificate, format date as dd-mm-yyyy م
     let dateText;
     let documentNumber;
@@ -3037,42 +3758,42 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
       },
       defaultStyle: {
         font: "Roboto",
-        fontSize: 12,
+        fontSize: 14,
         color: "black",
       },
       styles: {
         certificateTitle: {
-          fontSize: 20,
+          fontSize: 16,
           bold: true,
           alignment: "center",
         },
         certificateBody: {
-          fontSize: 11,
+          fontSize: 14,
           lineHeight: 1.6,
         },
         certificateClosing: {
-          fontSize: 12,
+          fontSize: 14,
         },
         infoLabel: {
-          fontSize: 12,
+          fontSize: 14,
           bold: true,
           color: "#000000",
         },
         infoValue: {
-          fontSize: 12,
+          fontSize: 14,
         },
         infoLabelBold: {
-          fontSize: 12,
+          fontSize: 14,
           bold: true,
           color: "#000000",
         },
         infoValueBold: {
-          fontSize: 12,
+          fontSize: 14,
           bold: true,
           color: "#000000",
         },
         sectionTitle: {
-          fontSize: 14,
+          fontSize: 16,
           bold: true,
           color: "#000000",
         },

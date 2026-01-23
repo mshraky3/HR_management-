@@ -19,52 +19,30 @@ const __dirname = path.dirname(__filename);
 // Create pdfmake RTL printer with fonts
 // Check if Arabic font file exists, otherwise use Helvetica
 const fontsDir = path.join(__dirname, '..', 'fonts');
-// Try Noto Sans Arabic first (variable font or static)
-const notoSansArabicDir = path.join(fontsDir, 'Noto_Sans_Arabic');
-const notoSansArabicVariable = path.join(notoSansArabicDir, 'NotoSansArabic-VariableFont_wdth,wght.ttf');
-const notoSansArabicStatic = path.join(notoSansArabicDir, 'static');
+// Use Amiri font
+const amiriDir = path.join(fontsDir, 'Amiri');
+const amiriRegular = path.join(amiriDir, 'Amiri-Regular.ttf');
+const amiriBold = path.join(amiriDir, 'Amiri-Bold.ttf');
+const amiriItalic = path.join(amiriDir, 'Amiri-Italic.ttf');
+const amiriBoldItalic = path.join(amiriDir, 'Amiri-BoldItalic.ttf');
+
 let arabicFontPath = null;
 
-// Check for variable font first
-// Note: Font files are included in Vercel deployment, but paths may differ
-// This code handles both local development and Vercel serverless environments
+// Check for Amiri font
 try {
-  if (fs.existsSync(notoSansArabicVariable)) {
-    arabicFontPath = notoSansArabicVariable;
-  } else if (fs.existsSync(notoSansArabicStatic)) {
-    // Try to find a regular weight font in static folder
-    try {
-      const staticFiles = fs.readdirSync(notoSansArabicStatic);
-      const regularFont = staticFiles.find(f => f.includes('Regular') && f.endsWith('.ttf'));
-      if (regularFont) {
-        arabicFontPath = path.join(notoSansArabicStatic, regularFont);
-      }
-    } catch (e) {
-      console.warn('Error reading static fonts directory:', e.message);
-    }
+  if (fs.existsSync(amiriRegular)) {
+    arabicFontPath = amiriRegular;
   }
 } catch (error) {
   // On Vercel or if fonts are not accessible, will use fallback fonts
   console.warn('Font files not accessible, will use fallback fonts:', error.message);
 }
 
-const hasArabicFont = arabicFontPath !== null && (() => {
-  try {
-    return fs.existsSync(arabicFontPath);
-  } catch {
-    return false;
-  }
-})();
+const hasArabicFont = arabicFontPath !== null;
 
 let fonts;
 if (hasArabicFont) {
-  // Use Noto Sans Arabic font
-  const notoSansStatic = path.join(notoSansArabicDir, 'static');
-  const regularFont = path.join(notoSansStatic, 'NotoSansArabic-Regular.ttf');
-  const boldFont = path.join(notoSansStatic, 'NotoSansArabic-Bold.ttf');
-  const mediumFont = path.join(notoSansStatic, 'NotoSansArabic-Medium.ttf');
-  
-  // Use available fonts, fallback to regular if others don't exist
+  // Use Amiri font
   // Wrap fs.existsSync in try-catch for Vercel compatibility
   const fontExists = (fontPath) => {
     try {
@@ -73,23 +51,28 @@ if (hasArabicFont) {
       return false;
     }
   };
-  
+
+  const regular = amiriRegular;
+  const bold = fontExists(amiriBold) ? amiriBold : amiriRegular;
+  const italics = fontExists(amiriItalic) ? amiriItalic : amiriRegular;
+  const bolditalics = fontExists(amiriBoldItalic) ? amiriBoldItalic : (fontExists(amiriBold) ? amiriBold : amiriRegular);
+
   fonts = {
     Roboto: {
-      normal: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bold: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath),
-      italics: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bolditalics: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath)
+      normal: regular,
+      bold: bold,
+      italics: italics,
+      bolditalics: bolditalics
     },
     Nillima: {
-      normal: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bold: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath),
-      italics: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bolditalics: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath)
+      normal: regular,
+      bold: bold,
+      italics: italics,
+      bolditalics: bolditalics
     }
   };
-  
-  console.log('Using Noto Sans Arabic font for PDF generation');
+
+  console.log('Using Amiri font for PDF generation');
 } else {
   // Fallback to Helvetica (limited Arabic support)
   fonts = {
@@ -169,11 +152,11 @@ const formatNumberForPDF = (value) => {
  */
 const gregorianToHijri = (date) => {
   if (!date) return '-';
-  
+
   // Use centralized conversion function
   const hijriDate = convertGregorianToHijri(date);
   if (!hijriDate) return '-';
-  
+
   // Format as dd/mm/yyyy
   return formatHijriToString(hijriDate);
 };
@@ -186,7 +169,7 @@ const gregorianToHijri = (date) => {
 const formatCurrency = (amount) => {
   if (amount === null || amount === undefined) return '-';
   // Format with English numbers
-  const formatted = new Intl.NumberFormat('en-US', { 
+  const formatted = new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(amount);
@@ -201,7 +184,7 @@ const buildEmployeeQuery = async (filters, branchIds) => {
   const conditions = ['is_active = true'];
   const params = [];
   let paramIndex = 1;
-  
+
   // Branch filter - support single branch or multiple branches
   if (branchIds && branchIds.length > 0) {
     if (branchIds.length === 1) {
@@ -213,7 +196,7 @@ const buildEmployeeQuery = async (filters, branchIds) => {
       params.push(...branchIds);
     }
   }
-  
+
   // Helper function to add IN clause
   const addInClause = (field, values) => {
     if (Array.isArray(values) && values.length > 0) {
@@ -222,7 +205,7 @@ const buildEmployeeQuery = async (filters, branchIds) => {
       params.push(...values);
     }
   };
-  
+
   // Add filters
   addInClause('nationality', filters.nationality);
   addInClause('job_title', filters.job_title);
@@ -231,11 +214,11 @@ const buildEmployeeQuery = async (filters, branchIds) => {
   addInClause('educational_qualification', filters.educational_qualification);
   addInClause('contract_type', filters.contract_type);
   addInClause('data_completion_status', filters.data_completion_status);
-  
+
   // Build final query
   const whereClause = conditions.join(' AND ');
   const queryString = `SELECT * FROM employees WHERE ${whereClause} ORDER BY first_name, second_name, third_name, fourth_name`;
-  
+
   return sql.unsafe(queryString, params);
 };
 
@@ -244,7 +227,7 @@ const buildEmployeeQuery = async (filters, branchIds) => {
  */
 const filterByAge = (employees, minAge, maxAge) => {
   if (!minAge && !maxAge) return employees;
-  
+
   return employees.filter(emp => {
     const age = calculateAge(emp.date_of_birth_gregorian);
     if (age === null) return false;
@@ -381,7 +364,7 @@ const generatePDF = async (title, employees, selectedFields, branches, branchIds
         style: 'tableHeader',
         alignment: 'center'
       }));
-      
+
       // Prepare table body rows
       const tableBody = employees.map(employee => {
         return selectedFields.map(field => {
@@ -398,12 +381,12 @@ const generatePDF = async (title, employees, selectedFields, branches, branchIds
           };
         });
       });
-      
+
       // Report date in Gregorian (English numbers)
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const reportDate = formatDate(today);
-      
+
       // Document definition with RTL support
       const docDefinition = {
         pageSize: 'A4',
@@ -411,35 +394,35 @@ const generatePDF = async (title, employees, selectedFields, branches, branchIds
         pageMargins: [40, 60, 40, 60],
         defaultStyle: {
           font: 'Roboto', // Use Roboto font (mapped to Arial Unicode MS)
-          fontSize: 10,
+          fontSize: 14,
           color: 'black'
           // Removed direction: 'rtl' temporarily to avoid font issues
         },
         styles: {
           title: {
             font: 'Roboto',
-            fontSize: 18,
+            fontSize: 16,
             bold: true,
             alignment: 'center',
             margin: [0, 0, 0, 20]
           },
           info: {
             font: 'Roboto',
-            fontSize: 10,
+            fontSize: 14,
             alignment: 'right',
             margin: [0, 0, 0, 10]
           },
           tableHeader: {
             font: 'Roboto',
             bold: true,
-            fontSize: 9,
+            fontSize: 14,
             color: 'black',
             fillColor: 'white',
             alignment: 'center'
           },
           tableCell: {
             font: 'Roboto',
-            fontSize: 8,
+            fontSize: 14,
             color: 'black',
             fillColor: 'white',
             alignment: 'center',
@@ -507,28 +490,28 @@ const generatePDF = async (title, employees, selectedFields, branches, branchIds
           }
         ]
       };
-      
+
       // Generate PDF using pdfMakeRTL printer
       const pdfDoc = printer.createPdfKitDocument(docDefinition);
-      
+
       // Collect PDF chunks
       const chunks = [];
       pdfDoc.on('data', (chunk) => {
         chunks.push(chunk);
       });
-      
+
       pdfDoc.on('end', () => {
         const buffer = Buffer.concat(chunks);
         resolve(buffer);
       });
-      
+
       pdfDoc.on('error', (error) => {
         reject(error);
       });
-      
+
       // Finalize PDF
       pdfDoc.end();
-      
+
     } catch (error) {
       reject(error);
     }
@@ -545,10 +528,10 @@ const generateExcel = async (title, employees, selectedFields, branches, branchI
     try {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('التقرير');
-      
+
       // Set RTL direction for the entire worksheet
       worksheet.views = [{ rightToLeft: true }];
-      
+
       // Add header row with full RTL support
       const headerRow = worksheet.addRow(selectedFields.map(field => getFieldLabel(field)));
       headerRow.font = { bold: true, size: 12, name: 'Arial' };
@@ -557,9 +540,9 @@ const generateExcel = async (title, employees, selectedFields, branches, branchI
         pattern: 'solid',
         fgColor: { argb: 'FFE0E0E0' }
       };
-      headerRow.alignment = { 
-        horizontal: 'center', 
-        vertical: 'middle', 
+      headerRow.alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
         wrapText: true,
         textDirection: 'right-to-left'
       };
@@ -569,7 +552,7 @@ const generateExcel = async (title, employees, selectedFields, branches, branchI
         bottom: { style: 'thin' },
         right: { style: 'thin' }
       };
-      
+
       // Set RTL for each header cell
       headerRow.eachCell({ includeEmpty: false }, (cell) => {
         cell.alignment = {
@@ -580,7 +563,7 @@ const generateExcel = async (title, employees, selectedFields, branches, branchI
         };
         cell.font = { bold: true, size: 12, name: 'Arial' };
       });
-      
+
       // Add data rows with RTL support
       employees.forEach(employee => {
         const row = worksheet.addRow(
@@ -589,9 +572,9 @@ const generateExcel = async (title, employees, selectedFields, branches, branchI
             return value !== null && value !== undefined ? String(value) : '-';
           })
         );
-        row.alignment = { 
-          horizontal: 'center', 
-          vertical: 'middle', 
+        row.alignment = {
+          horizontal: 'center',
+          vertical: 'middle',
           wrapText: true,
           textDirection: 'right-to-left'
         };
@@ -601,7 +584,7 @@ const generateExcel = async (title, employees, selectedFields, branches, branchI
           bottom: { style: 'thin' },
           right: { style: 'thin' }
         };
-        
+
         // Set RTL for each data cell
         row.eachCell({ includeEmpty: false }, (cell) => {
           cell.alignment = {
@@ -613,7 +596,7 @@ const generateExcel = async (title, employees, selectedFields, branches, branchI
           cell.font = { name: 'Arial' };
         });
       });
-      
+
       // Set column widths (adjust for Arabic text)
       selectedFields.forEach((field, index) => {
         const column = worksheet.getColumn(index + 1);
@@ -624,14 +607,14 @@ const generateExcel = async (title, employees, selectedFields, branches, branchI
           textDirection: 'right-to-left'
         };
       });
-      
+
       // Set default font for the entire worksheet to support Arabic
       worksheet.properties.defaultRowHeight = 20;
-      
+
       // Generate buffer
       const buffer = await workbook.xlsx.writeBuffer();
       resolve(buffer);
-      
+
     } catch (error) {
       reject(error);
     }
@@ -645,7 +628,7 @@ const generateExcel = async (title, employees, selectedFields, branches, branchI
 router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
   try {
     const { title, filters, selectedFields, branch_ids, fileType = 'pdf' } = req.body;
-    
+
     // Validate required fields
     if (!title || !title.trim()) {
       return res.status(400).json({
@@ -653,14 +636,14 @@ router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
         message: 'عنوان التقرير مطلوب'
       });
     }
-    
+
     if (!selectedFields || !Array.isArray(selectedFields) || selectedFields.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'يجب اختيار حقل واحد على الأقل للعرض'
       });
     }
-    
+
     // Get branch IDs - support multiple branches for main manager
     let branchIds = [];
     if (req.user.role === 'branch_manager') {
@@ -676,51 +659,51 @@ router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
         branchIds = [parseInt(branchId)];
       }
     }
-    
+
     if (branchIds.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'يجب تحديد فرع واحد على الأقل'
       });
     }
-    
+
     // Verify all branches exist
     const allBranches = await Branch.findAll({ is_active: true });
     const validBranchIds = branchIds.filter(id => allBranches.some(b => b.id === id));
-    
+
     if (validBranchIds.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'الفروع المحددة غير موجودة'
       });
     }
-    
+
     // Build query and fetch employees
     const query = await buildEmployeeQuery(filters || {}, validBranchIds);
     let employees = await query;
-    
+
     // Filter by age if specified
     if (filters?.min_age || filters?.max_age) {
       employees = filterByAge(employees, filters.min_age, filters.max_age);
     }
-    
+
     if (employees.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'لا توجد موظفين ينطبق عليهم الفلاتر المحددة'
       });
     }
-    
+
     // Add branch_id field automatically if multiple branches and not already in selectedFields
     let finalSelectedFields = [...selectedFields];
     if (validBranchIds.length > 1 && !finalSelectedFields.includes('branch_id')) {
       finalSelectedFields.push('branch_id');
     }
-    
+
     // Check if documents are selected
     const selectedDocuments = req.body.selectedDocuments || [];
     const hasDocuments = selectedDocuments && selectedDocuments.length > 0;
-    
+
     // If documents are selected, force PDF and use document-based generation
     if (hasDocuments) {
       // Fetch documents for all employees
@@ -728,12 +711,12 @@ router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
       // This reduces time from 100 employees × 100ms = 10s to ~100ms (100x faster)
       const { Document } = await import('../models/Document.js');
       const documentsMap = {};
-      
+
       const documentPromises = employees.map(async (employee) => {
         try {
           const allDocuments = await Document.findByEmployeeId(employee.id);
           // Filter by selected document types
-          const filteredDocuments = allDocuments.filter(doc => 
+          const filteredDocuments = allDocuments.filter(doc =>
             selectedDocuments.includes(doc.document_type)
           );
           return {
@@ -749,7 +732,7 @@ router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
           };
         }
       });
-      
+
       const documentResults = await Promise.all(documentPromises);
       documentResults.forEach(({ employeeId, documents }) => {
         documentsMap[employeeId] = {
@@ -757,22 +740,22 @@ router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
           selected: selectedDocuments
         };
       });
-      
+
       // Import generateEmployeeFilePDF from employee-file
       const { generateEmployeeFilePDF } = await import('./employee-file.js');
       const pdfBuffer = await generateEmployeeFilePDF(title, employees, finalSelectedFields, allBranches, documentsMap, true); // true = isReport
-      
+
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.pdf"`);
       res.send(pdfBuffer);
       return;
     }
-    
+
     // Generate file based on fileType (no documents selected)
     if (fileType === 'excel') {
       // Generate Excel file
       const excelBuffer = await generateExcel(title, employees, finalSelectedFields, allBranches, validBranchIds);
-      
+
       // Return Excel directly as response (no file system write in serverless environment)
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.xlsx"`);
@@ -780,13 +763,13 @@ router.post('/generate', verifyBranchDocumentsPassword, async (req, res) => {
     } else {
       // Generate PDF file (default)
       const pdfBuffer = await generatePDF(title, employees, finalSelectedFields, allBranches, validBranchIds);
-      
+
       // Return PDF directly as response (no file system write in serverless environment)
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.pdf"`);
       res.send(pdfBuffer);
     }
-    
+
   } catch (error) {
     console.error('Error generating report:', error);
     if (!res.headersSent) {
@@ -813,7 +796,7 @@ router.get('/preview/:filename', verifyBranchDocumentsPassword, async (req, res)
       success: false,
       message: 'التقرير غير موجود - في بيئة السيرفر، يجب تحميل التقرير مباشرة من صفحة الإنشاء'
     });
-    
+
   } catch (error) {
     console.error('Error previewing report:', error);
     res.status(500).json({

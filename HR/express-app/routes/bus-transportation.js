@@ -5,6 +5,10 @@
 
 import express from 'express';
 import multer from 'multer';
+import PdfPrinter from '@digicole/pdfmake-rtl';
+import { fileURLToPath } from 'url';
+import path from 'path';
+import fs from 'fs';
 import { authenticate } from '../middleware/auth.js';
 import { requireManager, checkBranchAccess } from '../middleware/authorization.js';
 import { validateRequired } from '../middleware/validation.js';
@@ -14,8 +18,63 @@ import { DriverLicenseData } from '../models/DriverLicenseData.js';
 import { LicensePlateData } from '../models/LicensePlateData.js';
 import { BusDetails } from '../models/BusDetails.js';
 import { BusStudent } from '../models/BusStudent.js';
+import { Branch } from '../models/Branch.js';
 import { uploadBusRegistrationDocument, uploadDriverLicenseDocument, uploadBusLeaseContractDocument, deleteFromBlob } from '../utils/blobStorage.js';
 import { log } from '../utils/logger.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Set up fonts for PDF generation
+const fontsDir = path.join(__dirname, '..', 'fonts');
+const amiriDir = path.join(fontsDir, 'Amiri');
+const amiriRegular = path.join(amiriDir, 'Amiri-Regular.ttf');
+const amiriBold = path.join(amiriDir, 'Amiri-Bold.ttf');
+const amiriItalic = path.join(amiriDir, 'Amiri-Italic.ttf');
+const amiriBoldItalic = path.join(amiriDir, 'Amiri-BoldItalic.ttf');
+
+let arabicFontPath = null;
+try {
+  if (fs.existsSync(amiriRegular)) {
+    arabicFontPath = amiriRegular;
+  }
+} catch (error) {
+  console.warn('Font files not accessible:', error.message);
+}
+
+const hasArabicFont = arabicFontPath !== null;
+
+let fonts;
+if (hasArabicFont) {
+  fonts = {
+    Roboto: {
+      normal: path.join(fontsDir, 'Roboto-Regular.ttf'),
+      bold: path.join(fontsDir, 'Roboto-Bold.ttf'),
+    },
+    Amiri: {
+      normal: amiriRegular,
+      bold: amiriBold,
+      italics: amiriItalic,
+      bolditalics: amiriBoldItalic,
+    }
+  };
+  console.log('Using Amiri font for PDF generation');
+} else {
+  fonts = {
+    Roboto: {
+      normal: 'Helvetica',
+      bold: 'Helvetica-Bold',
+    },
+    Amiri: {
+      normal: 'Helvetica',
+      bold: 'Helvetica-Bold',
+      italics: 'Helvetica-Oblique',
+      bolditalics: 'Helvetica-BoldOblique',
+    }
+  };
+}
+
+const pdfPrinter = new PdfPrinter(fonts);
 
 const router = express.Router();
 
@@ -166,7 +225,7 @@ router.post('/', validateRequired(['branch_id', 'bus_number', 'term_id']), async
     res.status(201).json({ success: true, data: bus });
   } catch (error) {
     log.error('Error creating bus', { error: error.message });
-    
+
     // Handle unique constraint violation
     if (error.message && error.message.includes('unique')) {
       return res.status(400).json({
@@ -190,7 +249,7 @@ router.post('/', validateRequired(['branch_id', 'bus_number', 'term_id']), async
 router.put('/:id', checkBranchAccess, async (req, res) => {
   try {
     const busId = parseInt(req.params.id);
-    
+
     // Verify bus exists and user has access
     const bus = await BusTransportation.findById(busId);
     if (!bus) {
@@ -246,7 +305,7 @@ router.put('/:id', checkBranchAccess, async (req, res) => {
     res.json({ success: true, data: updated });
   } catch (error) {
     log.error('Error updating bus', { error: error.message });
-    
+
     // Handle unique constraint violation
     if (error.message && error.message.includes('unique')) {
       return res.status(400).json({
@@ -271,7 +330,7 @@ router.put('/:id', checkBranchAccess, async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const busId = parseInt(req.params.id);
-    
+
     // Verify bus exists and user has access
     const bus = await BusTransportation.findById(busId);
     if (!bus) {
@@ -314,7 +373,7 @@ router.post('/:id/registration', checkBranchAccess, validateRequired([
 ]), async (req, res) => {
   try {
     const busId = parseInt(req.params.id);
-    
+
     // Verify bus exists and user has access
     const bus = await BusTransportation.findById(busId);
     if (!bus) {
@@ -359,7 +418,7 @@ router.post('/:id/registration/upload', checkBranchAccess, upload.single('file')
     }
 
     const busId = parseInt(req.params.id);
-    
+
     // Verify bus exists and user has access
     const bus = await BusTransportation.findById(busId);
     if (!bus) {
@@ -433,7 +492,7 @@ router.post('/:id/driver-license', checkBranchAccess, validateRequired([
 ]), async (req, res) => {
   try {
     const busId = parseInt(req.params.id);
-    
+
     // Verify bus exists and user has access
     const bus = await BusTransportation.findById(busId);
     if (!bus) {
@@ -494,7 +553,7 @@ router.post('/:id/driver-license/upload', checkBranchAccess, upload.single('file
     }
 
     const busId = parseInt(req.params.id);
-    
+
     // Verify bus exists and user has access
     const bus = await BusTransportation.findById(busId);
     if (!bus) {
@@ -630,7 +689,7 @@ router.post('/:id/lease-contract/upload', checkBranchAccess, upload.single('file
 router.post('/:id/license-plates', checkBranchAccess, validateRequired(['plate_number']), async (req, res) => {
   try {
     const busId = parseInt(req.params.id);
-    
+
     // Verify bus exists and user has access
     const bus = await BusTransportation.findById(busId);
     if (!bus) {
@@ -657,7 +716,7 @@ router.post('/:id/license-plates', checkBranchAccess, validateRequired(['plate_n
     res.status(201).json({ success: true, data: plate });
   } catch (error) {
     log.error('Error creating license plate', { error: error.message });
-    
+
     if (error.message && error.message.includes('unique')) {
       return res.status(400).json({
         success: false,
@@ -681,7 +740,7 @@ router.put('/:id/license-plates/:plateId', checkBranchAccess, async (req, res) =
   try {
     const plateId = parseInt(req.params.plateId);
     const updated = await LicensePlateData.update(plateId, req.body);
-    
+
     if (!updated) {
       return res.status(404).json({
         success: false,
@@ -708,7 +767,7 @@ router.delete('/:id/license-plates/:plateId', checkBranchAccess, async (req, res
   try {
     const plateId = parseInt(req.params.plateId);
     const deleted = await LicensePlateData.delete(plateId);
-    
+
     if (!deleted) {
       return res.status(404).json({
         success: false,
@@ -734,7 +793,7 @@ router.delete('/:id/license-plates/:plateId', checkBranchAccess, async (req, res
 router.post('/:id/details', checkBranchAccess, validateRequired(['number_of_seats', 'ownership_type']), async (req, res) => {
   try {
     const busId = parseInt(req.params.id);
-    
+
     // Verify bus exists and user has access
     const bus = await BusTransportation.findById(busId);
     if (!bus) {
@@ -772,7 +831,7 @@ router.post('/:id/details', checkBranchAccess, validateRequired(['number_of_seat
 router.get('/:id/students', checkBranchAccess, async (req, res) => {
   try {
     const busId = parseInt(req.params.id);
-    
+
     // Verify bus exists and user has access
     const bus = await BusTransportation.findById(busId);
     if (!bus) {
@@ -820,7 +879,7 @@ router.get('/:id/students', checkBranchAccess, async (req, res) => {
 router.post('/:id/students', checkBranchAccess, validateRequired(['student_full_name', 'contact_mobile_number', 'term_id']), async (req, res) => {
   try {
     const busId = parseInt(req.params.id);
-    
+
     // Verify bus exists and user has access
     const bus = await BusTransportation.findById(busId);
     if (!bus) {
@@ -848,7 +907,7 @@ router.post('/:id/students', checkBranchAccess, validateRequired(['student_full_
     res.status(201).json({ success: true, data: student });
   } catch (error) {
     log.error('Error creating bus student', { error: error.message });
-    
+
     if (error.message && error.message.includes('unique')) {
       return res.status(400).json({
         success: false,
@@ -871,7 +930,7 @@ router.post('/:id/students', checkBranchAccess, validateRequired(['student_full_
 router.put('/:id/students/:studentId', checkBranchAccess, async (req, res) => {
   try {
     const studentId = parseInt(req.params.studentId);
-    
+
     // Verify student exists and belongs to the bus
     const student = await BusStudent.findById(studentId);
     if (!student) {
@@ -915,7 +974,7 @@ router.put('/:id/students/:studentId', checkBranchAccess, async (req, res) => {
 router.delete('/:id/students/:studentId', checkBranchAccess, async (req, res) => {
   try {
     const studentId = parseInt(req.params.studentId);
-    
+
     // Verify student exists and belongs to the bus
     const student = await BusStudent.findById(studentId);
     if (!student) {
@@ -945,6 +1004,288 @@ router.delete('/:id/students/:studentId', checkBranchAccess, async (req, res) =>
       message: 'فشل حذف الطالب',
       error: error.message
     });
+  }
+});
+
+/**
+ * POST /api/bus-transportation/generate-pdf
+ * Generate PDF report for bus transportation
+ */
+router.post('/generate-pdf', authenticate, async (req, res) => {
+  try {
+    const { branchId, sections } = req.body;
+
+    if (!branchId) {
+      return res.status(400).json({ error: 'branchId is required' });
+    }
+
+    // Fetch branch data
+    const branch = await Branch.findByPk(branchId);
+    if (!branch) {
+      return res.status(404).json({ error: 'Branch not found' });
+    }
+
+    // Fetch bus data for branch
+    const buses = await BusTransportation.findAll({ where: { branch_id: branchId } });
+    const busIds = buses.map(b => b.id);
+    const busStudents = await BusStudent.findByBusIds(busIds);
+
+    // Get current date
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const dateStr = `${day}/${month}/${year}`;
+
+    const docContent = [];
+
+    // Title
+    docContent.push({
+      text: 'تقرير النقل بالحافلات',
+      style: 'title',
+    });
+
+    docContent.push({
+      text: `التاريخ: ${dateStr}`,
+      style: 'subtitle',
+      margin: [0, 0, 0, 10],
+    });
+
+    docContent.push({
+      text: `الفرع: ${branch.branch_name}`,
+      style: 'subtitle',
+      margin: [0, 0, 0, 20],
+    });
+
+    // Summary Section
+    if (sections?.summary) {
+      docContent.push({
+        text: 'الملخص العام',
+        style: 'heading',
+      });
+
+      const summary = [
+        { label: 'عدد الحافلات', value: buses.length },
+        { label: 'إجمالي الطلاب المسجلين', value: busStudents.length },
+        { label: 'الحافلات النشطة', value: buses.filter(b => b.status === 'active').length },
+        { label: 'الحافلات المتوقفة', value: buses.filter(b => b.status === 'inactive').length },
+      ];
+
+      docContent.push({
+        columns: summary.map((item, idx) => ({
+          stack: [
+            { text: item.label, style: 'cardLabel' },
+            { text: item.value, style: 'cardValue' }
+          ],
+          width: idx % 2 === 0 ? '48%' : '48%'
+        })),
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // Bus Details Section
+    if (sections?.busDetails && buses.length > 0) {
+      docContent.push({
+        text: 'تفاصيل الحافلات',
+        style: 'heading',
+      });
+
+      const busDetailsRows = buses.map(bus => [
+        { text: bus.bus_number || '-', fontSize: 10 },
+        { text: bus.license_plate || '-', fontSize: 10 },
+        { text: bus.capacity || '-', fontSize: 10 },
+        { text: bus.status || '-', fontSize: 10 },
+      ]);
+
+      docContent.push({
+        table: {
+          headerRows: 1,
+          widths: ['25%', '25%', '25%', '25%'],
+          body: [
+            [
+              { text: 'رقم الحافلة', bold: true, alignment: 'center' },
+              { text: 'لوحة الترخيص', bold: true, alignment: 'center' },
+              { text: 'السعة', bold: true, alignment: 'center' },
+              { text: 'الحالة', bold: true, alignment: 'center' },
+            ],
+            ...busDetailsRows,
+          ],
+        },
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // Drivers Section
+    if (sections?.drivers) {
+      docContent.push({
+        text: 'بيانات السائقين',
+        style: 'heading',
+      });
+
+      const drivers = buses.filter(b => b.driver_id).map(b => [
+        { text: b.driver_name || '-', fontSize: 10 },
+        { text: b.license_number || '-', fontSize: 10 },
+      ]);
+
+      if (drivers.length > 0) {
+        docContent.push({
+          table: {
+            headerRows: 1,
+            widths: ['50%', '50%'],
+            body: [
+              [
+                { text: 'اسم السائق', bold: true, alignment: 'center' },
+                { text: 'رقم الرخصة', bold: true, alignment: 'center' },
+              ],
+              ...drivers,
+            ],
+          },
+          margin: [0, 0, 0, 20]
+        });
+      } else {
+        docContent.push({
+          text: 'لا توجد بيانات سائقين',
+          margin: [0, 0, 0, 20]
+        });
+      }
+    }
+
+    // Students Section
+    if (sections?.students && busStudents.length > 0) {
+      docContent.push({
+        text: 'الطلاب المسجلين',
+        style: 'heading',
+      });
+
+      const studentsByBus = {};
+      busStudents.forEach(student => {
+        if (!studentsByBus[student.bus_id]) {
+          studentsByBus[student.bus_id] = [];
+        }
+        studentsByBus[student.bus_id].push(student);
+      });
+
+      Object.keys(studentsByBus).forEach(busId => {
+        const bus = buses.find(b => b.id === parseInt(busId));
+        const students = studentsByBus[busId];
+        docContent.push({
+          text: `حافلة ${bus?.bus_number || busId} (${students.length} طالب)`,
+          style: 'subheading',
+          margin: [0, 10, 0, 5]
+        });
+      });
+
+      docContent.push({
+        text: `إجمالي الطلاب المسجلين: ${busStudents.length}`,
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // Financial Section
+    if (sections?.financials) {
+      docContent.push({
+        text: 'البيانات المالية',
+        style: 'heading',
+      });
+
+      const financialInfo = [
+        { label: 'إجمالي الحافلات', value: buses.length },
+        { label: 'عدد الطلاب', value: busStudents.length },
+        { label: 'رسوم الطالب الشهرية (افتراضية)', value: 'حسب السياسة' },
+        { label: 'الحافلات النشطة', value: buses.filter(b => b.status === 'active').length },
+      ];
+
+      docContent.push({
+        columns: financialInfo.map((item, idx) => ({
+          stack: [
+            { text: item.label, style: 'cardLabel' },
+            { text: item.value, style: 'cardValue' }
+          ],
+          width: idx % 2 === 0 ? '48%' : '48%'
+        })),
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // Routes Section (placeholder - to be enhanced)
+    if (sections?.routes) {
+      docContent.push({
+        text: 'المسارات والمحطات',
+        style: 'heading',
+      });
+
+      docContent.push({
+        text: 'معلومات المسارات ستظهر هنا',
+        margin: [0, 0, 0, 20]
+      });
+    }
+
+    // PDF Definition
+    const docDefinition = {
+      content: docContent,
+      styles: {
+        title: {
+          fontSize: 24,
+          bold: true,
+          alignment: 'center',
+          margin: [0, 0, 0, 10],
+          color: '#1e293b',
+          font: 'Amiri',
+        },
+        subtitle: {
+          fontSize: 12,
+          alignment: 'center',
+          color: '#64748b',
+          font: 'Amiri',
+        },
+        heading: {
+          fontSize: 16,
+          bold: true,
+          margin: [0, 15, 0, 10],
+          color: '#2c3e50',
+          font: 'Amiri',
+          border: [false, false, false, true],
+          borderColor: '#667eea',
+          borderWidth: 2,
+          paddingBottom: 8,
+        },
+        subheading: {
+          fontSize: 12,
+          bold: true,
+          color: '#2c3e50',
+          font: 'Amiri',
+        },
+        cardLabel: {
+          fontSize: 10,
+          color: '#64748b',
+          font: 'Roboto',
+          margin: [0, 0, 5, 0],
+        },
+        cardValue: {
+          fontSize: 18,
+          bold: true,
+          color: '#667eea',
+          font: 'Roboto',
+        },
+      },
+      defaultStyle: {
+        font: 'Roboto',
+        fontSize: 11,
+        color: '#1e293b',
+      },
+    };
+
+    // Generate PDF
+    const pdfDoc = pdfPrinter.createPdfKitDocument(docDefinition);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="bus-transportation-${branchId}-${dateStr.replace(/\//g, '-')}.pdf"`);
+
+    pdfDoc.pipe(res);
+    pdfDoc.end();
+  } catch (error) {
+    log.error('Error generating bus transportation PDF:', error);
+    res.status(500).json({ error: 'Failed to generate PDF' });
   }
 });
 

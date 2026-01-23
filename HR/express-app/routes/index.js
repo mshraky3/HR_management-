@@ -23,6 +23,8 @@ import requestRoutes from './requests.js';
 import utilsRoutes from './utils.js';
 import payrollAbsenceRoutes from './payroll-absences.js';
 import busTransportationRoutes from './bus-transportation.js';
+import busTransportationReportRoutes from './bus-transportation-report.js';
+import studentsReportRoutes from './students-report.js';
 
 const router = express.Router();
 
@@ -51,5 +53,7 @@ router.use('/requests', requestRoutes);
 router.use('/utils', utilsRoutes);
 router.use('/payroll-absences', payrollAbsenceRoutes);
 router.use('/bus-transportation', busTransportationRoutes);
+router.use('/bus-transportation-report', busTransportationReportRoutes);
+router.use('/students-report', studentsReportRoutes);
 export default router;
 

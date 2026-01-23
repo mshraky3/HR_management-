@@ -22,46 +22,27 @@ const __dirname = path.dirname(__filename);
 // Note: Font files are included in Vercel deployment, but paths may differ
 // This code handles both local development and Vercel serverless environments
 const fontsDir = path.join(__dirname, '..', 'fonts');
-const notoSansArabicDir = path.join(fontsDir, 'Noto_Sans_Arabic');
-const notoSansArabicVariable = path.join(notoSansArabicDir, 'NotoSansArabic-VariableFont_wdth,wght.ttf');
-const notoSansArabicStatic = path.join(notoSansArabicDir, 'static');
+const amiriDir = path.join(fontsDir, 'Amiri');
+const amiriRegular = path.join(amiriDir, 'Amiri-Regular.ttf');
+const amiriBold = path.join(amiriDir, 'Amiri-Bold.ttf');
+const amiriItalic = path.join(amiriDir, 'Amiri-Italic.ttf');
+const amiriBoldItalic = path.join(amiriDir, 'Amiri-BoldItalic.ttf');
 let arabicFontPath = null;
 
 try {
-  if (fs.existsSync(notoSansArabicVariable)) {
-    arabicFontPath = notoSansArabicVariable;
-  } else if (fs.existsSync(notoSansArabicStatic)) {
-    try {
-      const staticFiles = fs.readdirSync(notoSansArabicStatic);
-      const regularFont = staticFiles.find(f => f.includes('Regular') && f.endsWith('.ttf'));
-      if (regularFont) {
-        arabicFontPath = path.join(notoSansArabicStatic, regularFont);
-      }
-    } catch (e) {
-      console.warn('Error reading static fonts directory:', e.message);
-    }
+  if (fs.existsSync(amiriRegular)) {
+    arabicFontPath = amiriRegular;
   }
 } catch (error) {
   // On Vercel or if fonts are not accessible, will use fallback fonts
   console.warn('Font files not accessible, will use fallback fonts:', error.message);
 }
 
-const hasArabicFont = arabicFontPath !== null && (() => {
-  try {
-    return fs.existsSync(arabicFontPath);
-  } catch {
-    return false;
-  }
-})();
+const hasArabicFont = arabicFontPath !== null;
 
 let fonts;
 if (hasArabicFont) {
-  const notoSansStatic = path.join(notoSansArabicDir, 'static');
-  const regularFont = path.join(notoSansStatic, 'NotoSansArabic-Regular.ttf');
-  const boldFont = path.join(notoSansStatic, 'NotoSansArabic-Bold.ttf');
-  const mediumFont = path.join(notoSansStatic, 'NotoSansArabic-Medium.ttf');
-  
-  // Use available fonts, fallback to regular if others don't exist
+  // Use Amiri font
   // Wrap fs.existsSync in try-catch for Vercel compatibility
   const fontExists = (fontPath) => {
     try {
@@ -70,23 +51,28 @@ if (hasArabicFont) {
       return false;
     }
   };
-  
+
+  const regular = amiriRegular;
+  const bold = fontExists(amiriBold) ? amiriBold : amiriRegular;
+  const italics = fontExists(amiriItalic) ? amiriItalic : amiriRegular;
+  const bolditalics = fontExists(amiriBoldItalic) ? amiriBoldItalic : (fontExists(amiriBold) ? amiriBold : amiriRegular);
+
   fonts = {
     Roboto: {
-      normal: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bold: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath),
-      italics: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bolditalics: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath)
+      normal: regular,
+      bold: bold,
+      italics: italics,
+      bolditalics: bolditalics
     },
     Nillima: {
-      normal: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bold: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath),
-      italics: fontExists(regularFont) ? regularFont : arabicFontPath,
-      bolditalics: fontExists(boldFont) ? boldFont : (fontExists(mediumFont) ? mediumFont : arabicFontPath)
+      normal: regular,
+      bold: bold,
+      italics: italics,
+      bolditalics: bolditalics
     }
   };
-  
-  // Using Noto Sans Arabic font for PDF generation
+
+  // Using Amiri font for PDF generation
 } else {
   // Fallback to Helvetica (limited Arabic support)
   fonts = {
@@ -151,11 +137,11 @@ const calculateAge = (dateOfBirth) => {
  */
 const gregorianToHijri = (date) => {
   if (!date) return '-';
-  
+
   // Use centralized conversion function
   const hijriDate = convertGregorianToHijri(date);
   if (!hijriDate) return '-';
-  
+
   // Format as dd/mm/yyyy
   return formatHijriToString(hijriDate);
 };
@@ -190,7 +176,7 @@ const getDocumentTypeLabel = (documentType) => {
 const formatCurrency = (amount) => {
   if (amount === null || amount === undefined) return '-';
   // Format with English numbers
-  const formatted = new Intl.NumberFormat('en-US', { 
+  const formatted = new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(amount);
@@ -332,7 +318,7 @@ const mergePdfDocuments = async (mainPdfBuffer, documentFilesMap, documentsMap, 
   try {
     // Load main PDF
     const mainPdf = await PDFDocument.load(mainPdfBuffer);
-    
+
     // Handle both old format (array) and new format (object with found/selected)
     const normalizeDocumentsMap = (map) => {
       const normalized = {};
@@ -345,34 +331,34 @@ const mergePdfDocuments = async (mainPdfBuffer, documentFilesMap, documentsMap, 
       }
       return normalized;
     };
-    
+
     const normalizedMap = normalizeDocumentsMap(documentsMap);
-    
+
     // For each employee, merge their PDF documents directly after their section
     // Since we can't know exactly where each employee's section ends in the merged PDF,
     // we'll merge all PDFs in order: employee 1 section, employee 1 PDFs, employee 2 section, employee 2 PDFs, etc.
     for (const employee of employees) {
       const employeeData = normalizedMap[employee.id] || { found: [], selected: [] };
       const employeeDocuments = employeeData.found || [];
-      
+
       // Merge PDF documents for this employee
       for (const doc of employeeDocuments) {
         const docFileData = documentFilesMap[doc.id];
-        
+
         // Only merge PDF files
         if (docFileData && docFileData.mimeType === 'application/pdf') {
           try {
             // Load the PDF document
             const pdfToMerge = await PDFDocument.load(docFileData.buffer);
-            
+
             // Copy all pages from the PDF to the main PDF
             const pages = await mainPdf.copyPages(pdfToMerge, pdfToMerge.getPageIndices());
-            
+
             // Add each page to the main PDF
             pages.forEach((page) => {
               mainPdf.addPage(page);
             });
-            
+
           } catch (error) {
             console.error(`Error merging PDF document ${doc.id}:`, error);
             // Continue with other documents even if one fails
@@ -380,7 +366,7 @@ const mergePdfDocuments = async (mainPdfBuffer, documentFilesMap, documentsMap, 
         }
       }
     }
-    
+
     // Save the merged PDF
     const mergedPdfBytes = await mainPdf.save();
     return Buffer.from(mergedPdfBytes);
@@ -396,7 +382,7 @@ const mergePdfDocuments = async (mainPdfBuffer, documentFilesMap, documentsMap, 
 const loadDocumentFile = async (document) => {
   try {
     let fileBuffer;
-    
+
     // If file_path is a URL (Blob Storage)
     if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
       const result = await fetchFromBlob(document.file_path);
@@ -407,7 +393,7 @@ const loadDocumentFile = async (document) => {
       if (process.env.VERCEL === '1') {
         throw new Error(`Document uses local file path which is not accessible on Vercel: ${document.file_path}. Please re-upload to Blob Storage.`);
       }
-      
+
       let filePath;
       if (path.isAbsolute(document.file_path)) {
         filePath = document.file_path;
@@ -418,24 +404,24 @@ const loadDocumentFile = async (document) => {
         }
         filePath = path.join(__dirname, '..', relativePath);
       }
-      
+
       if (!fs.existsSync(filePath)) {
         const altPath = document.file_path.replace(/^express-app\//, '');
         const altFilePath = path.join(__dirname, '..', altPath);
         filePath = fs.existsSync(altFilePath) ? altFilePath : filePath;
       }
-      
+
       if (!fs.existsSync(filePath)) {
         throw new Error(`File not found: ${document.file_path}`);
       }
-      
+
       fileBuffer = fs.readFileSync(filePath);
     }
-    
+
     // Convert to base64
     const base64 = fileBuffer.toString('base64');
     const mimeType = document.mime_type || 'application/octet-stream';
-    
+
     return {
       base64: base64, // Raw base64 without data URI prefix (pdfmake needs raw base64)
       base64DataUri: `data:${mimeType};base64,${base64}`, // Full data URI for reference
@@ -457,7 +443,7 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
   try {
     // Load all document files and convert to base64
     const documentFilesMap = {}; // Map of document_id -> {base64, mimeType, buffer}
-    
+
     // Handle both old format (array) and new format (object with found/selected)
     const normalizeDocumentsMap = (map) => {
       const normalized = {};
@@ -470,14 +456,14 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
       }
       return normalized;
     };
-    
+
     const normalizedMap = normalizeDocumentsMap(documentsMap);
-    
+
     // Load all document files and convert to base64
     for (const employee of employees) {
       const employeeData = normalizedMap[employee.id] || { found: [], selected: [] };
       const employeeDocuments = employeeData.found || [];
-      
+
       for (const doc of employeeDocuments) {
         try {
           const fileData = await loadDocumentFile(doc);
@@ -488,7 +474,7 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
         }
       }
     }
-    
+
     // Helper function to create PDF for a single employee
     const createEmployeePdf = async (employee, employeeIndex, isFirst) => {
       return new Promise((resolve, reject) => {
@@ -496,14 +482,14 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
           const employeeData = normalizedMap[employee.id] || { found: [], selected: [] };
           const employeeDocuments = employeeData.found || [];
           const selectedDocTypes = employeeData.selected || [];
-          
+
           const employeeFullName = `${employee.first_name || ''} ${employee.second_name || ''} ${employee.third_name || ''} ${employee.fourth_name || ''}`.trim();
-          
+
           // Report date in Gregorian (today's date)
           const today = new Date();
           today.setHours(0, 0, 0, 0);
           const reportDate = formatDate(today);
-          
+
           // Register images for this employee
           const employeeImages = {};
           for (const doc of employeeDocuments) {
@@ -513,20 +499,20 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
               employeeImages[imageKey] = docFileData.base64DataUri;
             }
           }
-          
+
           const employeeContent = [];
-          
+
           // Title and info at the top of each employee section
           if (!isFirst) {
             employeeContent.push({ text: '', pageBreak: 'before' });
           }
-          
+
           employeeContent.push({
             text: removeParentheses(title),
             style: 'title',
             margin: [0, 0, 0, 10]
           });
-          
+
           employeeContent.push({
             text: [
               { text: 'تاريخ الملف: ', direction: 'rtl' },
@@ -534,13 +520,13 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
             ],
             style: 'info'
           });
-          
+
           employeeContent.push({
             text: `الموظف: ${removeParentheses(employeeFullName)}`,
             style: 'employeeHeader',
             margin: [0, 0, 0, 15]
           });
-          
+
           // Employee data table
           const employeeDataRows = [];
           selectedFields.forEach(field => {
@@ -550,16 +536,16 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
             const hasNumbers = /\d/.test(valueStr);
             employeeDataRows.push([
               { text: label, style: 'dataLabel', alignment: 'right' },
-              { 
-                text: valueStr, 
-                style: 'dataValue', 
+              {
+                text: valueStr,
+                style: 'dataValue',
                 alignment: 'right',
                 direction: hasNumbers ? 'ltr' : 'rtl',
                 preserveLeadingSpaces: false
               }
             ]);
           });
-          
+
           employeeContent.push({
             table: {
               widths: ['*', '*'],
@@ -577,21 +563,21 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
             },
             margin: [0, 0, 0, 20]
           });
-          
+
           // Employee documents
           employeeContent.push({
             text: 'المستندات:',
             style: 'sectionHeader',
             margin: [0, 20, 0, 10]
           });
-          
+
           // If this is a report, show all selected document types (including missing ones)
           if (isReport && selectedDocTypes.length > 0) {
             const foundDocTypes = employeeDocuments.map(doc => doc.document_type);
-            
+
             for (const docType of selectedDocTypes) {
               const doc = employeeDocuments.find(d => d.document_type === docType);
-              
+
               if (!doc) {
                 employeeContent.push({
                   text: removeParentheses(`${getDocumentTypeLabel(docType)}: غير متواجد لدى الموظف`),
@@ -601,15 +587,15 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
                 });
                 continue;
               }
-              
+
               const docFileData = documentFilesMap[doc.id];
-              
+
               employeeContent.push({
                 text: removeParentheses(`${getDocumentTypeLabel(doc.document_type) || 'مستند'} - ${doc.filename || doc.file_name || 'بدون اسم'}`),
                 style: 'documentItem',
                 margin: [0, 0, 0, 5]
               });
-              
+
               if (doc.description) {
                 employeeContent.push({
                   text: removeParentheses(`الوصف: ${doc.description || ''}`),
@@ -617,7 +603,7 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
                   margin: [0, 0, 0, 5]
                 });
               }
-              
+
               if (doc.expiry_date) {
                 const expiryDate = formatDate(doc.expiry_date);
                 employeeContent.push({
@@ -626,11 +612,11 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
                   margin: [0, 0, 0, 10]
                 });
               }
-              
+
               // Embed document file (only images, PDFs will be merged separately)
               if (docFileData) {
                 const mimeType = docFileData.mimeType;
-                
+
                 if (mimeType.startsWith('image/')) {
                   try {
                     const imageKey = `doc_${doc.id}`;
@@ -691,13 +677,13 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
             if (employeeDocuments.length > 0) {
               for (const doc of employeeDocuments) {
                 const docFileData = documentFilesMap[doc.id];
-                
+
                 employeeContent.push({
                   text: removeParentheses(`${getDocumentTypeLabel(doc.document_type) || 'مستند'} - ${doc.filename || doc.file_name || 'بدون اسم'}`),
                   style: 'documentItem',
                   margin: [0, 0, 0, 5]
                 });
-                
+
                 if (doc.description) {
                   employeeContent.push({
                     text: removeParentheses(`الوصف: ${doc.description || ''}`),
@@ -705,7 +691,7 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
                     margin: [0, 0, 0, 5]
                   });
                 }
-                
+
                 if (doc.expiry_date) {
                   const expiryDate = formatDate(doc.expiry_date);
                   employeeContent.push({
@@ -714,11 +700,11 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
                     margin: [0, 0, 0, 10]
                   });
                 }
-                
+
                 // Embed document file (only images, PDFs will be merged separately)
                 if (docFileData) {
                   const mimeType = docFileData.mimeType;
-                  
+
                   if (mimeType.startsWith('image/')) {
                     try {
                       const imageKey = `doc_${doc.id}`;
@@ -782,7 +768,7 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
               });
             }
           }
-          
+
           const employeeDocDefinition = {
             pageSize: 'A4',
             pageMargins: [40, 60, 40, 60],
@@ -795,80 +781,80 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
             styles: {
               title: {
                 font: 'Roboto',
-                fontSize: 18,
+                fontSize: 16,
                 bold: true,
                 alignment: 'center',
                 margin: [0, 0, 0, 20]
               },
               info: {
                 font: 'Roboto',
-                fontSize: 10,
+                fontSize: 14,
                 alignment: 'right',
                 margin: [0, 0, 0, 10]
               },
               employeeHeader: {
                 font: 'Roboto',
-                fontSize: 14,
+                fontSize: 16,
                 bold: true,
                 alignment: 'right'
               },
               sectionHeader: {
                 font: 'Roboto',
-                fontSize: 12,
+                fontSize: 16,
                 bold: true,
                 alignment: 'right'
               },
               dataLabel: {
                 font: 'Roboto',
-                fontSize: 9,
+                fontSize: 14,
                 bold: true,
                 color: 'black',
                 fillColor: '#f0f0f0'
               },
               dataValue: {
                 font: 'Roboto',
-                fontSize: 9,
+                fontSize: 14,
                 color: 'black',
                 preserveLeadingSpaces: false
               },
               documentItem: {
                 font: 'Roboto',
-                fontSize: 9,
+                fontSize: 14,
                 alignment: 'right'
               },
               documentDescription: {
                 font: 'Roboto',
-                fontSize: 8,
+                fontSize: 14,
                 alignment: 'right',
                 color: '#666'
               }
             },
             content: employeeContent
           };
-          
+
           const employeePdfDoc = printer.createPdfKitDocument(employeeDocDefinition);
           const chunks = [];
-          
+
           employeePdfDoc.on('data', (chunk) => {
             chunks.push(chunk);
           });
-          
+
           employeePdfDoc.on('end', () => {
             const buffer = Buffer.concat(chunks);
             resolve(buffer);
           });
-          
+
           employeePdfDoc.on('error', (error) => {
             reject(error);
           });
-          
+
           employeePdfDoc.end();
         } catch (error) {
           reject(error);
         }
       });
     };
-    
+
     // Helper function to merge PDF documents in order
     const mergePdfDocuments = async () => {
       try {
@@ -876,16 +862,16 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
         if (employees.length === 0) {
           throw new Error('No employees to generate PDF for');
         }
-        
+
         // Create first employee's PDF
         const firstEmployee = employees[0];
         const firstEmployeePdfBuffer = await createEmployeePdf(firstEmployee, 0, true);
         const finalPdf = await PDFDocument.load(firstEmployeePdfBuffer);
-        
+
         // Merge PDF documents for first employee
         const firstEmployeeData = normalizedMap[firstEmployee.id] || { found: [], selected: [] };
         const firstEmployeeDocuments = firstEmployeeData.found || [];
-        
+
         for (const doc of firstEmployeeDocuments) {
           const docFileData = documentFilesMap[doc.id];
           if (docFileData && docFileData.mimeType === 'application/pdf') {
@@ -900,27 +886,27 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
             }
           }
         }
-        
+
         // For remaining employees, create their PDF and merge it, then merge their PDF documents
         for (let i = 1; i < employees.length; i++) {
           const employee = employees[i];
           const isFirst = false;
-          
+
           try {
             // Create PDF for this employee
             const employeePdfBuffer = await createEmployeePdf(employee, i, isFirst);
             const employeePdf = await PDFDocument.load(employeePdfBuffer);
-            
+
             // Copy all pages from employee PDF to final PDF
             const pages = await finalPdf.copyPages(employeePdf, employeePdf.getPageIndices());
             pages.forEach((page) => {
               finalPdf.addPage(page);
             });
-            
+
             // Merge PDF documents for this employee
             const employeeData = normalizedMap[employee.id] || { found: [], selected: [] };
             const employeeDocuments = employeeData.found || [];
-            
+
             for (const doc of employeeDocuments) {
               const docFileData = documentFilesMap[doc.id];
               if (docFileData && docFileData.mimeType === 'application/pdf') {
@@ -940,7 +926,7 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
             // Continue with other employees even if one fails
           }
         }
-        
+
         // Save the merged PDF
         const mergedPdfBytes = await finalPdf.save();
         return Buffer.from(mergedPdfBytes);
@@ -949,7 +935,7 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
         throw error;
       }
     };
-    
+
     return new Promise(async (resolve, reject) => {
       try {
         // Merge all employee PDFs and their PDF documents (starting with first employee, no empty header)
@@ -974,14 +960,14 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
 router.post('/generate-single/:employee_id', requireManager, verifyBranchDocumentsPassword, async (req, res) => {
   try {
     const employeeId = parseInt(req.params.employee_id);
-    
+
     if (isNaN(employeeId)) {
       return res.status(400).json({
         success: false,
         message: 'معرف الموظف غير صحيح'
       });
     }
-    
+
     // Fetch employee
     const employee = await Employee.findById(employeeId);
     if (!employee) {
@@ -990,7 +976,7 @@ router.post('/generate-single/:employee_id', requireManager, verifyBranchDocumen
         message: 'الموظف غير موجود'
       });
     }
-    
+
     // Check access - branch managers can only access their own branch employees
     if (req.user?.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
@@ -998,14 +984,14 @@ router.post('/generate-single/:employee_id', requireManager, verifyBranchDocumen
         message: 'غير مصرح لك بالوصول إلى بيانات هذا الموظف'
       });
     }
-    
+
     // Fetch all branches for display
     const allBranches = await Branch.findAll({ is_active: true });
-    
+
     // Fetch all documents for the employee
     const documents = await Document.findByEmployeeId(employee.id);
     const documentsMap = { [employee.id]: documents || [] };
-    
+
     // Default selected fields - all available fields
     const selectedFields = [
       'employee_id_number', 'first_name', 'second_name', 'third_name', 'fourth_name',
@@ -1019,18 +1005,18 @@ router.post('/generate-single/:employee_id', requireManager, verifyBranchDocumen
       'passport_number', 'passport_issue_date', 'passport_expiry_date', 'passport_issue_place',
       'residency_issue_date', 'job_title'
     ];
-    
+
     // Generate title
     const title = `ملف موظف - ${employee.first_name} ${employee.second_name} ${employee.third_name} ${employee.fourth_name}`;
-    
+
     // Generate PDF
     const pdfBuffer = await generateEmployeeFilePDF(title, [employee], selectedFields, allBranches, documentsMap);
-    
+
     // Return PDF directly as response
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.pdf"`);
     res.send(pdfBuffer);
-    
+
   } catch (error) {
     console.error('Error generating employee file:', error);
     if (!res.headersSent) {
@@ -1051,7 +1037,7 @@ router.post('/generate-single/:employee_id', requireManager, verifyBranchDocumen
 router.post('/generate', requireMainManager, async (req, res) => {
   try {
     const { title, employee_ids, selectedFields, selected_documents } = req.body;
-    
+
     // Validate required fields
     if (!title || !title.trim()) {
       return res.status(400).json({
@@ -1059,49 +1045,49 @@ router.post('/generate', requireMainManager, async (req, res) => {
         message: 'عنوان الملف مطلوب'
       });
     }
-    
+
     if (!employee_ids || !Array.isArray(employee_ids) || employee_ids.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'يجب اختيار موظف واحد على الأقل'
       });
     }
-    
+
     if (!selectedFields || !Array.isArray(selectedFields) || selectedFields.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'يجب اختيار حقل واحد على الأقل للعرض'
       });
     }
-    
+
     // Fetch employees
     const validEmployeeIds = employee_ids.map(id => parseInt(id)).filter(id => !isNaN(id));
     const employees = [];
-    
+
     for (const employeeId of validEmployeeIds) {
       const employee = await Employee.findById(employeeId);
       if (employee && employee.is_active) {
         employees.push(employee);
       }
     }
-    
+
     if (employees.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'لم يتم العثور على موظفين صالحين'
       });
     }
-    
+
     // Fetch all branches for display
     const allBranches = await Branch.findAll({ is_active: true });
-    
+
     // Fetch selected documents for all employees
     const documentsMap = {};
     for (const employee of employees) {
-      const selectedDocIds = selected_documents && selected_documents[employee.id] 
+      const selectedDocIds = selected_documents && selected_documents[employee.id]
         ? selected_documents[employee.id].map(id => parseInt(id)).filter(id => !isNaN(id))
         : [];
-      
+
       if (selectedDocIds.length > 0) {
         // Fetch only selected documents
         const allDocuments = await Document.findByEmployeeId(employee.id);
@@ -1113,15 +1099,15 @@ router.post('/generate', requireMainManager, async (req, res) => {
         documentsMap[employee.id] = documents || [];
       }
     }
-    
+
     // Generate PDF
     const pdfBuffer = await generateEmployeeFilePDF(title, employees, selectedFields, allBranches, documentsMap);
-    
+
     // Return PDF directly as response (no file system write in serverless environment)
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.pdf"`);
     res.send(pdfBuffer);
-    
+
   } catch (error) {
     console.error('Error generating employee file:', error);
     if (!res.headersSent) {
