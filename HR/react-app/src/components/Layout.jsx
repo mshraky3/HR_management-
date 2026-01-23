@@ -50,7 +50,6 @@ const Layout = ({ children }) => {
       label: "الموظفين",
       items: [
         { path: "/employees", label: "البحث عن موظف" },
-        { path: "/payroll-absence-admin", label: "المسيرات" },
         { path: "/employee-statistics", label: "احصائيات" },
       ],
     },
@@ -59,7 +58,10 @@ const Layout = ({ children }) => {
       items: [
         { path: "/employee-file", label: "ملف موظف" },
         { path: "/reports", label: "التقارير" },
-        { path: "/experience-certificate", label: "شهادات الخبرة" },
+        { path: "/branch-documents-report", label: "احصائيات المستندات" },
+        { path: "/employee-statistics-report", label: "تقرير إحصائيات الموظفين" },
+        { path: "/bus-transportation-report", label: "تقرير النقل بالحافلات" },
+        { path: "/experience-certificate", label: "شهادات و تعاريف" },
       ],
     },
     monitoring: {
@@ -126,7 +128,7 @@ const Layout = ({ children }) => {
             </div>
           ))}
 
-          {/* Standalone menu item */}
+          {/* Standalone menu items */}
           <Link
             to="/bus-transportation"
             className={`nav-link ${isActive("/bus-transportation")}`}
@@ -135,7 +137,17 @@ const Layout = ({ children }) => {
               closeDropdown();
             }}
           >
-            النقل بالباصات
+            الباصات
+          </Link>
+          <Link
+            to="/payroll-absence-admin"
+            className={`nav-link ${isActive("/payroll-absence-admin")}`}
+            onClick={() => {
+              setMobileMenuOpen(false);
+              closeDropdown();
+            }}
+          >
+            مسيرات الرواتب
           </Link>
         </div>
         <div className="nav-user">
