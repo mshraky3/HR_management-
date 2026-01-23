@@ -72,6 +72,7 @@ const Employees = lazy(() => import("./pages/Employees"));
 const EmployeeDetails = lazy(() => import("./pages/EmployeeDetails/index.jsx"));
 const BranchDocuments = lazy(() => import("./pages/BranchDocuments"));
 const Reports = lazy(() => import("./pages/Reports"));
+const BranchDocumentsReport = lazy(() => import("./pages/BranchDocumentsReport"));
 const EmployeeFile = lazy(() => import("./pages/EmployeeFile"));
 const NotifyBranches = lazy(() => import("./pages/NotifyBranches"));
 const Archive = lazy(() => import("./pages/Archive"));
@@ -87,6 +88,8 @@ const ManageRequests = lazy(() => import("./pages/ManageRequests"));
 const FixMissingDates = lazy(() => import("./pages/FixMissingDates"));
 const PayrollAbsenceAdmin = lazy(() => import("./pages/PayrollAbsenceAdmin"));
 const EmployeeStatistics = lazy(() => import("./pages/EmployeeStatistics"));
+const EmployeeStatisticsReport = lazy(() => import("./pages/EmployeeStatisticsReport"));
+const BusTransportationReport = lazy(() => import("./pages/BusTransportationReport"));
 const ExperienceCertificate = lazy(
   () => import("./pages/ExperienceCertificate"),
 );
@@ -183,6 +186,16 @@ const AppContent = () => {
               <RoleBasedLayout>
                 <Reports />
               </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch-documents-report"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <BranchDocumentsReport />
+              </Layout>
             </ProtectedRoute>
           }
         />
@@ -322,6 +335,36 @@ const AppContent = () => {
             <ProtectedRoute>
               <RoleBasedLayout>
                 <EmployeeStatistics />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/employee-statistics-report"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <EmployeeStatisticsReport />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/bus-transportation-report"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <BusTransportationReport />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/students-report"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <BusTransportationReport />
               </RoleBasedLayout>
             </ProtectedRoute>
           }

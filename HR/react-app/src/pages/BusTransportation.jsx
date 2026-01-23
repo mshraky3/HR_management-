@@ -17,6 +17,7 @@ import BranchBadge from "../components/BranchBadge";
 import UnifiedDatePicker from "../components/UnifiedDatePicker";
 import "./BusTransportation.css";
 
+
 function PlateDisplay({ value = "" }) {
   const parsePlate = (plateValue) => {
     if (!plateValue)
@@ -114,6 +115,7 @@ const BusTransportation = () => {
   const [loading, setLoading] = useState(true);
   const [selectedBus, setSelectedBus] = useState(null);
   const [showBusForm, setShowBusForm] = useState(false);
+  const [showBusFormInline, setShowBusFormInline] = useState(false);
   const [showStudentForm, setShowStudentForm] = useState(false);
   const [editingBus, setEditingBus] = useState(null);
   const [busFormInitialTab, setBusFormInitialTab] = useState("basic");
@@ -457,8 +459,7 @@ const BusTransportation = () => {
     let owned = 0;
     let leased = 0;
 
-    // Calculate capacity utilization per branch (for main manager)
-    const branchCapacityData = {};
+
 
     filteredBuses.forEach((bus) => {
       const missingStudents =
@@ -484,25 +485,7 @@ const BusTransportation = () => {
         owned++;
       }
 
-      // Collect capacity data by branch
-      if (isMainManager()) {
-        const branchName = bus.branch_name || "غير محدد";
-        const seats = parseInt(bus.number_of_seats) || 0;
-        const students = parseInt(bus.student_count) || 0;
 
-        if (!branchCapacityData[branchName]) {
-          branchCapacityData[branchName] = {
-            branchName,
-            totalSeats: 0,
-            totalStudents: 0,
-            busCount: 0,
-          };
-        }
-
-        branchCapacityData[branchName].totalSeats += seats;
-        branchCapacityData[branchName].totalStudents += students;
-        branchCapacityData[branchName].busCount++;
-      }
     });
 
     // Group by branch for main manager
@@ -517,23 +500,7 @@ const BusTransportation = () => {
       });
     }
 
-    // Calculate utilization for each branch
-    const branchCapacityList = Object.values(branchCapacityData)
-      .map((branch) => {
-        const available = branch.totalSeats - branch.totalStudents;
-        const utilization =
-          branch.totalSeats > 0
-            ? (branch.totalStudents / branch.totalSeats) * 100
-            : 0;
-        return {
-          ...branch,
-          available,
-          utilization,
-          needsNewBus: utilization >= 90, // 90% or more full
-          canUseSmallerBus: utilization < 50 && branch.totalSeats > 50, // Less than 50% full and has more than 50 total seats
-        };
-      })
-      .sort((a, b) => b.utilization - a.utilization);
+
 
     return {
       totalBuses,
@@ -545,7 +512,7 @@ const BusTransportation = () => {
       busesByBranch,
       owned,
       leased,
-      branchCapacityData: branchCapacityList,
+
     };
   };
 
@@ -604,14 +571,44 @@ const BusTransportation = () => {
       const response = await busTransportationAPI.getById(id);
       if (response.data.success) {
         setSelectedBus(response.data.data);
+        // Queue scroll after render
+        setTimeout(() => {
+          const section = document.getElementById("bus-details-section");
+          if (section) {
+            animateScrollToElement(section, { block: "start", durationMs: 800 });
+          }
+        }, 100);
       }
     } catch (error) {
       showError("فشل تحميل بيانات الحافلة");
     }
   };
 
+  const handleCloseDetailSection = () => {
+    if (!selectedBus) return;
+
+    // Close inline form if open
+    setShowBusFormInline(false);
+
+    // Find the bus card we originally clicked
+    const busId = selectedBus.id;
+    const card = document.querySelector(`[data-bus-id="${busId}"]`);
+
+    // Animate scroll back to it
+    if (card) {
+      animateScrollToElement(card, { block: "center", durationMs: 800 });
+      card.classList.add("bus-card-highlight");
+      setTimeout(() => card.classList.remove("bus-card-highlight"), 1600);
+    }
+
+    // Short delay to let the user see the motion starting before section potentially disappears 
+    // (though React might unmount it instantly, so we just set null. 
+    // Ideally we would wait, but unmounting instantly is also fine as we are moving away)
+    setSelectedBus(null);
+  };
+
   // Keep the bus form visible even if the list is reloading, so uploads/autosaves never "close" it.
-  if (loading && !showBusForm) {
+  if (loading && !showBusForm && !selectedBus) {
     return (
       <div className="bus-transportation-container">
         <div className="loading-container">
@@ -981,199 +978,6 @@ const BusTransportation = () => {
                     </div>
                   </div>
 
-                  {/* Branches by utilization */}
-                  {stats.branchCapacityData.length > 0 && (
-                    <div className="bus-capacity-list">
-                      <h4 className="capacity-list-title">
-                        الفروع حسب نسبة الاستخدام
-                      </h4>
-                      <div className="capacity-list-items">
-                        {stats.branchCapacityData.map((branch, idx) => (
-                          <div
-                            key={`${branch.branchName}-${idx}`}
-                            className={`capacity-list-item ${branch.needsNewBus ? "needs-attention" : ""} ${branch.canUseSmallerBus ? "can-optimize" : ""}`}
-                          >
-                            <div className="capacity-item-header">
-                              <div className="capacity-item-title-group">
-                                <span className="capacity-bus-name">
-                                  {branch.branchName}
-                                </span>
-                                <span className="capacity-bus-count">
-                                  {branch.busCount} باص
-                                </span>
-                              </div>
-                              <span className="capacity-utilization">
-                                {Math.round(branch.utilization)}%
-                              </span>
-                            </div>
-                            <div className="capacity-item-bar-wrapper">
-                              <div
-                                className="capacity-item-bar"
-                                style={{
-                                  width: `${branch.utilization}%`,
-                                  background:
-                                    branch.utilization >= 90
-                                      ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-                                      : branch.utilization >= 70
-                                        ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
-                                        : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                                }}
-                              />
-                            </div>
-                            <div className="capacity-item-details">
-                              <span className="capacity-detail">
-                                <svg
-                                  width="16"
-                                  height="16"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  style={{
-                                    marginLeft: "4px",
-                                    verticalAlign: "middle",
-                                  }}
-                                >
-                                  <path
-                                    d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                  />
-                                  <circle
-                                    cx="9"
-                                    cy="7"
-                                    r="4"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    fill="none"
-                                  />
-                                  <path
-                                    d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                  />
-                                </svg>
-                                {branch.totalStudents} طالب
-                              </span>
-                              <span className="capacity-detail">
-                                <svg
-                                  width="16"
-                                  height="16"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  style={{
-                                    marginLeft: "4px",
-                                    verticalAlign: "middle",
-                                  }}
-                                >
-                                  <rect
-                                    x="2"
-                                    y="3"
-                                    width="20"
-                                    height="18"
-                                    rx="2"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    fill="none"
-                                  />
-                                  <path
-                                    d="M8 7h8M8 11h8M8 15h8"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                  />
-                                </svg>
-                                {branch.totalSeats} مقعد
-                              </span>
-                              <span className="capacity-detail available">
-                                <svg
-                                  width="16"
-                                  height="16"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  style={{
-                                    marginLeft: "4px",
-                                    verticalAlign: "middle",
-                                  }}
-                                >
-                                  <path
-                                    d="M22 11.08V12a10 10 0 1 1-5.93-9.14"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                  />
-                                  <polyline
-                                    points="22 4 12 14.01 9 11.01"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                  />
-                                </svg>
-                                {branch.available} متاح
-                              </span>
-                              {branch.needsNewBus && (
-                                <span className="capacity-badge warning">
-                                  <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    style={{
-                                      marginLeft: "4px",
-                                      verticalAlign: "middle",
-                                    }}
-                                  >
-                                    <circle
-                                      cx="12"
-                                      cy="12"
-                                      r="10"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                    />
-                                    <path
-                                      d="M12 8v4M12 16h.01"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                    />
-                                  </svg>
-                                  يحتاج باص جديد
-                                </span>
-                              )}
-                              {branch.canUseSmallerBus && (
-                                <span className="capacity-badge info">
-                                  <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    style={{
-                                      marginLeft: "4px",
-                                      verticalAlign: "middle",
-                                    }}
-                                  >
-                                    <path
-                                      d="M12 2L2 7l10 5 10-5-10-5z"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                    />
-                                    <path
-                                      d="M2 17l10 5 10-5M2 12l10 5 10-5"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                    />
-                                  </svg>
-                                  يمكن استخدام باص أصغر
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -1624,32 +1428,21 @@ const BusTransportation = () => {
         />
       )}
 
-      {/* Bus Details Modal */}
+      {/* Bus Details Section */}
       {selectedBus && (
-        <BusDetailsModal
+        <BusDetailsSection
           bus={selectedBus}
-          onClose={() => setSelectedBus(null)}
+          branches={branches}
+          terms={terms}
+          isMainManager={isMainManager()}
+          userBranchId={user?.branch_id}
+          showEditForm={showBusFormInline}
+          onClose={handleCloseDetailSection}
           onEdit={() => {
-            setSelectedBus(null);
-            // Same behavior from details modal: open the relevant missing section
-            const missingStudents =
-              selectedBus.student_count === 0 ||
-              selectedBus.student_count === null ||
-              selectedBus.student_count === undefined;
-            const missingRegDoc = !selectedBus.registration_document_url;
-            const missingDriverDoc = !selectedBus.license_document_url;
-            // Lease contract is optional - not required for completion
-            const missingDocs =
-              missingRegDoc || missingDriverDoc;
-            setBusFormInitialTab(
-              missingDocs
-                ? "documents"
-                : missingStudents
-                  ? "students"
-                  : "basic",
-            );
+            // Open edit form in the same modern container
             setEditingBus(selectedBus);
-            setShowBusForm(true);
+            setBusFormInitialTab("basic");
+            setShowBusFormInline(true);
           }}
           onReload={loadBuses}
         />
@@ -1666,6 +1459,7 @@ const BusFormModal = ({
   isMainManager,
   userBranchId,
   initialTab = "basic",
+  isInlineEdit = false,
   onClose,
   onSave,
   onReload,
@@ -2729,7 +2523,7 @@ const BusFormModal = ({
   return (
     <div className="bus-form-expanding-section" ref={formSectionRef}>
       <div className="bus-form-section-header">
-        <h2>{bus ? "تعديل الحافلة" : "إضافة حافلة جديدة"}</h2>
+        <h2>{isInlineEdit ? `تعديل الحافلة - ${bus?.bus_number}` : (bus ? "تعديل الحافلة" : "إضافة حافلة جديدة")}</h2>
         <button className="section-close" onClick={onClose}>
           ×
         </button>
@@ -4157,20 +3951,17 @@ const StudentsFormTab = ({ students, onUpdate, onRemove }) => {
   );
 };
 
-// Bus Details Modal Component
-const BusDetailsModal = ({ bus, onClose, onEdit, onReload }) => {
+// Bus Details Section Component (Consolidated Dashboard View)
+const BusDetailsSection = ({ bus, onClose, onEdit, onReload, showEditForm, branches, terms, isMainManager, userBranchId }) => {
   const { showError, showSuccess } = useNotification();
-  const [activeTab, setActiveTab] = useState("overview");
   const [students, setStudents] = useState([]);
-  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [loadingStudents, setLoadingStudents] = useState(true);
   const [showStudentForm, setShowStudentForm] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
 
   useEffect(() => {
-    if (activeTab === "students") {
-      loadStudents();
-    }
-  }, [activeTab, bus.id]);
+    loadStudents();
+  }, [bus.id]);
 
   const loadStudents = async () => {
     try {
@@ -4189,10 +3980,7 @@ const BusDetailsModal = ({ bus, onClose, onEdit, onReload }) => {
   const handleDeleteStudent = async (studentId) => {
     if (!window.confirm("هل أنت متأكد من حذف هذا الطالب؟")) return;
     try {
-      const response = await busTransportationAPI.deleteStudent(
-        bus.id,
-        studentId,
-      );
+      const response = await busTransportationAPI.deleteStudent(bus.id, studentId);
       if (response.data.success) {
         showSuccess("تم حذف الطالب بنجاح");
         loadStudents();
@@ -4202,145 +3990,377 @@ const BusDetailsModal = ({ bus, onClose, onEdit, onReload }) => {
     }
   };
 
+  const availableSeats = bus.details?.number_of_seats
+    ? Math.max(0, bus.details.number_of_seats - (bus.student_count || 0))
+    : 0;
+
+  // If in edit mode, show the form instead of details
+  if (showEditForm) {
+    return (
+      <BusFormModal
+        bus={bus}
+        branches={branches}
+        terms={terms}
+        isMainManager={isMainManager}
+        userBranchId={userBranchId}
+        initialTab="basic"
+        isInlineEdit={true}
+        onClose={onClose}
+        onSave={() => { }}
+        onReload={onReload}
+        onAfterFinish={() => { }}
+      />
+    );
+  }
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content large" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className="bus-details-section" id="bus-details-section">
+      <div className="details-header">
+        <div className="header-title">
           <h2>تفاصيل الحافلة - {bus.bus_number}</h2>
-          <button className="modal-close" onClick={onClose}>
-            ×
-          </button>
+          <span className="bus-id-badge">#{bus.id}</span>
+        </div>
+        <button className="close-section-btn" onClick={onClose} title="إغلاق">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div className="details-content-body">
+        {/* Hero Stats */}
+        <div className="details-hero-stats">
+          <div className="hero-stat-card primary">
+            <div className="hero-stat-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="9" cy="7" r="4" />
+                <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+              </svg>
+            </div>
+            <div className="hero-stat-content">
+              <div className="hero-stat-value">{bus.details?.number_of_seats || 0}</div>
+              <div className="hero-stat-label">المقاعد الكلية</div>
+            </div>
+          </div>
+
+          <div className="hero-stat-card success">
+            <div className="hero-stat-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            </div>
+            <div className="hero-stat-content">
+              <div className="hero-stat-value">{bus.student_count || 0}</div>
+              <div className="hero-stat-label">الطلاب المسجلين</div>
+            </div>
+          </div>
+
+          <div className={`hero-stat-card ${availableSeats > 0 ? 'info' : 'warning'}`}>
+            <div className="hero-stat-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            </div>
+            <div className="hero-stat-content">
+              <div className="hero-stat-value">{availableSeats}</div>
+              <div className="hero-stat-label">المقاعد المتاحة</div>
+            </div>
+          </div>
         </div>
 
-        <div className="tabs">
-          <button
-            className={activeTab === "overview" ? "active" : ""}
-            onClick={() => setActiveTab("overview")}
-          >
-            نظرة عامة
-          </button>
-          <button
-            className={activeTab === "registration" ? "active" : ""}
-            onClick={() => setActiveTab("registration")}
-          >
-            رخصة السير
-          </button>
-          <button
-            className={activeTab === "driver" ? "active" : ""}
-            onClick={() => setActiveTab("driver")}
-          >
-            رخصة السائق
-          </button>
-          <button
-            className={activeTab === "plates" ? "active" : ""}
-            onClick={() => setActiveTab("plates")}
-          >
-            لوحات الترخيص
-          </button>
-          <button
-            className={activeTab === "details" ? "active" : ""}
-            onClick={() => setActiveTab("details")}
-          >
-            تفاصيل الحافلة
-          </button>
-          <button
-            className={activeTab === "students" ? "active" : ""}
-            onClick={() => setActiveTab("students")}
-          >
-            الطلاب (
-            {
-              students.filter(
-                (s) =>
-                  s?.student_full_name ||
-                  s?.contact_mobile_number ||
-                  s?.address,
-              ).length
-            }
-            )
-          </button>
-        </div>
+        {/* Two Column Layout */}
+        <div className="details-two-column">
+          {/* Left Column - Main Info */}
+          <div className="details-column">
+            {/* Basic Info Card */}
+            <div className="detail-section-card">
+              <div className="section-card-header">
+                <h3>المعلومات الأساسية</h3>
+                <div className="section-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2" />
+                    <circle cx="7" cy="17" r="2" />
+                    <path d="M9 17h6" />
+                    <circle cx="17" cy="17" r="2" />
+                  </svg>
+                </div>
+              </div>
+              <div className="section-card-body">
+                <div className="info-row">
+                  <span className="info-row-label">رقم الحافلة</span>
+                  <div className="plate-display-wrapper">
+                    <PlateDisplay value={bus.bus_number} />
+                  </div>
+                </div>
+                <div className="info-row">
+                  <span className="info-row-label">الفرع</span>
+                  <span className="info-row-value">{bus.branch_name}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-row-label">المسار</span>
+                  <span className="info-row-value">{bus.details?.route_name || "غير محدد"}</span>
+                </div>
+                {bus.details?.route_description && (
+                  <div className="info-row column">
+                    <span className="info-row-label">وصف المسار</span>
+                    <span className="info-row-value">{bus.details.route_description}</span>
+                  </div>
+                )}
+                <div className="info-row">
+                  <span className="info-row-label">نوع الملكية</span>
+                  <span className="modern-badge primary">
+                    {bus.details?.ownership_type === 'leased' ? 'مستأجر' : 'ملك الشركة'}
+                  </span>
+                </div>
+              </div>
+            </div>
 
-        <div className="tab-content">
-          {activeTab === "overview" && (
-            <div className="overview-tab">
-              <div className="info-grid">
-                <div className="info-item">
-                  <label>رقم الحافلة:</label>
-                  <span>{bus.bus_number}</span>
+            {/* Registration Card */}
+            <div className="detail-section-card">
+              <div className="section-card-header">
+                <h3>رخصة السير</h3>
+                <div className="section-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
                 </div>
-                <div className="info-item">
-                  <label>الفرع:</label>
-                  <span>{bus.branch_name}</span>
+              </div>
+              <div className="section-card-body">
+                <div className="info-row">
+                  <span className="info-row-label">رقم التسلسل</span>
+                  <span className="info-row-value">{bus.registration?.registration_number || "-"}</span>
                 </div>
-                {bus.registration?.registration_number && (
-                  <div className="info-item">
-                    <label>رقم التسجيل:</label>
-                    <span>{bus.registration.registration_number}</span>
-                  </div>
+                <div className="info-row">
+                  <span className="info-row-label">رقم الشاصي</span>
+                  <span className="info-row-value">{bus.registration?.chassis_number || "-"}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-row-label">الموديل</span>
+                  <span className="info-row-value">{bus.registration?.vehicle_model || "-"}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-row-label">سنة الصنع</span>
+                  <span className="info-row-value">{bus.registration?.model_year || "-"}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-row-label">اللون</span>
+                  <span className="info-row-value">{bus.registration?.vehicle_color || "-"}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-row-label">تاريخ الانتهاء</span>
+                  <span className="info-row-value">
+                    {bus.registration?.expiry_date_gregorian || "-"}
+                  </span>
+                </div>
+                {bus.registration?.registration_document_url && (
+                  <a
+                    href={bus.registration.registration_document_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="document-link-btn"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                    </svg>
+                    عرض المستند
+                  </a>
                 )}
-                {bus.driver_license?.driver_full_name && (
-                  <div className="info-item">
-                    <label>السائق:</label>
-                    <span>{bus.driver_license.driver_full_name}</span>
-                  </div>
+              </div>
+            </div>
+
+            {/* Driver License Card */}
+            <div className="detail-section-card">
+              <div className="section-card-header">
+                <h3>بيانات السائق</h3>
+                <div className="section-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                </div>
+              </div>
+              <div className="section-card-body">
+                <div className="info-row">
+                  <span className="info-row-label">الاسم الكامل</span>
+                  <span className="info-row-value">{bus.driver_license?.driver_full_name || "-"}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-row-label">رقم الهوية/الإقامة</span>
+                  <span className="info-row-value">{bus.driver_license?.driver_id_number || "-"}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-row-label">رقم الرخصة</span>
+                  <span className="info-row-value">{bus.driver_license?.license_number || "-"}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-row-label">رقم الجوال</span>
+                  <span className="info-row-value">{bus.driver_license?.driver_phone_number || "-"}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-row-label">الجنسية</span>
+                  <span className="info-row-value">{bus.driver_license?.driver_nationality || "-"}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-row-label">تاريخ الانتهاء</span>
+                  <span className="info-row-value">
+                    {bus.driver_license?.expiry_date_gregorian || "-"}
+                  </span>
+                </div>
+                {bus.driver_license?.has_assistant && (
+                  <>
+                    <div className="info-divider"></div>
+                    <div className="info-row">
+                      <span className="info-row-label">مرافق السائق</span>
+                      <span className="info-row-value">{bus.driver_license.assistant_full_name || "-"}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-row-label">رقم جوال المرافق</span>
+                      <span className="info-row-value">{bus.driver_license.assistant_phone_number || "-"}</span>
+                    </div>
+                  </>
                 )}
-                {bus.details?.route_name && (
-                  <div className="info-item">
-                    <label>المسار:</label>
-                    <span>{bus.details.route_name}</span>
-                  </div>
+                {bus.driver_license?.license_document_url && (
+                  <a
+                    href={bus.driver_license.license_document_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="document-link-btn"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                    </svg>
+                    عرض الرخصة
+                  </a>
                 )}
-                {bus.details?.number_of_seats && (
-                  <div className="info-item">
-                    <label>عدد المقاعد:</label>
-                    <span>{bus.details.number_of_seats}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column - Students & Additional Info */}
+          <div className="details-column">
+            {/* Students List Card */}
+            <div className="detail-section-card students-card">
+              <div className="section-card-header">
+                <h3>الطلاب ({students.length})</h3>
+                <button className="add-student-btn" onClick={() => setShowStudentForm(true)}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                  إضافة طالب
+                </button>
+              </div>
+              <div className="section-card-body students-list-body">
+                {loadingStudents ? (
+                  <div className="loading-state">جاري التحميل...</div>
+                ) : students.length === 0 ? (
+                  <div className="empty-state-mini">لا يوجد طلاب مسجلين</div>
+                ) : (
+                  <div className="students-compact-list">
+                    {students.map((student, idx) => (
+                      <div key={student.id || idx} className="student-compact-item">
+                        <div className="student-avatar">{(student.student_full_name || '?').charAt(0)}</div>
+                        <div className="student-compact-info">
+                          <div className="student-compact-name">{student.student_full_name}</div>
+                          <div className="student-compact-phone">{student.contact_mobile_number}</div>
+                        </div>
+                        <div className="student-compact-actions">
+                          <button
+                            className="icon-btn edit"
+                            onClick={() => {
+                              setEditingStudent(student);
+                              setShowStudentForm(true);
+                            }}
+                            title="تعديل"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                          </button>
+                          <button
+                            className="icon-btn delete"
+                            onClick={() => handleDeleteStudent(student.id)}
+                            title="حذف"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
             </div>
-          )}
 
-          {activeTab === "registration" && (
-            <RegistrationTab bus={bus} onReload={onReload} />
-          )}
-
-          {activeTab === "driver" && (
-            <DriverLicenseTab bus={bus} onReload={onReload} />
-          )}
-
-          {activeTab === "plates" && (
-            <LicensePlatesTab bus={bus} onReload={onReload} />
-          )}
-
-          {activeTab === "details" && (
-            <BusDetailsTab bus={bus} onReload={onReload} />
-          )}
-
-          {activeTab === "students" && (
-            <StudentsTab
-              bus={bus}
-              students={students}
-              loading={loadingStudents}
-              onReload={loadStudents}
-              onAdd={() => {
-                setEditingStudent(null);
-                setShowStudentForm(true);
-              }}
-              onEdit={(student) => {
-                setEditingStudent(student);
-                setShowStudentForm(true);
-              }}
-              onDelete={handleDeleteStudent}
-            />
-          )}
+            {/* Additional Details Card - if leased */}
+            {bus.details?.ownership_type === 'leased' && (
+              <div className="detail-section-card">
+                <div className="section-card-header">
+                  <h3>معلومات التأجير</h3>
+                  <div className="section-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="section-card-body">
+                  <div className="info-row">
+                    <span className="info-row-label">شركة التأجير</span>
+                    <span className="info-row-value">{bus.details.lease_company_name || "-"}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="info-row-label">رقم العقد</span>
+                    <span className="info-row-value">{bus.details.lease_contract_number || "-"}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="info-row-label">تاريخ البداية</span>
+                    <span className="info-row-value">{bus.details.lease_start_date_gregorian || "-"}</span>
+                  </div>
+                  <div className="info-row">
+                    <span className="info-row-label">تاريخ النهاية</span>
+                    <span className="info-row-value">{bus.details.lease_end_date_gregorian || "-"}</span>
+                  </div>
+                  {bus.lease_contract_document_url && (
+                    <a
+                      href={bus.lease_contract_document_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="document-link-btn"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                      </svg>
+                      عرض عقد التأجير
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
+      </div>
 
-        <div className="modal-actions">
-          <button onClick={onEdit} className="btn-primary">
-            تعديل
-          </button>
-          <button onClick={onClose}>إغلاق</button>
-        </div>
+      <div className="details-actions-bar">
+        <button onClick={onEdit} className="btn-primary">
+          تعديل كامل
+        </button>
+        <button onClick={onClose} className="btn-secondary">إغلاق</button>
       </div>
 
       {showStudentForm && (
@@ -4370,6 +4390,7 @@ const BusDetailsModal = ({ bus, onClose, onEdit, onReload }) => {
               setShowStudentForm(false);
               setEditingStudent(null);
               loadStudents();
+              onReload();
             } catch (error) {
               showError(error.response?.data?.message || "فشل حفظ الطالب");
             }

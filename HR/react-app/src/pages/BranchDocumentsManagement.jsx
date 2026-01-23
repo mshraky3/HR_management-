@@ -798,381 +798,233 @@ const BranchDocumentsManagement = () => {
       {/* PDF Generation Section */}
       <div className="pdf-generation-section">
         <div className="section-header">
-          <h2>إنشاء ملف PDF للمستندات</h2>
-          <p className="section-description">
-            اختر نوع التقرير المطلوب وقم بإنشاء ملف PDF يحتوي على المستندات
-          </p>
+          <h2>إنشاء ملف PDF</h2>
         </div>
 
-        <div className="pdf-options">
-          <div className="pdf-option-card">
-            <div className="pdf-card-icon">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
-            <h3>مستند واحد لجميع الفروع</h3>
-            <p>
-              اختر نوع مستند معين وستحصل على PDF يحتوي على هذا المستند لجميع
-              الفروع
-            </p>
-            <div
-              className="pdf-form-group"
-              style={{ position: "relative" }}
-              ref={pdfDocTypeDropdownRef}
-            >
-              <label>اختر نوع المستند:</label>
-              <input
-                type="text"
-                value={pdfSelectedDocTypeName}
-                onChange={(e) => {
-                  const term = e.target.value;
-                  setPdfDocTypeFilter(term);
-                  setIsPdfDocTypeDropdownOpen(true);
-                  if (!term) {
-                    setPdfSelectedDocType("");
-                  }
-                }}
-                onFocus={() => {
-                  setIsPdfDocTypeDropdownOpen(true);
-                  if (pdfSelectedDocType) {
-                    setPdfDocTypeFilter(
-                      documentTypeLabels[pdfSelectedDocType] ||
-                        pdfSelectedDocType,
-                    );
-                  }
-                }}
-                placeholder="ابحث عن نوع المستند أو اختر من القائمة..."
-                className="form-control"
-                autoComplete="off"
-              />
-              {isPdfDocTypeDropdownOpen && (
-                <div
-                  className="filter-dropdown-menu"
-                  style={{
-                    position: "absolute",
-                    top: "100%",
-                    left: 0,
-                    right: 0,
-                    maxHeight: "300px",
-                    overflowY: "auto",
-                    backgroundColor: "white",
-                    border: "1px solid #ddd",
-                    borderRadius: "4px",
-                    boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
-                    zIndex: 9999,
-                    marginTop: "4px",
-                  }}
-                >
-                  {allDocumentTypes
-                    .filter((docType) => {
-                      const label = documentTypeLabels[docType] || docType;
-                      return (
-                        !pdfDocTypeFilter ||
-                        label
-                          .toLowerCase()
-                          .includes(pdfDocTypeFilter.toLowerCase())
-                      );
-                    })
-                    .map((docType) => (
-                      <div
-                        key={docType}
-                        style={{
-                          padding: "8px 12px",
-                          cursor: "pointer",
-                          borderBottom: "1px solid #f0f0f0",
-                          backgroundColor:
-                            pdfSelectedDocType === docType
-                              ? "#f0f9ff"
-                              : "white",
-                        }}
-                        onClick={() => {
-                          setPdfSelectedDocType(docType);
-                          setPdfDocTypeFilter("");
-                          setIsPdfDocTypeDropdownOpen(false);
-                        }}
-                        onMouseEnter={(e) =>
-                          (e.target.style.backgroundColor = "#f0f9ff")
-                        }
-                        onMouseLeave={(e) =>
-                          (e.target.style.backgroundColor =
-                            pdfSelectedDocType === docType
-                              ? "#f0f9ff"
-                              : "white")
-                        }
-                      >
-                        {documentTypeLabels[docType] || docType}
-                      </div>
-                    ))}
-                  {allDocumentTypes.filter((docType) => {
-                    const label = documentTypeLabels[docType] || docType;
-                    return (
-                      !pdfDocTypeFilter ||
-                      label
-                        .toLowerCase()
-                        .includes(pdfDocTypeFilter.toLowerCase())
-                    );
-                  }).length === 0 && (
-                    <div
-                      style={{
-                        padding: "12px",
-                        textAlign: "center",
-                        color: "#666",
-                      }}
-                    >
-                      لا توجد أنواع مستندات مطابقة
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+        <div className="pdf-search-container">
+          <div className="pdf-options">
             <button
-              className="btn btn-success"
-              style={{ width: "100%", marginTop: "1rem" }}
-              onClick={handleGeneratePdfByDocType}
-              disabled={pdfGenerating || !pdfSelectedDocType}
+              className={`pdf-option-card ${isPdfDocTypeDropdownOpen ? "active" : ""}`}
+              onClick={() => {
+                setIsPdfDocTypeDropdownOpen(!isPdfDocTypeDropdownOpen);
+                setIsPdfBranchDropdownOpen(false);
+              }}
             >
-              {pdfGenerating ? (
-                <>
-                  <span
-                    className="spinner-border spinner-border-sm"
-                    role="status"
-                    aria-hidden="true"
-                    style={{ marginLeft: "8px" }}
-                  ></span>
-                  جاري إنشاء PDF...
-                </>
-              ) : (
-                <>
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    style={{ marginLeft: "8px" }}
-                  >
-                    <path
-                      d="M7 10l5 5 5-5"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M12 3v12"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M3 17v2a2 2 0 002 2h14a2 2 0 002-2v-2"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  إنشاء PDF
-                </>
-              )}
+              <div className="pdf-card-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              <h3>حسب المستند</h3>
+            </button>
+
+            <button
+              className={`pdf-option-card ${isPdfBranchDropdownOpen ? "active" : ""}`}
+              onClick={() => {
+                setIsPdfBranchDropdownOpen(!isPdfBranchDropdownOpen);
+                setIsPdfDocTypeDropdownOpen(false);
+              }}
+            >
+              <div className="pdf-card-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M17 21v-8H7v8M7 3v5h8"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              <h3>حسب الفرع</h3>
             </button>
           </div>
 
-          <div className="pdf-option-card">
-            <div className="pdf-card-icon">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M17 21v-8H7v8M7 3v5h8"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
-            <h3>جميع مستندات فرع واحد</h3>
-            <p>اختر فرع معين وستحصل على PDF يحتوي على جميع مستندات هذا الفرع</p>
-            <div
-              className="pdf-form-group"
-              style={{ position: "relative" }}
-              ref={pdfBranchDropdownRef}
-            >
-              <label>اختر الفرع:</label>
-              <input
-                type="text"
-                value={pdfSelectedBranchName}
-                onChange={(e) => {
-                  const term = e.target.value;
-                  setPdfBranchFilter(term);
-                  setIsPdfBranchDropdownOpen(true);
-                  if (!term) {
-                    setPdfSelectedBranch("");
+          {/* Unified Selection Area */}
+          {(isPdfDocTypeDropdownOpen || isPdfBranchDropdownOpen) && (
+            <div className="pdf-selection-container">
+              <div style={{ position: "relative", flex: 1 }}>
+                <input
+                  type="text"
+                  placeholder={
+                    isPdfDocTypeDropdownOpen ? "ابحث عن مستند..." : "ابحث عن فرع..."
                   }
-                }}
-                onFocus={() => {
-                  setIsPdfBranchDropdownOpen(true);
-                  if (pdfSelectedBranch) {
-                    const branch = branches.find(
-                      (b) => b.id === parseInt(pdfSelectedBranch),
-                    );
-                    setPdfBranchFilter(branch?.branch_name || "");
-                  }
-                }}
-                placeholder="ابحث عن فرع أو اختر من القائمة..."
-                className="form-control"
-                autoComplete="off"
-              />
-              {isPdfBranchDropdownOpen && (
-                <div
-                  className="filter-dropdown-menu"
-                  style={{
-                    position: "absolute",
-                    top: "100%",
-                    left: 0,
-                    right: 0,
-                    maxHeight: "300px",
-                    overflowY: "auto",
-                    backgroundColor: "white",
-                    border: "1px solid #ddd",
-                    borderRadius: "4px",
-                    boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
-                    zIndex: 9999,
-                    marginTop: "4px",
+                  onChange={(e) => {
+                    if (isPdfDocTypeDropdownOpen) {
+                      setPdfDocTypeFilter(e.target.value);
+                    } else {
+                      setPdfBranchFilter(e.target.value);
+                    }
                   }}
-                >
-                  {branches
-                    .filter((b) => b.is_active)
-                    .filter(
-                      (branch) =>
-                        !pdfBranchFilter ||
-                        branch.branch_name
-                          .toLowerCase()
-                          .includes(pdfBranchFilter.toLowerCase()),
-                    )
-                    .sort((a, b) =>
-                      (a.branch_name || "").localeCompare(
-                        b.branch_name || "",
-                        "ar",
-                      ),
-                    )
-                    .map((branch) => (
-                      <div
-                        key={branch.id}
-                        style={{
-                          padding: "8px 12px",
-                          cursor: "pointer",
-                          borderBottom: "1px solid #f0f0f0",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          backgroundColor:
-                            pdfSelectedBranch === String(branch.id)
-                              ? "#f0f9ff"
-                              : "white",
-                        }}
-                        onClick={() => {
-                          setPdfSelectedBranch(String(branch.id));
-                          setPdfBranchFilter("");
-                          setIsPdfBranchDropdownOpen(false);
-                        }}
-                        onMouseEnter={(e) =>
-                          (e.target.style.backgroundColor = "#f0f9ff")
-                        }
-                        onMouseLeave={(e) =>
-                          (e.target.style.backgroundColor =
-                            pdfSelectedBranch === String(branch.id)
-                              ? "#f0f9ff"
-                              : "white")
-                        }
-                      >
-                        <BranchBadge branch={branch} />
-                        <span>{branch.branch_name}</span>
-                      </div>
-                    ))}
-                  {branches
-                    .filter((b) => b.is_active)
-                    .filter(
-                      (branch) =>
-                        !pdfBranchFilter ||
-                        branch.branch_name
-                          .toLowerCase()
-                          .includes(pdfBranchFilter.toLowerCase()),
-                    ).length === 0 && (
-                    <div
-                      style={{
-                        padding: "12px",
-                        textAlign: "center",
-                        color: "#666",
-                      }}
-                    >
-                      لا توجد فروع مطابقة
-                    </div>
+                  className="pdf-search-input"
+                  autoComplete="off"
+                  autoFocus
+                />
+
+                <div className="filter-dropdown-menu">
+                  {isPdfDocTypeDropdownOpen ? (
+                    <>
+                      {allDocumentTypes
+                        .filter((docType) => {
+                          const label = documentTypeLabels[docType] || docType;
+                          return (
+                            !pdfDocTypeFilter ||
+                            label
+                              .toLowerCase()
+                              .includes(pdfDocTypeFilter.toLowerCase())
+                          );
+                        })
+                        .map((docType) => (
+                          <div
+                            key={docType}
+                            style={{
+                              padding: "8px 12px",
+                              cursor: "pointer",
+                              borderBottom: "1px solid #f0f0f0",
+                              backgroundColor:
+                                pdfSelectedDocType === docType
+                                  ? "#f0f9ff"
+                                  : "white",
+                              fontSize: "0.9rem",
+                            }}
+                            onClick={() => {
+                              setPdfSelectedDocType(docType);
+                              setPdfDocTypeFilter("");
+                            }}
+                            onMouseEnter={(e) =>
+                              (e.target.style.backgroundColor = "#f0f9ff")
+                            }
+                            onMouseLeave={(e) =>
+                              (e.target.style.backgroundColor =
+                                pdfSelectedDocType === docType
+                                  ? "#f0f9ff"
+                                  : "white")
+                            }
+                          >
+                            {documentTypeLabels[docType] || docType}
+                          </div>
+                        ))}
+                    </>
+                  ) : (
+                    <>
+                      {branches
+                        .filter((b) => b.is_active)
+                        .filter(
+                          (branch) =>
+                            !pdfBranchFilter ||
+                            branch.branch_name
+                              .toLowerCase()
+                              .includes(pdfBranchFilter.toLowerCase()),
+                        )
+                        .sort((a, b) =>
+                          (a.branch_name || "").localeCompare(
+                            b.branch_name || "",
+                            "ar",
+                          ),
+                        )
+                        .map((branch) => (
+                          <div
+                            key={branch.id}
+                            style={{
+                              padding: "8px 12px",
+                              cursor: "pointer",
+                              borderBottom: "1px solid #f0f0f0",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              backgroundColor:
+                                pdfSelectedBranch === String(branch.id)
+                                  ? "#f0f9ff"
+                                  : "white",
+                              fontSize: "0.9rem",
+                            }}
+                            onClick={() => {
+                              setPdfSelectedBranch(String(branch.id));
+                              setPdfBranchFilter("");
+                            }}
+                            onMouseEnter={(e) =>
+                              (e.target.style.backgroundColor = "#f0f9ff")
+                            }
+                            onMouseLeave={(e) =>
+                              (e.target.style.backgroundColor =
+                                pdfSelectedBranch === String(branch.id)
+                                  ? "#f0f9ff"
+                                  : "white")
+                            }
+                          >
+                            <BranchBadge branch={branch} />
+                            <span>{branch.branch_name}</span>
+                          </div>
+                        ))}
+                    </>
                   )}
                 </div>
-              )}
-            </div>
-            <button
-              className="btn btn-success"
-              style={{ width: "100%", marginTop: "1rem" }}
-              onClick={handleGeneratePdfByBranch}
-              disabled={pdfGenerating || !pdfSelectedBranch}
-            >
-              {pdfGenerating ? (
-                <>
-                  <span
-                    className="spinner-border spinner-border-sm"
-                    role="status"
-                    aria-hidden="true"
-                    style={{ marginLeft: "8px" }}
-                  ></span>
-                  جاري إنشاء PDF...
-                </>
-              ) : (
-                <>
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    style={{ marginLeft: "8px" }}
+              </div>
+
+              {/* Summary and Action */}
+              <div className="pdf-action-area">
+                <div className="pdf-summary-message">
+                  {isPdfDocTypeDropdownOpen && pdfSelectedDocType && (
+                    <p>
+                      سيتم إنشاء تقرير يحتوي على مستند{" "}
+                      <strong>
+                        {documentTypeLabels[pdfSelectedDocType] || pdfSelectedDocType}
+                      </strong>{" "}
+                      لـ <strong>جميع الفروع</strong>
+                    </p>
+                  )}
+                  {isPdfBranchDropdownOpen && pdfSelectedBranch && (
+                    <p>
+                      سيتم إنشاء تقرير يحتوي على <strong>جميع المستندات</strong> لفرع{" "}
+                      <strong>
+                        {
+                          branches.find(
+                            (b) => String(b.id) === String(pdfSelectedBranch),
+                          )?.branch_name
+                        }
+                      </strong>
+                    </p>
+                  )}
+                  {(!pdfSelectedDocType && !pdfSelectedBranch) && <p className="placeholder-text">الرجاء الاختيار للمتابعة...</p>}
+                </div>
+
+                {((isPdfDocTypeDropdownOpen && pdfSelectedDocType) ||
+                  (isPdfBranchDropdownOpen && pdfSelectedBranch)) && (
+                  <button
+                    className="btn btn-primary pdf-action-btn"
+                    onClick={
+                      isPdfDocTypeDropdownOpen
+                        ? handleGeneratePdfByDocType
+                        : handleGeneratePdfByBranch
+                    }
+                    disabled={pdfGenerating}
                   >
-                    <path
-                      d="M7 10l5 5 5-5"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M12 3v12"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M3 17v2a2 2 0 002 2h14a2 2 0 002-2v-2"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  إنشاء PDF
-                </>
-              )}
-            </button>
-          </div>
+                    {pdfGenerating ? (
+                      <>
+                        <span className="spinner-small"></span>
+                        جاري الإنشاء...
+                      </>
+                    ) : (
+                      "إنشاء التقرير"
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1361,9 +1213,9 @@ const BranchDocumentsManagement = () => {
                   (e.target.style.backgroundColor = "#f0f9ff")
                 }
                 onMouseLeave={(e) =>
-                  (e.target.style.backgroundColor = !selectedBranchFilter
-                    ? "#f0f9ff"
-                    : "white")
+                (e.target.style.backgroundColor = !selectedBranchFilter
+                  ? "#f0f9ff"
+                  : "white")
                 }
               >
                 جميع الفروع
@@ -1400,10 +1252,10 @@ const BranchDocumentsManagement = () => {
                       (e.target.style.backgroundColor = "#f0f9ff")
                     }
                     onMouseLeave={(e) =>
-                      (e.target.style.backgroundColor =
-                        selectedBranchFilter === String(branch.id)
-                          ? "#f0f9ff"
-                          : "white")
+                    (e.target.style.backgroundColor =
+                      selectedBranchFilter === String(branch.id)
+                        ? "#f0f9ff"
+                        : "white")
                     }
                   >
                     <BranchBadge branch={branch} />
@@ -1417,16 +1269,16 @@ const BranchDocumentsManagement = () => {
                     .toLowerCase()
                     .includes(branchSearch.toLowerCase()),
               ).length === 0 && (
-                <div
-                  style={{
-                    padding: "12px",
-                    textAlign: "center",
-                    color: "#666",
-                  }}
-                >
-                  لا توجد فروع مطابقة
-                </div>
-              )}
+                  <div
+                    style={{
+                      padding: "12px",
+                      textAlign: "center",
+                      color: "#666",
+                    }}
+                  >
+                    لا توجد فروع مطابقة
+                  </div>
+                )}
             </div>
           )}
         </div>
@@ -1494,9 +1346,9 @@ const BranchDocumentsManagement = () => {
                   (e.target.style.backgroundColor = "#f0f9ff")
                 }
                 onMouseLeave={(e) =>
-                  (e.target.style.backgroundColor = !documentTypeFilter
-                    ? "#f0f9ff"
-                    : "white")
+                (e.target.style.backgroundColor = !documentTypeFilter
+                  ? "#f0f9ff"
+                  : "white")
                 }
               >
                 جميع الأنواع
@@ -1530,8 +1382,8 @@ const BranchDocumentsManagement = () => {
                         (e.target.style.backgroundColor = "#f0f9ff")
                       }
                       onMouseLeave={(e) =>
-                        (e.target.style.backgroundColor =
-                          documentTypeFilter === docType ? "#f0f9ff" : "white")
+                      (e.target.style.backgroundColor =
+                        documentTypeFilter === docType ? "#f0f9ff" : "white")
                       }
                     >
                       {label}
@@ -1545,16 +1397,16 @@ const BranchDocumentsManagement = () => {
                   .toLowerCase()
                   .includes(documentTypeSearch.toLowerCase());
               }).length === 0 && (
-                <div
-                  style={{
-                    padding: "12px",
-                    textAlign: "center",
-                    color: "#666",
-                  }}
-                >
-                  لا توجد أنواع مطابقة
-                </div>
-              )}
+                  <div
+                    style={{
+                      padding: "12px",
+                      textAlign: "center",
+                      color: "#666",
+                    }}
+                  >
+                    لا توجد أنواع مطابقة
+                  </div>
+                )}
             </div>
           )}
         </div>
@@ -1652,8 +1504,8 @@ const BranchDocumentsManagement = () => {
                       (e.target.style.backgroundColor = "#f0f9ff")
                     }
                     onMouseLeave={(e) =>
-                      (e.target.style.backgroundColor =
-                        statusFilter === status.value ? "#f0f9ff" : "white")
+                    (e.target.style.backgroundColor =
+                      statusFilter === status.value ? "#f0f9ff" : "white")
                     }
                   >
                     {status.label}
@@ -1669,16 +1521,16 @@ const BranchDocumentsManagement = () => {
                   .toLowerCase()
                   .includes(statusSearch.toLowerCase());
               }).length === 0 && (
-                <div
-                  style={{
-                    padding: "12px",
-                    textAlign: "center",
-                    color: "#666",
-                  }}
-                >
-                  لا توجد حالات مطابقة
-                </div>
-              )}
+                  <div
+                    style={{
+                      padding: "12px",
+                      textAlign: "center",
+                      color: "#666",
+                    }}
+                  >
+                    لا توجد حالات مطابقة
+                  </div>
+                )}
             </div>
           )}
         </div>
@@ -1689,21 +1541,21 @@ const BranchDocumentsManagement = () => {
           searchText ||
           branchSearch ||
           documentTypeSearch) && (
-          <button
-            className="btn btn-secondary"
-            onClick={() => {
-              setSelectedBranchFilter("");
-              setStatusFilter("");
-              setDocumentTypeFilter("");
-              setSearchText("");
-              setBranchSearch("");
-              setDocumentTypeSearch("");
-              setStatusSearch("");
-            }}
-          >
-            إلغاء الفلاتر
-          </button>
-        )}
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                setSelectedBranchFilter("");
+                setStatusFilter("");
+                setDocumentTypeFilter("");
+                setSearchText("");
+                setBranchSearch("");
+                setDocumentTypeSearch("");
+                setStatusSearch("");
+              }}
+            >
+              إلغاء الفلاتر
+            </button>
+          )}
       </div>
 
       {/* Documents Grid - Document-centric view */}

@@ -700,11 +700,29 @@ export const employeesAPI = {
   getStatistics: (filters = {}) =>
     api.get('/api/employees/statistics', { params: filters }),
 
+  generateStatisticsPDF: (data, config = {}) =>
+    api.post('/api/employees/statistics/generate-pdf', data, {
+      ...config,
+      responseType: config.responseType || 'blob',
+    }),
+
   generateCertificate: (data, config = {}) =>
     api.post('/api/employees/certificates/generate', data, {
       ...config,
       responseType: config.responseType || 'blob',
     }),
+};
+
+// Students API
+export const studentsAPI = {
+  generatePDF: (data, config = {}) =>
+    api.post('/api/students/generate-pdf', data, {
+      ...config,
+      responseType: config.responseType || 'blob',
+    }),
+
+  getByBranch: (branchId, filters = {}) =>
+    api.get(`/api/students/branch/${branchId}`, { params: filters }),
 };
 
 // Documents API
@@ -1105,6 +1123,12 @@ export const payrollAbsenceAPI = {
 
 // Bus Transportation API
 export const busTransportationAPI = {
+  generatePDF: (data, config = {}) =>
+    api.post('/api/bus-transportation/generate-pdf', data, {
+      ...config,
+      responseType: config.responseType || 'blob',
+    }),
+
   getAll: (params = {}) =>
     api.get('/api/bus-transportation', { params }),
 
@@ -1181,6 +1205,15 @@ export const busTransportationAPI = {
     api.delete(`/api/bus-transportation/${id}/students/${studentId}`),
 };
 
+export const busTransportationReportAPI = {
+  generatePDF: (data, config = {}) =>
+    api.post('/api/bus-transportation-report/generate-pdf', data, {
+      ...config,
+      responseType: config.responseType || 'blob',
+    }),
+};
 
+                                
 export default api;
 
+                              
