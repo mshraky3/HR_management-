@@ -67,11 +67,11 @@ export const BusStudent = {
         bus_id, term_id, student_full_name, contact_mobile_number, address,
         created_by
       } = studentData;
-      
+
       if (!term_id) {
         throw new Error('term_id is required');
       }
-      
+
       const [student] = await sql`
         INSERT INTO bus_students (
           bus_id, term_id, student_full_name, contact_mobile_number, address,
@@ -83,7 +83,7 @@ export const BusStudent = {
         )
         RETURNING *
       `;
-      
+
       return student;
     } catch (error) {
       log.error('Error creating bus student', { error: error.message });
@@ -100,42 +100,42 @@ export const BusStudent = {
         'student_full_name', 'contact_mobile_number', 'address',
         'term_id'
       ];
-      
+
       const updateFields = [];
       const updateValues = [];
-      
+
       for (const field of allowedFields) {
         if (updates[field] !== undefined) {
           updateFields.push(field);
           updateValues.push(updates[field]);
         }
       }
-      
+
       if (updates.updated_by !== undefined) {
         updateFields.push('updated_by');
         updateValues.push(updates.updated_by);
       }
-      
+
       if (updateFields.length === 0) {
         throw new Error('No valid fields to update');
       }
-      
+
       const setClause = updateFields.map((field, index) => {
         return `${field} = $${index + 2}`;
       }).join(', ');
-      
+
       const values = [...updateValues];
       values.unshift(id);
-      
+
       const query = `
         UPDATE bus_students 
         SET ${setClause}, updated_at = $${values.length + 1}
         WHERE id = $1
         RETURNING *
       `;
-      
+
       values.push(new Date());
-      
+
       const result = await sql.unsafe(query, values);
       return result[0] || null;
     } catch (error) {
@@ -154,7 +154,7 @@ export const BusStudent = {
         WHERE id = ${id}
         RETURNING id, student_full_name, term_id
       `;
-      
+
       return student;
     } catch (error) {
       log.error('Error deleting bus student', { error: error.message });
@@ -168,7 +168,7 @@ export const BusStudent = {
   async bulkCreate(busId, students, createdBy) {
     try {
       const results = [];
-      
+
       for (const student of students) {
         try {
           const created = await this.create({
@@ -186,10 +186,60 @@ export const BusStudent = {
           throw error;
         }
       }
-      
+
       return results;
     } catch (error) {
       log.error('Error bulk creating bus students', { error: error.message });
+      throw error;
+    }
+  },
+
+  async findByBusIds(busIds = [], filters = {}) {
+    try {
+      if (!Array.isArray(busIds) || busIds.length === 0) {
+        return [];
+      }
+
+      const normalizedIds = busIds
+        .map(id => Number.parseInt(id, 10))
+        .filter(id => !Number.isNaN(id));
+
+      if (normalizedIds.length === 0) {
+        return [];
+      }
+
+      const whereClauses = ['bus_id = ANY($1::int[])'];
+      const queryValues = [normalizedIds];
+      let paramIndex = 2;
+
+      if (filters.status) {
+        whereClauses.push(`status = $${paramIndex}`);
+        queryValues.push(filters.status);
+        paramIndex += 1;
+      }
+
+      if (filters.grade_level) {
+        whereClauses.push(`grade_level = $${paramIndex}`);
+        queryValues.push(filters.grade_level);
+        paramIndex += 1;
+      }
+
+      if (filters.term_id) {
+        whereClauses.push(`term_id = $${paramIndex}`);
+        queryValues.push(filters.term_id);
+        paramIndex += 1;
+      }
+
+      const query = `
+        SELECT *
+        FROM bus_students
+        WHERE ${whereClauses.join(' AND ')}
+        ORDER BY created_at ASC
+      `;
+
+      return await sql.unsafe(query, queryValues);
+    } catch (error) {
+      log.error('Error finding bus students by bus IDs', { error: error.message });
       throw error;
     }
   }

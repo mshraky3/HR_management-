@@ -23,6 +23,30 @@ export const BusDetails = {
     }
   },
 
+  async findByBusIds(busIds = []) {
+    try {
+      if (!Array.isArray(busIds) || busIds.length === 0) {
+        return [];
+      }
+
+      const normalizedIds = busIds.map(id => Number.parseInt(id, 10)).filter(id => !Number.isNaN(id));
+      if (normalizedIds.length === 0) {
+        return [];
+      }
+
+      const query = `
+        SELECT *
+        FROM bus_details
+        WHERE bus_id = ANY($1::int[])
+      `;
+
+      return await sql.unsafe(query, [normalizedIds]);
+    } catch (error) {
+      log.error('Error finding bus details by bus IDs', { error: error.message });
+      throw error;
+    }
+  },
+
   /**
    * Create or update bus details
    */
@@ -30,7 +54,7 @@ export const BusDetails = {
     try {
       // Check if details exist
       const existing = await this.findByBusId(busId);
-      
+
       if (existing) {
         // Update existing
         const [updated] = await sql`
