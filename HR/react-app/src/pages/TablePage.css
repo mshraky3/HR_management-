@@ -421,6 +421,22 @@ td {
   transition: background-color var(--transition-fast);
 }
 
+/* Action buttons in table cells - force horizontal layout */
+td button {
+  margin-left: 0.5rem;
+  margin-right: 0;
+  white-space: nowrap;
+}
+
+td button:first-child {
+  margin-right: 0;
+}
+
+/* Container for action buttons */
+td:has(button) {
+  white-space: nowrap;
+}
+
 tbody tr {
   transition: background-color var(--transition-fast);
 }
@@ -451,7 +467,8 @@ tbody tr:last-child td:last-child {
 .table-actions {
   display: flex;
   gap: var(--spacing-xs);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 /* Table action buttons use btn-sm from unified system */
