@@ -1,19 +1,28 @@
 {
   "version": 2,
+  "installCommand": "npm install --legacy-peer-deps",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
   "rewrites": [
     {
+      "source": "/assets/(.*)",
+      "destination": "/assets/$1"
+    },
+    {
       "source": "/(.*)",
-      "destination": "/api/index.js"
+      "destination": "/index.html"
     }
   ],
-  "functions": {
-    "api/index.js": {
-      "maxDuration": 60,
-      "memory": 3008,
-      "includeFiles": "**/*"
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     }
-  },
-  "env": {
-    "NODE_ENV": "production"
-  }
+  ]
 }
