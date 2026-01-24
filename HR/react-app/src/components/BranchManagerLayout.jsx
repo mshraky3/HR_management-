@@ -119,6 +119,13 @@ const BranchManagerLayout = ({ children }) => {
           >
             الباصات
           </Link>
+          <Link
+            to="/suggestions"
+            className={`nav-link ${isActive("/suggestions")}`}
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            اقتراحات
+          </Link>
         </div>
         <div className="nav-user">
           <span className="user-info">{user?.full_name || user?.username}</span>

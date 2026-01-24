@@ -149,6 +149,16 @@ const Layout = ({ children }) => {
           >
             مسيرات الرواتب
           </Link>
+          <Link
+            to="/suggestions"
+            className={`nav-link ${isActive("/suggestions")}`}
+            onClick={() => {
+              setMobileMenuOpen(false);
+              closeDropdown();
+            }}
+          >
+            الاقتراحات
+          </Link>
         </div>
         <div className="nav-user">
           <span className="user-info">{user?.full_name || user?.username}</span>
