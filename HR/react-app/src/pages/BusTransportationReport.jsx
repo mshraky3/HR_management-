@@ -146,94 +146,120 @@ export default function BusTransportationReport() {
     return (
         <div className="bus-report-page">
             <form onSubmit={(e) => { e.preventDefault(); generatePDF(); }} className="report-form">
-                {/* Branch Selection Section */}
-                <div className="form-section">
-                    <div className="section-header">
-                        <h2>اختيار الفروع</h2>
-                        <div className="header-controls">
-                            <button
-                                type="button"
-                                onClick={handleSelectAllBranches}
-                                className="btn btn-secondary btn-sm"
-                                disabled={branches.length === 0}
-                            >
-                                {allBranchesSelected ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
-                            </button>
-                            <span className="selection-counter">
-                                تم تحديد {selectedBranches.length} من {branches.length}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div className="filter-group" ref={branchesDropdownRef}>
-                        <button
-                            type="button"
-                            className="filter-button"
-                            onClick={() => setShowBranchesDropdown(!showBranchesDropdown)}
-                        >
-                            {selectedBranches.length > 0
-                                ? `${selectedBranches.length} فروع محددة`
-                                : 'اختيار الفروع'} ▾
-                        </button>
-                        {showBranchesDropdown && (
-                            <div className="filter-dropdown-wrapper">
-                                <input
-                                    type="text"
-                                    placeholder="ابحث عن فرع..."
-                                    value={branchesFilter}
-                                    onChange={e => setBranchesFilter(e.target.value)}
-                                    className="filter-search-input"
-                                    autoFocus
-                                />
-                                <div className="filter-dropdown-menu">
-                                    {filteredBranchesForDropdown.length > 0 ? (
-                                        filteredBranchesForDropdown.map(branch => (
-                                            <label key={branch.id} className="dropdown-checkbox-item">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedBranches.includes(branch.id)}
-                                                    onChange={() => toggleBranch(branch.id)}
-                                                />
-                                                <span>{branch.branch_name}</span>
-                                            </label>
-                                        ))
-                                    ) : (
-                                        <div className="empty-filter-message">لا توجد فروع مطابقة</div>
-                                    )}
-                                </div>
+                {/* Branch Selection Section - Modern Design */}
+                <div className="form-section branches-section">
+                    <div className="section-header-modern">
+                        <h2>🏢 اختيار الفروع</h2>
+                        {selectedBranches.length > 0 && (
+                            <div className="selection-badge">
+                                <span className="badge-count">{selectedBranches.length}</span>
+                                <span className="badge-text">فروع محددة</span>
                             </div>
                         )}
                     </div>
 
-                    {/* Selected Branches Display */}
-                    {selectedBranches.length > 0 && (
-                        <div className="selected-items-container">
-                            <div className="selected-items">
-                                {selectedBranches.map(branchId => {
-                                    const branch = branches.find(b => b.id === branchId);
-                                    return (
-                                        <div key={branchId} className="selected-item">
-                                            <span>{branch?.branch_name}</span>
-                                            <button
-                                                type="button"
-                                                className="remove-item-btn"
-                                                onClick={() => toggleBranch(branchId)}
-                                            >
-                                                ✕
-                                            </button>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                    <div className="branches-selection-modern">
+                        <div className="filter-group-modern" ref={branchesDropdownRef}>
                             <button
                                 type="button"
-                                className="clear-all-btn"
-                                onClick={() => setSelectedBranches([])}
+                                className="filter-button-modern"
+                                onClick={() => setShowBranchesDropdown(!showBranchesDropdown)}
                             >
-                                مسح الكل
+                                <span className="button-content">
+                                    {selectedBranches.length > 0 ? (
+                                        <>
+                                            <span className="selected-count-badge">{selectedBranches.length}</span>
+                                            فروع محددة من {branches.length}
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="icon">🔍</span>
+                                            اختر الفروع لتوليد التقرير
+                                        </>
+                                    )}
+                                </span>
+                                <span className={`dropdown-arrow ${showBranchesDropdown ? 'open' : ''}`}>▼</span>
                             </button>
+                            
+                            {showBranchesDropdown && (
+                                <div className="filter-dropdown-wrapper-modern">
+                                    <div className="dropdown-header-modern">
+                                        <input
+                                            type="text"
+                                            placeholder="🔍 ابحث عن فرع..."
+                                            value={branchesFilter}
+                                            onChange={e => setBranchesFilter(e.target.value)}
+                                            className="filter-search-input-modern"
+                                            autoFocus
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleSelectAllBranches}
+                                            className="select-all-btn-modern"
+                                            disabled={branches.length === 0}
+                                        >
+                                            {allBranchesSelected ? '✕ إلغاء الكل' : '✓ تحديد الكل'}
+                                        </button>
+                                    </div>
+                                    <div className="filter-dropdown-menu-modern">
+                                        {filteredBranchesForDropdown.length > 0 ? (
+                                            filteredBranchesForDropdown.map(branch => (
+                                                <label key={branch.id} className="dropdown-checkbox-item-modern">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedBranches.includes(branch.id)}
+                                                        onChange={() => toggleBranch(branch.id)}
+                                                    />
+                                                    <span className="branch-name">{branch.branch_name}</span>
+                                                    {selectedBranches.includes(branch.id) && (
+                                                        <span className="check-icon">✓</span>
+                                                    )}
+                                                </label>
+                                            ))
+                                        ) : (
+                                            <div className="empty-filter-message-modern">
+                                                <span className="empty-icon">🔍</span>
+                                                <span>لا توجد فروع مطابقة</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                    )}
+
+                        {/* Selected Branches Display - Modern */}
+                        {selectedBranches.length > 0 && (
+                            <div className="selected-branches-display">
+                                <div className="selected-items-grid">
+                                    {selectedBranches.map(branchId => {
+                                        const branch = branches.find(b => b.id === branchId);
+                                        return (
+                                            <div key={branchId} className="selected-branch-chip">
+                                                <span className="chip-icon">🏢</span>
+                                                <span className="chip-text">{branch?.branch_name}</span>
+                                                <button
+                                                    type="button"
+                                                    className="chip-remove-btn"
+                                                    onClick={() => toggleBranch(branchId)}
+                                                    title="إزالة"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <button
+                                    type="button"
+                                    className="clear-all-branches-btn"
+                                    onClick={() => setSelectedBranches([])}
+                                >
+                                    <span className="btn-icon">🗑️</span>
+                                    مسح جميع الفروع
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Sections Selection */}

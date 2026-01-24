@@ -312,6 +312,26 @@
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: var(--spacing-lg);
   margin-top: var(--spacing-lg);
+  max-width: 100%;
+}
+
+/* Force maximum 3 columns */
+@media (min-width: 1200px) {
+  .documents-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .documents-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .documents-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .document-card {

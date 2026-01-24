@@ -307,54 +307,95 @@ const BranchDocumentsReport = () => {
 
             {/* Filters Section */}
             <div className="filters-section">
-                <div className="filter-group">
-                    <label>عتبة الانتهاء (بالأيام)</label>
-                    <input
-                        type="number"
-                        min="1"
-                        max="365"
-                        value={daysThreshold}
-                        onChange={e => setDaysThreshold(Math.max(1, parseInt(e.target.value) || 30))}
-                        className="filter-input"
-                    />
-                </div>
-
-                <div className="filter-group" ref={branchesDropdownRef}>
-                    <label>اختيار الفروع</label>
-                    <button
-                        className="filter-button"
-                        onClick={() => setShowBranchesDropdown(!showBranchesDropdown)}
-                    >
-                        {selectedBranches.length > 0 ? `${selectedBranches.length} فروع محددة` : 'اختيار الفروع'} ▾
-                    </button>
-                    {showBranchesDropdown && (
-                        <div className="filter-dropdown-wrapper">
-                            <input
-                                type="text"
-                                placeholder="ابحث عن فرع..."
-                                value={branchesFilter}
-                                onChange={e => setBranchesFilter(e.target.value)}
-                                className="filter-search-input"
-                                autoFocus
-                            />
-                            <div className="filter-dropdown-menu">
-                                {filteredBranchesForDropdown.length > 0 ? (
-                                    filteredBranchesForDropdown.map(branch => (
-                                        <label key={branch.id} className="dropdown-checkbox-item">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedBranches.includes(branch.id)}
-                                                onChange={() => toggleBranch(branch.id)}
-                                            />
-                                            <span>{branch.branch_name}</span>
-                                        </label>
-                                    ))
-                                ) : (
-                                    <div className="empty-filter-message">لا توجد فروع مطابقة</div>
-                                )}
-                            </div>
-                        </div>
+                <div className="filters-header">
+                    <h3>🔍 تصفية وبحث</h3>
+                    {selectedBranches.length > 0 && (
+                        <button 
+                            className="clear-filters-btn" 
+                            onClick={() => setSelectedBranches([])}
+                        >
+                            ✕ إزالة التصفية
+                        </button>
                     )}
+                </div>
+                
+                <div className="filters-content">
+                    <div className="filter-group">
+                        <label>
+                            <span className="filter-icon">⏱️</span>
+                            عتبة الانتهاء (بالأيام)
+                        </label>
+                        <div className="input-with-icon">
+                            <input
+                                type="number"
+                                min="1"
+                                max="365"
+                                value={daysThreshold}
+                                onChange={e => setDaysThreshold(Math.max(1, parseInt(e.target.value) || 30))}
+                                className="filter-input"
+                            />
+                            <span className="input-suffix">يوم</span>
+                        </div>
+                    </div>
+
+                    <div className="filter-group" ref={branchesDropdownRef}>
+                        <label>
+                            <span className="filter-icon">🏢</span>
+                            اختيار الفروع
+                        </label>
+                        <button
+                            className="filter-button"
+                            onClick={() => setShowBranchesDropdown(!showBranchesDropdown)}
+                        >
+                            <span className="button-content">
+                                {selectedBranches.length > 0 ? (
+                                    <>
+                                        <span className="selected-count">{selectedBranches.length}</span>
+                                        فروع محددة
+                                    </>
+                                ) : (
+                                    'جميع الفروع'
+                                )}
+                            </span>
+                            <span className={`dropdown-arrow ${showBranchesDropdown ? 'open' : ''}`}>▼</span>
+                        </button>
+                        {showBranchesDropdown && (
+                            <div className="filter-dropdown-wrapper">
+                                <div className="dropdown-header">
+                                    <input
+                                        type="text"
+                                        placeholder="🔍 ابحث عن فرع..."
+                                        value={branchesFilter}
+                                        onChange={e => setBranchesFilter(e.target.value)}
+                                        className="filter-search-input"
+                                        autoFocus
+                                    />
+                                </div>
+                                <div className="filter-dropdown-menu">
+                                    {filteredBranchesForDropdown.length > 0 ? (
+                                        filteredBranchesForDropdown.map(branch => (
+                                            <label key={branch.id} className="dropdown-checkbox-item">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedBranches.includes(branch.id)}
+                                                    onChange={() => toggleBranch(branch.id)}
+                                                />
+                                                <span className="branch-item-text">{branch.branch_name}</span>
+                                                {selectedBranches.includes(branch.id) && (
+                                                    <span className="check-icon">✓</span>
+                                                )}
+                                            </label>
+                                        ))
+                                    ) : (
+                                        <div className="empty-filter-message">
+                                            <span className="empty-icon">🔍</span>
+                                            <span>لا توجد فروع مطابقة</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -415,39 +456,54 @@ const BranchDocumentsReport = () => {
                         <p>لا توجد مستندات منتهية أو قريبة من الانتهاء</p>
                     </div>
                 ) : (
-                    <div className="documents-table">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>الفرع</th>
-                                    <th>نوع المستند</th>
-                                    <th>رقم المستند</th>
-                                    <th>تاريخ الإصدار</th>
-                                    <th>تاريخ الانتهاء</th>
-                                    <th>الحالة</th>
-                                    <th>الأيام المتبقية</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredDocuments.map((doc, idx) => (
-                                    <tr key={idx} className={doc.daysUntilExpiry < 0 ? 'expired-row' : 'expiring-row'}>
-                                        <td>{getBranchName(doc.branch_id)}</td>
-                                        <td>{getDocumentTypeLabel(doc.document_type)}</td>
-                                        <td>{doc.document_number || '-'}</td>
-                                        <td>{doc.issue_date ? formatDate(new Date(doc.issue_date)) : '-'}</td>
-                                        <td>{doc.expiry_date ? formatDate(new Date(doc.expiry_date)) : '-'}</td>
-                                        <td>
-                                            <span className={`status-badge ${doc.daysUntilExpiry < 0 ? 'expired' : 'expiring'}`}>
-                                                {doc.daysUntilExpiry < 0 ? 'منتهي' : 'قريب الانتهاء'}
+                    <div className="documents-cards-grid">
+                        {filteredDocuments.map((doc, idx) => (
+                            <div key={idx} className={`document-card ${doc.daysUntilExpiry < 0 ? 'expired' : 'expiring'}`}>
+                                <div className="document-card-header">
+                                    <span className={`status-badge ${doc.daysUntilExpiry < 0 ? 'expired' : 'expiring'}`}>
+                                        {doc.daysUntilExpiry < 0 ? 'منتهي' : 'قريب الانتهاء'}
+                                    </span>
+                                    <div className="branch-name">{getBranchName(doc.branch_id)}</div>
+                                </div>
+                                
+                                <div className="document-card-body">
+                                    <div className="document-field">
+                                        <span className="field-label">نوع المستند:</span>
+                                        <span className="field-value">{getDocumentTypeLabel(doc.document_type)}</span>
+                                    </div>
+                                    
+                                    <div className="document-field">
+                                        <span className="field-label">رقم المستند:</span>
+                                        <span className="field-value">{doc.document_number || '-'}</span>
+                                    </div>
+                                    
+                                    <div className="document-dates">
+                                        <div className="date-item">
+                                            <span className="date-label">تاريخ الإصدار</span>
+                                            <span className="date-value">
+                                                {doc.issue_date ? formatDate(new Date(doc.issue_date)) : '-'}
                                             </span>
-                                        </td>
-                                        <td className={doc.daysUntilExpiry < 0 ? 'text-danger' : 'text-warning'}>
-                                            {doc.daysUntilExpiry < 0 ? `${Math.abs(doc.daysUntilExpiry)} يوم` : `${doc.daysUntilExpiry} يوم`}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                        </div>
+                                        <div className="date-divider">→</div>
+                                        <div className="date-item">
+                                            <span className="date-label">تاريخ الانتهاء</span>
+                                            <span className="date-value">
+                                                {doc.expiry_date ? formatDate(new Date(doc.expiry_date)) : '-'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div className="document-card-footer">
+                                    <div className={`days-remaining ${doc.daysUntilExpiry < 0 ? 'danger' : 'warning'}`}>
+                                        {doc.daysUntilExpiry < 0 ? 
+                                            `متأخر ${Math.abs(doc.daysUntilExpiry)} يوم` : 
+                                            `${doc.daysUntilExpiry} يوم متبقي`
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 )}
             </div>

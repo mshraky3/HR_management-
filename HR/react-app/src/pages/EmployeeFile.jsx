@@ -622,11 +622,15 @@ const EmployeeFile = () => {
                 <div className="documents-list">
                   {documents.map((doc, index) => (
                     <label key={doc.id || index} className="document-checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={selectedDocumentIds.includes(doc.id)}
-                        onChange={() => handleDocumentToggle(doc.id)}
-                      />
+                      <div className="document-switch-container">
+                        <input
+                          type="checkbox"
+                          className="document-switch-input"
+                          checked={selectedDocumentIds.includes(doc.id)}
+                          onChange={() => handleDocumentToggle(doc.id)}
+                        />
+                        <span className="document-switch-slider"></span>
+                      </div>
                       <div className="document-info">
                         <div className="document-name-row">
                           <span className="document-name">{getDocumentTypeLabel(doc.document_type) || 'مستند'}</span>
