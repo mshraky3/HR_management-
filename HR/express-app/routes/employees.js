@@ -1310,6 +1310,57 @@ router.get("/statistics", async (req, res) => {
 });
 
 /**
+ * Helper function to create modern styled PDF table
+ */
+function createStyledTable(headers, rows, headerColor = '#667eea', alternateRowColor = '#f8fafc') {
+  // Add styling to header cells
+  const styledHeaders = headers.map(header => ({
+    text: header,
+    bold: true,
+    alignment: 'center',
+    fontSize: 12,
+    fillColor: headerColor,
+    color: '#ffffff',
+    margin: [5, 5]
+  }));
+
+  // Add styling to data rows
+  const styledRows = rows.map(row => 
+    row.map(cell => ({
+      ...cell,
+      margin: cell.margin || [5, 3]
+    }))
+  );
+
+  return {
+    table: {
+      headerRows: 1,
+      widths: ['50%', '25%', '25%'],
+      body: [styledHeaders, ...styledRows]
+    },
+    layout: {
+      fillColor: function (rowIndex) {
+        return rowIndex === 0 ? null : (rowIndex % 2 === 0 ? alternateRowColor : null);
+      },
+      hLineWidth: function (i, node) {
+        return (i === 0 || i === 1 || i === node.table.body.length) ? 2 : 1;
+      },
+      vLineWidth: function () {
+        return 0;
+      },
+      hLineColor: function (i) {
+        return i === 1 ? headerColor : '#e2e8f0';
+      },
+      paddingLeft: function () { return 8; },
+      paddingRight: function () { return 8; },
+      paddingTop: function () { return 6; },
+      paddingBottom: function () { return 6; }
+    },
+    margin: [0, 0, 0, 20]
+  };
+}
+
+/**
  * POST /api/employees/statistics/generate-pdf
  * Generate PDF report with selected statistics
  * Main Manager only
@@ -1454,24 +1505,15 @@ router.post("/statistics/generate-pdf", async (req, res) => {
       const genderRows = statistics.gender.map(item => [
         { text: item.gender === 'male' ? 'ذكور' : 'إناث', fontSize: 11 },
         { text: item.count || 0, fontSize: 11, alignment: 'center' },
-        { text: item.percentage + '%', fontSize: 11, alignment: 'center' }
+        { text: item.percentage + '%', fontSize: 11, alignment: 'center', bold: true, color: '#667eea' }
       ]);
 
-      docContent.push({
-        table: {
-          headerRows: 1,
-          widths: ['50%', '25%', '25%'],
-          body: [
-            [
-              { text: 'الجنس', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
-            ],
-            ...genderRows
-          ]
-        },
-        margin: [0, 0, 0, 20]
-      });
+      docContent.push(createStyledTable(
+        ['الجنس', 'العدد', 'النسبة'],
+        genderRows,
+        '#667eea',
+        '#f8fafc'
+      ));
     }
 
     // Salary Ranges Chart
@@ -1486,25 +1528,16 @@ router.post("/statistics/generate-pdf", async (req, res) => {
         return [
           { text: item.range || 'بدون', fontSize: 11 },
           { text: item.count || 0, fontSize: 11, alignment: 'center' },
-          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+          { text: percentage + '%', fontSize: 11, alignment: 'center', bold: true, color: '#10b981' }
         ];
       });
 
-      docContent.push({
-        table: {
-          headerRows: 1,
-          widths: ['50%', '25%', '25%'],
-          body: [
-            [
-              { text: 'فئة الراتب', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
-            ],
-            ...salaryRows
-          ]
-        },
-        margin: [0, 0, 0, 20]
-      });
+      docContent.push(createStyledTable(
+        ['فئة الراتب', 'العدد', 'النسبة'],
+        salaryRows,
+        '#10b981',
+        '#f0fdf4'
+      ));
     }
 
     // Job Titles Chart (top 10)
@@ -1519,25 +1552,16 @@ router.post("/statistics/generate-pdf", async (req, res) => {
         return [
           { text: item.job_title || 'بدون', fontSize: 11 },
           { text: item.count || 0, fontSize: 11, alignment: 'center' },
-          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+          { text: percentage + '%', fontSize: 11, alignment: 'center', bold: true, color: '#f59e0b' }
         ];
       });
 
-      docContent.push({
-        table: {
-          headerRows: 1,
-          widths: ['50%', '25%', '25%'],
-          body: [
-            [
-              { text: 'المسمى الوظيفي', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
-            ],
-            ...jobRows
-          ]
-        },
-        margin: [0, 0, 0, 20]
-      });
+      docContent.push(createStyledTable(
+        ['المسمى الوظيفي', 'العدد', 'النسبة'],
+        jobRows,
+        '#f59e0b',
+        '#fffbeb'
+      ));
     }
 
     // Contract Types Chart
@@ -1552,25 +1576,16 @@ router.post("/statistics/generate-pdf", async (req, res) => {
         return [
           { text: item.contract_type || 'بدون', fontSize: 11 },
           { text: item.count || 0, fontSize: 11, alignment: 'center' },
-          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+          { text: percentage + '%', fontSize: 11, alignment: 'center', bold: true, color: '#8b5cf6' }
         ];
       });
 
-      docContent.push({
-        table: {
-          headerRows: 1,
-          widths: ['50%', '25%', '25%'],
-          body: [
-            [
-              { text: 'نوع العقد', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
-            ],
-            ...contractRows
-          ]
-        },
-        margin: [0, 0, 0, 20]
-      });
+      docContent.push(createStyledTable(
+        ['نوع العقد', 'العدد', 'النسبة'],
+        contractRows,
+        '#8b5cf6',
+        '#faf5ff'
+      ));
     }
 
     // Marital Status Chart
@@ -1585,25 +1600,16 @@ router.post("/statistics/generate-pdf", async (req, res) => {
         return [
           { text: item.status || 'بدون', fontSize: 11 },
           { text: item.count || 0, fontSize: 11, alignment: 'center' },
-          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+          { text: percentage + '%', fontSize: 11, alignment: 'center', bold: true, color: '#ec4899' }
         ];
       });
 
-      docContent.push({
-        table: {
-          headerRows: 1,
-          widths: ['50%', '25%', '25%'],
-          body: [
-            [
-              { text: 'الحالة الاجتماعية', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
-            ],
-            ...maritalRows
-          ]
-        },
-        margin: [0, 0, 0, 20]
-      });
+      docContent.push(createStyledTable(
+        ['الحالة الاجتماعية', 'العدد', 'النسبة'],
+        maritalRows,
+        '#ec4899',
+        '#fdf2f8'
+      ));
     }
 
     // Nationalities Chart (top 10)
@@ -1618,25 +1624,16 @@ router.post("/statistics/generate-pdf", async (req, res) => {
         return [
           { text: item.nationality || 'بدون', fontSize: 11 },
           { text: item.count || 0, fontSize: 11, alignment: 'center' },
-          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+          { text: percentage + '%', fontSize: 11, alignment: 'center', bold: true, color: '#06b6d4' }
         ];
       });
 
-      docContent.push({
-        table: {
-          headerRows: 1,
-          widths: ['50%', '25%', '25%'],
-          body: [
-            [
-              { text: 'الجنسية', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
-            ],
-            ...nationalityRows
-          ]
-        },
-        margin: [0, 0, 0, 20]
-      });
+      docContent.push(createStyledTable(
+        ['الجنسية', 'العدد', 'النسبة'],
+        nationalityRows,
+        '#06b6d4',
+        '#ecfeff'
+      ));
     }
 
     // Educational Qualifications Chart
@@ -1651,25 +1648,16 @@ router.post("/statistics/generate-pdf", async (req, res) => {
         return [
           { text: item.qualification || 'بدون', fontSize: 11 },
           { text: item.count || 0, fontSize: 11, alignment: 'center' },
-          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+          { text: percentage + '%', fontSize: 11, alignment: 'center', bold: true, color: '#3b82f6' }
         ];
       });
 
-      docContent.push({
-        table: {
-          headerRows: 1,
-          widths: ['50%', '25%', '25%'],
-          body: [
-            [
-              { text: 'المؤهل التعليمي', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
-            ],
-            ...eduRows
-          ]
-        },
-        margin: [0, 0, 0, 20]
-      });
+      docContent.push(createStyledTable(
+        ['المؤهل التعليمي', 'العدد', 'النسبة'],
+        eduRows,
+        '#3b82f6',
+        '#eff6ff'
+      ));
     }
 
     // Employee Status Chart
@@ -1688,25 +1676,16 @@ router.post("/statistics/generate-pdf", async (req, res) => {
         return [
           { text: item.age_group || 'بدون', fontSize: 11 },
           { text: item.count || 0, fontSize: 11, alignment: 'center' },
-          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+          { text: percentage + '%', fontSize: 11, alignment: 'center', bold: true, color: '#ef4444' }
         ];
       });
 
-      docContent.push({
-        table: {
-          headerRows: 1,
-          widths: ['50%', '25%', '25%'],
-          body: [
-            [
-              { text: 'فئة العمر', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
-            ],
-            ...ageRows
-          ]
-        },
-        margin: [0, 0, 0, 20]
-      });
+      docContent.push(createStyledTable(
+        ['فئة العمر', 'العدد', 'النسبة'],
+        ageRows,
+        '#ef4444',
+        '#fef2f2'
+      ));
     }
 
     // Experience Levels Chart
@@ -1721,25 +1700,16 @@ router.post("/statistics/generate-pdf", async (req, res) => {
         return [
           { text: item.level || 'بدون', fontSize: 11 },
           { text: item.count || 0, fontSize: 11, alignment: 'center' },
-          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+          { text: percentage + '%', fontSize: 11, alignment: 'center', bold: true, color: '#14b8a6' }
         ];
       });
 
-      docContent.push({
-        table: {
-          headerRows: 1,
-          widths: ['50%', '25%', '25%'],
-          body: [
-            [
-              { text: 'مستوى الخبرة', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'العدد', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
-            ],
-            ...expRows
-          ]
-        },
-        margin: [0, 0, 0, 20]
-      });
+      docContent.push(createStyledTable(
+        ['مستوى الخبرة', 'العدد', 'النسبة'],
+        expRows,
+        '#14b8a6',
+        '#f0fdfa'
+      ));
     }
 
     // Branches Chart
@@ -1755,25 +1725,16 @@ router.post("/statistics/generate-pdf", async (req, res) => {
         return [
           { text: branchName, fontSize: 11 },
           { text: item.count, fontSize: 11, alignment: 'center' },
-          { text: percentage + '%', fontSize: 11, alignment: 'center' }
+          { text: percentage + '%', fontSize: 11, alignment: 'center', bold: true, color: '#f97316' }
         ];
       });
 
-      docContent.push({
-        table: {
-          headerRows: 1,
-          widths: ['50%', '25%', '25%'],
-          body: [
-            [
-              { text: 'اسم الفرع', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'عدد الموظفين', bold: true, alignment: 'center', fontSize: 12 },
-              { text: 'النسبة', bold: true, alignment: 'center', fontSize: 12 }
-            ],
-            ...branchRows
-          ]
-        },
-        margin: [0, 0, 0, 20]
-      });
+      docContent.push(createStyledTable(
+        ['اسم الفرع', 'عدد الموظفين', 'النسبة'],
+        branchRows,
+        '#f97316',
+        '#fff7ed'
+      ));
     }
 
     // PDF definition
