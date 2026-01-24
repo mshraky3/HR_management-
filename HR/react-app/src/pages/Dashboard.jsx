@@ -94,25 +94,15 @@ const Dashboard = () => {
 
       // Performance Optimization: Batch all parallel API calls together
       // This reduces total loading time by making all requests simultaneously
-      // Avoid calling branch-documents if branch password isn't set yet (prevents noisy 401 spam)
-      let canLoadBranchDocuments = true;
-      if (!isMainManager() && user?.branch_id) {
-        try {
-          const key = `branch_documents_password_${user.branch_id}`;
-          canLoadBranchDocuments = !!localStorage.getItem(key);
-        } catch (e) {
-          canLoadBranchDocuments = false;
-        }
-      }
 
       const apiPromises = [
         branchesAPI.getAll(branchFilters),
         employeesAPI.getAll(employeeFilters),
-        (canLoadBranchDocuments ? branchDocumentsAPI.getAll(documentFilters) : Promise.resolve({ data: { data: [] } }))
+        branchDocumentsAPI.getAll(documentFilters)
           .catch((err) => {
-          console.warn('[Dashboard] branchDocumentsAPI.getAll failed:', err?.message || 'Unknown error');
-          return { data: { data: [] } };
-        }),
+            console.warn('[Dashboard] branchDocumentsAPI.getAll failed:', err?.message || 'Unknown error');
+            return { data: { data: [] } };
+          }),
       ];
 
       // Add role-specific API calls to batch
@@ -475,7 +465,7 @@ const Dashboard = () => {
   const checkNewRequests = useCallback(async (requestsList) => {
     try {
       const lastVisitTime = localStorage.getItem('requests_last_visit');
-      
+
       let newCount = 0;
       let pendingCount = 0;
 
@@ -722,10 +712,10 @@ const Dashboard = () => {
         // IMPORTANT: Only check active documents (is_active !== false)
         // Also check that document exists and has a stored file reference (file_path is the main one for branch docs)
         const branchDocs = documents.filter(
-          doc => doc.branch_id === branch.id && 
-                 doc.document_type === docType && 
-                 doc.is_active !== false &&
-                 hasStoredFile(doc)
+          doc => doc.branch_id === branch.id &&
+            doc.document_type === docType &&
+            doc.is_active !== false &&
+            hasStoredFile(doc)
         );
 
         const allBranchDocsOfType = documents.filter(
@@ -752,7 +742,7 @@ const Dashboard = () => {
               has_blob_url: !!d.blob_url,
             }))
           });
-          
+
           // Document is missing - determine message based on archive status
           const alertMessage = hasArchivedDoc
             ? `مستند ${typeLabels[docType] || docType} منتهي الصلاحية في الأرشيف - يحتاج رفع مستند جديد`
@@ -806,7 +796,7 @@ const Dashboard = () => {
 
     // Keep old state for backward compatibility
     const allAlerts = [...alertsWithExpiry, ...alertsWithoutExpiry];
-    
+
     // Final summary logging
     console.log('[Dashboard] Missing documents summary:', {
       totalMissing: allAlerts.length,
@@ -820,7 +810,7 @@ const Dashboard = () => {
         documentLabel: a.documentLabel
       }))
     });
-    
+
     setMissingBranchDocumentAlerts(allAlerts);
     setMissingBranchDocumentAlertsWithExpiry(sortAlerts(alertsWithExpiry));
     setMissingBranchDocumentAlertsWithoutExpiry(sortAlerts(alertsWithoutExpiry));
@@ -830,7 +820,7 @@ const Dashboard = () => {
   const separateDocumentsByExpiry = useCallback((documents) => {
     // Temporarily disabled - will be re-enabled after fixing date calculations
     return;
-    
+
     if (isMainManager()) return;
 
     const branchId = user?.branch_id;
@@ -855,12 +845,12 @@ const Dashboard = () => {
       // Check if document has expiry date
       // IMPORTANT: Determine date type based on year: < 1600 = Hijri, >= 1600 = Gregorian
       let expiryDate = null;
-      
+
       if (doc.expiry_date) {
         const tempDate = new Date(doc.expiry_date);
         if (!isNaN(tempDate.getTime())) {
           const year = tempDate.getFullYear();
-          
+
           // Determine date type: year < 1600 = Hijri, year >= 1600 = Gregorian
           if (year < 1600) {
             // Hijri date - convert to Gregorian for calculation
@@ -872,7 +862,7 @@ const Dashboard = () => {
               const hijriYear = parseInt(parts[0]);
               const hijriMonth = parseInt(parts[1]);
               const hijriDay = parseInt(parts[2]);
-              
+
               // Convert Hijri to Gregorian
               const gregorianDateStr = hijriToGregorian(hijriDay, hijriMonth, hijriYear);
               if (gregorianDateStr) {
@@ -903,7 +893,7 @@ const Dashboard = () => {
           }
         }
       }
-      
+
       if (expiryDate && !isNaN(expiryDate.getTime())) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -1278,15 +1268,15 @@ const Dashboard = () => {
 
         // Reset to first task if current index is out of bounds or if tasks changed
         // Use a ref or effect to track task list changes, but for now, just validate index
-        const validTaskIndex = allTasksOrdered.length > 0 
+        const validTaskIndex = allTasksOrdered.length > 0
           ? Math.max(0, Math.min(currentTaskIndex, allTasksOrdered.length - 1))
           : 0;
-        
+
         // Update index if it's out of bounds
         if (currentTaskIndex !== validTaskIndex && allTasksOrdered.length > 0) {
           setCurrentTaskIndex(validTaskIndex);
         }
-        
+
         const currentTask = allTasksOrdered[validTaskIndex] || null;
         const isLastTask = validTaskIndex === allTasksOrdered.length - 1;
         const isFirstTask = validTaskIndex === 0;
@@ -1374,8 +1364,8 @@ const Dashboard = () => {
               <div className="tasks-completion-message">
                 <div className="completion-icon">
                   <svg width="80" height="80" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="12" cy="12" r="10" fill="#4CAF50" opacity="0.2"/>
-                    <path d="M9 12L11 14L15 10" stroke="#4CAF50" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                    <circle cx="12" cy="12" r="10" fill="#4CAF50" opacity="0.2" />
+                    <path d="M9 12L11 14L15 10" stroke="#4CAF50" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
                 <h2 className="completion-title">🎉 مبروك! تم إكمال جميع المهام</h2>
@@ -1412,21 +1402,21 @@ const Dashboard = () => {
                     <div>
                       {currentTask.type === 'employee_contract_data' && (
                         <TaskCardWrapper key={currentTask.id} task={currentTask} defaultExpanded={true}>
-                          <MissingEmployeeDataSection 
+                          <MissingEmployeeDataSection
                             onComplete={() => handleTaskComplete(currentTask.id)}
                           />
                         </TaskCardWrapper>
                       )}
                       {currentTask.type === 'payroll_absence' && (
                         <TaskCardWrapper key={currentTask.id} task={currentTask} defaultExpanded={true}>
-                          <PayrollAbsenceBranchSection 
+                          <PayrollAbsenceBranchSection
                             onComplete={() => handleTaskComplete(currentTask.id)}
                           />
                         </TaskCardWrapper>
                       )}
                       {currentTask.type === 'salary_review' && (
                         <TaskCardWrapper key={currentTask.id} task={currentTask} defaultExpanded={true}>
-                          <SalaryReviewSection 
+                          <SalaryReviewSection
                             employeeList={currentTask.employeeList || []}
                             onComplete={() => handleTaskComplete(currentTask.id)}
                           />
@@ -1453,11 +1443,11 @@ const Dashboard = () => {
                     title="المهمة السابقة"
                   >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                     السابقة
                   </button>
-                  
+
                   <button
                     className="task-nav-btn task-nav-btn-next"
                     onClick={handleNext}
@@ -1466,7 +1456,7 @@ const Dashboard = () => {
                   >
                     التالية
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </button>
                 </div>

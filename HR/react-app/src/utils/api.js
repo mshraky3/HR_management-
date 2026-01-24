@@ -7,10 +7,6 @@
 import axios from 'axios';
 import { API_URL, getCurrentApiUrl } from '../config/api.js';
 
-// In-memory storage for branch documents passwords (not persistent, cleared on page reload)
-// Key: branchId, Value: password
-const branchDocumentsPasswords = new Map();
-
 // API Response Cache - stores successful GET requests
 // Key: cache key (URL + params), Value: { data, timestamp, expiry }
 const apiCache = new Map();
@@ -236,23 +232,6 @@ const clearRelatedCache = (url) => {
 // Document-to-branch mapping (metadata only, not sensitive)
 const documentBranchMapping = new Map();
 
-// Functions to manage branch documents passwords
-export const setBranchDocumentsPassword = (branchId, password) => {
-  branchDocumentsPasswords.set(branchId, password);
-};
-
-export const getBranchDocumentsPassword = (branchId) => {
-  return branchDocumentsPasswords.get(branchId);
-};
-
-export const clearBranchDocumentsPassword = (branchId) => {
-  branchDocumentsPasswords.delete(branchId);
-};
-
-export const clearAllBranchDocumentsPasswords = () => {
-  branchDocumentsPasswords.clear();
-};
-
 // Functions to manage document-to-branch mapping
 export const setDocumentBranchMapping = (documentId, branchId) => {
   documentBranchMapping.set(documentId, branchId);
@@ -275,106 +254,6 @@ const updateApiBaseUrl = () => {
   api.defaults.baseURL = getCurrentApiUrl();
 };
 
-// Helper function to extract branch ID from request config
-const extractBranchId = (config) => {
-  // Check query params
-  if (config.params?.branch_id) {
-    return config.params.branch_id;
-  }
-
-  // Check URL path params (e.g., /api/branch-documents/:id)
-  const urlMatch = config.url?.match(/\/api\/branch-documents\/(\d+)/);
-  if (urlMatch) {
-    const documentId = urlMatch[1];
-    const branchId = getDocumentBranchMapping(documentId);
-    if (branchId) return branchId;
-
-    // Fallback: use first available password (assuming single branch access)
-    if (branchDocumentsPasswords.size > 0) {
-      return branchDocumentsPasswords.keys().next().value;
-    }
-  }
-
-  // Check URL path params for employee-file generate-single (e.g., /api/employee-file/generate-single/:employee_id)
-  const employeeFileMatch = config.url?.match(/\/api\/employee-file\/generate-single\/(\d+)/);
-  if (employeeFileMatch) {
-    // Try to get branch_id from query params if provided
-    if (config.params?.branch_id) {
-      return config.params.branch_id;
-    }
-    // Fallback: use first available password (assuming single branch access)
-    if (branchDocumentsPasswords.size > 0) {
-      return branchDocumentsPasswords.keys().next().value;
-    }
-  }
-
-  // Check request data (for POST/PUT)
-  if (config.data) {
-    if (config.data instanceof FormData) {
-      return config.data.get('branch_id');
-    }
-    // Handle JSON stringified data (axios may stringify before interceptor)
-    if (typeof config.data === 'string') {
-      try {
-        const parsed = JSON.parse(config.data);
-        if (parsed.branch_id) {
-          return parsed.branch_id;
-        }
-      } catch (e) {
-        // Not JSON, continue
-      }
-    }
-    // Handle object data (most common case)
-    if (typeof config.data === 'object' && config.data !== null) {
-      if (config.data.branch_id) {
-        return config.data.branch_id;
-      }
-    }
-  }
-
-  // For reports API, try to get branch_id from URL query if available
-  if (config.url?.includes('/api/reports')) {
-    const url = new URL(config.url, window.location.origin);
-    const branchIdParam = url.searchParams.get('branch_id');
-    if (branchIdParam) {
-      return branchIdParam;
-    }
-  }
-
-  // Fallback: use first available password (assuming single branch access)
-  if (branchDocumentsPasswords.size > 0) {
-    return branchDocumentsPasswords.keys().next().value;
-  }
-
-  return null;
-};
-
-// Helper function to get password for branch documents API calls
-const getPasswordForRequest = (branchId) => {
-  if (branchId) {
-    const password = getBranchDocumentsPassword(branchId);
-    if (password) return password;
-
-    // Try to get from localStorage as fallback (for monthly documents page)
-    try {
-      const storedPassword = localStorage.getItem(`branch_documents_password_${branchId}`);
-      if (storedPassword) {
-        // Store in memory for future requests
-        setBranchDocumentsPassword(branchId, storedPassword);
-        return storedPassword;
-      }
-    } catch (e) {
-      // localStorage not available, continue
-    }
-  }
-  // Fallback: try to get password for any verified branch
-  if (branchDocumentsPasswords.size > 0) {
-    const firstBranchId = branchDocumentsPasswords.keys().next().value;
-    return getBranchDocumentsPassword(firstBranchId);
-  }
-  return null;
-};
-
 // Add token to requests if available; block protected requests if no token
 api.interceptors.request.use(
   async (config) => {
@@ -392,17 +271,6 @@ api.interceptors.request.use(
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    // Add branch documents password for branch documents, reports, and employee-file API calls
-    if (config.url?.includes('/api/branch-documents') ||
-      config.url?.includes('/api/reports') ||
-      config.url?.includes('/api/employee-file/generate-single')) {
-      const branchId = extractBranchId(config);
-      const password = getPasswordForRequest(branchId);
-      if (password) {
-        config.headers['X-Branch-Documents-Password'] = password;
-      }
     }
 
     // Request Deduplication and Caching for GET requests
@@ -520,18 +388,8 @@ api.interceptors.response.use(
     }
 
     // Only redirect to login for authentication-related 401 errors
-    // Don't redirect for business logic 401 errors (e.g., invalid branch documents password)
     if (error.response?.status === 401) {
-      const url = error.config?.url || '';
       const errorMessage = error.response?.data?.message || '';
-
-      // Check if this is a business logic error (not authentication error)
-      const isBusinessLogicError =
-        errorMessage.includes('password') ||
-        errorMessage.includes('Password') ||
-        errorMessage.includes('Branch documents password') ||
-        errorMessage.includes('Invalid branch documents password') ||
-        url.includes('/branch-documents/verify-password');
 
       // Check if this is an authentication error
       const isAuthError =
@@ -543,8 +401,8 @@ api.interceptors.response.use(
         errorMessage.includes('Token has expired') ||
         errorMessage.includes('Please login');
 
-      // Only redirect if it's an authentication error, not a business logic error
-      if (isAuthError && !isBusinessLogicError) {
+      // Only redirect if it's an authentication error
+      if (isAuthError) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         window.location.href = '/login';
@@ -792,9 +650,6 @@ export const branchDocumentsAPI = {
 
   getById: (id) =>
     api.get(`/api/branch-documents/${id}`),
-
-  verifyPassword: (branchId, password) =>
-    api.post('/api/branch-documents/verify-password', { branch_id: branchId, password }),
 
   upload: (formData) =>
     api.post('/api/branch-documents', formData, {
@@ -1213,7 +1068,37 @@ export const busTransportationReportAPI = {
     }),
 };
 
-                                
+// Suggestions API
+export const suggestionsAPI = {
+  // Get options (importance levels, status options)
+  getOptions: () =>
+    api.get('/api/suggestions/options'),
+
+  // Get statistics (Main Manager only)
+  getStats: () =>
+    api.get('/api/suggestions/stats'),
+
+  // Get all suggestions with optional filters
+  getAll: (params = {}) =>
+    api.get('/api/suggestions', { params }),
+
+  // Get suggestion by ID
+  getById: (id) =>
+    api.get(`/api/suggestions/${id}`),
+
+  // Create new suggestion
+  create: (data) =>
+    api.post('/api/suggestions', data),
+
+  // Update suggestion
+  update: (id, data) =>
+    api.put(`/api/suggestions/${id}`, data),
+
+  // Delete suggestion
+  delete: (id) =>
+    api.delete(`/api/suggestions/${id}`),
+};
+
+
 export default api;
 
-                              

@@ -94,6 +94,7 @@ const ExperienceCertificate = lazy(
   () => import("./pages/ExperienceCertificate"),
 );
 const BusTransportation = lazy(() => import("./pages/BusTransportation.jsx"));
+const Suggestions = lazy(() => import("./pages/Suggestions"));
 
 // Wrapper component to choose layout based on role
 const RoleBasedLayout = ({ children }) => {
@@ -375,6 +376,16 @@ const AppContent = () => {
             <ProtectedRoute>
               <RoleBasedLayout>
                 <BusTransportation />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/suggestions"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <Suggestions />
               </RoleBasedLayout>
             </ProtectedRoute>
           }

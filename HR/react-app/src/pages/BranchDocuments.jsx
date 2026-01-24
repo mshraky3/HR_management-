@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { branchDocumentsAPI, branchesAPI, setBranchDocumentsPassword, setDocumentBranchMapping, clearAllBranchDocumentsPasswords } from '../utils/api';
+import { branchDocumentsAPI, branchesAPI, setDocumentBranchMapping } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import BankSelect from '../components/BankSelect';
@@ -34,10 +34,6 @@ const BranchDocuments = () => {
   const [previewDocument, setPreviewDocument] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [documentAlert, setDocumentAlert] = useState(null); // Alert message for document type
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [password, setPassword] = useState('');
-  const [passwordError, setPasswordError] = useState('');
-  const [isPasswordVerified, setIsPasswordVerified] = useState(false);
   const [currentBranchId, setCurrentBranchId] = useState(null);
   const [uploadData, setUploadData] = useState({
     branch_id: '',
@@ -79,10 +75,7 @@ const BranchDocuments = () => {
         // Auto-set branch_id for branch managers
         if (!isMainManager() && user?.branch_id) {
           setUploadData(prev => ({ ...prev, branch_id: user.branch_id }));
-          // Always show password modal - never store password
           setCurrentBranchId(user.branch_id);
-          setIsPasswordVerified(false);
-          setShowPasswordModal(true);
         }
       }
     } catch (error) {
@@ -91,21 +84,15 @@ const BranchDocuments = () => {
     }
   };
 
-  // Check password verification when branch changes (for main manager)
+  // Set current branch when URL changes (for main manager)
   useEffect(() => {
     if (isMainManager() && branches.length > 0) {
       const branchIdFromUrl = searchParams.get('branch_id');
       if (branchIdFromUrl) {
         const branchId = parseInt(branchIdFromUrl);
-        // Always show password modal - never store password
         setCurrentBranchId(branchId);
-        setIsPasswordVerified(false);
-        setShowPasswordModal(true);
       } else {
-        // No branch selected - don't show password modal
-        setIsPasswordVerified(false);
         setCurrentBranchId(null);
-        setShowPasswordModal(false);
       }
     }
   }, [searchParams, isMainManager, branches]);
@@ -117,44 +104,9 @@ const BranchDocuments = () => {
       (isMainManager() ? parseInt(searchParams.get('branch_id') || '0') || null : null);
   }, [currentBranchId, isMainManager, user, searchParams]);
 
-  const handlePasswordSubmit = async (e) => {
-    e.preventDefault();
-    setPasswordError('');
-
-    if (!password.trim()) {
-      setPasswordError('الرجاء إدخال كلمة المرور');
-      return;
-    }
-
-    const targetBranchId = getCurrentBranchId();
-    if (!targetBranchId) {
-      setPasswordError('الرجاء تحديد الفرع أولاً');
-      return;
-    }
-
-    try {
-      const response = await branchDocumentsAPI.verifyPassword(targetBranchId, password);
-      if (response.data.success) {
-        setBranchDocumentsPassword(targetBranchId, password);
-        // Store password in localStorage for monthly documents page to use automatically
-        try {
-          localStorage.setItem(`branch_documents_password_${targetBranchId}`, password);
-        } catch (e) {
-          // localStorage not available, continue without storing
-        }
-        setIsPasswordVerified(true);
-        setShowPasswordModal(false);
-        setCurrentBranchId(targetBranchId);
-        setPassword('');
-      }
-    } catch (error) {
-      setPasswordError(error.response?.data?.message || 'كلمة المرور غير صحيحة');
-    }
-  };
-
   const loadDocuments = useCallback(async () => {
-    // Safety check: Don't load if password is not verified
-    if (!isPasswordVerified || !currentBranchId) {
+    // Safety check: Need a branch ID
+    if (!currentBranchId) {
       return;
     }
 
@@ -196,7 +148,7 @@ const BranchDocuments = () => {
     } finally {
       setLoading(false);
     }
-  }, [searchParams, isMainManager, user, isPasswordVerified, currentBranchId]);
+  }, [searchParams, isMainManager, user, currentBranchId]);
 
   useEffect(() => {
     if (user) {
@@ -213,22 +165,13 @@ const BranchDocuments = () => {
     }
   }, [searchParams]);
 
-  // Load documents only after password is verified
+  // Load documents when we have a branch ID
   useEffect(() => {
-    // Only load if password is verified AND we have a branch ID
-    // Also check that password modal is not showing (to prevent race conditions)
-    if (user && isPasswordVerified && currentBranchId && !showPasswordModal) {
+    if (user && currentBranchId) {
       loadDocuments();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, isPasswordVerified, currentBranchId, showPasswordModal]);
-
-  // Clear password when component unmounts (security: don't persist passwords)
-  useEffect(() => {
-    return () => {
-      clearAllBranchDocumentsPasswords();
-    };
-  }, []);
+  }, [user, currentBranchId]);
 
   // Set all documents (no filtering needed since monthly documents are in separate page)
   useEffect(() => {
@@ -714,12 +657,12 @@ const BranchDocuments = () => {
       }
       return true;
     });
-    
+
     // Hide restricted types from branch managers
     if (!isMainManager()) {
       filtered = filtered.filter(type => !RESTRICTED_DOCUMENT_TYPES.includes(type.value));
     }
-    
+
     return filtered;
   }, [currentBranchType, isMainManager]);
 
@@ -802,62 +745,6 @@ const BranchDocuments = () => {
     return sortDocumentCardsByPriority(cards);
   }, [branchDocumentTypes, currentBranchType, getDocumentStatus, sortDocumentCardsByPriority]);
 
-  // Show password modal if not verified
-  if (showPasswordModal && !isPasswordVerified) {
-    const targetBranchId = getCurrentBranchId();
-    const branch = branches.find(b => b.id === targetBranchId);
-
-    return (
-      <div className="modal" style={{ display: 'flex' }}>
-        <div className="modal-content" style={{ maxWidth: '400px' }}>
-          <h2>إدخال كلمة مرور مستندات الفرع</h2>
-          <p style={{ marginBottom: '20px', color: '#666' }}>
-            {branch ? (<><BranchBadge branch={branch} /><span style={{ marginLeft: 8 }}>الرجاء إدخال كلمة مرور مستندات الفرع: {branch.branch_name}</span></>) : 'الرجاء إدخال كلمة مرور مستندات الفرع'}
-          </p>
-          <form onSubmit={handlePasswordSubmit}>
-            <div className="form-group">
-              <label>كلمة المرور *</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setPasswordError('');
-                }}
-                placeholder="أدخل كلمة المرور"
-                required
-                autoFocus
-              />
-              {passwordError && (
-                <span style={{ color: 'red', fontSize: '14px', marginTop: '5px', display: 'block' }}>
-                  {passwordError}
-                </span>
-              )}
-            </div>
-            <div className="form-actions">
-              <button type="submit" className="btn-primary">
-                تأكيد
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPasswordModal(false);
-                  setPassword('');
-                  setPasswordError('');
-                  // Navigate away from branch documents page
-                  window.history.back();
-                }}
-                className="btn-secondary"
-              >
-                إلغاء
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   // For main managers: show message if no branch selected
   if (isMainManager() && !searchParams.get('branch_id') && branches.length > 0) {
     return (
@@ -874,12 +761,6 @@ const BranchDocuments = () => {
 
   // Show loading states
   if (loading || (branches.length === 0 && user)) {
-    return <div className="loading">جاري التحميل...</div>;
-  }
-
-  if ((!isPasswordVerified && !showPasswordModal) &&
-    ((!isMainManager() && user?.branch_id) ||
-      (isMainManager() && searchParams.get('branch_id')))) {
     return <div className="loading">جاري التحميل...</div>;
   }
 
@@ -998,7 +879,7 @@ const BranchDocuments = () => {
           <div className="document-cards-grid">
             {documentCards.map((card) => {
               const docType = allBranchDocumentTypes.find(dt => dt.value === card.value);
-              
+
               // Check if document is expired
               const isExpired = card.exists && card.document?.expiry_date ? (() => {
                 try {
@@ -1011,7 +892,7 @@ const BranchDocuments = () => {
                   return false;
                 }
               })() : false;
-              
+
               return (
                 <div
                   key={card.value}

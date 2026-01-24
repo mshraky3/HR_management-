@@ -1682,27 +1682,27 @@ const Employees = () => {
         id_expiry_date_hijri: isSaudiEmployee
           ? ""
           : (() => {
-              if (employee.id_expiry_date_hijri)
-                return employee.id_expiry_date_hijri;
-              if (employee.id_expiry_date_gregorian) {
-                const gregDate = toInputDate(employee.id_expiry_date_gregorian);
-                const hijri = gregorianToHijri(gregDate);
-                return hijri ? formatHijriToString(hijri) : "";
-              }
-              return "";
-            })(),
+            if (employee.id_expiry_date_hijri)
+              return employee.id_expiry_date_hijri;
+            if (employee.id_expiry_date_gregorian) {
+              const gregDate = toInputDate(employee.id_expiry_date_gregorian);
+              const hijri = gregorianToHijri(gregDate);
+              return hijri ? formatHijriToString(hijri) : "";
+            }
+            return "";
+          })(),
         id_expiry_date_gregorian: isSaudiEmployee
           ? ""
           : (() => {
-              const greg = toInputDate(employee.id_expiry_date_gregorian);
-              if (greg) return greg;
-              if (employee.id_expiry_date_hijri) {
-                const [day, month, year] =
-                  employee.id_expiry_date_hijri.split("/");
-                return hijriToGregorian(day, month, year) || "";
-              }
-              return "";
-            })(),
+            const greg = toInputDate(employee.id_expiry_date_gregorian);
+            if (greg) return greg;
+            if (employee.id_expiry_date_hijri) {
+              const [day, month, year] =
+                employee.id_expiry_date_hijri.split("/");
+              return hijriToGregorian(day, month, year) || "";
+            }
+            return "";
+          })(),
         religion: employee.religion || "",
         marital_status: employee.marital_status || "",
         educational_qualification: employee.educational_qualification || "",
@@ -2219,8 +2219,8 @@ const Employees = () => {
                         (e.target.style.backgroundColor = "#f0f9ff")
                       }
                       onMouseLeave={(e) =>
-                        (e.target.style.backgroundColor =
-                          !searchFilters.search_branch ? "#f0f9ff" : "white")
+                      (e.target.style.backgroundColor =
+                        !searchFilters.search_branch ? "#f0f9ff" : "white")
                       }
                     >
                       جميع الفروع
@@ -2264,10 +2264,10 @@ const Employees = () => {
                             (e.target.style.backgroundColor = "#f0f9ff")
                           }
                           onMouseLeave={(e) =>
-                            (e.target.style.backgroundColor =
-                              searchFilters.search_branch === String(branch.id)
-                                ? "#f0f9ff"
-                                : "white")
+                          (e.target.style.backgroundColor =
+                            searchFilters.search_branch === String(branch.id)
+                              ? "#f0f9ff"
+                              : "white")
                           }
                         >
                           <BranchBadge branch={branch} />
@@ -2285,16 +2285,16 @@ const Employees = () => {
                             ?.toLowerCase()
                             .includes(branchSearchTerm.toLowerCase())),
                     ).length === 0 && (
-                      <div
-                        style={{
-                          padding: "12px",
-                          textAlign: "center",
-                          color: "#666",
-                        }}
-                      >
-                        لا توجد فروع مطابقة
-                      </div>
-                    )}
+                        <div
+                          style={{
+                            padding: "12px",
+                            textAlign: "center",
+                            color: "#666",
+                          }}
+                        >
+                          لا توجد فروع مطابقة
+                        </div>
+                      )}
                   </div>
                 )}
               </div>
@@ -2302,21 +2302,21 @@ const Employees = () => {
                 searchFilters.search_id ||
                 searchFilters.search_phone ||
                 searchFilters.search_branch) && (
-                <button
-                  onClick={() =>
-                    setSearchFilters({
-                      search_name: "",
-                      search_id: "",
-                      search_phone: "",
-                      search_branch: "",
-                    })
-                  }
-                  className="btn-secondary"
-                  style={{ padding: "8px 16px" }}
-                >
-                  مسح البحث
-                </button>
-              )}
+                  <button
+                    onClick={() =>
+                      setSearchFilters({
+                        search_name: "",
+                        search_id: "",
+                        search_phone: "",
+                        search_branch: "",
+                      })
+                    }
+                    className="btn-secondary"
+                    style={{ padding: "8px 16px" }}
+                  >
+                    مسح البحث
+                  </button>
+                )}
             </div>
           )}
 
@@ -2369,7 +2369,8 @@ const Employees = () => {
             </div>
           )}
 
-          <div className="table-container" style={{ position: "relative" }}>
+          {/* Desktop Table */}
+          <div className="table-container employees-table-desktop">
             {tableLoading && (
               <div
                 style={{
@@ -2478,27 +2479,27 @@ const Employees = () => {
                               active: { text: "نشط", class: "badge-success" },
                               pending: {
                                 text: "قيد الانتظار",
-                                class: "badge-warning",
+                                class: "badge-warning"
                               },
                               terminated_article_80: {
                                 text: "فصل حسب المادة 80",
-                                class: "badge-danger",
+                                class: "badge-danger"
                               },
                               terminated_article_77: {
                                 text: "فصل حسب المادة 77",
-                                class: "badge-danger",
+                                class: "badge-danger"
                               },
                               resigned: {
                                 text: "استقال",
-                                class: "badge-danger",
+                                class: "badge-danger"
                               },
                               contract_ended: {
                                 text: "انتهى العقد",
-                                class: "badge-secondary",
+                                class: "badge-secondary"
                               },
                               non_renewal: {
                                 text: "عدم التجديد",
-                                class: "badge-secondary",
+                                class: "badge-secondary"
                               },
                               other: { text: "أخرى", class: "badge-secondary" },
                             };
@@ -2518,7 +2519,6 @@ const Employees = () => {
                             onClick={() => handleViewDetails(employee)}
                             className="btn btn-primary btn-sm"
                           >
-                            {" "}
                             التفاصيل
                           </button>
                           <button
@@ -2542,6 +2542,45 @@ const Employees = () => {
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile Only: Name and Actions */}
+          <div className="employees-mobile-list">
+            {employees.length === 0 && !tableLoading ? (
+              <div style={{ textAlign: "center", padding: "2rem" }}>
+                لا يوجد موظفين
+              </div>
+            ) : (
+              paginatedEmployees.map((employee) => (
+                <div key={employee.id} className="employee-mobile-row">
+                  <div className="employee-mobile-name">
+                    {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
+                  </div>
+                  <div className="employee-mobile-actions">
+                    <button
+                      onClick={() => handleViewDetails(employee)}
+                      className="btn btn-primary btn-sm"
+                    >
+                      التفاصيل
+                    </button>
+                    <button
+                      onClick={() => handleEdit(employee)}
+                      className={`btn-sm ${employee.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE ? "btn-edit" : "btn-complete"}`}
+                    >
+                      {employee.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE ? "تعديل" : "إكمال"}
+                    </button>
+                    {isMainManager() && (
+                      <button
+                        onClick={() => handleDelete(employee.id)}
+                        className="btn-sm btn-delete"
+                      >
+                        حذف
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           {/* Pagination Controls */}
@@ -2784,990 +2823,1151 @@ const Employees = () => {
             {(formStep === 2 ||
               editingEmployee ||
               (!isMainManager() && user?.branch_id)) && (
-              <form onSubmit={handleSubmit} className="employee-form">
-                {isMainManager() && (
-                  <div className="info-card" style={{ gridColumn: "span 12" }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        flexWrap: "wrap",
-                        gap: "1rem",
-                      }}
-                    >
+                <form onSubmit={handleSubmit} className="employee-form">
+                  {isMainManager() && (
+                    <div className="info-card" style={{ gridColumn: "span 12" }}>
                       <div
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: "0.5rem",
+                          justifyContent: "space-between",
+                          flexWrap: "wrap",
+                          gap: "1rem",
                         }}
                       >
-                        <span style={{ fontSize: "1.5rem" }}>
-                          {isHealthcareCenter(currentBranchType)
-                            ? "🏥"
-                            : isSchool(currentBranchType)
-                              ? "🏫"
-                              : "📋"}
-                        </span>
-                        <strong>نوع الفرع: </strong>
-                        <span>
-                          {currentBranchType
-                            ? isHealthcareCenter(currentBranchType)
-                              ? "مركز رعاية صحية"
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          <span style={{ fontSize: "1.5rem" }}>
+                            {isHealthcareCenter(currentBranchType)
+                              ? "🏥"
                               : isSchool(currentBranchType)
-                                ? "مدرسة"
-                                : "غير محدد"
-                            : "غير محدد"}
-                        </span>
-                      </div>
-                      {!editingEmployee && (
-                        <button
-                          type="button"
-                          onClick={() => setFormStep(1)}
-                          className="btn-secondary btn-sm"
-                          style={{ padding: "0.5rem 1rem" }}
-                        >
-                          تغيير النوع
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* ========== القسم الأول: المعلومات الأساسية المطلوبة ========== */}
-
-                {/* Help section for new employees */}
-                {!editingEmployee && (
-                  <div
-                    className="info-card"
-                    style={{
-                      gridColumn: "span 12",
-                      background: "#e3f2fd",
-                      borderColor: "#2196f3",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: "1rem",
-                      }}
-                    >
-                      <span style={{ fontSize: "2rem" }}>💡</span>
-                      <div>
-                        <h4
-                          style={{
-                            margin: "0 0 0.5rem 0",
-                            fontSize: "1.1rem",
-                            fontWeight: "700",
-                            color: "#1976d2",
-                          }}
-                        >
-                          إرشادات إضافة موظف جديد
-                        </h4>
-                        <ul
-                          style={{
-                            margin: "0.5rem 0 0 1.5rem",
-                            fontSize: "0.95rem",
-                            lineHeight: "1.8",
-                            color: "#424242",
-                          }}
-                        >
-                          <li>
-                            ابدأ باختيار <strong>الجنسية</strong> أولاً - ستظهر
-                            الحقول المناسبة تلقائياً
-                          </li>
-                          <li>
-                            الحقول المميزة بـ{" "}
-                            <span
-                              style={{ color: "#e74c3c", fontWeight: "700" }}
-                            >
-                              *
-                            </span>{" "}
-                            هي حقول إلزامية
-                          </li>
-                          <li>
-                            يمكنك تعبئة الحقول الإضافية لاحقاً من خلال التعديل
-                          </li>
-                          <li>
-                            المستندات يمكن رفعها في القسم الرابع أو لاحقاً
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* الجنسية أولاً - تظهر فقط في البداية */}
-                <div className="form-group col-12 nationality-highlight">
-                  <NationalitySelect
-                    label="الجنسية *"
-                    value={formData.nationality}
-                    onChange={handleNationalityChange}
-                    required
-                  />
-                  {formData.nationality && (
-                    <div
-                      className="info-card success"
-                      style={{ marginTop: "1rem" }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <span style={{ fontSize: "1.25rem" }}>✓</span>
-                        <span style={{ fontWeight: "600" }}>
-                          {isSaudi()
-                            ? "مواطن سعودي - سيتم إظهار الحقول المطلوبة للمواطنين"
-                            : "مقيم - سيتم إظهار الحقول المطلوبة للمقيمين"}
-                        </span>
+                                ? "🏫"
+                                : "📋"}
+                          </span>
+                          <strong>نوع الفرع: </strong>
+                          <span>
+                            {currentBranchType
+                              ? isHealthcareCenter(currentBranchType)
+                                ? "مركز رعاية صحية"
+                                : isSchool(currentBranchType)
+                                  ? "مدرسة"
+                                  : "غير محدد"
+                              : "غير محدد"}
+                          </span>
+                        </div>
+                        {!editingEmployee && (
+                          <button
+                            type="button"
+                            onClick={() => setFormStep(1)}
+                            className="btn-secondary btn-sm"
+                            style={{ padding: "0.5rem 1rem" }}
+                          >
+                            تغيير النوع
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
-                </div>
 
-                {/* باقي الحقول تظهر فقط بعد اختيار الجنسية */}
-                {formData.nationality && (
-                  <>
-                    <h3
-                      className="col-12"
+                  {/* ========== القسم الأول: المعلومات الأساسية المطلوبة ========== */}
+
+                  {/* Help section for new employees */}
+                  {!editingEmployee && (
+                    <div
+                      className="info-card"
                       style={{
-                        background: "var(--section-bg-1)",
+                        gridColumn: "span 12",
+                        background: "#e3f2fd",
+                        borderColor: "#2196f3",
                       }}
                     >
-                      <span style={{ fontSize: "1.25rem" }}>📋</span>
-                      القسم الأول: المعلومات الأساسية ومعلومات الإثبات الشخصي
-                    </h3>
-
-                    <h4 className="col-12">👤 الاسم الكامل</h4>
-                    <div className="form-group col-12">
-                      <NameInput
-                        label="الاسم الكامل (4 أسماء) *"
-                        value={{
-                          first: formData.first_name,
-                          second: formData.second_name,
-                          third: formData.third_name,
-                          fourth: formData.fourth_name,
-                        }}
-                        onChange={handleNameChange}
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group col-4">
-                      <label>
-                        {isSaudi() ? "رقم الهوية *" : "رقم الإقامة *"}
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.id_or_residency_number}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            id_or_residency_number: e.target.value,
-                          })
-                        }
-                        required
-                        placeholder={isSaudi() ? "رقم الهوية" : "رقم الإقامة"}
-                      />
-                    </div>
-
-                    {/* تاريخ انتهاء الهوية/الإقامة - مطلوب فقط لغير السعوديين */}
-                    {isNonSaudi(formData.nationality) && (
-                      <div className="form-group col-3">
-                        <UnifiedDatePicker
-                          label="تاريخ انتهاء الهوية/الإقامة *"
-                          hijriValue={formData.id_expiry_date_hijri}
-                          gregorianValue={formData.id_expiry_date_gregorian}
-                          onChange={handleIdExpiryChange}
-                          defaultCalendarType="gregorian"
-                          dateType="general"
-                          required={true}
-                        />
-                      </div>
-                    )}
-
-                    {/* نوع الهوية - مخفي لأنه يتم تعيينه تلقائياً حسب الجنسية */}
-                    <input
-                      type="hidden"
-                      value={
-                        formData.id_type ||
-                        getIdTypeFromNationality(formData.nationality)
-                      }
-                    />
-
-                    {/* تاريخ الميلاد - مطلوب للجميع */}
-                    <div className="form-group col-3">
-                      <UnifiedDatePicker
-                        label="تاريخ الميلاد *"
-                        hijriValue={formData.date_of_birth_hijri}
-                        gregorianValue={formData.date_of_birth_gregorian}
-                        onChange={handleDateOfBirthChange}
-                        defaultCalendarType={isSaudi() ? "hijri" : "gregorian"} // Set initial view preference
-                        dateType="birth_date"
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group col-2">
-                      <label>الجنس *</label>
-                      <select
-                        value={formData.gender || ""}
-                        onChange={(e) =>
-                          setFormData({ ...formData, gender: e.target.value })
-                        }
-                        required
-                      >
-                        <option value="">اختر الجنس</option>
-                        <option value="male">ذكر</option>
-                        <option value="female">أنثى</option>
-                      </select>
-                    </div>
-
-                    {/* حقل الفرع مخفي - يتم تعيينه تلقائياً */}
-                    <input type="hidden" value={formData.branch_id} />
-
-                    <div className="form-group col-4">
-                      <label>المهنة *</label>
-                      <input
-                        type="text"
-                        value={formData.occupation}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            occupation: e.target.value,
-                          })
-                        }
-                        placeholder="المهنة"
-                      />
-                    </div>
-
-                    <div className="form-group col-4">
-                      <label>المسمى الوظيفي</label>
-                      <select
-                        value={formData.job_title}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            job_title: e.target.value,
-                          })
-                        }
-                      >
-                        <option value="">اختر المسمى الوظيفي</option>
-                        {(() => {
-                          // Get current branch type (use memoized currentBranchType from above)
-                          // This avoids recalculating on every render
-                          let branchTypeForJobTitles =
-                            currentBranchType || selectedBranchType;
-                          if (!branchTypeForJobTitles && editingEmployee) {
-                            const empBranch = branchesMap.get(
-                              editingEmployee.branch_id,
-                            );
-                            if (empBranch)
-                              branchTypeForJobTitles = empBranch.branch_type;
-                          }
-                          if (!branchTypeForJobTitles && formData.branch_id) {
-                            const formBranch = branchesMap.get(
-                              parseInt(formData.branch_id),
-                            );
-                            if (formBranch)
-                              branchTypeForJobTitles = formBranch.branch_type;
-                          }
-
-                          // Get job titles from constants based on branch type
-                          const jobTitles = getJobTitlesByBranchType(
-                            branchTypeForJobTitles,
-                          );
-                          return (
-                            <>
-                              {jobTitles.map((title) => (
-                                <option key={title} value={title}>
-                                  {title}
-                                </option>
-                              ))}
-                            </>
-                          );
-                        })()}
-                      </select>
-                    </div>
-
-                    {/* Status field - Only for main manager when editing */}
-                    {isMainManager() && editingEmployee && (
-                      <div className="form-group col-4">
-                        <label>حالة الموظف</label>
-                        <select
-                          value={formData.status}
-                          onChange={(e) =>
-                            setFormData({ ...formData, status: e.target.value })
-                          }
-                        >
-                          <option value="active">نشط</option>
-                          <option value="pending">قيد الانتظار</option>
-                          <option value="terminated_article_80">
-                            فصل حسب المادة 80
-                          </option>
-                          <option value="terminated_article_77">
-                            فصل حسب المادة 77
-                          </option>
-                          <option value="resigned">استقال</option>
-                          <option value="contract_ended">انتهى العقد</option>
-                          <option value="non_renewal">عدم التجديد</option>
-                          <option value="other">أخرى</option>
-                        </select>
-                      </div>
-                    )}
-
-                    <div className="form-group col-4">
-                      <label>البريد الإلكتروني *</label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) =>
-                          setFormData({ ...formData, email: e.target.value })
-                        }
-                        placeholder="example@email.com"
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group col-4">
-                      <label>رقم الهاتف *</label>
-                      <input
-                        type="text"
-                        value={formData.phone_number}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            phone_number: e.target.value,
-                          })
-                        }
-                        placeholder="05xxxxxxxx"
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group col-12">
-                      <BankSelect
-                        label="معلومات البنك *"
-                        value={formData.bank_name}
-                        onChange={(value) =>
-                          setFormData((prev) => ({ ...prev, bank_name: value }))
-                        }
-                        ibanValue={formData.bank_iban}
-                        onIbanChange={(value) =>
-                          setFormData((prev) => ({ ...prev, bank_iban: value }))
-                        }
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group col-4">
-                      <label>العنوان الوطني الموحد (المختصر) *</label>
-                      <input
-                        type="text"
-                        value={formData.national_address}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/\s/g, ""); // Remove spaces
-                          if (value.length <= 8) {
-                            setFormData({
-                              ...formData,
-                              national_address: value,
-                            });
-                          }
-                        }}
-                        placeholder="8 خانات"
-                        maxLength={8}
+                      <div
                         style={{
-                          textAlign: "center",
-                          fontFamily: "monospace",
-                          letterSpacing: "2px",
-                        }}
-                        required
-                      />
-                    </div>
-
-                    {/* معلومات الإثبات الشخصي - جزء من القسم الأول */}
-                    <div className="form-group col-3">
-                      <ReligionSelect
-                        label="الديانة *"
-                        value={formData.religion}
-                        onChange={(value) =>
-                          setFormData({ ...formData, religion: value })
-                        }
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group col-3">
-                      <MaritalStatusSelect
-                        label="الحالة الاجتماعية *"
-                        value={formData.marital_status}
-                        onChange={(value) =>
-                          setFormData({ ...formData, marital_status: value })
-                        }
-                        required
-                      />
-                    </div>
-
-                    {/* Passport fields - only for non-Saudis */}
-                    {isNonSaudi(formData.nationality) && (
-                      <>
-                        <div className="form-group col-3">
-                          <label>رقم جواز السفر *</label>
-                          <input
-                            type="text"
-                            value={formData.passport_number}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                passport_number: e.target.value,
-                              })
-                            }
-                            placeholder="رقم جواز السفر"
-                            required
-                          />
-                        </div>
-                        <div className="form-group col-3">
-                          <label>تاريخ اصدار جواز السفر *</label>
-                          <input
-                            type="date"
-                            value={formData.passport_issue_date}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                passport_issue_date: e.target.value,
-                              })
-                            }
-                            required
-                          />
-                        </div>
-                        <div className="form-group col-3">
-                          <label>تاريخ انتهاء جواز السفر *</label>
-                          <input
-                            type="date"
-                            value={formData.passport_expiry_date}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                passport_expiry_date: e.target.value,
-                              })
-                            }
-                            required
-                          />
-                        </div>
-                        <div className="form-group col-3">
-                          <label>مكان إصدار جواز السفر *</label>
-                          <input
-                            type="text"
-                            value={formData.passport_issue_place}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                passport_issue_place: e.target.value,
-                              })
-                            }
-                            placeholder="مكان الإصدار"
-                            required
-                          />
-                        </div>
-                        <div className="form-group col-3">
-                          <label>تاريخ اصدار الإقامة *</label>
-                          <input
-                            type="date"
-                            value={formData.residency_issue_date}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                residency_issue_date: e.target.value,
-                              })
-                            }
-                            required
-                          />
-                        </div>
-                      </>
-                    )}
-
-                    <div className="form-group col-3">
-                      <label>نوع العقد *</label>
-                      <select
-                        value={formData.contract_type}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            contract_type: e.target.value,
-                          })
-                        }
-                        className="form-select"
-                        required
-                      >
-                        <option value="">اختر نوع العقد</option>
-                        <option value="ورقي">ورقي</option>
-                        <option value="قوى">قوى</option>
-                      </select>
-                    </div>
-
-                    <div className="form-group col-3">
-                      <label>تاريخ بداية العقد</label>
-                      <input
-                        type="date"
-                        value={formData.contract_start_date}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            contract_start_date: e.target.value,
-                          })
-                        }
-                        placeholder="تاريخ بداية العقد"
-                      />
-                    </div>
-
-                    <div className="form-group col-3">
-                      <label>تاريخ نهاية العقد</label>
-                      <input
-                        type="date"
-                        value={formData.contract_end_date}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            contract_end_date: e.target.value,
-                          })
-                        }
-                        placeholder="تاريخ نهاية العقد"
-                      />
-                    </div>
-
-                    <div className="form-group col-3">
-                      <label>عدد سنين الخبرة داخل المؤسسة نفسها</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={formData.years_of_experience_in_same_institution}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            years_of_experience_in_same_institution:
-                              e.target.value,
-                          })
-                        }
-                      />
-                    </div>
-
-                    {/* ========== القسم الثاني: المعلومات التعليمية ========== */}
-                    <h3
-                      className="col-12"
-                      style={{
-                        background: "var(--section-bg-2)",
-                      }}
-                    >
-                      <span style={{ fontSize: "1.25rem" }}>🎓</span>
-                      القسم الثاني: المعلومات التعليمية
-                    </h3>
-
-                    <div className="form-group col-4">
-                      <label>المؤهل التعليمي</label>
-                      <select
-                        value={formData.educational_qualification}
-                        onChange={(e) => {
-                          const newQualification = e.target.value;
-                          const basicEducationLevels = [
-                            "ابتدائي",
-                            "متوسط",
-                            "ثانوي",
-                            "غير متعلم",
-                          ];
-                          const isBasic =
-                            basicEducationLevels.includes(newQualification);
-
-                          // If switching to basic education, clear specialization, graduation_year, and university_gpa
-                          if (isBasic) {
-                            setFormData({
-                              ...formData,
-                              educational_qualification: newQualification,
-                              specialization: "",
-                              graduation_year: "",
-                              university_gpa: "",
-                            });
-                          } else {
-                            setFormData({
-                              ...formData,
-                              educational_qualification: newQualification,
-                            });
-                          }
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: "1rem",
                         }}
                       >
-                        <option value="">اختر المؤهل التعليمي</option>
-                        <option value="ابتدائي">ابتدائي</option>
-                        <option value="متوسط">متوسط</option>
-                        <option value="ثانوي">ثانوي</option>
-                        <option value="غير متعلم">غير متعلم</option>
-                        <option value="دبلوم">دبلوم</option>
-                        <option value="بكالوريوس">بكالوريوس</option>
-                        <option value="ماجستير">ماجستير</option>
-                        <option value="دكتوراه">دكتوراه</option>
-                      </select>
-                    </div>
-
-                    {!isBasicEducation() && (
-                      <>
-                        <div className="form-group col-4">
-                          <label>التخصص</label>
-                          <input
-                            type="text"
-                            value={formData.specialization}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                specialization: e.target.value,
-                              })
-                            }
-                          />
-                        </div>
-
-                        <div className="form-group col-2">
-                          <label>سنة التخرج</label>
-                          <input
-                            type="number"
-                            min="1950"
-                            max={new Date().getFullYear() + 5}
-                            value={formData.graduation_year}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                graduation_year: e.target.value,
-                              })
-                            }
-                            placeholder="مثال: 2020"
-                          />
-                        </div>
-
-                        <div className="form-group col-2">
-                          <label>المعدل الجامعي</label>
-                          <input
-                            type="text"
-                            value={formData.university_gpa}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                university_gpa: e.target.value,
-                              })
-                            }
-                            placeholder="مثال: 4.5 أو ممتاز"
-                          />
-                        </div>
-                      </>
-                    )}
-                    {/* ========== القسم الثالث: الراتب والبدلات ========== */}
-                    <h3
-                      className="col-12"
-                      style={{
-                        background: "var(--section-bg-3)",
-                      }}
-                    >
-                      <span style={{ fontSize: "1.25rem" }}>💰</span>
-                      القسم الثالث: الراتب والبدلات
-                    </h3>
-
-                    <div className="form-group col-3">
-                      <label>الراتب الأساسي</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.base_salary}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            base_salary: e.target.value,
-                          })
-                        }
-                        placeholder="0.00"
-                      />
-                    </div>
-
-                    <div className="form-group col-3">
-                      <label>بدل السكن</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.housing_allowance}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            housing_allowance: e.target.value,
-                          })
-                        }
-                        placeholder="0.00"
-                      />
-                    </div>
-
-                    <div className="form-group col-3">
-                      <label>بدل النقل</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.transportation_allowance}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            transportation_allowance: e.target.value,
-                          })
-                        }
-                        placeholder="0.00"
-                      />
-                    </div>
-
-                    <div className="form-group col-3">
-                      <label>بدل نهاية الخدمة</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.end_of_service_allowance}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            end_of_service_allowance: e.target.value,
-                          })
-                        }
-                        placeholder="0.00"
-                      />
-                    </div>
-
-                    <div className="form-group col-3">
-                      <label>بدل الإجازة السنوية</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.annual_leave_allowance}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            annual_leave_allowance: e.target.value,
-                          })
-                        }
-                        placeholder="0.00"
-                      />
-                    </div>
-
-                    <div className="form-group col-3">
-                      <label>بدلات أخرى</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.other_allowances}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            other_allowances: e.target.value,
-                          })
-                        }
-                        placeholder="0.00"
-                      />
-                    </div>
-
-                    <div className="form-group col-3">
-                      <label>الاستقطاعات (خصومات، سلف، إلخ)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.deductions}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            deductions: e.target.value,
-                          })
-                        }
-                        placeholder="0.00"
-                      />
-                    </div>
-
-                    <div className="form-group col-3">
-                      <label>الراتب الإجمالي (قديم - للتوافق)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.salary}
-                        onChange={(e) =>
-                          setFormData({ ...formData, salary: e.target.value })
-                        }
-                        style={{ background: "#f0f0f0", opacity: 0.7 }}
-                        title="هذا الحقل للتوافق مع البيانات القديمة فقط"
-                        placeholder="0.00"
-                      />
-                    </div>
-
-                    {/* ========== القسم الرابع: المستندات ========== */}
-                    <h3
-                      className="col-12"
-                      style={{
-                        background: "var(--section-bg-4)",
-                      }}
-                    >
-                      <span style={{ fontSize: "1.25rem" }}>📄</span>
-                      القسم الرابع: المستندات
-                    </h3>
-
-                    <div className="documents-section col-12">
-                      {/* Common documents for all types */}
-                      <div className="form-group col-3">
-                        <label>الهوية/الإقامة</label>
-                        {renderExistingDocumentsWarning("id_or_residency")}
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) =>
-                            handleDocumentChange("id_or_residency", e)
-                          }
-                        />
-                        {documents.id_or_residency && (
-                          <div
+                        <span style={{ fontSize: "2rem" }}>💡</span>
+                        <div>
+                          <h4
                             style={{
-                              marginTop: "6px",
-                              padding: "6px 8px",
-                              background: "#d4edda",
-                              border: "1px solid #28a745",
-                              borderRadius: "4px",
-                              fontSize: "11px",
+                              margin: "0 0 0.5rem 0",
+                              fontSize: "1.1rem",
+                              fontWeight: "700",
+                              color: "#1976d2",
                             }}
                           >
-                            <strong>✓ سيتم رفع:</strong>{" "}
-                            {documents.id_or_residency.name}
-                          </div>
-                        )}
-                      </div>
-                      <div className="form-group col-3">
-                        <label>خطاب مباشرة</label>
-                        {renderExistingDocumentsWarning("direct_letter")}
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) =>
-                            handleDocumentChange("direct_letter", e)
-                          }
-                        />
-                        {renderNewFileIndicator(documents.direct_letter)}
-                      </div>
-                      <div className="form-group col-3">
-                        <label>مستند الآيبان</label>
-                        {renderExistingDocumentsWarning("bank_iban")}
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) => handleDocumentChange("bank_iban", e)}
-                        />
-                        {renderNewFileIndicator(documents.bank_iban)}
-                      </div>
-                      {requiresPrimaryQualificationDoc() && (
-                        <div className="form-group col-3">
-                          <label>المؤهل الأساسي</label>
-                          {renderExistingDocumentsWarning(
-                            "primary_qualification",
-                          )}
-                          <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={(e) =>
-                              handleDocumentChange("primary_qualification", e)
-                            }
-                          />
-                          {renderNewFileIndicator(
-                            documents.primary_qualification,
-                          )}
+                            إرشادات إضافة موظف جديد
+                          </h4>
+                          <ul
+                            style={{
+                              margin: "0.5rem 0 0 1.5rem",
+                              fontSize: "0.95rem",
+                              lineHeight: "1.8",
+                              color: "#424242",
+                            }}
+                          >
+                            <li>
+                              ابدأ باختيار <strong>الجنسية</strong> أولاً - ستظهر
+                              الحقول المناسبة تلقائياً
+                            </li>
+                            <li>
+                              الحقول المميزة بـ{" "}
+                              <span
+                                style={{ color: "#e74c3c", fontWeight: "700" }}
+                              >
+                                *
+                              </span>{" "}
+                              هي حقول إلزامية
+                            </li>
+                            <li>
+                              يمكنك تعبئة الحقول الإضافية لاحقاً من خلال التعديل
+                            </li>
+                            <li>
+                              المستندات يمكن رفعها في القسم الرابع أو لاحقاً
+                            </li>
+                          </ul>
                         </div>
-                      )}
-                      <div className="form-group col-3">
-                        <label>عقد العمل</label>
-                        {renderExistingDocumentsWarning("employment_contract")}
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) =>
-                            handleDocumentChange("employment_contract", e)
-                          }
-                        />
-                        {renderNewFileIndicator(documents.employment_contract)}
                       </div>
-                      {/* Medical disclosure form - optional */}
-                      <div className="form-group col-3">
-                        <label>نموذج افصاح طبي</label>
-                        {renderExistingDocumentsWarning(
-                          "medical_disclosure_form",
-                        )}
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) =>
-                            handleDocumentChange("medical_disclosure_form", e)
-                          }
-                        />
-                        {renderNewFileIndicator(
-                          documents.medical_disclosure_form,
-                        )}
-                      </div>
-                      {/* Medical insurance - hide for paper contracts */}
-                      {requiresMedicalInsuranceDoc() && (
-                        <div className="form-group col-3">
-                          <label>التأمين الطبي</label>
-                          {renderExistingDocumentsWarning("medical_insurance")}
-                          <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={(e) =>
-                              handleDocumentChange("medical_insurance", e)
-                            }
-                          />
-                          {renderNewFileIndicator(documents.medical_insurance)}
+                    </div>
+                  )}
+
+                  {/* الجنسية أولاً - تظهر فقط في البداية */}
+                  <div className="form-group col-12 nationality-highlight">
+                    <NationalitySelect
+                      label="الجنسية *"
+                      value={formData.nationality}
+                      onChange={handleNationalityChange}
+                      required
+                    />
+                    {formData.nationality && (
+                      <div
+                        className="info-card success"
+                        style={{ marginTop: "1rem" }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <span style={{ fontSize: "1.25rem" }}>✓</span>
+                          <span style={{ fontWeight: "600" }}>
+                            {isSaudi()
+                              ? "مواطن سعودي - سيتم إظهار الحقول المطلوبة للمواطنين"
+                              : "مقيم - سيتم إظهار الحقول المطلوبة للمقيمين"}
+                          </span>
                         </div>
-                      )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* باقي الحقول تظهر فقط بعد اختيار الجنسية */}
+                  {formData.nationality && (
+                    <>
+                      <h3
+                        className="col-12"
+                        style={{
+                          background: "var(--section-bg-1)",
+                        }}
+                      >
+                        <span style={{ fontSize: "1.25rem" }}>📋</span>
+                        القسم الأول: المعلومات الأساسية ومعلومات الإثبات الشخصي
+                      </h3>
+
+                      <h4 className="col-12">👤 الاسم الكامل</h4>
+                      <div className="form-group col-12">
+                        <NameInput
+                          label="الاسم الكامل (4 أسماء) *"
+                          value={{
+                            first: formData.first_name,
+                            second: formData.second_name,
+                            third: formData.third_name,
+                            fourth: formData.fourth_name,
+                          }}
+                          onChange={handleNameChange}
+                          required
+                        />
+                      </div>
+
+                      <div className="form-group col-4">
+                        <label>
+                          {isSaudi() ? "رقم الهوية *" : "رقم الإقامة *"}
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.id_or_residency_number}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              id_or_residency_number: e.target.value,
+                            })
+                          }
+                          required
+                          placeholder={isSaudi() ? "رقم الهوية" : "رقم الإقامة"}
+                        />
+                      </div>
+
+                      {/* تاريخ انتهاء الهوية/الإقامة - مطلوب فقط لغير السعوديين */}
                       {isNonSaudi(formData.nationality) && (
                         <div className="form-group col-3">
-                          <label>جواز السفر</label>
-                          {renderExistingDocumentsWarning("passport")}
-                          <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={(e) =>
-                              handleDocumentChange("passport", e)
-                            }
+                          <UnifiedDatePicker
+                            label="تاريخ انتهاء الهوية/الإقامة *"
+                            hijriValue={formData.id_expiry_date_hijri}
+                            gregorianValue={formData.id_expiry_date_gregorian}
+                            onChange={handleIdExpiryChange}
+                            defaultCalendarType="gregorian"
+                            dateType="general"
+                            required={true}
                           />
-                          {renderNewFileIndicator(documents.passport)}
                         </div>
                       )}
 
-                      {/* School-specific documents */}
-                      {isSchool(currentBranchType) && (
+                      {/* نوع الهوية - مخفي لأنه يتم تعيينه تلقائياً حسب الجنسية */}
+                      <input
+                        type="hidden"
+                        value={
+                          formData.id_type ||
+                          getIdTypeFromNationality(formData.nationality)
+                        }
+                      />
+
+                      {/* تاريخ الميلاد - مطلوب للجميع */}
+                      <div className="form-group col-3">
+                        <UnifiedDatePicker
+                          label="تاريخ الميلاد *"
+                          hijriValue={formData.date_of_birth_hijri}
+                          gregorianValue={formData.date_of_birth_gregorian}
+                          onChange={handleDateOfBirthChange}
+                          defaultCalendarType={isSaudi() ? "hijri" : "gregorian"} // Set initial view preference
+                          dateType="birth_date"
+                          required
+                        />
+                      </div>
+
+                      <div className="form-group col-2">
+                        <label>الجنس *</label>
+                        <select
+                          value={formData.gender || ""}
+                          onChange={(e) =>
+                            setFormData({ ...formData, gender: e.target.value })
+                          }
+                          required
+                        >
+                          <option value="">اختر الجنس</option>
+                          <option value="male">ذكر</option>
+                          <option value="female">أنثى</option>
+                        </select>
+                      </div>
+
+                      {/* حقل الفرع مخفي - يتم تعيينه تلقائياً */}
+                      <input type="hidden" value={formData.branch_id} />
+
+                      <div className="form-group col-4">
+                        <label>المهنة *</label>
+                        <input
+                          type="text"
+                          value={formData.occupation}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              occupation: e.target.value,
+                            })
+                          }
+                          placeholder="المهنة"
+                        />
+                      </div>
+
+                      <div className="form-group col-4">
+                        <label>المسمى الوظيفي</label>
+                        <select
+                          value={formData.job_title}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              job_title: e.target.value,
+                            })
+                          }
+                        >
+                          <option value="">اختر المسمى الوظيفي</option>
+                          {(() => {
+                            // Get current branch type (use memoized currentBranchType from above)
+                            // This avoids recalculating on every render
+                            let branchTypeForJobTitles =
+                              currentBranchType || selectedBranchType;
+                            if (!branchTypeForJobTitles && editingEmployee) {
+                              const empBranch = branchesMap.get(
+                                editingEmployee.branch_id,
+                              );
+                              if (empBranch)
+                                branchTypeForJobTitles = empBranch.branch_type;
+                            }
+                            if (!branchTypeForJobTitles && formData.branch_id) {
+                              const formBranch = branchesMap.get(
+                                parseInt(formData.branch_id),
+                              );
+                              if (formBranch)
+                                branchTypeForJobTitles = formBranch.branch_type;
+                            }
+
+                            // Get job titles from constants based on branch type
+                            const jobTitles = getJobTitlesByBranchType(
+                              branchTypeForJobTitles,
+                            );
+                            return (
+                              <>
+                                {jobTitles.map((title) => (
+                                  <option key={title} value={title}>
+                                    {title}
+                                  </option>
+                                ))}
+                              </>
+                            );
+                          })()}
+                        </select>
+                      </div>
+
+                      {/* Status field - Only for main manager when editing */}
+                      {isMainManager() && editingEmployee && (
+                        <div className="form-group col-4">
+                          <label>حالة الموظف</label>
+                          <select
+                            value={formData.status}
+                            onChange={(e) =>
+                              setFormData({ ...formData, status: e.target.value })
+                            }
+                          >
+                            <option value="active">نشط</option>
+                            <option value="pending">قيد الانتظار</option>
+                            <option value="terminated_article_80">
+                              فصل حسب المادة 80
+                            </option>
+                            <option value="terminated_article_77">
+                              فصل حسب المادة 77
+                            </option>
+                            <option value="resigned">استقال</option>
+                            <option value="contract_ended">انتهى العقد</option>
+                            <option value="non_renewal">عدم التجديد</option>
+                            <option value="other">أخرى</option>
+                          </select>
+                        </div>
+                      )}
+
+                      <div className="form-group col-4">
+                        <label>البريد الإلكتروني *</label>
+                        <input
+                          type="email"
+                          value={formData.email}
+                          onChange={(e) =>
+                            setFormData({ ...formData, email: e.target.value })
+                          }
+                          placeholder="example@email.com"
+                          required
+                        />
+                      </div>
+
+                      <div className="form-group col-4">
+                        <label>رقم الهاتف *</label>
+                        <input
+                          type="text"
+                          value={formData.phone_number}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              phone_number: e.target.value,
+                            })
+                          }
+                          placeholder="05xxxxxxxx"
+                          required
+                        />
+                      </div>
+
+                      <div className="form-group col-12">
+                        <BankSelect
+                          label="معلومات البنك *"
+                          value={formData.bank_name}
+                          onChange={(value) =>
+                            setFormData((prev) => ({ ...prev, bank_name: value }))
+                          }
+                          ibanValue={formData.bank_iban}
+                          onIbanChange={(value) =>
+                            setFormData((prev) => ({ ...prev, bank_iban: value }))
+                          }
+                          required
+                        />
+                      </div>
+
+                      <div className="form-group col-4">
+                        <label>العنوان الوطني الموحد (المختصر) *</label>
+                        <input
+                          type="text"
+                          value={formData.national_address}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\s/g, ""); // Remove spaces
+                            if (value.length <= 8) {
+                              setFormData({
+                                ...formData,
+                                national_address: value,
+                              });
+                            }
+                          }}
+                          placeholder="8 خانات"
+                          maxLength={8}
+                          style={{
+                            textAlign: "center",
+                            fontFamily: "monospace",
+                            letterSpacing: "2px",
+                          }}
+                          required
+                        />
+                      </div>
+
+                      {/* معلومات الإثبات الشخصي - جزء من القسم الأول */}
+                      <div className="form-group col-3">
+                        <ReligionSelect
+                          label="الديانة *"
+                          value={formData.religion}
+                          onChange={(value) =>
+                            setFormData({ ...formData, religion: value })
+                          }
+                          required
+                        />
+                      </div>
+
+                      <div className="form-group col-3">
+                        <MaritalStatusSelect
+                          label="الحالة الاجتماعية *"
+                          value={formData.marital_status}
+                          onChange={(value) =>
+                            setFormData({ ...formData, marital_status: value })
+                          }
+                          required
+                        />
+                      </div>
+
+                      {/* Passport fields - only for non-Saudis */}
+                      {isNonSaudi(formData.nationality) && (
                         <>
                           <div className="form-group col-3">
-                            <label>الترخيص المهني</label>
+                            <label>رقم جواز السفر *</label>
+                            <input
+                              type="text"
+                              value={formData.passport_number}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  passport_number: e.target.value,
+                                })
+                              }
+                              placeholder="رقم جواز السفر"
+                              required
+                            />
+                          </div>
+                          <div className="form-group col-3">
+                            <label>تاريخ اصدار جواز السفر *</label>
+                            <input
+                              type="date"
+                              value={formData.passport_issue_date}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  passport_issue_date: e.target.value,
+                                })
+                              }
+                              required
+                            />
+                          </div>
+                          <div className="form-group col-3">
+                            <label>تاريخ انتهاء جواز السفر *</label>
+                            <input
+                              type="date"
+                              value={formData.passport_expiry_date}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  passport_expiry_date: e.target.value,
+                                })
+                              }
+                              required
+                            />
+                          </div>
+                          <div className="form-group col-3">
+                            <label>مكان إصدار جواز السفر *</label>
+                            <input
+                              type="text"
+                              value={formData.passport_issue_place}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  passport_issue_place: e.target.value,
+                                })
+                              }
+                              placeholder="مكان الإصدار"
+                              required
+                            />
+                          </div>
+                          <div className="form-group col-3">
+                            <label>تاريخ اصدار الإقامة *</label>
+                            <input
+                              type="date"
+                              value={formData.residency_issue_date}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  residency_issue_date: e.target.value,
+                                })
+                              }
+                              required
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      <div className="form-group col-3">
+                        <label>نوع العقد *</label>
+                        <select
+                          value={formData.contract_type}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              contract_type: e.target.value,
+                            })
+                          }
+                          className="form-select"
+                          required
+                        >
+                          <option value="">اختر نوع العقد</option>
+                          <option value="ورقي">ورقي</option>
+                          <option value="قوى">قوى</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group col-3">
+                        <label>تاريخ بداية العقد</label>
+                        <input
+                          type="date"
+                          value={formData.contract_start_date}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              contract_start_date: e.target.value,
+                            })
+                          }
+                          placeholder="تاريخ بداية العقد"
+                        />
+                      </div>
+
+                      <div className="form-group col-3">
+                        <label>تاريخ نهاية العقد</label>
+                        <input
+                          type="date"
+                          value={formData.contract_end_date}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              contract_end_date: e.target.value,
+                            })
+                          }
+                          placeholder="تاريخ نهاية العقد"
+                        />
+                      </div>
+
+                      <div className="form-group col-3">
+                        <label>عدد سنين الخبرة داخل المؤسسة نفسها</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={formData.years_of_experience_in_same_institution}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              years_of_experience_in_same_institution:
+                                e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+
+                      {/* ========== القسم الثاني: المعلومات التعليمية ========== */}
+                      <h3
+                        className="col-12"
+                        style={{
+                          background: "var(--section-bg-2)",
+                        }}
+                      >
+                        <span style={{ fontSize: "1.25rem" }}>🎓</span>
+                        القسم الثاني: المعلومات التعليمية
+                      </h3>
+
+                      <div className="form-group col-4">
+                        <label>المؤهل التعليمي</label>
+                        <select
+                          value={formData.educational_qualification}
+                          onChange={(e) => {
+                            const newQualification = e.target.value;
+                            const basicEducationLevels = [
+                              "ابتدائي",
+                              "متوسط",
+                              "ثانوي",
+                              "غير متعلم",
+                            ];
+                            const isBasic =
+                              basicEducationLevels.includes(newQualification);
+
+                            // If switching to basic education, clear specialization, graduation_year, and university_gpa
+                            if (isBasic) {
+                              setFormData({
+                                ...formData,
+                                educational_qualification: newQualification,
+                                specialization: "",
+                                graduation_year: "",
+                                university_gpa: "",
+                              });
+                            } else {
+                              setFormData({
+                                ...formData,
+                                educational_qualification: newQualification,
+                              });
+                            }
+                          }}
+                        >
+                          <option value="">اختر المؤهل التعليمي</option>
+                          <option value="ابتدائي">ابتدائي</option>
+                          <option value="متوسط">متوسط</option>
+                          <option value="ثانوي">ثانوي</option>
+                          <option value="غير متعلم">غير متعلم</option>
+                          <option value="دبلوم">دبلوم</option>
+                          <option value="بكالوريوس">بكالوريوس</option>
+                          <option value="ماجستير">ماجستير</option>
+                          <option value="دكتوراه">دكتوراه</option>
+                        </select>
+                      </div>
+
+                      {!isBasicEducation() && (
+                        <>
+                          <div className="form-group col-4">
+                            <label>التخصص</label>
+                            <input
+                              type="text"
+                              value={formData.specialization}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  specialization: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+
+                          <div className="form-group col-2">
+                            <label>سنة التخرج</label>
+                            <input
+                              type="number"
+                              min="1950"
+                              max={new Date().getFullYear() + 5}
+                              value={formData.graduation_year}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  graduation_year: e.target.value,
+                                })
+                              }
+                              placeholder="مثال: 2020"
+                            />
+                          </div>
+
+                          <div className="form-group col-2">
+                            <label>المعدل الجامعي</label>
+                            <input
+                              type="text"
+                              value={formData.university_gpa}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  university_gpa: e.target.value,
+                                })
+                              }
+                              placeholder="مثال: 4.5 أو ممتاز"
+                            />
+                          </div>
+                        </>
+                      )}
+                      {/* ========== القسم الثالث: الراتب والبدلات ========== */}
+                      <h3
+                        className="col-12"
+                        style={{
+                          background: "var(--section-bg-3)",
+                        }}
+                      >
+                        <span style={{ fontSize: "1.25rem" }}>💰</span>
+                        القسم الثالث: الراتب والبدلات
+                      </h3>
+
+                      <div className="form-group col-3">
+                        <label>الراتب الأساسي</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.base_salary}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              base_salary: e.target.value,
+                            })
+                          }
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div className="form-group col-3">
+                        <label>بدل السكن</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.housing_allowance}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              housing_allowance: e.target.value,
+                            })
+                          }
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div className="form-group col-3">
+                        <label>بدل النقل</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.transportation_allowance}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              transportation_allowance: e.target.value,
+                            })
+                          }
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div className="form-group col-3">
+                        <label>بدل نهاية الخدمة</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.end_of_service_allowance}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              end_of_service_allowance: e.target.value,
+                            })
+                          }
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div className="form-group col-3">
+                        <label>بدل الإجازة السنوية</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.annual_leave_allowance}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              annual_leave_allowance: e.target.value,
+                            })
+                          }
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div className="form-group col-3">
+                        <label>بدلات أخرى</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.other_allowances}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              other_allowances: e.target.value,
+                            })
+                          }
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div className="form-group col-3">
+                        <label>الاستقطاعات (خصومات، سلف، إلخ)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.deductions}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              deductions: e.target.value,
+                            })
+                          }
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div className="form-group col-3">
+                        <label>الراتب الإجمالي (قديم - للتوافق)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.salary}
+                          onChange={(e) =>
+                            setFormData({ ...formData, salary: e.target.value })
+                          }
+                          style={{ background: "#f0f0f0", opacity: 0.7 }}
+                          title="هذا الحقل للتوافق مع البيانات القديمة فقط"
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      {/* ========== القسم الرابع: المستندات ========== */}
+                      <h3
+                        className="col-12"
+                        style={{
+                          background: "var(--section-bg-4)",
+                        }}
+                      >
+                        <span style={{ fontSize: "1.25rem" }}>📄</span>
+                        القسم الرابع: المستندات
+                      </h3>
+
+                      <div className="documents-section col-12">
+                        {/* Common documents for all types */}
+                        <div className="form-group col-3">
+                          <label>الهوية/الإقامة</label>
+                          {renderExistingDocumentsWarning("id_or_residency")}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={(e) =>
+                              handleDocumentChange("id_or_residency", e)
+                            }
+                          />
+                          {documents.id_or_residency && (
+                            <div
+                              style={{
+                                marginTop: "6px",
+                                padding: "6px 8px",
+                                background: "#d4edda",
+                                border: "1px solid #28a745",
+                                borderRadius: "4px",
+                                fontSize: "11px",
+                              }}
+                            >
+                              <strong>✓ سيتم رفع:</strong>{" "}
+                              {documents.id_or_residency.name}
+                            </div>
+                          )}
+                        </div>
+                        <div className="form-group col-3">
+                          <label>خطاب مباشرة</label>
+                          {renderExistingDocumentsWarning("direct_letter")}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={(e) =>
+                              handleDocumentChange("direct_letter", e)
+                            }
+                          />
+                          {renderNewFileIndicator(documents.direct_letter)}
+                        </div>
+                        <div className="form-group col-3">
+                          <label>مستند الآيبان</label>
+                          {renderExistingDocumentsWarning("bank_iban")}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={(e) => handleDocumentChange("bank_iban", e)}
+                          />
+                          {renderNewFileIndicator(documents.bank_iban)}
+                        </div>
+                        {requiresPrimaryQualificationDoc() && (
+                          <div className="form-group col-3">
+                            <label>المؤهل الأساسي</label>
                             {renderExistingDocumentsWarning(
-                              "professional_license",
+                              "primary_qualification",
                             )}
                             <input
                               type="file"
                               accept=".pdf,.jpg,.jpeg,.png"
                               onChange={(e) =>
-                                handleDocumentChange("professional_license", e)
+                                handleDocumentChange("primary_qualification", e)
                               }
                             />
                             {renderNewFileIndicator(
-                              documents.professional_license,
+                              documents.primary_qualification,
                             )}
                           </div>
-                          {/* Experience certificate - only for managers/supervisors */}
-                          {requiresExperienceCertificate(
-                            formData.job_title,
-                            currentBranchType,
-                          ) && (
+                        )}
+                        <div className="form-group col-3">
+                          <label>عقد العمل</label>
+                          {renderExistingDocumentsWarning("employment_contract")}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={(e) =>
+                              handleDocumentChange("employment_contract", e)
+                            }
+                          />
+                          {renderNewFileIndicator(documents.employment_contract)}
+                        </div>
+                        {/* Medical disclosure form - optional */}
+                        <div className="form-group col-3">
+                          <label>نموذج افصاح طبي</label>
+                          {renderExistingDocumentsWarning(
+                            "medical_disclosure_form",
+                          )}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={(e) =>
+                              handleDocumentChange("medical_disclosure_form", e)
+                            }
+                          />
+                          {renderNewFileIndicator(
+                            documents.medical_disclosure_form,
+                          )}
+                        </div>
+                        {/* Medical insurance - hide for paper contracts */}
+                        {requiresMedicalInsuranceDoc() && (
+                          <div className="form-group col-3">
+                            <label>التأمين الطبي</label>
+                            {renderExistingDocumentsWarning("medical_insurance")}
+                            <input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={(e) =>
+                                handleDocumentChange("medical_insurance", e)
+                              }
+                            />
+                            {renderNewFileIndicator(documents.medical_insurance)}
+                          </div>
+                        )}
+                        {isNonSaudi(formData.nationality) && (
+                          <div className="form-group col-3">
+                            <label>جواز السفر</label>
+                            {renderExistingDocumentsWarning("passport")}
+                            <input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={(e) =>
+                                handleDocumentChange("passport", e)
+                              }
+                            />
+                            {renderNewFileIndicator(documents.passport)}
+                          </div>
+                        )}
+
+                        {/* School-specific documents */}
+                        {isSchool(currentBranchType) && (
+                          <>
+                            <div className="form-group col-3">
+                              <label>الترخيص المهني</label>
+                              {renderExistingDocumentsWarning(
+                                "professional_license",
+                              )}
+                              <input
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                onChange={(e) =>
+                                  handleDocumentChange("professional_license", e)
+                                }
+                              />
+                              {renderNewFileIndicator(
+                                documents.professional_license,
+                              )}
+                            </div>
+                            {/* Experience certificate - only for managers/supervisors */}
+                            {requiresExperienceCertificate(
+                              formData.job_title,
+                              currentBranchType,
+                            ) && (
+                                <div className="form-group col-3">
+                                  <label>
+                                    شهادة الخبرة (يمكن إضافة حتى 5 ملفات)
+                                  </label>
+                                  {existingDocuments.experience_certificate &&
+                                    existingDocuments.experience_certificate
+                                      .length > 0 && (
+                                      <div
+                                        style={{
+                                          marginBottom: "12px",
+                                          padding: "12px 14px",
+                                          background: "#e7f3ff",
+                                          border: "1px solid #b3d9ff",
+                                          borderRadius: "8px",
+                                          fontSize: "13px",
+                                          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                        }}
+                                      >
+                                        <div
+                                          style={{
+                                            fontWeight: "600",
+                                            marginBottom: "8px",
+                                            color: "#0056b3",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "6px",
+                                          }}
+                                        >
+                                          <span>📋</span>
+                                          <span>
+                                            يوجد{" "}
+                                            {
+                                              existingDocuments
+                                                .experience_certificate.length
+                                            }{" "}
+                                            مستند مرفوع مسبقاً
+                                          </span>
+                                        </div>
+                                        {existingDocuments.experience_certificate.map(
+                                          (doc, idx) => (
+                                            <div
+                                              key={doc.id || idx}
+                                              style={{
+                                                marginTop: "6px",
+                                                padding: "8px 10px",
+                                                background: "#fff",
+                                                borderRadius: "6px",
+                                                border: "1px solid #d1ecf1",
+                                                fontSize: "12px",
+                                                display: "flex",
+                                                flexDirection: "column",
+                                                gap: "4px",
+                                              }}
+                                            >
+                                              <div
+                                                style={{
+                                                  fontWeight: "500",
+                                                  color: "#333",
+                                                }}
+                                              >
+                                                📄{" "}
+                                                {doc.filename ||
+                                                  doc.file_name ||
+                                                  "مستند"}
+                                              </div>
+                                              {doc.uploaded_at && (
+                                                <span
+                                                  style={{
+                                                    fontSize: "11px",
+                                                    color: "#666",
+                                                  }}
+                                                >
+                                                  تم الرفع:{" "}
+                                                  {formatDate(doc.uploaded_at)}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ),
+                                        )}
+                                        <div
+                                          style={{
+                                            marginTop: "8px",
+                                            fontSize: "12px",
+                                            color: "#0056b3",
+                                            fontStyle: "italic",
+                                          }}
+                                        >
+                                          ℹ️ إضافة ملفات جديدة لن تؤثر على الملفات
+                                          الموجودة (يمكن إضافة حتى 5 ملفات)
+                                        </div>
+                                      </div>
+                                    )}
+                                  {documents.experience_certificate &&
+                                    Array.isArray(
+                                      documents.experience_certificate,
+                                    ) &&
+                                    documents.experience_certificate.map(
+                                      (file, idx) => (
+                                        <div
+                                          key={idx}
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "space-between",
+                                            fontSize: "12px",
+                                            background: "#f5f5f5",
+                                            padding: "4px 8px",
+                                            borderRadius: "4px",
+                                            marginBottom: "4px",
+                                          }}
+                                        >
+                                          <span
+                                            style={{
+                                              overflow: "hidden",
+                                              textOverflow: "ellipsis",
+                                              whiteSpace: "nowrap",
+                                              maxWidth: "85%",
+                                            }}
+                                          >
+                                            {file.name}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeDocument(
+                                                "experience_certificate",
+                                                idx,
+                                              )
+                                            }
+                                            style={{
+                                              color: "#d32f2f",
+                                              border: "none",
+                                              background: "none",
+                                              cursor: "pointer",
+                                              fontWeight: "bold",
+                                            }}
+                                          >
+                                            ✕
+                                          </button>
+                                        </div>
+                                      ),
+                                    )}
+                                  {(!documents.experience_certificate ||
+                                    documents.experience_certificate.length <
+                                    5) && (
+                                      <input
+                                        type="file"
+                                        accept=".pdf,.jpg,.jpeg,.png"
+                                        onChange={(e) => {
+                                          if (e.target.files[0]) {
+                                            handleDocumentChange(
+                                              "experience_certificate",
+                                              e.target.files[0],
+                                            );
+                                            e.target.value = "";
+                                          }
+                                        }}
+                                      />
+                                    )}
+                                </div>
+                              )}
                             <div className="form-group col-3">
                               <label>
-                                شهادة الخبرة (يمكن إضافة حتى 5 ملفات)
+                                الدورات الإضافية (يمكن إضافة حتى 5 ملفات)
                               </label>
-                              {existingDocuments.experience_certificate &&
-                                existingDocuments.experience_certificate
-                                  .length > 0 && (
+                              {existingDocuments.additional_courses &&
+                                existingDocuments.additional_courses.length >
+                                0 && (
                                   <div
                                     style={{
                                       marginBottom: "12px",
@@ -3793,13 +3993,13 @@ const Employees = () => {
                                       <span>
                                         يوجد{" "}
                                         {
-                                          existingDocuments
-                                            .experience_certificate.length
+                                          existingDocuments.additional_courses
+                                            .length
                                         }{" "}
                                         مستند مرفوع مسبقاً
                                       </span>
                                     </div>
-                                    {existingDocuments.experience_certificate.map(
+                                    {existingDocuments.additional_courses.map(
                                       (doc, idx) => (
                                         <div
                                           key={doc.id || idx}
@@ -3853,768 +4053,607 @@ const Employees = () => {
                                     </div>
                                   </div>
                                 )}
-                              {documents.experience_certificate &&
-                                Array.isArray(
-                                  documents.experience_certificate,
-                                ) &&
-                                documents.experience_certificate.map(
-                                  (file, idx) => (
-                                    <div
-                                      key={idx}
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "space-between",
-                                        fontSize: "12px",
-                                        background: "#f5f5f5",
-                                        padding: "4px 8px",
-                                        borderRadius: "4px",
-                                        marginBottom: "4px",
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          overflow: "hidden",
-                                          textOverflow: "ellipsis",
-                                          whiteSpace: "nowrap",
-                                          maxWidth: "85%",
-                                        }}
-                                      >
-                                        {file.name}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          removeDocument(
-                                            "experience_certificate",
-                                            idx,
-                                          )
-                                        }
-                                        style={{
-                                          color: "#d32f2f",
-                                          border: "none",
-                                          background: "none",
-                                          cursor: "pointer",
-                                          fontWeight: "bold",
-                                        }}
-                                      >
-                                        ✕
-                                      </button>
-                                    </div>
-                                  ),
-                                )}
-                              {(!documents.experience_certificate ||
-                                documents.experience_certificate.length <
-                                  5) && (
-                                <input
-                                  type="file"
-                                  accept=".pdf,.jpg,.jpeg,.png"
-                                  onChange={(e) => {
-                                    if (e.target.files[0]) {
-                                      handleDocumentChange(
-                                        "experience_certificate",
-                                        e.target.files[0],
-                                      );
-                                      e.target.value = "";
-                                    }
-                                  }}
-                                />
-                              )}
-                            </div>
-                          )}
-                          <div className="form-group col-3">
-                            <label>
-                              الدورات الإضافية (يمكن إضافة حتى 5 ملفات)
-                            </label>
-                            {existingDocuments.additional_courses &&
-                              existingDocuments.additional_courses.length >
-                                0 && (
-                                <div
-                                  style={{
-                                    marginBottom: "12px",
-                                    padding: "12px 14px",
-                                    background: "#e7f3ff",
-                                    border: "1px solid #b3d9ff",
-                                    borderRadius: "8px",
-                                    fontSize: "13px",
-                                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                                  }}
-                                >
+                              {documents.additional_courses &&
+                                Array.isArray(documents.additional_courses) &&
+                                documents.additional_courses.map((file, idx) => (
                                   <div
+                                    key={idx}
                                     style={{
-                                      fontWeight: "600",
-                                      marginBottom: "8px",
-                                      color: "#0056b3",
                                       display: "flex",
                                       alignItems: "center",
-                                      gap: "6px",
-                                    }}
-                                  >
-                                    <span>📋</span>
-                                    <span>
-                                      يوجد{" "}
-                                      {
-                                        existingDocuments.additional_courses
-                                          .length
-                                      }{" "}
-                                      مستند مرفوع مسبقاً
-                                    </span>
-                                  </div>
-                                  {existingDocuments.additional_courses.map(
-                                    (doc, idx) => (
-                                      <div
-                                        key={doc.id || idx}
-                                        style={{
-                                          marginTop: "6px",
-                                          padding: "8px 10px",
-                                          background: "#fff",
-                                          borderRadius: "6px",
-                                          border: "1px solid #d1ecf1",
-                                          fontSize: "12px",
-                                          display: "flex",
-                                          flexDirection: "column",
-                                          gap: "4px",
-                                        }}
-                                      >
-                                        <div
-                                          style={{
-                                            fontWeight: "500",
-                                            color: "#333",
-                                          }}
-                                        >
-                                          📄{" "}
-                                          {doc.filename ||
-                                            doc.file_name ||
-                                            "مستند"}
-                                        </div>
-                                        {doc.uploaded_at && (
-                                          <span
-                                            style={{
-                                              fontSize: "11px",
-                                              color: "#666",
-                                            }}
-                                          >
-                                            تم الرفع:{" "}
-                                            {formatDate(doc.uploaded_at)}
-                                          </span>
-                                        )}
-                                      </div>
-                                    ),
-                                  )}
-                                  <div
-                                    style={{
-                                      marginTop: "8px",
+                                      justifyContent: "space-between",
                                       fontSize: "12px",
-                                      color: "#0056b3",
-                                      fontStyle: "italic",
+                                      background: "#f5f5f5",
+                                      padding: "4px 8px",
+                                      borderRadius: "4px",
+                                      marginBottom: "4px",
                                     }}
                                   >
-                                    ℹ️ إضافة ملفات جديدة لن تؤثر على الملفات
-                                    الموجودة (يمكن إضافة حتى 5 ملفات)
-                                  </div>
-                                </div>
-                              )}
-                            {documents.additional_courses &&
-                              Array.isArray(documents.additional_courses) &&
-                              documents.additional_courses.map((file, idx) => (
-                                <div
-                                  key={idx}
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                    fontSize: "12px",
-                                    background: "#f5f5f5",
-                                    padding: "4px 8px",
-                                    borderRadius: "4px",
-                                    marginBottom: "4px",
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap",
-                                      maxWidth: "85%",
-                                    }}
-                                  >
-                                    {file.name}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      removeDocument("additional_courses", idx)
-                                    }
-                                    style={{
-                                      color: "#d32f2f",
-                                      border: "none",
-                                      background: "none",
-                                      cursor: "pointer",
-                                      fontWeight: "bold",
-                                    }}
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              ))}
-                            {(!documents.additional_courses ||
-                              documents.additional_courses.length < 5) && (
-                              <input
-                                type="file"
-                                accept=".pdf,.jpg,.jpeg,.png"
-                                onChange={(e) => {
-                                  if (e.target.files[0]) {
-                                    handleDocumentChange(
-                                      "additional_courses",
-                                      e.target.files[0],
-                                    );
-                                    e.target.value = "";
-                                  }
-                                }}
-                              />
-                            )}
-                          </div>
-                        </>
-                      )}
-
-                      {isHealthcareCenter(currentBranchType) && (
-                        <>
-                          {/* Classification certificate - only for specific job titles */}
-                          {requiresClassificationDocument(
-                            formData.job_title,
-                          ) && (
-                            <div className="form-group col-3">
-                              <label>شهادة التصنيف</label>
-                              {renderExistingDocumentsWarning("classification")}
-                              <input
-                                type="file"
-                                accept=".pdf,.jpg,.jpeg,.png"
-                                onChange={(e) =>
-                                  handleDocumentChange("classification", e)
-                                }
-                              />
-                              {renderNewFileIndicator(documents.classification)}
-                            </div>
-                          )}
-                          {/* Experience certificate - only for managers/supervisors */}
-                          {requiresExperienceCertificateDocument(
-                            formData.job_title,
-                            currentBranchType,
-                          ) && (
-                            <div className="form-group col-3">
-                              <label>
-                                شهادة الخبرة (يمكن إضافة حتى 5 ملفات)
-                              </label>
-                              {existingDocuments.experience_certificate &&
-                                existingDocuments.experience_certificate
-                                  .length > 0 && (
-                                  <div
-                                    style={{
-                                      marginBottom: "12px",
-                                      padding: "12px 14px",
-                                      background: "#e7f3ff",
-                                      border: "1px solid #b3d9ff",
-                                      borderRadius: "8px",
-                                      fontSize: "13px",
-                                      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                                    }}
-                                  >
-                                    <div
+                                    <span
                                       style={{
-                                        fontWeight: "600",
-                                        marginBottom: "8px",
-                                        color: "#0056b3",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "6px",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                        maxWidth: "85%",
                                       }}
                                     >
-                                      <span>📋</span>
-                                      <span>
-                                        يوجد{" "}
-                                        {
-                                          existingDocuments
-                                            .experience_certificate.length
-                                        }{" "}
-                                        مستند مرفوع مسبقاً
-                                      </span>
-                                    </div>
-                                    {existingDocuments.experience_certificate.map(
-                                      (doc, idx) => (
-                                        <div
-                                          key={doc.id || idx}
-                                          style={{
-                                            marginTop: "6px",
-                                            padding: "8px 10px",
-                                            background: "#fff",
-                                            borderRadius: "6px",
-                                            border: "1px solid #d1ecf1",
-                                            fontSize: "12px",
-                                            display: "flex",
-                                            flexDirection: "column",
-                                            gap: "4px",
-                                          }}
-                                        >
-                                          <div
-                                            style={{
-                                              fontWeight: "500",
-                                              color: "#333",
-                                            }}
-                                          >
-                                            📄{" "}
-                                            {doc.filename ||
-                                              doc.file_name ||
-                                              "مستند"}
-                                          </div>
-                                          {doc.uploaded_at && (
-                                            <span
-                                              style={{
-                                                fontSize: "11px",
-                                                color: "#666",
-                                              }}
-                                            >
-                                              تم الرفع:{" "}
-                                              {formatDate(doc.uploaded_at)}
-                                            </span>
-                                          )}
-                                        </div>
-                                      ),
-                                    )}
-                                    <div
-                                      style={{
-                                        marginTop: "8px",
-                                        fontSize: "12px",
-                                        color: "#0056b3",
-                                        fontStyle: "italic",
-                                      }}
-                                    >
-                                      ℹ️ إضافة ملفات جديدة لن تؤثر على الملفات
-                                      الموجودة (يمكن إضافة حتى 5 ملفات)
-                                    </div>
-                                  </div>
-                                )}
-                              {documents.experience_certificate &&
-                                Array.isArray(
-                                  documents.experience_certificate,
-                                ) &&
-                                documents.experience_certificate.map(
-                                  (file, idx) => (
-                                    <div
-                                      key={idx}
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "space-between",
-                                        fontSize: "12px",
-                                        background: "#f5f5f5",
-                                        padding: "4px 8px",
-                                        borderRadius: "4px",
-                                        marginBottom: "4px",
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          overflow: "hidden",
-                                          textOverflow: "ellipsis",
-                                          whiteSpace: "nowrap",
-                                          maxWidth: "85%",
-                                        }}
-                                      >
-                                        {file.name}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          removeDocument(
-                                            "experience_certificate",
-                                            idx,
-                                          )
-                                        }
-                                        style={{
-                                          color: "#d32f2f",
-                                          border: "none",
-                                          background: "none",
-                                          cursor: "pointer",
-                                          fontWeight: "bold",
-                                        }}
-                                      >
-                                        ✕
-                                      </button>
-                                    </div>
-                                  ),
-                                )}
-                              {(!documents.experience_certificate ||
-                                documents.experience_certificate.length <
-                                  5) && (
-                                <input
-                                  type="file"
-                                  accept=".pdf,.jpg,.jpeg,.png"
-                                  onChange={(e) => {
-                                    if (e.target.files[0]) {
-                                      handleDocumentChange(
-                                        "experience_certificate",
-                                        e.target.files[0],
-                                      );
-                                      e.target.value = "";
-                                    }
-                                  }}
-                                />
-                              )}
-                            </div>
-                          )}
-                          {/* Speech therapy course - only for speech therapists */}
-                          {formData.job_title === "النطق و التخاطب" && (
-                            <>
-                              <div className="form-group col-3">
-                                <label>دورة علاج النطق</label>
-                                {renderExistingDocumentsWarning(
-                                  "speech_therapy_course",
-                                )}
-                                <input
-                                  type="file"
-                                  accept=".pdf,.jpg,.jpeg,.png"
-                                  onChange={(e) =>
-                                    handleDocumentChange(
-                                      "speech_therapy_course",
-                                      e,
-                                    )
-                                  }
-                                />
-                                {renderNewFileIndicator(
-                                  documents.speech_therapy_course,
-                                )}
-                              </div>
-                              {/* 70 hours speech therapy course - required for speech therapists */}
-                              <div className="form-group col-3">
-                                <label>دورة 70 ساعة في التخاطب</label>
-                                {renderExistingDocumentsWarning(
-                                  "speech_therapy_70_hours_course",
-                                )}
-                                <input
-                                  type="file"
-                                  accept=".pdf,.jpg,.jpeg,.png"
-                                  onChange={(e) =>
-                                    handleDocumentChange(
-                                      "speech_therapy_70_hours_course",
-                                      e,
-                                    )
-                                  }
-                                />
-                                {renderNewFileIndicator(
-                                  documents.speech_therapy_70_hours_course,
-                                )}
-                              </div>
-                            </>
-                          )}
-                          {/* Physical therapy course - only for physical/occupational therapists */}
-                          {(formData.job_title === "علاج طبيعي" ||
-                            formData.job_title === "علاج وظيفي") && (
-                            <div className="form-group col-3">
-                              <label>دورة العلاج الطبيعي</label>
-                              {renderExistingDocumentsWarning(
-                                "physical_therapy_course",
-                              )}
-                              <input
-                                type="file"
-                                accept=".pdf,.jpg,.jpeg,.png"
-                                onChange={(e) =>
-                                  handleDocumentChange(
-                                    "physical_therapy_course",
-                                    e,
-                                  )
-                                }
-                              />
-                              {renderNewFileIndicator(
-                                documents.physical_therapy_course,
-                              )}
-                            </div>
-                          )}
-                          {/* 40 hours therapy course - optional */}
-                          {requiresTherapy40HoursDocument(
-                            formData.job_title,
-                          ) && (
-                            <div className="form-group col-3">
-                              <label>دورة 40 ساعة</label>
-                              {renderExistingDocumentsWarning(
-                                "therapy_40_hours_course",
-                              )}
-                              <input
-                                type="file"
-                                accept=".pdf,.jpg,.jpeg,.png"
-                                onChange={(e) =>
-                                  handleDocumentChange(
-                                    "therapy_40_hours_course",
-                                    e,
-                                  )
-                                }
-                              />
-                              {renderNewFileIndicator(
-                                documents.therapy_40_hours_course,
-                              )}
-                            </div>
-                          )}
-                          <div className="form-group col-3">
-                            <label>
-                              الدورات الإضافية (يمكن إضافة حتى 5 ملفات)
-                            </label>
-                            {existingDocuments.additional_courses &&
-                              existingDocuments.additional_courses.length >
-                                0 && (
-                                <div
-                                  style={{
-                                    marginBottom: "12px",
-                                    padding: "12px 14px",
-                                    background: "#e7f3ff",
-                                    border: "1px solid #b3d9ff",
-                                    borderRadius: "8px",
-                                    fontSize: "13px",
-                                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      fontWeight: "600",
-                                      marginBottom: "8px",
-                                      color: "#0056b3",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "6px",
-                                    }}
-                                  >
-                                    <span>📋</span>
-                                    <span>
-                                      يوجد{" "}
-                                      {
-                                        existingDocuments.additional_courses
-                                          .length
-                                      }{" "}
-                                      مستند مرفوع مسبقاً
+                                      {file.name}
                                     </span>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        removeDocument("additional_courses", idx)
+                                      }
+                                      style={{
+                                        color: "#d32f2f",
+                                        border: "none",
+                                        background: "none",
+                                        cursor: "pointer",
+                                        fontWeight: "bold",
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
                                   </div>
-                                  {existingDocuments.additional_courses.map(
-                                    (doc, idx) => (
-                                      <div
-                                        key={doc.id || idx}
-                                        style={{
-                                          marginTop: "6px",
-                                          padding: "8px 10px",
-                                          background: "#fff",
-                                          borderRadius: "6px",
-                                          border: "1px solid #d1ecf1",
-                                          fontSize: "12px",
-                                          display: "flex",
-                                          flexDirection: "column",
-                                          gap: "4px",
-                                        }}
-                                      >
-                                        <div
-                                          style={{
-                                            fontWeight: "500",
-                                            color: "#333",
-                                          }}
-                                        >
-                                          📄{" "}
-                                          {doc.filename ||
-                                            doc.file_name ||
-                                            "مستند"}
-                                        </div>
-                                        {doc.uploaded_at && (
-                                          <span
-                                            style={{
-                                              fontSize: "11px",
-                                              color: "#666",
-                                            }}
-                                          >
-                                            تم الرفع:{" "}
-                                            {formatDate(doc.uploaded_at)}
-                                          </span>
-                                        )}
-                                      </div>
-                                    ),
-                                  )}
-                                  <div
-                                    style={{
-                                      marginTop: "8px",
-                                      fontSize: "12px",
-                                      color: "#0056b3",
-                                      fontStyle: "italic",
+                                ))}
+                              {(!documents.additional_courses ||
+                                documents.additional_courses.length < 5) && (
+                                  <input
+                                    type="file"
+                                    accept=".pdf,.jpg,.jpeg,.png"
+                                    onChange={(e) => {
+                                      if (e.target.files[0]) {
+                                        handleDocumentChange(
+                                          "additional_courses",
+                                          e.target.files[0],
+                                        );
+                                        e.target.value = "";
+                                      }
                                     }}
-                                  >
-                                    ℹ️ إضافة ملفات جديدة لن تؤثر على الملفات
-                                    الموجودة (يمكن إضافة حتى 5 ملفات)
-                                  </div>
-                                </div>
-                              )}
-                            {documents.additional_courses &&
-                              Array.isArray(documents.additional_courses) &&
-                              documents.additional_courses.map((file, idx) => (
-                                <div
-                                  key={idx}
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                    fontSize: "12px",
-                                    background: "#f5f5f5",
-                                    padding: "4px 8px",
-                                    borderRadius: "4px",
-                                    marginBottom: "4px",
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap",
-                                      maxWidth: "85%",
-                                    }}
-                                  >
-                                    {file.name}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      removeDocument("additional_courses", idx)
-                                    }
-                                    style={{
-                                      color: "#d32f2f",
-                                      border: "none",
-                                      background: "none",
-                                      cursor: "pointer",
-                                      fontWeight: "bold",
-                                    }}
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              ))}
-                            {(!documents.additional_courses ||
-                              documents.additional_courses.length < 5) && (
-                              <input
-                                type="file"
-                                accept=".pdf,.jpg,.jpeg,.png"
-                                onChange={(e) => {
-                                  if (e.target.files[0]) {
-                                    handleDocumentChange(
-                                      "additional_courses",
-                                      e.target.files[0],
-                                    );
-                                    e.target.value = "";
-                                  }
-                                }}
-                              />
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    <div
-                      className="form-actions"
-                      style={{ gridColumn: "span 12" }}
-                    >
-                      <button
-                        type="submit"
-                        className={`btn-primary btn-lg ${isFormValid() ? "btn-ready" : ""}`}
-                        disabled={
-                          saving || uploadingDocuments || !formData.nationality
-                        }
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: "0.5rem",
-                        }}
-                      >
-                        {saving ? (
-                          <>
-                            <span
-                              className="spinner"
-                              style={{
-                                display: "inline-block",
-                                width: "16px",
-                                height: "16px",
-                              }}
-                            ></span>
-                            جاري الحفظ...
-                          </>
-                        ) : uploadingDocuments ? (
-                          <>
-                            <span
-                              className="spinner"
-                              style={{
-                                display: "inline-block",
-                                width: "16px",
-                                height: "16px",
-                              }}
-                            ></span>
-                            جاري رفع الملفات...
-                          </>
-                        ) : (
-                          <>
-                            <span style={{ fontSize: "1.1rem" }}>💾</span>
-                            {editingEmployee ? "تحديث الموظف" : "حفظ الموظف"}
+                                  />
+                                )}
+                            </div>
                           </>
                         )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowForm(false);
-                          resetForm();
-                          setEditingEmployee(null);
-                        }}
-                        className="btn-secondary btn-lg"
-                        disabled={saving || uploadingDocuments}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: "0.5rem",
-                        }}
-                      >
-                        <span style={{ fontSize: "1.1rem" }}>❌</span>
-                        إلغاء
-                      </button>
-                    </div>
-                  </>
-                )}
 
-                {/* Loading Overlay */}
-                {(saving || uploadingDocuments) && (
-                  <div
-                    style={{
-                      position: "fixed",
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      backgroundColor: "rgba(0, 0, 0, 0.5)",
-                      zIndex: 9999,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexDirection: "column",
-                      gap: "20px",
-                    }}
-                  >
-                    <div className="spinner-large"></div>
+                        {isHealthcareCenter(currentBranchType) && (
+                          <>
+                            {/* Classification certificate - only for specific job titles */}
+                            {requiresClassificationDocument(
+                              formData.job_title,
+                            ) && (
+                                <div className="form-group col-3">
+                                  <label>شهادة التصنيف</label>
+                                  {renderExistingDocumentsWarning("classification")}
+                                  <input
+                                    type="file"
+                                    accept=".pdf,.jpg,.jpeg,.png"
+                                    onChange={(e) =>
+                                      handleDocumentChange("classification", e)
+                                    }
+                                  />
+                                  {renderNewFileIndicator(documents.classification)}
+                                </div>
+                              )}
+                            {/* Experience certificate - only for managers/supervisors */}
+                            {requiresExperienceCertificateDocument(
+                              formData.job_title,
+                              currentBranchType,
+                            ) && (
+                                <div className="form-group col-3">
+                                  <label>
+                                    شهادة الخبرة (يمكن إضافة حتى 5 ملفات)
+                                  </label>
+                                  {existingDocuments.experience_certificate &&
+                                    existingDocuments.experience_certificate
+                                      .length > 0 && (
+                                      <div
+                                        style={{
+                                          marginBottom: "12px",
+                                          padding: "12px 14px",
+                                          background: "#e7f3ff",
+                                          border: "1px solid #b3d9ff",
+                                          borderRadius: "8px",
+                                          fontSize: "13px",
+                                          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                        }}
+                                      >
+                                        <div
+                                          style={{
+                                            fontWeight: "600",
+                                            marginBottom: "8px",
+                                            color: "#0056b3",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "6px",
+                                          }}
+                                        >
+                                          <span>📋</span>
+                                          <span>
+                                            يوجد{" "}
+                                            {
+                                              existingDocuments
+                                                .experience_certificate.length
+                                            }{" "}
+                                            مستند مرفوع مسبقاً
+                                          </span>
+                                        </div>
+                                        {existingDocuments.experience_certificate.map(
+                                          (doc, idx) => (
+                                            <div
+                                              key={doc.id || idx}
+                                              style={{
+                                                marginTop: "6px",
+                                                padding: "8px 10px",
+                                                background: "#fff",
+                                                borderRadius: "6px",
+                                                border: "1px solid #d1ecf1",
+                                                fontSize: "12px",
+                                                display: "flex",
+                                                flexDirection: "column",
+                                                gap: "4px",
+                                              }}
+                                            >
+                                              <div
+                                                style={{
+                                                  fontWeight: "500",
+                                                  color: "#333",
+                                                }}
+                                              >
+                                                📄{" "}
+                                                {doc.filename ||
+                                                  doc.file_name ||
+                                                  "مستند"}
+                                              </div>
+                                              {doc.uploaded_at && (
+                                                <span
+                                                  style={{
+                                                    fontSize: "11px",
+                                                    color: "#666",
+                                                  }}
+                                                >
+                                                  تم الرفع:{" "}
+                                                  {formatDate(doc.uploaded_at)}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ),
+                                        )}
+                                        <div
+                                          style={{
+                                            marginTop: "8px",
+                                            fontSize: "12px",
+                                            color: "#0056b3",
+                                            fontStyle: "italic",
+                                          }}
+                                        >
+                                          ℹ️ إضافة ملفات جديدة لن تؤثر على الملفات
+                                          الموجودة (يمكن إضافة حتى 5 ملفات)
+                                        </div>
+                                      </div>
+                                    )}
+                                  {documents.experience_certificate &&
+                                    Array.isArray(
+                                      documents.experience_certificate,
+                                    ) &&
+                                    documents.experience_certificate.map(
+                                      (file, idx) => (
+                                        <div
+                                          key={idx}
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "space-between",
+                                            fontSize: "12px",
+                                            background: "#f5f5f5",
+                                            padding: "4px 8px",
+                                            borderRadius: "4px",
+                                            marginBottom: "4px",
+                                          }}
+                                        >
+                                          <span
+                                            style={{
+                                              overflow: "hidden",
+                                              textOverflow: "ellipsis",
+                                              whiteSpace: "nowrap",
+                                              maxWidth: "85%",
+                                            }}
+                                          >
+                                            {file.name}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeDocument(
+                                                "experience_certificate",
+                                                idx,
+                                              )
+                                            }
+                                            style={{
+                                              color: "#d32f2f",
+                                              border: "none",
+                                              background: "none",
+                                              cursor: "pointer",
+                                              fontWeight: "bold",
+                                            }}
+                                          >
+                                            ✕
+                                          </button>
+                                        </div>
+                                      ),
+                                    )}
+                                  {(!documents.experience_certificate ||
+                                    documents.experience_certificate.length <
+                                    5) && (
+                                      <input
+                                        type="file"
+                                        accept=".pdf,.jpg,.jpeg,.png"
+                                        onChange={(e) => {
+                                          if (e.target.files[0]) {
+                                            handleDocumentChange(
+                                              "experience_certificate",
+                                              e.target.files[0],
+                                            );
+                                            e.target.value = "";
+                                          }
+                                        }}
+                                      />
+                                    )}
+                                </div>
+                              )}
+                            {/* Speech therapy course - only for speech therapists */}
+                            {formData.job_title === "النطق و التخاطب" && (
+                              <>
+                                <div className="form-group col-3">
+                                  <label>دورة علاج النطق</label>
+                                  {renderExistingDocumentsWarning(
+                                    "speech_therapy_course",
+                                  )}
+                                  <input
+                                    type="file"
+                                    accept=".pdf,.jpg,.jpeg,.png"
+                                    onChange={(e) =>
+                                      handleDocumentChange(
+                                        "speech_therapy_course",
+                                        e,
+                                      )
+                                    }
+                                  />
+                                  {renderNewFileIndicator(
+                                    documents.speech_therapy_course,
+                                  )}
+                                </div>
+                                {/* 70 hours speech therapy course - required for speech therapists */}
+                                <div className="form-group col-3">
+                                  <label>دورة 70 ساعة في التخاطب</label>
+                                  {renderExistingDocumentsWarning(
+                                    "speech_therapy_70_hours_course",
+                                  )}
+                                  <input
+                                    type="file"
+                                    accept=".pdf,.jpg,.jpeg,.png"
+                                    onChange={(e) =>
+                                      handleDocumentChange(
+                                        "speech_therapy_70_hours_course",
+                                        e,
+                                      )
+                                    }
+                                  />
+                                  {renderNewFileIndicator(
+                                    documents.speech_therapy_70_hours_course,
+                                  )}
+                                </div>
+                              </>
+                            )}
+                            {/* Physical therapy course - only for physical/occupational therapists */}
+                            {(formData.job_title === "علاج طبيعي" ||
+                              formData.job_title === "علاج وظيفي") && (
+                                <div className="form-group col-3">
+                                  <label>دورة العلاج الطبيعي</label>
+                                  {renderExistingDocumentsWarning(
+                                    "physical_therapy_course",
+                                  )}
+                                  <input
+                                    type="file"
+                                    accept=".pdf,.jpg,.jpeg,.png"
+                                    onChange={(e) =>
+                                      handleDocumentChange(
+                                        "physical_therapy_course",
+                                        e,
+                                      )
+                                    }
+                                  />
+                                  {renderNewFileIndicator(
+                                    documents.physical_therapy_course,
+                                  )}
+                                </div>
+                              )}
+                            {/* 40 hours therapy course - optional */}
+                            {requiresTherapy40HoursDocument(
+                              formData.job_title,
+                            ) && (
+                                <div className="form-group col-3">
+                                  <label>دورة 40 ساعة</label>
+                                  {renderExistingDocumentsWarning(
+                                    "therapy_40_hours_course",
+                                  )}
+                                  <input
+                                    type="file"
+                                    accept=".pdf,.jpg,.jpeg,.png"
+                                    onChange={(e) =>
+                                      handleDocumentChange(
+                                        "therapy_40_hours_course",
+                                        e,
+                                      )
+                                    }
+                                  />
+                                  {renderNewFileIndicator(
+                                    documents.therapy_40_hours_course,
+                                  )}
+                                </div>
+                              )}
+                            <div className="form-group col-3">
+                              <label>
+                                الدورات الإضافية (يمكن إضافة حتى 5 ملفات)
+                              </label>
+                              {existingDocuments.additional_courses &&
+                                existingDocuments.additional_courses.length >
+                                0 && (
+                                  <div
+                                    style={{
+                                      marginBottom: "12px",
+                                      padding: "12px 14px",
+                                      background: "#e7f3ff",
+                                      border: "1px solid #b3d9ff",
+                                      borderRadius: "8px",
+                                      fontSize: "13px",
+                                      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        fontWeight: "600",
+                                        marginBottom: "8px",
+                                        color: "#0056b3",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                      }}
+                                    >
+                                      <span>📋</span>
+                                      <span>
+                                        يوجد{" "}
+                                        {
+                                          existingDocuments.additional_courses
+                                            .length
+                                        }{" "}
+                                        مستند مرفوع مسبقاً
+                                      </span>
+                                    </div>
+                                    {existingDocuments.additional_courses.map(
+                                      (doc, idx) => (
+                                        <div
+                                          key={doc.id || idx}
+                                          style={{
+                                            marginTop: "6px",
+                                            padding: "8px 10px",
+                                            background: "#fff",
+                                            borderRadius: "6px",
+                                            border: "1px solid #d1ecf1",
+                                            fontSize: "12px",
+                                            display: "flex",
+                                            flexDirection: "column",
+                                            gap: "4px",
+                                          }}
+                                        >
+                                          <div
+                                            style={{
+                                              fontWeight: "500",
+                                              color: "#333",
+                                            }}
+                                          >
+                                            📄{" "}
+                                            {doc.filename ||
+                                              doc.file_name ||
+                                              "مستند"}
+                                          </div>
+                                          {doc.uploaded_at && (
+                                            <span
+                                              style={{
+                                                fontSize: "11px",
+                                                color: "#666",
+                                              }}
+                                            >
+                                              تم الرفع:{" "}
+                                              {formatDate(doc.uploaded_at)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      ),
+                                    )}
+                                    <div
+                                      style={{
+                                        marginTop: "8px",
+                                        fontSize: "12px",
+                                        color: "#0056b3",
+                                        fontStyle: "italic",
+                                      }}
+                                    >
+                                      ℹ️ إضافة ملفات جديدة لن تؤثر على الملفات
+                                      الموجودة (يمكن إضافة حتى 5 ملفات)
+                                    </div>
+                                  </div>
+                                )}
+                              {documents.additional_courses &&
+                                Array.isArray(documents.additional_courses) &&
+                                documents.additional_courses.map((file, idx) => (
+                                  <div
+                                    key={idx}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      fontSize: "12px",
+                                      background: "#f5f5f5",
+                                      padding: "4px 8px",
+                                      borderRadius: "4px",
+                                      marginBottom: "4px",
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                        maxWidth: "85%",
+                                      }}
+                                    >
+                                      {file.name}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        removeDocument("additional_courses", idx)
+                                      }
+                                      style={{
+                                        color: "#d32f2f",
+                                        border: "none",
+                                        background: "none",
+                                        cursor: "pointer",
+                                        fontWeight: "bold",
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                ))}
+                              {(!documents.additional_courses ||
+                                documents.additional_courses.length < 5) && (
+                                  <input
+                                    type="file"
+                                    accept=".pdf,.jpg,.jpeg,.png"
+                                    onChange={(e) => {
+                                      if (e.target.files[0]) {
+                                        handleDocumentChange(
+                                          "additional_courses",
+                                          e.target.files[0],
+                                        );
+                                        e.target.value = "";
+                                      }
+                                    }}
+                                  />
+                                )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div
+                        className="form-actions"
+                        style={{ gridColumn: "span 12" }}
+                      >
+                        <button
+                          type="submit"
+                          className={`btn-primary btn-lg ${isFormValid() ? "btn-ready" : ""}`}
+                          disabled={
+                            saving || uploadingDocuments || !formData.nationality
+                          }
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          {saving ? (
+                            <>
+                              <span
+                                className="spinner"
+                                style={{
+                                  display: "inline-block",
+                                  width: "16px",
+                                  height: "16px",
+                                }}
+                              ></span>
+                              جاري الحفظ...
+                            </>
+                          ) : uploadingDocuments ? (
+                            <>
+                              <span
+                                className="spinner"
+                                style={{
+                                  display: "inline-block",
+                                  width: "16px",
+                                  height: "16px",
+                                }}
+                              ></span>
+                              جاري رفع الملفات...
+                            </>
+                          ) : (
+                            <>
+                              <span style={{ fontSize: "1.1rem" }}>💾</span>
+                              {editingEmployee ? "تحديث الموظف" : "حفظ الموظف"}
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowForm(false);
+                            resetForm();
+                            setEditingEmployee(null);
+                          }}
+                          className="btn-secondary btn-lg"
+                          disabled={saving || uploadingDocuments}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          <span style={{ fontSize: "1.1rem" }}>❌</span>
+                          إلغاء
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Loading Overlay */}
+                  {(saving || uploadingDocuments) && (
                     <div
                       style={{
-                        color: "white",
-                        fontSize: "18px",
-                        fontWeight: "bold",
+                        position: "fixed",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: "rgba(0, 0, 0, 0.5)",
+                        zIndex: 9999,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexDirection: "column",
+                        gap: "20px",
                       }}
                     >
-                      {saving ? "جاري حفظ البيانات..." : "جاري رفع الملفات..."}
+                      <div className="spinner-large"></div>
+                      <div
+                        style={{
+                          color: "white",
+                          fontSize: "18px",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {saving ? "جاري حفظ البيانات..." : "جاري رفع الملفات..."}
+                      </div>
+                      <div style={{ color: "white", fontSize: "14px" }}>
+                        الرجاء الانتظار ولا تغلق الصفحة
+                      </div>
                     </div>
-                    <div style={{ color: "white", fontSize: "14px" }}>
-                      الرجاء الانتظار ولا تغلق الصفحة
-                    </div>
-                  </div>
-                )}
-              </form>
-            )}
+                  )}
+                </form>
+              )}
           </div>
         </div>
       )}

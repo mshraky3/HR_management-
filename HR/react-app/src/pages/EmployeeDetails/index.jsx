@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { employeesAPI, documentsAPI, branchesAPI, setBranchDocumentsPassword, clearCache } from '../../utils/api';
+import { employeesAPI, documentsAPI, branchesAPI, clearCache } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { DATA_COMPLETION_STATUS } from '../../utils/employeeConstants';
@@ -11,7 +11,6 @@ import RenewalSection from './components/RenewalSection';
 import EmployeeInfoSections from './components/EmployeeInfoSections';
 import DocumentsSection from './components/DocumentsSection';
 import GenerateFileSection from './components/GenerateFileSection';
-import PasswordModal from './components/PasswordModal';
 import ImagePreviewModal from './components/ImagePreviewModal';
 
 const EmployeeDetails = () => {
@@ -33,9 +32,6 @@ const EmployeeDetails = () => {
   const [showNonRenewalForm, setShowNonRenewalForm] = useState(false);
   const [nonRenewalData, setNonRenewalData] = useState({ status: '', reason: '' });
   const [generatingFile, setGeneratingFile] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [password, setPassword] = useState('');
-  const [passwordError, setPasswordError] = useState('');
   const missingFields = missingData?.missingFields || [];
   const hasMissingFields = missingFields.length > 0;
 
@@ -46,20 +42,20 @@ const EmployeeDetails = () => {
   const loadEmployeeData = async () => {
     try {
       setLoading(true);
-      
+
       // Clear cache to ensure fresh data (especially completion status)
       clearCache('/api/employees');
-      
+
       // Always refresh completion status when loading employee data
       try {
         await employeesAPI.updateCompletionStatus(id);
       } catch (updateError) {
         console.warn('Failed to refresh completion status', updateError);
       }
-      
+
       // Clear cache again after status update to ensure fresh fetch
       clearCache('/api/employees');
-      
+
       const [employeeResponse, documentsResponse, branchesResponse] = await Promise.all([
         employeesAPI.getById(id),
         employeesAPI.getDocuments(id),
@@ -73,7 +69,7 @@ const EmployeeDetails = () => {
           const missingDataResponse = await employeesAPI.getMissingData(id);
           if (missingDataResponse.data.success) {
             setMissingData(missingDataResponse.data.data);
-            
+
             // Reload employee to get updated completion status
             try {
               const updatedResponse = await employeesAPI.getById(id);
@@ -240,30 +236,12 @@ const EmployeeDetails = () => {
       event.stopPropagation();
     }
 
-    if (isBranchManager() && !isMainManager()) {
-      setShowPasswordModal(true);
-      setPassword('');
-      setPasswordError('');
-      return;
-    }
-
     await generateFilePDF();
   };
 
-  const handlePasswordModalClose = () => {
-    if (generatingFile) return;
-    setShowPasswordModal(false);
-    setPassword('');
-    setPasswordError('');
-  };
-
-  const generateFilePDF = async (providedPassword = null) => {
+  const generateFilePDF = async () => {
     try {
       setGeneratingFile(true);
-
-      if (providedPassword && isBranchManager() && !isMainManager() && user?.branch_id) {
-        setBranchDocumentsPassword(user.branch_id, providedPassword);
-      }
 
       const branchId = employee?.branch_id || user?.branch_id;
       const response = await employeesAPI.generateSingleEmployeeFile(id, {
@@ -283,27 +261,13 @@ const EmployeeDetails = () => {
       window.URL.revokeObjectURL(url);
 
       showSuccess('تم إنشاء ملف الموظف بنجاح');
-      handlePasswordModalClose();
     } catch (error) {
       console.error('Error generating file:', error);
       const errorMessage = error.response?.data?.message || error.message || 'فشل إنشاء الملف';
-      if (error.response?.status === 401 && isBranchManager() && !isMainManager()) {
-        setPasswordError('كلمة المرور غير صحيحة');
-      } else {
-        showError(errorMessage);
-        handlePasswordModalClose();
-      }
+      showError(errorMessage);
     } finally {
       setGeneratingFile(false);
     }
-  };
-
-  const handlePasswordSubmit = async () => {
-    if (!password.trim()) {
-      setPasswordError('الرجاء إدخال كلمة المرور');
-      return;
-    }
-    await generateFilePDF(password);
   };
 
   const handleOpenFullEdit = () => {
@@ -421,19 +385,6 @@ const EmployeeDetails = () => {
         generatingFile={generatingFile}
         onGenerate={handleGenerateFile}
         disabled={!employee}
-      />
-
-      <PasswordModal
-        show={showPasswordModal}
-        password={password}
-        passwordError={passwordError}
-        generatingFile={generatingFile}
-        onClose={handlePasswordModalClose}
-        onPasswordChange={(value) => {
-          setPassword(value);
-          setPasswordError('');
-        }}
-        onSubmit={handlePasswordSubmit}
       />
 
       <ImagePreviewModal document={previewDocument} previewUrl={previewUrl} onClose={closePreview} />

@@ -8,7 +8,6 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
   branchDocumentsAPI,
   branchesAPI,
-  setBranchDocumentsPassword,
 } from "../utils/api";
 import { API_URL } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
@@ -908,10 +907,10 @@ const BranchDocumentsManagement = () => {
                               (e.target.style.backgroundColor = "#f0f9ff")
                             }
                             onMouseLeave={(e) =>
-                              (e.target.style.backgroundColor =
-                                pdfSelectedDocType === docType
-                                  ? "#f0f9ff"
-                                  : "white")
+                            (e.target.style.backgroundColor =
+                              pdfSelectedDocType === docType
+                                ? "#f0f9ff"
+                                : "white")
                             }
                           >
                             {documentTypeLabels[docType] || docType}
@@ -959,10 +958,10 @@ const BranchDocumentsManagement = () => {
                               (e.target.style.backgroundColor = "#f0f9ff")
                             }
                             onMouseLeave={(e) =>
-                              (e.target.style.backgroundColor =
-                                pdfSelectedBranch === String(branch.id)
-                                  ? "#f0f9ff"
-                                  : "white")
+                            (e.target.style.backgroundColor =
+                              pdfSelectedBranch === String(branch.id)
+                                ? "#f0f9ff"
+                                : "white")
                             }
                           >
                             <BranchBadge branch={branch} />
@@ -1003,25 +1002,25 @@ const BranchDocumentsManagement = () => {
 
                 {((isPdfDocTypeDropdownOpen && pdfSelectedDocType) ||
                   (isPdfBranchDropdownOpen && pdfSelectedBranch)) && (
-                  <button
-                    className="btn btn-primary pdf-action-btn"
-                    onClick={
-                      isPdfDocTypeDropdownOpen
-                        ? handleGeneratePdfByDocType
-                        : handleGeneratePdfByBranch
-                    }
-                    disabled={pdfGenerating}
-                  >
-                    {pdfGenerating ? (
-                      <>
-                        <span className="spinner-small"></span>
-                        جاري الإنشاء...
-                      </>
-                    ) : (
-                      "إنشاء التقرير"
-                    )}
-                  </button>
-                )}
+                    <button
+                      className="btn btn-primary pdf-action-btn"
+                      onClick={
+                        isPdfDocTypeDropdownOpen
+                          ? handleGeneratePdfByDocType
+                          : handleGeneratePdfByBranch
+                      }
+                      disabled={pdfGenerating}
+                    >
+                      {pdfGenerating ? (
+                        <>
+                          <span className="spinner-small"></span>
+                          جاري الإنشاء...
+                        </>
+                      ) : (
+                        "إنشاء التقرير"
+                      )}
+                    </button>
+                  )}
               </div>
             </div>
           )}

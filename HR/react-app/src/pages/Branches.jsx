@@ -25,7 +25,6 @@ const Branches = () => {
     branch_type: 'school',
     username: '',
     password: '',
-    branch_documents_password: '',
     phone_number: '',
     email: '',
   });
@@ -198,7 +197,6 @@ const Branches = () => {
       branch_type: branch.branch_type,
       username: branch.username,
       password: branch.password || '', // Show current password
-      branch_documents_password: branch.branch_documents_password || '',
       phone_number: branch.phone_number || '',
       email: branch.email || '',
       number_of_employees: branch.number_of_employees || '',
@@ -224,7 +222,6 @@ const Branches = () => {
       branch_type: 'school',
       username: '',
       password: '',
-      branch_documents_password: 'test',
       phone_number: '',
       email: '',
       number_of_employees: '',
@@ -363,19 +360,6 @@ const Branches = () => {
                     </small>
                   )}
                 </div>
-                <div className="form-group">
-                  <label>كلمة مرور المستندات *</label>
-                  <input
-                    type="text"
-                    value={formData.branch_documents_password}
-                    onChange={(e) => setFormData({ ...formData, branch_documents_password: e.target.value })}
-                    required
-                    placeholder="كلمة مرور المستندات"
-                  />
-                  <small>
-                    القيمة الافتراضية: test
-                  </small>
-                </div>
               </div>
 
               {/* معلومات الفرع */}
@@ -434,7 +418,6 @@ const Branches = () => {
               <th>الموقع</th>
               <th>اسم المستخدم</th>
               <th>كلمة المرور</th>
-              <th>كلمة مرور المستندات</th>
               <th>معلومات الفرع</th>
               {isMainManager() && <th>الإجراءات</th>}
             </tr>
@@ -442,7 +425,7 @@ const Branches = () => {
           <tbody>
             {branches.length === 0 ? (
               <tr>
-                <td colSpan={isMainManager() ? "8" : "7"} style={{ textAlign: 'center' }}>لم يتم العثور على فروع</td>
+                <td colSpan={isMainManager() ? "7" : "6"} style={{ textAlign: 'center' }}>لم يتم العثور على فروع</td>
               </tr>
             ) : (
               branches.map((branch) => (
@@ -452,7 +435,6 @@ const Branches = () => {
                   <td>{branch.branch_location}</td>
                   <td>{branch.username}</td>
                   <td>{branch.password || '-'}</td>
-                  <td>{branch.branch_documents_password || '-'}</td>
                   <td style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     {branch.phone_number && (
                       <div style={{ fontSize: '13px' }}>
