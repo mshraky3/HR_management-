@@ -165,6 +165,109 @@ export const BusTransportation = {
   },
 
   /**
+   * Find buses by multiple branch IDs (IN query)
+   */
+  async findByBranchIds(branchIds, filters = {}) {
+    try {
+      if (!Array.isArray(branchIds) || branchIds.length === 0) {
+        return [];
+      }
+
+      const normalizedIds = branchIds.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+      if (normalizedIds.length === 0) {
+        return [];
+      }
+
+      const params = [normalizedIds];
+      let paramIndex = 2;
+      let whereClauses = ['bt.branch_id = ANY($1::int[])'];
+
+      if (filters.term_id) {
+        whereClauses.push(`bt.term_id = $${paramIndex}`);
+        params.push(filters.term_id);
+        paramIndex++;
+      }
+
+      if (filters.branch_type) {
+        whereClauses.push(`b.branch_type = $${paramIndex}`);
+        params.push(filters.branch_type);
+        paramIndex++;
+      }
+
+      if (filters.bus_number) {
+        whereClauses.push(`bt.bus_number ILIKE $${paramIndex}`);
+        params.push('%' + filters.bus_number + '%');
+        paramIndex++;
+      }
+
+      if (filters.route_name) {
+        whereClauses.push(`bd.route_name ILIKE $${paramIndex}`);
+        params.push('%' + filters.route_name + '%');
+        paramIndex++;
+      }
+
+      if (filters.driver_name) {
+        whereClauses.push(`dld.driver_full_name ILIKE $${paramIndex}`);
+        params.push('%' + filters.driver_name + '%');
+        paramIndex++;
+      }
+
+      if (filters.plate_number) {
+        whereClauses.push(`EXISTS (
+          SELECT 1 FROM license_plate_data lpd 
+          WHERE lpd.bus_id = bt.id AND lpd.plate_number ILIKE $${paramIndex}
+        )`);
+        params.push('%' + filters.plate_number + '%');
+        paramIndex++;
+      }
+
+      const query = `
+        SELECT 
+          bt.*,
+          b.branch_name,
+          b.branch_type,
+          t.term_name,
+          t.academic_year_label,
+          t.term_number,
+          brd.registration_number,
+          brd.expiry_date_gregorian as registration_expiry,
+          brd.registration_document_url,
+          dld.driver_full_name,
+          dld.license_number,
+          dld.expiry_date_gregorian as license_expiry,
+          dld.license_document_url,
+          bd.route_name,
+          bd.number_of_seats,
+          bd.ownership_type,
+          bd.insurance_provider,
+          bd.insurance_policy_number,
+          bd.insurance_expiry_date_gregorian,
+          bd.lease_company_name,
+          bd.lease_contact_info,
+          bd.lease_contract_number,
+          bd.lease_start_date_gregorian,
+          bd.lease_end_date_gregorian,
+          (SELECT plate_number FROM license_plate_data lpd WHERE lpd.bus_id = bt.id AND lpd.is_primary = true LIMIT 1) as primary_plate,
+          (SELECT COUNT(*) FROM bus_students bs WHERE bs.bus_id = bt.id) as student_count,
+          bt.lease_contract_document_url
+        FROM bus_transportation bt
+        INNER JOIN branches b ON bt.branch_id = b.id
+        INNER JOIN terms t ON bt.term_id = t.id
+        LEFT JOIN bus_registration_data brd ON bt.id = brd.bus_id
+        LEFT JOIN driver_license_data dld ON bt.id = dld.bus_id
+        LEFT JOIN bus_details bd ON bt.id = bd.bus_id
+        WHERE ${whereClauses.join(' AND ')}
+        ORDER BY bt.created_at DESC
+      `;
+
+      return await sql.unsafe(query, params);
+    } catch (error) {
+      log.error('Error finding buses by branch IDs', { error: error.message });
+      throw error;
+    }
+  },
+
+  /**
    * Find buses by term ID
    */
   async findByTermId(termId, filters = {}) {

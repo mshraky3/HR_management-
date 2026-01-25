@@ -24,6 +24,33 @@ export const Branch = {
   },
 
   /**
+   * Find multiple branches by IDs (IN query)
+   */
+  async findManyByIds(ids) {
+    try {
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return [];
+      }
+
+      const normalizedIds = ids.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+      if (normalizedIds.length === 0) {
+        return [];
+      }
+
+      const query = `
+        SELECT * FROM branches
+        WHERE id = ANY($1::int[]) AND is_active = true
+        ORDER BY created_at DESC
+      `;
+
+      return await sql.unsafe(query, [normalizedIds]);
+    } catch (error) {
+      log.error('Error finding branches by IDs', { error: error.message });
+      throw error;
+    }
+  },
+
+  /**
    * Find branch by username
    */
   async findByUsername(username) {
