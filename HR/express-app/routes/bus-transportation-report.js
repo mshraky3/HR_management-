@@ -134,25 +134,27 @@ router.post('/generate-pdf', authenticate, async (req, res) => {
             return res.status(400).json({ error: 'يجب اختيار فرع واحد على الأقل' });
         }
 
-        // Fetch all requested branches
-        const branches = await Branch.findAll({
-            where: { id: branchIds }
-        });
+        // Normalize IDs to integers and de-duplicate
+        const normalizedBranchIds = Array.from(new Set(branchIds.map(id => parseInt(id, 10)).filter(id => !Number.isNaN(id))));
+
+        if (normalizedBranchIds.length === 0) {
+            return res.status(400).json({ error: 'يجب اختيار فرع واحد على الأقل' });
+        }
+
+        // Fetch only requested branches using efficient IN query
+        const branches = await Branch.findManyByIds(normalizedBranchIds);
 
         if (branches.length === 0) {
             return res.status(404).json({ error: 'لم يتم العثور على الفروع المطلوبة' });
         }
 
-        // Fetch bus data for all branches
-        const buses = await BusTransportation.findAll({
-            where: { branch_id: branchIds }
-        });
+        // Fetch bus data for the requested branches using efficient IN query
+        const buses = await BusTransportation.findByBranchIds(normalizedBranchIds);
 
         const busIds = buses.map(b => b.id);
         const busStudents = await BusStudent.findByBusIds(busIds);
 
-        const busIdsForDetails = buses.map(b => b.id);
-        const busDetails = await BusDetails.findByBusIds(busIdsForDetails);
+        const busDetails = await BusDetails.findByBusIds(busIds);
 
         // Get current date in Arabic format
         const now = new Date();
