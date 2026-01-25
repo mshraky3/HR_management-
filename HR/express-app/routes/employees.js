@@ -1332,10 +1332,20 @@ function createStyledTable(headers, rows, headerColor = '#667eea', alternateRowC
     }))
   );
 
+  // Dynamic column widths based on header count
+  let widths;
+  if (styledHeaders.length === 2) {
+    widths = ['60%', '40%'];
+  } else if (styledHeaders.length === 3) {
+    widths = ['50%', '25%', '25%'];
+  } else {
+    widths = new Array(styledHeaders.length).fill('*');
+  }
+
   return {
     table: {
       headerRows: 1,
-      widths: ['50%', '25%', '25%'],
+      widths,
       body: [styledHeaders, ...styledRows]
     },
     layout: {
@@ -1426,73 +1436,45 @@ router.post("/statistics/generate-pdf", async (req, res) => {
       margin: [0, 0, 0, 20],
     });
 
-    // Overview Stats in card format
+    // Overview Stats in table format (requested)
     if (selectedSections.overview && statistics.overview) {
       docContent.push({
         text: 'ملخص عام',
         style: 'heading',
       });
 
-      docContent.push({
-        columns: [
-          {
-            stack: [
-              { text: 'إجمالي الموظفين', style: 'cardLabel' },
-              { text: statistics.overview.total || 0, style: 'cardValue' }
-            ],
-            width: '25%'
-          },
-          {
-            stack: [
-              { text: 'الذكور', style: 'cardLabel' },
-              { text: statistics.overview.male || 0, style: 'cardValue', color: '#4facfe' }
-            ],
-            width: '25%'
-          },
-          {
-            stack: [
-              { text: 'الإناث', style: 'cardLabel' },
-              { text: statistics.overview.female || 0, style: 'cardValue', color: '#fa709a' }
-            ],
-            width: '25%'
-          },
-          {
-            stack: [
-              { text: 'إكمال البيانات', style: 'cardLabel' },
-              { text: (statistics.overview.completionRate || 0) + '%', style: 'cardValue', color: '#43e97b' }
-            ],
-            width: '25%'
-          }
+      const overviewRows = [
+        [
+          { text: 'إجمالي الموظفين', alignment: 'right', fontSize: 11 },
+          { text: String(statistics.overview.total || 0), alignment: 'center', fontSize: 11 }
         ],
-        margin: [0, 0, 0, 20]
-      });
+        [
+          { text: 'الذكور', alignment: 'right', fontSize: 11 },
+          { text: String(statistics.overview.male || 0), alignment: 'center', fontSize: 11, color: '#4facfe' }
+        ],
+        [
+          { text: 'الإناث', alignment: 'right', fontSize: 11 },
+          { text: String(statistics.overview.female || 0), alignment: 'center', fontSize: 11, color: '#fa709a' }
+        ],
+        [
+          { text: 'إكمال البيانات', alignment: 'right', fontSize: 11 },
+          { text: `${statistics.overview.completionRate || 0}%`, alignment: 'center', fontSize: 11, color: '#43e97b' }
+        ],
+        [
+          { text: 'متوسط الراتب', alignment: 'right', fontSize: 11 },
+          { text: `${(statistics.overview.avgSalary || 0).toLocaleString('en-US')} ريال`, alignment: 'left', fontSize: 11, direction: 'ltr', noWrap: true }
+        ],
+        [
+          { text: 'إجمالي الرواتب', alignment: 'right', fontSize: 11 },
+          { text: `${(statistics.overview.totalSalaryBudget || 0).toLocaleString('en-US')} ريال`, alignment: 'left', fontSize: 11, direction: 'ltr', noWrap: true }
+        ],
+        [
+          { text: 'نسبة التوظيف النشط', alignment: 'right', fontSize: 11 },
+          { text: `${statistics.overview.active || 0} موظف`, alignment: 'center', fontSize: 11 }
+        ]
+      ];
 
-      docContent.push({
-        columns: [
-          {
-            stack: [
-              { text: 'متوسط الراتب', style: 'cardLabel' },
-              { text: (statistics.overview.avgSalary || 0).toLocaleString('en-US') + ' ريال', style: 'cardValue' }
-            ],
-            width: '33%'
-          },
-          {
-            stack: [
-              { text: 'إجمالي الرواتب', style: 'cardLabel' },
-              { text: (statistics.overview.totalSalaryBudget || 0).toLocaleString('en-US') + ' ريال', style: 'cardValue' }
-            ],
-            width: '33%'
-          },
-          {
-            stack: [
-              { text: 'نسبة التوظيف النشط', style: 'cardLabel' },
-              { text: (statistics.overview.active || 0) + ' موظف', style: 'cardValue' }
-            ],
-            width: '34%'
-          }
-        ],
-        margin: [0, 0, 0, 30]
-      });
+      docContent.push(createStyledTable(['العنصر', 'القيمة'], overviewRows));
     }
 
     // Gender Distribution Chart
@@ -3137,8 +3119,8 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     if (certificate_type === "salary") {
       const recipientTable = {
         table: {
-          // Fixed pixel widths to avoid star parsing issues
-          widths: [120, 395],
+          // Adjusted widths to fit within page and center with larger margins
+          widths: [110, 345],
           body: [
             [
               {
@@ -3182,7 +3164,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
           hLineColor: () => "#000000",
           vLineColor: () => "#000000",
         },
-        margin: [40, 0, 40, 15],
+        margin: [80, 0, 80, 15],
       };
       certificateContent.push(recipientTable);
 
