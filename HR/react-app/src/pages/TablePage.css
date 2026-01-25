@@ -469,11 +469,16 @@ tbody tr:last-child td:last-child {
   gap: var(--spacing-xs);
   flex-wrap: nowrap;
   white-space: nowrap;
+  justify-content: flex-end;
 }
 
 /* Table action buttons use btn-sm from unified system */
 .table-actions .btn {
   min-width: auto;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.55rem; /* tighten to avoid wrapping */
 }
 
 .table-actions .btn-edit {

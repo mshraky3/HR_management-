@@ -101,7 +101,7 @@ export default function BusTransportationReport() {
         setGenerating(true);
         try {
             const response = await busTransportationReportAPI.generatePDF({
-                branchIds: selectedBranches,
+                branchIds: selectedBranches.map(id => Number(id)),
                 sections: selectedData,
             }, { responseType: 'blob' });
 

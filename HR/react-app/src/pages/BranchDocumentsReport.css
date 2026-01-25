@@ -609,15 +609,16 @@
 .date-item {
     flex: 1;
     display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
+    display: grid;
+    grid-template-columns: 1fr; /* force full-width controls */
+    gap: 1.25rem;
 }
-
 .date-label {
     font-size: 0.75rem;
     color: #64748b;
     font-weight: 600;
     text-transform: uppercase;
+    width: 100%;
     letter-spacing: 0.5px;
 }
 

@@ -245,6 +245,11 @@
 
 /* Buttons use unified system from buttons.css */
 
+/* Archive-specific override: make delete button text color distinct on this page */
+.archive-page .btn-delete {
+  color: #111 !important; /* darker text for delete on archive page */
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
