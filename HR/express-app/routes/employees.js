@@ -170,20 +170,30 @@ const calculateEmployeeStatistics = (employees) => {
     else if (gender === 'female') stats.overview.female++;
 
     // Salary calculations
-    if (emp.salary) {
-      totalSalary += emp.salary;
-      salaryCount++;
+    if (emp.salary !== undefined && emp.salary !== null && emp.salary !== '') {
+      const numericSalary = typeof emp.salary === 'number'
+        ? emp.salary
+        : parseFloat(String(emp.salary).replace(/[^\d.-]/g, ''));
 
-      // Salary ranges
-      const salary = parseInt(emp.salary);
+      if (!isNaN(numericSalary)) {
+        totalSalary += numericSalary;
+        salaryCount++;
+      }
+
+      // Salary ranges (use integer part for bucketing)
+      const salary = typeof emp.salary === 'number'
+        ? Math.floor(emp.salary)
+        : parseInt(String(emp.salary).replace(/[^\d.-]/g, ''), 10);
       if (salary < 5000) salaryRanges['0-5000']++;
       else if (salary < 10000) salaryRanges['5000-10000']++;
       else if (salary < 20000) salaryRanges['10000-20000']++;
       else salaryRanges['20000+']++;
 
       // Min/Max salary
-      if (!stats.salary.min || salary < stats.salary.min) stats.salary.min = salary;
-      if (!stats.salary.max || salary > stats.salary.max) stats.salary.max = salary;
+      if (!isNaN(salary)) {
+        if (!stats.salary.min || salary < stats.salary.min) stats.salary.min = salary;
+        if (!stats.salary.max || salary > stats.salary.max) stats.salary.max = salary;
+      }
     }
 
     // Job titles
@@ -228,12 +238,17 @@ const calculateEmployeeStatistics = (employees) => {
           avgSalary: 0,
         };
       }
-      if (emp.salary) {
-        salaryByBranchMap[emp.branch_id].totalSalary += emp.salary;
-        salaryByBranchMap[emp.branch_id].salaryCount++;
-        salaryByBranchMap[emp.branch_id].avgSalary = Math.round(
-          salaryByBranchMap[emp.branch_id].totalSalary / salaryByBranchMap[emp.branch_id].salaryCount
-        );
+      if (emp.salary !== undefined && emp.salary !== null && emp.salary !== '') {
+        const numericSalary = typeof emp.salary === 'number'
+          ? emp.salary
+          : parseFloat(String(emp.salary).replace(/[^\d.-]/g, ''));
+        if (!isNaN(numericSalary)) {
+          salaryByBranchMap[emp.branch_id].totalSalary += numericSalary;
+          salaryByBranchMap[emp.branch_id].salaryCount++;
+          salaryByBranchMap[emp.branch_id].avgSalary = Math.round(
+            salaryByBranchMap[emp.branch_id].totalSalary / salaryByBranchMap[emp.branch_id].salaryCount
+          );
+        }
       }
     }
 
