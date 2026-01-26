@@ -8,6 +8,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
   branchDocumentsAPI,
   branchesAPI,
+  clearCache,
 } from "../utils/api";
 import { API_URL } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
@@ -30,6 +31,7 @@ const BranchDocumentsManagement = () => {
   const [branches, setBranches] = useState([]);
   const [allDocuments, setAllDocuments] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   // Modals and forms
@@ -273,7 +275,7 @@ const BranchDocumentsManagement = () => {
 
   const loadAllDocuments = async () => {
     try {
-      setLoading(true);
+      setDocumentsLoading(true);
       const allDocs = [];
 
       // For main managers, load documents without password (backend allows it)
@@ -282,30 +284,33 @@ const BranchDocumentsManagement = () => {
         ? branches
         : branches.filter((b) => b.id === user?.branch_id);
 
-      // Load documents for branches
-      for (const branch of branchesToLoad) {
-        try {
-          // Main managers don't need password, branch managers will use password from interceptor
-          const response = await branchDocumentsAPI.getAll({
-            branch_id: branch.id,
-          });
+      // Load documents for branches in parallel for faster UX
+      const results = await Promise.allSettled(
+        branchesToLoad.map((branch) =>
+          branchDocumentsAPI.getAll({ branch_id: branch.id }),
+        ),
+      );
+
+      results.forEach((result, index) => {
+        const branch = branchesToLoad[index];
+        if (result.status === "fulfilled") {
+          const response = result.value;
           if (response.data.success && response.data.data) {
             allDocs.push(...response.data.data);
           }
-        } catch (error) {
-          // Continue if one branch fails (may be due to missing password for branch managers)
-          // Only log actual errors, not expected auth errors
+        } else {
+          const error = result.reason;
           if (
-            error.response?.status !== 401 &&
-            error.response?.status !== 403
+            error?.response?.status !== 401 &&
+            error?.response?.status !== 403
           ) {
             console.warn(
-              `Failed to load documents for branch ${branch.id}:`,
+              `Failed to load documents for branch ${branch?.id}:`,
               error,
             );
           }
         }
-      }
+      });
 
       setAllDocuments(allDocs);
     } catch (error) {
@@ -314,7 +319,7 @@ const BranchDocumentsManagement = () => {
         showError("فشل تحميل المستندات");
       }
     } finally {
-      setLoading(false);
+      setDocumentsLoading(false);
     }
   };
 
@@ -353,6 +358,21 @@ const BranchDocumentsManagement = () => {
 
     return status;
   }, [branches, allDocuments]);
+
+  const requiredDocsByBranch = useMemo(() => {
+    const map = {};
+    const monthlyTypes = getMonthlyRequiredBranchDocuments();
+
+    branches.forEach((branch) => {
+      const requiredDocs = getRequiredBranchDocuments(branch.branch_type);
+      const nonMonthlyRequired = requiredDocs.filter(
+        (docType) => !monthlyTypes.includes(docType),
+      );
+      map[branch.id] = new Set(nonMonthlyRequired);
+    });
+
+    return map;
+  }, [branches]);
 
   // Get all unique document types across all branches
   const allDocumentTypes = useMemo(() => {
@@ -518,6 +538,9 @@ const BranchDocumentsManagement = () => {
     if (statusFilter === "missing") {
       filteredTypes = filteredTypes.filter((docType) => {
         return filteredBranches.some((branch) => {
+          if (!requiredDocsByBranch[branch.id]?.has(docType)) {
+            return false;
+          }
           const status = documentStatus[branch.id]?.[docType];
           return !status || !status.exists;
         });
@@ -525,6 +548,9 @@ const BranchDocumentsManagement = () => {
     } else if (statusFilter === "existing") {
       filteredTypes = filteredTypes.filter((docType) => {
         return filteredBranches.some((branch) => {
+          if (!requiredDocsByBranch[branch.id]?.has(docType)) {
+            return false;
+          }
           const status = documentStatus[branch.id]?.[docType];
           return status && status.exists;
         });
@@ -540,6 +566,7 @@ const BranchDocumentsManagement = () => {
     documentTypeFilter,
     searchText,
     documentStatus,
+    requiredDocsByBranch,
     documentTypeLabels,
   ]);
 
@@ -588,9 +615,13 @@ const BranchDocumentsManagement = () => {
         }
       });
 
+      clearCache("/api/branch-documents");
       const response = await branchDocumentsAPI.upload(uploadFormData);
       if (response.data.success) {
         showSuccess("تم رفع المستند بنجاح");
+        if (response.data.data) {
+          setAllDocuments((prev) => [response.data.data, ...prev]);
+        }
         setShowUploadModal(false);
         resetForm();
         loadAllDocuments();
@@ -634,6 +665,13 @@ const BranchDocumentsManagement = () => {
 
       if (response.data.success) {
         showSuccess("تم تحديث المستند بنجاح");
+        if (response.data.data) {
+          setAllDocuments((prev) =>
+            prev.map((doc) =>
+              doc.id === response.data.data.id ? response.data.data : doc,
+            ),
+          );
+        }
         setShowEditModal(false);
         setEditingDocument(null);
         resetForm();
@@ -656,9 +694,11 @@ const BranchDocumentsManagement = () => {
     }
 
     try {
+      clearCache("/api/branch-documents");
       const response = await branchDocumentsAPI.delete(doc.id);
       if (response.data.success) {
         showSuccess("تم حذف المستند بنجاح");
+        setAllDocuments((prev) => prev.filter((d) => d.id !== doc.id));
         loadAllDocuments();
       }
     } catch (error) {
@@ -736,6 +776,9 @@ const BranchDocumentsManagement = () => {
 
     filteredData.filteredBranches.forEach((branch) => {
       filteredData.filteredTypes.forEach((docType) => {
+        if (!requiredDocsByBranch[branch.id]?.has(docType)) {
+          return;
+        }
         totalRequired++;
         const status = documentStatus[branch.id]?.[docType];
         if (status && status.exists) {
@@ -755,7 +798,7 @@ const BranchDocumentsManagement = () => {
           ? Math.round((totalExisting / totalRequired) * 100)
           : 0,
     };
-  }, [filteredData, documentStatus]);
+  }, [filteredData, documentStatus, requiredDocsByBranch]);
 
   // Early return for initial loading - must be after all hooks
   if (loading && branches.length === 0) {
@@ -773,6 +816,11 @@ const BranchDocumentsManagement = () => {
     <div className="branch-documents-management-page">
       <div className="page-header">
         <h1>مستندات الفروع</h1>
+        {documentsLoading && (
+          <span style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
+            جاري تحديث المستندات...
+          </span>
+        )}
         <div className="header-actions">
           <button
             className="btn btn-primary"
@@ -1562,6 +1610,9 @@ const BranchDocumentsManagement = () => {
         {filteredData.filteredTypes.map((docType) => {
           const missingBranches = filteredData.filteredBranches.filter(
             (branch) => {
+              if (!requiredDocsByBranch[branch.id]?.has(docType)) {
+                return false;
+              }
               const status = documentStatus[branch.id]?.[docType];
               return !status || !status.exists;
             },
@@ -1569,6 +1620,9 @@ const BranchDocumentsManagement = () => {
 
           const existingBranches = filteredData.filteredBranches.filter(
             (branch) => {
+              if (!requiredDocsByBranch[branch.id]?.has(docType)) {
+                return false;
+              }
               const status = documentStatus[branch.id]?.[docType];
               return status && status.exists;
             },
