@@ -9,6 +9,7 @@ import { useNotification } from "../contexts/NotificationContext";
 import { notificationsAPI, branchesAPI } from "../utils/api";
 import BranchBadge from '../components/BranchBadge';
 import { formatDate } from '../utils/dateConverters';
+import { getSeenCounts, setSeenCounts } from '../utils/notificationTracker';
 import "./NotifyBranches.css";
 
 const NotifyBranches = () => {
@@ -22,6 +23,8 @@ const NotifyBranches = () => {
   const [notificationDetails, setNotificationDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  const [newResponsesCount, setNewResponsesCount] = useState(0);
+  const [newResponsesByNotification, setNewResponsesByNotification] = useState({});
 
   // Create form state
   const [formData, setFormData] = useState({
@@ -61,6 +64,23 @@ const NotifyBranches = () => {
 
       if (notificationsRes.data.success) {
         setNotifications(notificationsRes.data.data || []);
+        const seenKey = 'notify_branches_seen_responses';
+        const seenCounts = getSeenCounts(seenKey);
+        const { totalNew, byId } = (notificationsRes.data.data || []).reduce(
+          (acc, notif) => {
+            const responded = parseInt(notif?.stats?.responded_count || 0, 10);
+            const seen = parseInt(seenCounts?.[notif.id] || 0, 10);
+            const delta = Math.max(0, responded - seen);
+            if (delta > 0) {
+              acc.totalNew += delta;
+              acc.byId[notif.id] = delta;
+            }
+            return acc;
+          },
+          { totalNew: 0, byId: {} }
+        );
+        setNewResponsesCount(totalNew);
+        setNewResponsesByNotification(byId);
       }
 
       if (branchesRes.data.success) {
@@ -143,6 +163,22 @@ const NotifyBranches = () => {
 
       if (response.data.success) {
         setNotificationDetails(response.data.data);
+        const seenKey = 'notify_branches_seen_responses';
+        const seenCounts = getSeenCounts(seenKey);
+        const responded = parseInt(response.data.data?.stats?.responded_count || 0, 10);
+        if (responded > 0) {
+          const nextCounts = { ...seenCounts, [notificationId]: responded };
+          setSeenCounts(seenKey, nextCounts);
+          const remaining = Object.entries(newResponsesByNotification)
+            .filter(([id]) => parseInt(id, 10) !== notificationId)
+            .reduce((sum, [, count]) => sum + count, 0);
+          setNewResponsesByNotification((prev) => {
+            const next = { ...prev };
+            delete next[notificationId];
+            return next;
+          });
+          setNewResponsesCount(remaining);
+        }
       }
     } catch (error) {
       console.error("Error loading notification details:", error);
@@ -268,13 +304,35 @@ const NotifyBranches = () => {
         </div>
       </div>
 
+      {newResponsesCount > 0 && (
+        <div className="notification-banner">
+          <span>لديك {newResponsesCount} رد جديد من الفروع</span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              const seenKey = 'notify_branches_seen_responses';
+              const nextCounts = notifications.reduce((acc, notif) => {
+                acc[notif.id] = parseInt(notif?.stats?.responded_count || 0, 10);
+                return acc;
+              }, {});
+              setSeenCounts(seenKey, nextCounts);
+              setNewResponsesByNotification({});
+              setNewResponsesCount(0);
+            }}
+          >
+            تم الاطلاع
+          </button>
+        </div>
+      )}
+
       {/* Create Notification Form */}
       {showCreateForm && (
         <div className="create-notification-form modern-form">
           <div className="form-header">
             <h2>إرسال إشعار جديد</h2>
           </div>
-          
+
           <form onSubmit={handleCreateNotification} className="modern-form-content">
             <div className="form-row">
               <div className="form-group form-group-full">
@@ -425,19 +483,19 @@ const NotifyBranches = () => {
                     </button>
                   </div>
                 </div>
-              <div className="branches-button-grid">
-                {branches.map((branch) => (
-                  <button
-                    key={branch.id}
-                    type="button"
-                    className={`branch-select-button ${formData.branch_ids.includes(branch.id) ? 'selected' : ''}`}
-                    onClick={() => toggleBranchSelection(branch.id)}
-                  >
-                    <BranchBadge branch={branch} />
-                    <span className="branch-name-text">{branch.branch_name}</span>
-                  </button>
-                ))}
-              </div>
+                <div className="branches-button-grid">
+                  {branches.map((branch) => (
+                    <button
+                      key={branch.id}
+                      type="button"
+                      className={`branch-select-button ${formData.branch_ids.includes(branch.id) ? 'selected' : ''}`}
+                      onClick={() => toggleBranchSelection(branch.id)}
+                    >
+                      <BranchBadge branch={branch} />
+                      <span className="branch-name-text">{branch.branch_name}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 

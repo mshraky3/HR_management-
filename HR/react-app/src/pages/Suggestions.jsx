@@ -9,6 +9,7 @@ import { suggestionsAPI, branchesAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import BranchBadge from '../components/BranchBadge';
+import { getLastSeen, setLastSeen, countNewByDate } from '../utils/notificationTracker';
 import './Suggestions.css';
 
 // Importance level colors for visual distinction
@@ -37,6 +38,7 @@ const Suggestions = () => {
     const [options, setOptions] = useState({ importanceLevels: {}, statusOptions: {} });
     const [stats, setStats] = useState(null);
     const [branches, setBranches] = useState([]);
+    const [newSuggestionsCount, setNewSuggestionsCount] = useState(0);
 
     // Form state (for branch managers)
     const [formData, setFormData] = useState({
@@ -71,6 +73,24 @@ const Suggestions = () => {
             loadSuggestions();
         }
     }, [filters]);
+
+    useEffect(() => {
+        if (loading) return;
+        const key = isMainManager()
+            ? 'suggestions_last_seen_main'
+            : `suggestions_last_seen_branch_${user?.branch_id || 'unknown'}`;
+        const lastSeen = getLastSeen(key);
+        const count = isMainManager()
+            ? countNewByDate(suggestions, 'created_at', lastSeen)
+            : suggestions.filter((s) => {
+                if (!s?.status || s.status === 'pending') return false;
+                const updatedAt = s.updated_at || s.created_at;
+                if (!updatedAt) return false;
+                const date = new Date(updatedAt);
+                return !isNaN(date.getTime()) && (!lastSeen || date > lastSeen);
+            }).length;
+        setNewSuggestionsCount(count);
+    }, [suggestions, loading, isMainManager, user]);
 
     const loadInitialData = async () => {
         try {
@@ -257,6 +277,29 @@ const Suggestions = () => {
                     }
                 </p>
             </div>
+
+            {newSuggestionsCount > 0 && (
+                <div className="notification-banner">
+                    <span>
+                        {isMainManager()
+                            ? `لديك ${newSuggestionsCount} اقتراح جديد`
+                            : `لديك ${newSuggestionsCount} رد جديد على اقتراحاتك`}
+                    </span>
+                    <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                            const key = isMainManager()
+                                ? 'suggestions_last_seen_main'
+                                : `suggestions_last_seen_branch_${user?.branch_id || 'unknown'}`;
+                            setLastSeen(key, new Date());
+                            setNewSuggestionsCount(0);
+                        }}
+                    >
+                        تم الاطلاع
+                    </button>
+                </div>
+            )}
 
             {/* Main Manager: Statistics Section */}
             {isMainManager() && stats && (

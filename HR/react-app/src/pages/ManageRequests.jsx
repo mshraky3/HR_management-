@@ -9,6 +9,7 @@ import { requestsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { formatDate } from '../utils/dateConverters';
+import { getLastSeen, setLastSeen, countNewByDate } from '../utils/notificationTracker';
 import './ManageRequests.css';
 
 const ManageRequests = () => {
@@ -26,6 +27,7 @@ const ManageRequests = () => {
   const [responseAttachment, setResponseAttachment] = useState(null);
   const [saving, setSaving] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
+  const [newRequestsCount, setNewRequestsCount] = useState(0);
 
   useEffect(() => {
     if (!isMainManager()) {
@@ -36,6 +38,15 @@ const ManageRequests = () => {
     // Note: Removed automatic polling to prevent unexpected page refreshes
     // If you want to re-enable polling, add a toggle and a longer interval.
   }, [statusFilter]);
+
+  useEffect(() => {
+    if (!isMainManager()) return;
+    const key = 'requests_last_seen_main';
+    const lastSeen = getLastSeen(key);
+    const pendingRequests = requests.filter(r => r.status === 'pending');
+    const count = countNewByDate(pendingRequests, 'created_at', lastSeen);
+    setNewRequestsCount(count);
+  }, [requests, isMainManager]);
 
   const loadRequests = async () => {
     try {
@@ -168,6 +179,22 @@ const ManageRequests = () => {
           </select>
         </div>
       </div>
+
+      {newRequestsCount > 0 && (
+        <div className="notification-banner">
+          <span>لديك {newRequestsCount} طلب جديد يحتاج مراجعة</span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              setLastSeen('requests_last_seen_main', new Date());
+              setNewRequestsCount(0);
+            }}
+          >
+            تم الاطلاع
+          </button>
+        </div>
+      )}
 
       {showResponseForm && selectedRequest && (
         <div className="response-form-modal">

@@ -8,6 +8,7 @@ import { requestsAPI, employeesAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { formatDate } from '../utils/dateConverters';
+import { getLastSeen, setLastSeen } from '../utils/notificationTracker';
 import './BranchRequests.css';
 
 const BranchRequests = () => {
@@ -20,6 +21,7 @@ const BranchRequests = () => {
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [newResponsesCount, setNewResponsesCount] = useState(0);
 
   const [formData, setFormData] = useState({
     main_manager_id: '',
@@ -75,6 +77,18 @@ const BranchRequests = () => {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (!branchId || isMainManagerUser) return;
+    const key = `branch_requests_last_seen_${branchId}`;
+    const lastSeen = getLastSeen(key);
+    const count = requests.filter((r) => {
+      if (!r.responded_at) return false;
+      const date = new Date(r.responded_at);
+      return !isNaN(date.getTime()) && (!lastSeen || date > lastSeen);
+    }).length;
+    setNewResponsesCount(count);
+  }, [requests, branchId, isMainManagerUser]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -85,7 +99,7 @@ const BranchRequests = () => {
 
     try {
       setSaving(true);
-      
+
       const formDataToSend = new FormData();
       formDataToSend.append('main_manager_id', formData.main_manager_id);
       if (formData.employee_id) {
@@ -93,7 +107,7 @@ const BranchRequests = () => {
       }
       formDataToSend.append('request_name', formData.request_name.trim());
       formDataToSend.append('request_text', formData.request_text.trim());
-      
+
       if (attachmentFile) {
         formDataToSend.append('file', attachmentFile);
       }
@@ -173,13 +187,30 @@ const BranchRequests = () => {
     <div className="branch-requests-container">
       <div className="branch-requests-header">
         <h1>طلبات</h1>
-        <button 
-          className="btn btn-primary" 
+        <button
+          className="btn btn-primary"
           onClick={() => setShowCreateForm(!showCreateForm)}
         >
           {showCreateForm ? 'إلغاء' : 'إرسال طلب جديد'}
         </button>
       </div>
+
+      {newResponsesCount > 0 && (
+        <div className="notification-banner">
+          <span>لديك {newResponsesCount} رد جديد على طلباتك</span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              const key = `branch_requests_last_seen_${branchId}`;
+              setLastSeen(key, new Date());
+              setNewResponsesCount(0);
+            }}
+          >
+            تم الاطلاع
+          </button>
+        </div>
+      )}
 
       {showCreateForm && (
         <div className="create-request-form">
@@ -273,8 +304,8 @@ const BranchRequests = () => {
               {attachmentFile && (
                 <div className="file-info">
                   <span>الملف المحدد: {attachmentFile.name}</span>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     className="btn-remove-file"
                     onClick={() => setAttachmentFile(null)}
                   >
@@ -288,8 +319,8 @@ const BranchRequests = () => {
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? 'جاري الإرسال...' : 'إرسال الطلب'}
               </button>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="btn btn-secondary"
                 onClick={() => {
                   setShowCreateForm(false);
@@ -323,41 +354,41 @@ const BranchRequests = () => {
                 <div key={request.id} className="request-card">
                   <div className="request-header">
                     <h3>{request.request_name}</h3>
-                    <span 
-                      className="status-badge" 
+                    <span
+                      className="status-badge"
                       style={{ backgroundColor: statusInfo.color }}
                     >
                       {statusInfo.text}
                     </span>
                   </div>
-                  
+
                   <div className="request-body">
                     <p className="request-text">{request.request_text}</p>
-                    
+
                     <div className="request-details">
                       <div className="detail-item">
                         <span className="detail-label">المدير الرئيسي:</span>
                         <span className="detail-value">{request.main_manager_name}</span>
                       </div>
-                      
+
                       {request.employee_name && (
                         <div className="detail-item">
                           <span className="detail-label">الموظف المعني:</span>
                           <span className="detail-value">{request.employee_name}</span>
                         </div>
                       )}
-                      
+
                       <div className="detail-item">
                         <span className="detail-label">تاريخ الإرسال:</span>
                         <span className="detail-value">{formatDate(request.created_at)}</span>
                       </div>
-                      
+
                       {request.attachment_name && (
                         <div className="detail-item">
                           <span className="detail-label">المرفق:</span>
-                          <a 
-                            href={request.attachment_url} 
-                            target="_blank" 
+                          <a
+                            href={request.attachment_url}
+                            target="_blank"
                             rel="noopener noreferrer"
                             className="attachment-link"
                           >
@@ -365,7 +396,7 @@ const BranchRequests = () => {
                           </a>
                         </div>
                       )}
-                      
+
                       {request.response_text && (
                         <div className="response-section">
                           <span className="detail-label">الرد:</span>
@@ -373,9 +404,9 @@ const BranchRequests = () => {
                           {request.response_attachment_name && (
                             <div className="detail-item">
                               <span className="detail-label">المرفق مع الرد:</span>
-                              <a 
-                                href={request.response_attachment_url} 
-                                target="_blank" 
+                              <a
+                                href={request.response_attachment_url}
+                                target="_blank"
                                 rel="noopener noreferrer"
                                 className="attachment-link"
                               >
@@ -392,10 +423,10 @@ const BranchRequests = () => {
                       )}
                     </div>
                   </div>
-                  
+
                   {request.status === 'pending' && (
                     <div className="request-actions">
-                      <button 
+                      <button
                         className="btn btn-danger btn-sm"
                         onClick={() => handleDelete(request.id)}
                       >
