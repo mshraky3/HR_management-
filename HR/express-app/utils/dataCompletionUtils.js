@@ -37,7 +37,7 @@ export const getRequiredBranchDocuments = (branchType) => {
         'registration',
         'civil_defense_certificate',
         'municipality_certificate',
-        'insurance_print',
+        'insurance_statement',
         'rental_contract',
         'operational_plan',
         'owner_civil_id_copy',
@@ -49,7 +49,7 @@ export const getRequiredBranchDocuments = (branchType) => {
   const branchRules = BRANCH_TYPE_RULES[branchType];
   if (!branchRules) return [];
 
-  return branchRules.requiredDocuments || [];
+  return [...new Set(branchRules.requiredDocuments || [])];
 };
 
 /**

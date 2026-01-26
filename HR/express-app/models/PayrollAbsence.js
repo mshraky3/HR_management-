@@ -280,6 +280,17 @@ export const PayrollAbsence = {
 
     const submissionNumber = (window.submission_count || 0) + 1;
     const viewUntil = addDays(now, VIEW_ONLY_DAYS);
+
+    // Validate absence values are non-negative
+    for (const entry of entries) {
+      const excused = parseInt(entry.excused_absences, 10) || 0;
+      const unexcused = parseInt(entry.unexcused_absences, 10) || 0;
+
+      if (excused < 0 || unexcused < 0) {
+        throw new Error('لا يمكن أن تكون الغيابات سالبة');
+      }
+    }
+
     const totalAbsences = entries.reduce((sum, e) => {
       const excused = parseInt(e.excused_absences, 10) || 0;
       const unexcused = parseInt(e.unexcused_absences, 10) || 0;

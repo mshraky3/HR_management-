@@ -1340,7 +1340,7 @@ function createStyledTable(headers, rows, headerColor = '#667eea', alternateRowC
   }));
 
   // Add styling to data rows
-  const styledRows = rows.map(row => 
+  const styledRows = rows.map(row =>
     row.map(cell => ({
       ...cell,
       margin: cell.margin || [5, 3]
@@ -1717,7 +1717,7 @@ router.post("/statistics/generate-pdf", async (req, res) => {
       });
 
       const branchRows = statistics.branches.map(item => {
-        const branchName = branches.find(b => b.id === item.branch_id)?.name || 'فرع مجهول';
+        const branchName = branches.find(b => b.id === item.branch_id)?.branch_name || 'فرع مجهول';
         const percentage = ((item.count / statistics.overview.total) * 100).toFixed(1);
         return [
           { text: branchName, fontSize: 11 },

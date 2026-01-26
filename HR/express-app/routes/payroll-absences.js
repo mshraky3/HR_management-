@@ -12,6 +12,20 @@ import { PayrollAbsence } from '../models/PayrollAbsence.js';
 const router = express.Router();
 router.use(authenticate);
 
+/**
+ * Sanitize error messages for production
+ * In production, returns generic messages to prevent information disclosure
+ * In development, returns actual error messages for debugging
+ */
+const sanitizeError = (error, defaultMessage = 'فشل تنفيذ العملية') => {
+  if (process.env.NODE_ENV === 'production') {
+    // In production, return generic message to prevent database schema exposure
+    return defaultMessage;
+  }
+  // In development, return actual error for debugging
+  return error.message || defaultMessage;
+};
+
 // Branch - get current state
 router.get('/branch/state', requireManager, async (req, res) => {
   try {
@@ -31,8 +45,7 @@ router.get('/branch/state', requireManager, async (req, res) => {
     console.error('Error getting branch absence state:', error);
     return res.status(500).json({
       success: false,
-      message: 'فشل جلب حالة الغياب',
-      error: error.message
+      message: sanitizeError(error, 'فشل جلب حالة الغياب')
     });
   }
 });
@@ -63,7 +76,7 @@ router.post('/branch/submit', requireManager, async (req, res) => {
     console.error('Error submitting branch absences:', error);
     return res.status(400).json({
       success: false,
-      message: error.message || 'فشل حفظ بيانات الغياب'
+      message: sanitizeError(error, 'فشل حفظ بيانات الغياب')
     });
   }
 });
@@ -96,8 +109,7 @@ router.get('/admin/cycles/:cycleId/branches', requireMainManager, async (req, re
     console.error('Error getting branches for cycle:', error);
     return res.status(500).json({
       success: false,
-      message: 'فشل جلب فروع الشهر',
-      error: error.message
+      message: sanitizeError(error, 'فشل جلب فروع الشهر')
     });
   }
 });
@@ -116,8 +128,7 @@ router.get('/admin/cycles/:cycleId/branches/:branchId/entries', requireMainManag
     console.error('Error getting branch submission detail:', error);
     return res.status(500).json({
       success: false,
-      message: 'فشل جلب تفاصيل الفرع',
-      error: error.message
+      message: sanitizeError(error, 'فشل جلب تفاصيل الفرع')
     });
   }
 });
@@ -138,7 +149,7 @@ router.post('/admin/reopen', requireMainManager, async (req, res) => {
     console.error('Error reopening branches:', error);
     return res.status(400).json({
       success: false,
-      message: error.message || 'فشل إعادة فتح الإدخال'
+      message: sanitizeError(error, 'فشل إعادة فتح الإدخال')
     });
   }
 });
@@ -159,7 +170,7 @@ router.post('/admin/reset', requireMainManager, async (req, res) => {
     console.error('Error resetting cycle:', error);
     return res.status(400).json({
       success: false,
-      message: error.message || 'فشل إعادة تعيين الشهر'
+      message: sanitizeError(error, 'فشل إعادة تعيين الشهر')
     });
   }
 });
@@ -180,7 +191,7 @@ router.post('/admin/close', requireMainManager, async (req, res) => {
     console.error('Error closing branches:', error);
     return res.status(400).json({
       success: false,
-      message: error.message || 'فشل إغلاق الإدخال'
+      message: sanitizeError(error, 'فشل إغلاق الإدخال')
     });
   }
 });
@@ -247,7 +258,7 @@ router.post('/admin/export', requireMainManager, async (req, res) => {
     console.error('Error exporting absences:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'فشل إنشاء ملف الإكسل'
+      message: sanitizeError(error, 'فشل إنشاء ملف الإكسل')
     });
   }
 });

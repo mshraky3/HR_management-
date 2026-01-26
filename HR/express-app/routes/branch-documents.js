@@ -302,7 +302,14 @@ router.post(
         bank_name,
       } = req.body;
 
-      if (!branch_id || !document_type || !req.file) {
+      let normalizedDocumentType =
+        typeof document_type === "string" ? document_type.trim() : document_type;
+
+      if (normalizedDocumentType === "insurance_print") {
+        normalizedDocumentType = "insurance_statement";
+      }
+
+      if (!branch_id || !normalizedDocumentType || !req.file) {
         return res.status(400).json({
           success: false,
           message: "معرف الفرع ونوع المستند والملف مطلوبة",
@@ -340,7 +347,7 @@ router.post(
 
       if (
         req.user.role === "branch_manager" &&
-        restrictedDocumentTypes.includes(document_type)
+        restrictedDocumentTypes.includes(normalizedDocumentType)
       ) {
         return res.status(403).json({
           success: false,
@@ -365,7 +372,7 @@ router.post(
         "acceptance_notifications",
       ];
       if (
-        healthcareOnlyDocuments.includes(document_type) &&
+        healthcareOnlyDocuments.includes(normalizedDocumentType) &&
         branch.branch_type !== "healthcare_center"
       ) {
         return res.status(400).json({
@@ -386,7 +393,7 @@ router.post(
         fixedFileName, // Use fixed filename for consistent encoding
         req.file.mimetype,
         parseInt(branch_id),
-        document_type,
+        normalizedDocumentType,
       );
 
       // Get valid user ID for uploaded_by field
@@ -421,7 +428,7 @@ router.post(
       // Create document record - store blob URL
       const document = await BranchDocument.create({
         branch_id: parseInt(branch_id),
-        document_type: document_type,
+        document_type: normalizedDocumentType,
         file_name: fileName,
         file_path: blobUrl, // Store blob URL instead of local path
         file_size: req.file.size,
@@ -1975,8 +1982,12 @@ router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
     // Create a map of document_type to document (get latest of each type)
     const documentTypeMap = new Map();
     documents.forEach((doc) => {
-      if (!documentTypeMap.has(doc.document_type)) {
-        documentTypeMap.set(doc.document_type, doc);
+      const normalizedType =
+        doc.document_type === "insurance_print"
+          ? "insurance_statement"
+          : doc.document_type;
+      if (!documentTypeMap.has(normalizedType)) {
+        documentTypeMap.set(normalizedType, doc);
       }
     });
 
