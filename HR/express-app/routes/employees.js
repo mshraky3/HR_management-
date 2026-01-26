@@ -1018,6 +1018,21 @@ router.get("/statistics", async (req, res) => {
       LIMIT 15
     `;
 
+    // Nationality breakdown by gender (top 10)
+    const nationalityGenderQuery = sql`
+      SELECT
+        nationality,
+        COUNT(*) FILTER (WHERE gender = 'male')::int as male_count,
+        COUNT(*) FILTER (WHERE gender = 'female')::int as female_count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND nationality IS NOT NULL
+      GROUP BY nationality
+      ORDER BY (COUNT(*)) DESC
+      LIMIT 10
+    `;
+
     // Educational qualifications
     const qualificationsQuery = sql`
       SELECT
@@ -1148,7 +1163,283 @@ router.get("/statistics", async (req, res) => {
         HAVING COUNT(e.id) > 0
         ORDER BY average_salary DESC
       `;
+
+      // Median salary by branch
+      var salaryMedianByBranchQuery = sql`
+        SELECT
+          b.branch_name,
+          b.id as branch_id,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY e.salary)::numeric(10,2) as median_salary,
+          COUNT(e.id)::int as count
+        FROM branches b
+        LEFT JOIN employees e ON e.branch_id = b.id
+          AND (e.status IN ('active', 'pending') OR e.status IS NULL)
+          AND e.salary IS NOT NULL AND e.salary > 0
+        WHERE b.is_active = true
+        GROUP BY b.id, b.branch_name
+        HAVING COUNT(e.id) > 0
+        ORDER BY median_salary DESC
+      `;
     }
+
+    // Religious distribution
+    const religionsQuery = sql`
+      SELECT
+        COALESCE(religion, 'غير محدد') as religion,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      GROUP BY COALESCE(religion, 'غير محدد')
+      ORDER BY count DESC
+    `;
+
+    // Salary by contract type
+    const salaryByContractTypeQuery = sql`
+      SELECT
+        COALESCE(contract_type, 'غير محدد') as contract_type,
+        AVG(salary)::numeric(10,2) as average_salary,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND salary IS NOT NULL AND salary > 0
+      GROUP BY COALESCE(contract_type, 'غير محدد')
+      ORDER BY average_salary DESC
+    `;
+
+    // Gender distribution by branch (only if main manager)
+    let genderByBranchQuery = null;
+    if (!branchId && (!branchIds || branchIds.length === 0)) {
+      genderByBranchQuery = sql`
+        SELECT
+          b.branch_name,
+          b.id as branch_id,
+          COUNT(*) FILTER (WHERE e.gender = 'male')::int as male_count,
+          COUNT(*) FILTER (WHERE e.gender = 'female')::int as female_count
+        FROM branches b
+        LEFT JOIN employees e ON e.branch_id = b.id
+          AND (e.status IN ('active', 'pending') OR e.status IS NULL)
+        WHERE b.is_active = true
+        GROUP BY b.id, b.branch_name
+        HAVING COUNT(e.id) > 0
+        ORDER BY b.branch_name
+      `;
+    }
+
+    // Top 10 highest paid employees with job title and branch (only if main manager)
+    let topPaidEmployeesQuery = null;
+    if (!branchId && (!branchIds || branchIds.length === 0)) {
+      topPaidEmployeesQuery = sql`
+        SELECT
+          e.employee_id_number as employee_id,
+          CONCAT(e.first_name, ' ', e.second_name, ' ', e.third_name, ' ', e.fourth_name) as name,
+          COALESCE(e.job_title, e.occupation) as job_title,
+          b.branch_name,
+          e.salary::numeric(10,2)
+        FROM employees e
+        LEFT JOIN branches b ON e.branch_id = b.id
+        WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
+        AND e.salary IS NOT NULL AND e.salary > 0
+        ORDER BY e.salary DESC
+        LIMIT 10
+      `;
+    }
+
+    // Salary by educational qualification
+    const salaryByQualificationQuery = sql`
+      SELECT
+        COALESCE(educational_qualification, 'غير محدد') as qualification,
+        AVG(salary)::numeric(10,2) as average_salary,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND salary IS NOT NULL AND salary > 0
+      GROUP BY COALESCE(educational_qualification, 'غير محدد')
+      ORDER BY average_salary DESC
+    `;
+
+    // Average salary by nationality (top 10)
+    const salaryByNationalityQuery = sql`
+      SELECT
+        nationality,
+        AVG(salary)::numeric(10,2) as average_salary,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND salary IS NOT NULL AND salary > 0
+      AND nationality IS NOT NULL
+      GROUP BY nationality
+      ORDER BY count DESC
+      LIMIT 10
+    `;
+
+    // Total salary by nationality (top 10)
+    const totalSalaryByNationalityQuery = sql`
+      SELECT
+        nationality,
+        SUM(salary)::numeric(10,2) as total_salary,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND salary IS NOT NULL AND salary > 0
+      AND nationality IS NOT NULL
+      GROUP BY nationality
+      ORDER BY total_salary DESC
+      LIMIT 10
+    `;
+
+    // Salary breakdown by allowances (average)
+    const salaryBreakdownQuery = sql`
+      SELECT
+        AVG(base_salary)::numeric(10,2) as avg_base_salary,
+        AVG(housing_allowance)::numeric(10,2) as avg_housing_allowance,
+        AVG(transportation_allowance)::numeric(10,2) as avg_transportation_allowance,
+        AVG(other_allowances)::numeric(10,2) as avg_other_allowances,
+        COUNT(*) FILTER (WHERE base_salary IS NOT NULL AND base_salary > 0)::int as base_salary_count,
+        COUNT(*) FILTER (WHERE housing_allowance IS NOT NULL AND housing_allowance > 0)::int as housing_allowance_count,
+        COUNT(*) FILTER (WHERE transportation_allowance IS NOT NULL AND transportation_allowance > 0)::int as transportation_allowance_count,
+        COUNT(*) FILTER (WHERE other_allowances IS NOT NULL AND other_allowances > 0)::int as other_allowances_count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+    `;
+
+    // Total salary budget by gender
+    const totalSalaryByGenderQuery = sql`
+      SELECT
+        gender,
+        SUM(salary)::numeric(10,2) as total_salary,
+        COUNT(*)::int as count
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND salary IS NOT NULL AND salary > 0
+      AND gender IS NOT NULL
+      GROUP BY gender
+    `;
+
+    // Contract expiration timeline (next 3, 6, 12 months and expired)
+    const contractExpirationQuery = sql`
+      SELECT
+        CASE
+          WHEN contract_end_date_gregorian < CURRENT_DATE THEN 'منتهي'
+          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 'خلال 3 أشهر'
+          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 'خلال 6 أشهر'
+          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '12 months' THEN 'خلال سنة'
+          ELSE 'أكثر من سنة'
+        END as expiration_period,
+        COUNT(*)::int as count,
+        MIN(CASE
+          WHEN contract_end_date_gregorian < CURRENT_DATE THEN 1
+          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 2
+          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 3
+          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '12 months' THEN 4
+          ELSE 5
+        END) as sort_order
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND contract_end_date_gregorian IS NOT NULL
+      GROUP BY 
+        CASE
+          WHEN contract_end_date_gregorian < CURRENT_DATE THEN 'منتهي'
+          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 'خلال 3 أشهر'
+          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 'خلال 6 أشهر'
+          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '12 months' THEN 'خلال سنة'
+          ELSE 'أكثر من سنة'
+        END
+      ORDER BY sort_order
+    `;
+
+    // Data completion by field (which fields are most incomplete)
+    const incompleteDataQuery = sql`
+      SELECT
+        COUNT(*) FILTER (WHERE phone_number IS NULL OR phone_number = '')::int as missing_phone,
+        COUNT(*) FILTER (WHERE email IS NULL OR email = '')::int as missing_email,
+        COUNT(*) FILTER (WHERE bank_iban IS NULL OR bank_iban = '')::int as missing_iban,
+        COUNT(*) FILTER (WHERE educational_qualification IS NULL OR educational_qualification = '')::int as missing_qualification,
+        COUNT(*) FILTER (WHERE specialization IS NULL OR specialization = '')::int as missing_specialization,
+        COUNT(*) FILTER (WHERE national_address IS NULL OR national_address = '')::int as missing_address,
+        COUNT(*) FILTER (WHERE date_of_birth_gregorian IS NULL)::int as missing_birthdate,
+        COUNT(*) FILTER (WHERE salary IS NULL OR salary = 0)::int as missing_salary,
+        COUNT(*) FILTER (WHERE contract_start_date_gregorian IS NULL)::int as missing_contract_start,
+        COUNT(*) FILTER (WHERE contract_end_date_gregorian IS NULL)::int as missing_contract_end
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+    `;
+
+    // Salary percentiles (25th, 50th/median, 75th)
+    const salaryPercentilesQuery = sql`
+      SELECT
+        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY salary)::numeric(10,2) as p25,
+        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY salary)::numeric(10,2) as p50,
+        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY salary)::numeric(10,2) as p75
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND salary IS NOT NULL AND salary > 0
+    `;
+
+    // Gender distribution in top 5 job titles
+    const genderByJobTitleQuery = sql`
+      WITH top_jobs AS (
+        SELECT COALESCE(job_title, occupation, 'غير محدد') as job_title
+        FROM employees
+        WHERE (status IN ('active', 'pending') OR status IS NULL)
+        ${branchFilter}
+        GROUP BY COALESCE(job_title, occupation, 'غير محدد')
+        ORDER BY COUNT(*) DESC
+        LIMIT 5
+      )
+      SELECT
+        COALESCE(e.job_title, e.occupation, 'غير محدد') as job_title,
+        COUNT(*) FILTER (WHERE e.gender = 'male')::int as male_count,
+        COUNT(*) FILTER (WHERE e.gender = 'female')::int as female_count
+      FROM employees e
+      INNER JOIN top_jobs tj ON COALESCE(e.job_title, e.occupation, 'غير محدد') = tj.job_title
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
+      ${branchFilter}
+      GROUP BY COALESCE(e.job_title, e.occupation, 'غير محدد')
+      ORDER BY (COUNT(*)) DESC
+    `;
+
+    // ID expiration warnings (IDs expiring in next 6 months)
+    const idExpirationQuery = sql`
+      SELECT
+        CASE
+          WHEN id_expiry_date_gregorian < CURRENT_DATE THEN 'منتهية'
+          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '1 month' THEN 'خلال شهر'
+          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 'خلال 3 أشهر'
+          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 'خلال 6 أشهر'
+          ELSE 'أكثر من 6 أشهر'
+        END as expiration_period,
+        COUNT(*)::int as count,
+        MIN(CASE
+          WHEN id_expiry_date_gregorian < CURRENT_DATE THEN 1
+          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '1 month' THEN 2
+          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 3
+          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 4
+          ELSE 5
+        END) as sort_order
+      FROM employees
+      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      ${branchFilter}
+      AND id_expiry_date_gregorian IS NOT NULL
+      GROUP BY 
+        CASE
+          WHEN id_expiry_date_gregorian < CURRENT_DATE THEN 'منتهية'
+          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '1 month' THEN 'خلال شهر'
+          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 'خلال 3 أشهر'
+          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 'خلال 6 أشهر'
+          ELSE 'أكثر من 6 أشهر'
+        END
+      ORDER BY sort_order
+    `;
 
     // Execute all queries in parallel
     const [
@@ -1162,6 +1453,7 @@ router.get("/statistics", async (req, res) => {
       contractTypesResult,
       maritalStatusResult,
       nationalitiesResult,
+      nationalityGenderResult,
       qualificationsResult,
       statusResult,
       ageGroupsResult,
@@ -1170,6 +1462,21 @@ router.get("/statistics", async (req, res) => {
       idTypeResult,
       companyExperienceResult,
       salaryByBranchResult,
+      salaryMedianByBranchResult,
+      religionsResult,
+      salaryByContractTypeResult,
+      genderByBranchResult,
+      topPaidEmployeesResult,
+      salaryByQualificationResult,
+      salaryByNationalityResult,
+      totalSalaryByNationalityResult,
+      salaryBreakdownResult,
+      totalSalaryByGenderResult,
+      contractExpirationResult,
+      incompleteDataResult,
+      salaryPercentilesResult,
+      genderByJobTitleResult,
+      idExpirationResult,
     ] = await Promise.all([
       overviewQuery,
       genderQuery,
@@ -1181,6 +1488,7 @@ router.get("/statistics", async (req, res) => {
       contractTypesQuery,
       maritalStatusQuery,
       nationalitiesQuery,
+      nationalityGenderQuery,
       qualificationsQuery,
       statusQuery,
       ageGroupsQuery,
@@ -1189,6 +1497,21 @@ router.get("/statistics", async (req, res) => {
       idTypeQuery,
       companyExperienceQuery,
       salaryByBranchQuery || Promise.resolve([]),
+      salaryMedianByBranchQuery || Promise.resolve([]),
+      religionsQuery,
+      salaryByContractTypeQuery,
+      genderByBranchQuery || Promise.resolve([]),
+      topPaidEmployeesQuery || Promise.resolve([]),
+      salaryByQualificationQuery,
+      salaryByNationalityQuery,
+      totalSalaryByNationalityQuery,
+      salaryBreakdownQuery,
+      totalSalaryByGenderQuery,
+      contractExpirationQuery,
+      incompleteDataQuery,
+      salaryPercentilesQuery,
+      genderByJobTitleQuery,
+      idExpirationQuery,
     ]);
 
     const overview = overviewResult[0] || {};
@@ -1269,6 +1592,11 @@ router.get("/statistics", async (req, res) => {
           nationality: item.nationality,
           count: parseInt(item.count || 0),
         })),
+        nationalityGender: (nationalityGenderResult || []).map((item) => ({
+          nationality: item.nationality,
+          male_count: parseInt(item.male_count || 0),
+          female_count: parseInt(item.female_count || 0),
+        })),
         educationalQualifications: (qualificationsResult || []).map((item) => ({
           qualification: item.qualification,
           count: parseInt(item.count || 0),
@@ -1293,6 +1621,75 @@ router.get("/statistics", async (req, res) => {
           experience_range: item.experience_range,
           count: parseInt(item.count || 0),
         })),
+        religions: (religionsResult || []).map((item) => ({
+          religion: item.religion,
+          count: parseInt(item.count || 0),
+        })),
+        salaryByContractType: (salaryByContractTypeResult || []).map((item) => ({
+          contract_type: item.contract_type,
+          average_salary: parseFloat(item.average_salary || 0),
+          count: parseInt(item.count || 0),
+        })),
+        salaryByQualification: (salaryByQualificationResult || []).map((item) => ({
+          qualification: item.qualification,
+          average_salary: parseFloat(item.average_salary || 0),
+          count: parseInt(item.count || 0),
+        })),
+        salaryByNationality: (salaryByNationalityResult || []).map((item) => ({
+          nationality: item.nationality,
+          average_salary: parseFloat(item.average_salary || 0),
+          count: parseInt(item.count || 0),
+        })),
+        totalSalaryByNationality: (totalSalaryByNationalityResult || []).map((item) => ({
+          nationality: item.nationality,
+          total_salary: parseFloat(item.total_salary || 0),
+          count: parseInt(item.count || 0),
+        })),
+        salaryBreakdown: salaryBreakdownResult && salaryBreakdownResult[0] ? {
+          avg_base_salary: parseFloat(salaryBreakdownResult[0].avg_base_salary || 0),
+          avg_housing_allowance: parseFloat(salaryBreakdownResult[0].avg_housing_allowance || 0),
+          avg_transportation_allowance: parseFloat(salaryBreakdownResult[0].avg_transportation_allowance || 0),
+          avg_other_allowances: parseFloat(salaryBreakdownResult[0].avg_other_allowances || 0),
+          base_salary_count: parseInt(salaryBreakdownResult[0].base_salary_count || 0),
+          housing_allowance_count: parseInt(salaryBreakdownResult[0].housing_allowance_count || 0),
+          transportation_allowance_count: parseInt(salaryBreakdownResult[0].transportation_allowance_count || 0),
+          other_allowances_count: parseInt(salaryBreakdownResult[0].other_allowances_count || 0),
+        } : null,
+        totalSalaryByGender: (totalSalaryByGenderResult || []).map((item) => ({
+          gender: item.gender,
+          total_salary: parseFloat(item.total_salary || 0),
+          count: parseInt(item.count || 0),
+        })),
+        contractExpiration: (contractExpirationResult || []).map((item) => ({
+          period: item.expiration_period,
+          count: parseInt(item.count || 0),
+        })),
+        incompleteData: incompleteDataResult && incompleteDataResult[0] ? {
+          missing_phone: parseInt(incompleteDataResult[0].missing_phone || 0),
+          missing_email: parseInt(incompleteDataResult[0].missing_email || 0),
+          missing_iban: parseInt(incompleteDataResult[0].missing_iban || 0),
+          missing_qualification: parseInt(incompleteDataResult[0].missing_qualification || 0),
+          missing_specialization: parseInt(incompleteDataResult[0].missing_specialization || 0),
+          missing_address: parseInt(incompleteDataResult[0].missing_address || 0),
+          missing_birthdate: parseInt(incompleteDataResult[0].missing_birthdate || 0),
+          missing_salary: parseInt(incompleteDataResult[0].missing_salary || 0),
+          missing_contract_start: parseInt(incompleteDataResult[0].missing_contract_start || 0),
+          missing_contract_end: parseInt(incompleteDataResult[0].missing_contract_end || 0),
+        } : null,
+        salaryPercentiles: salaryPercentilesResult && salaryPercentilesResult[0] ? {
+          p25: parseFloat(salaryPercentilesResult[0].p25 || 0),
+          p50: parseFloat(salaryPercentilesResult[0].p50 || 0),
+          p75: parseFloat(salaryPercentilesResult[0].p75 || 0),
+        } : null,
+        genderByJobTitle: (genderByJobTitleResult || []).map((item) => ({
+          job_title: item.job_title,
+          male_count: parseInt(item.male_count || 0),
+          female_count: parseInt(item.female_count || 0),
+        })),
+        idExpiration: (idExpirationResult || []).map((item) => ({
+          period: item.expiration_period,
+          count: parseInt(item.count || 0),
+        })),
         ...(branchDistributionResult && branchDistributionResult.length > 0
           ? {
             branches: (branchDistributionResult || []).map((item) => ({
@@ -1309,6 +1706,37 @@ router.get("/statistics", async (req, res) => {
               branch_id: parseInt(item.branch_id),
               average_salary: parseFloat(item.average_salary || 0),
               count: parseInt(item.count || 0),
+            })),
+          }
+          : {}),
+        ...(salaryMedianByBranchResult && salaryMedianByBranchResult.length > 0
+          ? {
+            salaryMedianByBranch: (salaryMedianByBranchResult || []).map((item) => ({
+              branch_name: item.branch_name,
+              branch_id: parseInt(item.branch_id),
+              median_salary: parseFloat(item.median_salary || 0),
+              count: parseInt(item.count || 0),
+            })),
+          }
+          : {}),
+        ...(genderByBranchResult && genderByBranchResult.length > 0
+          ? {
+            genderByBranch: (genderByBranchResult || []).map((item) => ({
+              branch_name: item.branch_name,
+              branch_id: parseInt(item.branch_id),
+              male_count: parseInt(item.male_count || 0),
+              female_count: parseInt(item.female_count || 0),
+            })),
+          }
+          : {}),
+        ...(topPaidEmployeesResult && topPaidEmployeesResult.length > 0
+          ? {
+            topPaidEmployees: (topPaidEmployeesResult || []).map((item) => ({
+              employee_id: item.employee_id,
+              name: item.name,
+              job_title: item.job_title,
+              branch_name: item.branch_name,
+              salary: parseFloat(item.salary || 0),
             })),
           }
           : {}),
@@ -3134,8 +3562,8 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     if (certificate_type === "salary") {
       const recipientTable = {
         table: {
-          // Adjusted widths to fit within page and center with larger margins
-          widths: [110, 345],
+          // Reduced widths to match specialties table spacing with proper margins
+          widths: [105, 290],
           body: [
             [
               {
@@ -3179,7 +3607,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
           hLineColor: () => "#000000",
           vLineColor: () => "#000000",
         },
-        margin: [80, 0, 80, 15],
+        margin: [40, 0, 40, 15],
       };
       certificateContent.push(recipientTable);
 

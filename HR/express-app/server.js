@@ -11,6 +11,7 @@ import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { optionalAuth } from './middleware/auth.js';
 import { testConnection } from './config/database.js';
 import logger, { httpLogger, log } from './utils/logger.js';
+import { initializeDailyAlerts } from './utils/dailyAlerts.js';
 
 dotenv.config();
 
@@ -114,14 +115,14 @@ async function startup() {
     // Don't block startup if DB test fails - connection will be retried on first request
     log.warn('Database connection test failed on startup, will retry on first request');
   }
-  
+
   try {
     await testBlobStorage();
   } catch (error) {
     // Don't block startup if Blob Storage test fails
     log.warn('Blob Storage test failed on startup');
   }
-  
+
   // Initialize database tables (idempotent - safe to run multiple times)
   // Only run if not in Vercel or if explicitly enabled
   // On Vercel, tables should already exist, but this ensures they're created if needed
@@ -133,7 +134,14 @@ async function startup() {
       log.warn('Database initialization had issues (tables may already exist)', { error: error.message });
     }
   }
-  
+
+  // Initialize daily alerts for main manager
+  try {
+    initializeDailyAlerts();
+    log.info('Daily alerts initialized - will check at 8:00 AM');
+  } catch (error) {
+    log.warn('Failed to initialize daily alerts', { error: error.message });
+  }
 }
 
 // Run startup asynchronously (don't block server start)
@@ -147,8 +155,8 @@ app.use('/api', (req, res, next) => {
   // Add cache headers for GET requests (except sensitive data)
   if (req.method === 'GET' && !req.path.includes('/auth') && !req.path.includes('/me')) {
     // Dashboard-related endpoints - NO CACHE (must always be fresh)
-    if (req.path.includes('/branch-statistics') || 
-        req.path.includes('/notifications')) {
+    if (req.path.includes('/branch-statistics') ||
+      req.path.includes('/notifications')) {
       res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.set('Pragma', 'no-cache');
       res.set('Expires', '0');
@@ -188,8 +196,8 @@ app.get('/api/health', (req, res) => {
 
 // Root endpoint (no authentication required, but accepts optional auth for logging)
 app.get('/', optionalAuth, (req, res) => {
-  res.json({ 
-    success: true, 
+  res.json({
+    success: true,
     message: 'HRM API is running',
     version: '1.0.0',
     endpoints: {

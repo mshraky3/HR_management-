@@ -9,10 +9,12 @@ import { requireMainManager } from '../middleware/authorization.js';
 import { Notification } from '../models/Notification.js';
 import { NotificationResponse } from '../models/NotificationResponse.js';
 import { Branch } from '../models/Branch.js';
+import { User } from '../models/User.js';
 import { uploadSingle, validateUploadedFile } from '../middleware/upload.js';
 import { uploadNotificationAttachmentToBlob } from '../utils/blobStorage.js';
 import { fixFilenameEncoding } from '../utils/fileUpload.js';
 import { getExtensionFromMimeType } from '../utils/fileUpload.js';
+import { sendNotificationEmail } from '../utils/emailService.js';
 import sql from '../config/database.js';
 
 const router = express.Router();
@@ -29,15 +31,15 @@ router.use(authenticate);
 router.post('/', requireMainManager, uploadSingle, async (req, res) => {
   try {
     const { message, importance_level, duration_days, one_time } = req.body;
-    
+
     // Handle branch_ids from FormData
     // When using FormData with JSON.stringify, it comes as a string that needs parsing
     let branch_ids = req.body.branch_ids;
-    
+
     // Debug logging (remove in production if needed)
     console.log('Received branch_ids:', branch_ids, 'Type:', typeof branch_ids);
     console.log('All req.body keys:', Object.keys(req.body));
-    
+
     // If branch_ids is a string (from JSON.stringify), parse it
     if (typeof branch_ids === 'string') {
       try {
@@ -50,7 +52,7 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
         });
       }
     }
-    
+
     // Ensure it's an array
     if (!Array.isArray(branch_ids)) {
       if (branch_ids !== undefined && branch_ids !== null) {
@@ -59,15 +61,15 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
         branch_ids = [];
       }
     }
-    
+
     // Ensure all values are valid numbers and convert to integers
     branch_ids = branch_ids
       .filter(id => id !== null && id !== undefined && id !== '')
       .map(id => parseInt(id))
       .filter(id => !isNaN(id));
-    
+
     console.log('Processed branch_ids:', branch_ids);
-    
+
     // Validation
     if (!message || !message.trim()) {
       return res.status(400).json({
@@ -75,14 +77,14 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
         message: 'الرسالة مطلوبة'
       });
     }
-    
+
     if (!importance_level || ![1, 2, 3, 4].includes(parseInt(importance_level))) {
       return res.status(400).json({
         success: false,
         message: 'مستوى الأهمية يجب أن يكون 1، 2، 3، أو 4'
       });
     }
-    
+
     if (!branch_ids || !Array.isArray(branch_ids) || branch_ids.length === 0) {
       return res.status(400).json({
         success: false,
@@ -92,34 +94,34 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
 
     // Validate and calculate expires_at
     let expires_at = null;
-    let durationDays = duration_days !== undefined && duration_days !== null && duration_days !== '' 
-      ? parseInt(duration_days) 
+    let durationDays = duration_days !== undefined && duration_days !== null && duration_days !== ''
+      ? parseInt(duration_days)
       : 7; // Default to 7 days
-    
+
     if (isNaN(durationDays) || durationDays < 1) {
       return res.status(400).json({
         success: false,
         message: 'مدة الإشعار يجب أن تكون رقمًا صحيحًا أكبر من أو يساوي 1'
       });
     }
-    
+
     if (durationDays > 365) {
       return res.status(400).json({
         success: false,
         message: 'مدة الإشعار لا يمكن أن تتجاوز 365 يومًا'
       });
     }
-    
+
     // Calculate expires_at: created_at + duration_days
     const now = new Date();
     expires_at = new Date(now);
     expires_at.setDate(expires_at.getDate() + durationDays);
-    
+
     // Validate branch IDs exist and are active
     const validBranchIds = branch_ids.map(id => parseInt(id)).filter(id => !isNaN(id));
     const branches = await Branch.findAll({ is_active: true });
     const validBranches = branches.filter(b => validBranchIds.includes(b.id));
-    
+
     if (validBranches.length !== validBranchIds.length) {
       return res.status(400).json({
         success: false,
@@ -167,7 +169,7 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
       // Actually, we can upload first with a temp ID, then update, or better: create notification first, then upload
       // Let's create notification first, then upload file
     }
-    
+
     // Create notification first (without attachment)
     const notification = await Notification.create({
       message: message.trim(),
@@ -211,7 +213,32 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
 
     // Fetch updated notification
     const updatedNotification = await Notification.findById(notification.id);
-    
+
+    // Send email to main manager
+    try {
+      const mainManagerEmail = 'Sharaksa@gmail.com';
+      const appUrl = process.env.APP_URL || 'http://localhost:5173';
+
+      // Get branch names for email
+      const branchNames = validBranches.map(b => b.branch_name).join('، ');
+
+      await sendNotificationEmail({
+        to: mainManagerEmail,
+        subject: `إشعار جديد - ${['منخفضة', 'عادية', 'متوسطة', 'عالية'][parseInt(importance_level) - 1] || 'عادية'}`,
+        message: message.trim(),
+        notificationType: 'notification_created',
+        appUrl: `${appUrl}/notify-branches`,
+        data: {
+          'الفروع المستهدفة': branchNames,
+          'مستوى الأهمية': ['منخفضة', 'عادية', 'متوسطة', 'عالية'][parseInt(importance_level) - 1] || 'عادية',
+          'تاريخ الانتهاء': expires_at ? new Date(expires_at).toLocaleDateString('ar-SA') : 'غير محدد',
+        }
+      });
+    } catch (emailError) {
+      console.error('Failed to send email notification:', emailError);
+      // Don't fail the notification creation if email fails
+    }
+
     res.status(201).json({
       success: true,
       message: 'تم إرسال الإشعار بنجاح',
@@ -240,9 +267,9 @@ router.get('/', requireMainManager, async (req, res) => {
       created_by: req.query.created_by ? parseInt(req.query.created_by) : undefined,
       include_inactive: req.query.include_inactive === 'true'
     };
-    
+
     const notifications = await Notification.findAll(filters);
-    
+
     // Get response statistics for each notification
     const notificationsWithStats = await Promise.all(
       notifications.map(async (notification) => {
@@ -253,7 +280,7 @@ router.get('/', requireMainManager, async (req, res) => {
         };
       })
     );
-    
+
     res.json({
       success: true,
       data: notificationsWithStats
@@ -275,17 +302,17 @@ router.get('/', requireMainManager, async (req, res) => {
 router.get('/:id', requireMainManager, async (req, res) => {
   try {
     const notification = await Notification.findByIdWithDetails(parseInt(req.params.id));
-    
+
     if (!notification) {
       return res.status(404).json({
         success: false,
         message: 'الإشعار غير موجود'
       });
     }
-    
+
     // Get response statistics
     const stats = await NotificationResponse.getStatistics(notification.id);
-    
+
     res.json({
       success: true,
       data: {
@@ -310,7 +337,7 @@ router.get('/:id', requireMainManager, async (req, res) => {
 router.get('/branch/:branchId', async (req, res) => {
   try {
     const branchId = parseInt(req.params.branchId);
-    
+
     // Check access: branch managers can only access their own branch
     if (req.user.role === 'branch_manager' && req.user.branch_id !== branchId) {
       return res.status(403).json({
@@ -318,14 +345,14 @@ router.get('/branch/:branchId', async (req, res) => {
         message: 'غير مصرح لك بالوصول إلى هذا الفرع'
       });
     }
-    
+
     const filters = {
       importance_level: req.query.importance_level ? parseInt(req.query.importance_level) : undefined,
       response_status: req.query.response_status
     };
-    
+
     const notifications = await Notification.findByBranchId(branchId, filters, req.user.id);
-    
+
     res.json({
       success: true,
       data: notifications
@@ -352,14 +379,14 @@ router.get('/my-branch/notifications', async (req, res) => {
         message: 'هذا المسار متاح فقط لمديري الفروع'
       });
     }
-    
+
     const filters = {
       importance_level: req.query.importance_level ? parseInt(req.query.importance_level) : undefined,
       response_status: req.query.response_status
     };
-    
+
     const notifications = await Notification.findByBranchId(req.user.branch_id, filters, req.user.id);
-    
+
     res.json({
       success: true,
       data: notifications
@@ -383,7 +410,7 @@ router.post('/:id/respond', async (req, res) => {
   try {
     const notificationId = parseInt(req.params.id);
     const { response_status, response_message } = req.body;
-    
+
     // Validation
     if (!response_status || !['done', 'working_on_it', 'seen'].includes(response_status)) {
       return res.status(400).json({
@@ -391,7 +418,7 @@ router.post('/:id/respond', async (req, res) => {
         message: 'حالة الرد يجب أن تكون: done، working_on_it، أو seen'
       });
     }
-    
+
     // Check if user is branch manager
     if (req.user.role !== 'branch_manager' || !req.user.branch_id) {
       return res.status(403).json({
@@ -399,7 +426,7 @@ router.post('/:id/respond', async (req, res) => {
         message: 'فقط مديرو الفروع يمكنهم الرد على الإشعارات'
       });
     }
-    
+
     // Check if notification exists and is assigned to this branch
     const notification = await Notification.findById(notificationId);
     if (!notification) {
@@ -408,21 +435,21 @@ router.post('/:id/respond', async (req, res) => {
         message: 'الإشعار غير موجود'
       });
     }
-    
+
     // Verify notification is assigned to this branch
     const sql = (await import('../config/database.js')).default;
     const [assignment] = await sql`
       SELECT * FROM notification_branches 
       WHERE notification_id = ${notificationId} AND branch_id = ${req.user.branch_id}
     `;
-    
+
     if (!assignment) {
       return res.status(403).json({
         success: false,
         message: 'هذا الإشعار غير مخصص لفرعك'
       });
     }
-    
+
     // Create or update response
     const response = await NotificationResponse.createOrUpdate(
       notificationId,
@@ -432,7 +459,7 @@ router.post('/:id/respond', async (req, res) => {
         response_message: response_message ? response_message.trim() : null
       }
     );
-    
+
     res.json({
       success: true,
       message: 'تم حفظ الرد بنجاح',
@@ -456,7 +483,7 @@ router.put('/:id', requireMainManager, async (req, res) => {
   try {
     const notificationId = parseInt(req.params.id);
     const { message, importance_level } = req.body;
-    
+
     const updates = {};
     if (message !== undefined) updates.message = message.trim();
     if (importance_level !== undefined) {
@@ -468,23 +495,23 @@ router.put('/:id', requireMainManager, async (req, res) => {
       }
       updates.importance_level = parseInt(importance_level);
     }
-    
+
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({
         success: false,
         message: 'لا توجد حقول للتحديث'
       });
     }
-    
+
     const notification = await Notification.update(notificationId, updates);
-    
+
     if (!notification) {
       return res.status(404).json({
         success: false,
         message: 'الإشعار غير موجود'
       });
     }
-    
+
     res.json({
       success: true,
       message: 'تم تحديث الإشعار بنجاح',
@@ -507,14 +534,14 @@ router.put('/:id', requireMainManager, async (req, res) => {
 router.delete('/:id', requireMainManager, async (req, res) => {
   try {
     const notification = await Notification.delete(parseInt(req.params.id));
-    
+
     if (!notification) {
       return res.status(404).json({
         success: false,
         message: 'الإشعار غير موجود'
       });
     }
-    
+
     res.json({
       success: true,
       message: 'تم حذف الإشعار نهائياً من قاعدة البيانات',
@@ -537,7 +564,7 @@ router.delete('/:id', requireMainManager, async (req, res) => {
 router.post('/:id/mark-viewed', async (req, res) => {
   try {
     const notificationId = parseInt(req.params.id);
-    
+
     // Check if notification exists and is one-time
     const notification = await Notification.findById(notificationId);
     if (!notification) {
@@ -569,7 +596,7 @@ router.post('/:id/mark-viewed', async (req, res) => {
       SELECT * FROM notification_branches 
       WHERE notification_id = ${notificationId} AND branch_id = ${branchId}
     `;
-    
+
     if (!assignment) {
       return res.status(403).json({
         success: false,
@@ -579,7 +606,7 @@ router.post('/:id/mark-viewed', async (req, res) => {
 
     // Mark the branch as having seen this notification
     const result = await Notification.markBranchAsSeen(notificationId, branchId);
-    
+
     if (!result) {
       return res.status(500).json({
         success: false,
@@ -612,14 +639,14 @@ router.post('/:id/mark-viewed', async (req, res) => {
 router.patch('/:id/toggle-active', requireMainManager, async (req, res) => {
   try {
     const notification = await Notification.toggleActive(parseInt(req.params.id));
-    
+
     if (!notification) {
       return res.status(404).json({
         success: false,
         message: 'الإشعار غير موجود'
       });
     }
-    
+
     res.json({
       success: true,
       message: notification.is_active ? 'تم تفعيل الإشعار بنجاح' : 'تم إلغاء تفعيل الإشعار بنجاح',
