@@ -106,7 +106,8 @@ const BranchDocuments = () => {
 
   const loadDocuments = useCallback(async () => {
     // Safety check: Need a branch ID
-    if (!currentBranchId) {
+    const branchIdForLoad = getCurrentBranchId();
+    if (!branchIdForLoad) {
       return;
     }
 
@@ -115,12 +116,7 @@ const BranchDocuments = () => {
       const filters = {};
 
       // Handle branch filter from URL or user role
-      const branchIdFromUrl = searchParams.get('branch_id');
-      if (branchIdFromUrl) {
-        filters.branch_id = parseInt(branchIdFromUrl);
-      } else if (!isMainManager() && user?.branch_id) {
-        filters.branch_id = user.branch_id;
-      }
+      filters.branch_id = branchIdForLoad;
 
       const response = await branchDocumentsAPI.getAll(filters);
       if (response.data.success) {
@@ -148,7 +144,7 @@ const BranchDocuments = () => {
     } finally {
       setLoading(false);
     }
-  }, [searchParams, isMainManager, user, currentBranchId]);
+  }, [searchParams, isMainManager, user, getCurrentBranchId]);
 
   useEffect(() => {
     if (user) {
@@ -167,11 +163,12 @@ const BranchDocuments = () => {
 
   // Load documents when we have a branch ID
   useEffect(() => {
-    if (user && currentBranchId) {
+    const branchIdForLoad = getCurrentBranchId();
+    if (user && branchIdForLoad) {
       loadDocuments();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, currentBranchId]);
+  }, [user, getCurrentBranchId]);
 
   // Set all documents (no filtering needed since monthly documents are in separate page)
   useEffect(() => {
@@ -617,12 +614,10 @@ const BranchDocuments = () => {
     // Common documents with default fields (all branches)
     { value: 'civil_defense_certificate', label: 'شهادة الدفاع المدني', requiresDefaultFields: true, branchType: null },
     { value: 'municipality_certificate', label: 'شهادة بلدي', requiresDefaultFields: true, branchType: null },
-    // School-specific documents
-    { value: 'insurance_statement', label: 'كشف التأمينات', requiresDefaultFields: true, branchType: 'school' },
-    { value: 'rental_contract', label: 'عقد الايجار', requiresDefaultFields: true, branchType: 'school' },
-    // Healthcare center specific documents
-    { value: 'insurance_print', label: 'كشف التأمينات', requiresDefaultFields: true, branchType: 'healthcare_center' },
-    { value: 'rental_contract', label: 'عقد الايجار', requiresDefaultFields: true, branchType: 'healthcare_center' },
+    // School and healthcare (same document)
+    { value: 'insurance_statement', label: 'كشف التأمينات', requiresDefaultFields: true, branchType: null },
+    // School/healthcare specific documents
+    { value: 'rental_contract', label: 'عقد الايجار', requiresDefaultFields: true, branchType: null },
     { value: 'operational_plan', label: 'الخطة التشغلية للمركز', requiresDefaultFields: true, branchType: 'healthcare_center' },
     { value: 'owner_civil_id_copy', label: 'نسخه من هوية الاحوال الشخصية لمالك المركز', requiresDefaultFields: true, branchType: 'healthcare_center' },
     // Student-related documents for healthcare centers only (should appear in alerts)
@@ -690,8 +685,9 @@ const BranchDocuments = () => {
       branchId = user.branch_id;
     }
 
+    const normalizedType = docType === 'insurance_statement' ? ['insurance_statement', 'insurance_print'] : [docType];
     const doc = allDocuments.find(d =>
-      d.document_type === docType &&
+      normalizedType.includes(d.document_type) &&
       d.is_active !== false &&
       (!isMainManager() || d.branch_id === branchId)
     );
@@ -776,6 +772,16 @@ const BranchDocuments = () => {
       branchId = branchIdFromUrl;
     } else if (!isMainManager() && user?.branch_id) {
       branchId = user.branch_id;
+    }
+
+    if (isMainManager() && !branchId) {
+      showError('اختر الفرع أولاً قبل رفع المستند');
+      return;
+    }
+
+    if (!currentBranchType) {
+      showError('نوع الفرع غير معروف. يرجى اختيار فرع صالح ثم إعادة المحاولة');
+      return;
     }
 
     // Show alerts for specific document types

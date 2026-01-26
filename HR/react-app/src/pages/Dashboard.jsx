@@ -663,6 +663,7 @@ const Dashboard = () => {
     const seenAlerts = new Set(); // To prevent duplicates
     const missingDebug = [];
     const hasStoredFile = (doc) => !!(doc?.file_path || doc?.file_url || doc?.blob_url);
+    const normalizeDocType = (type) => (type === 'insurance_print' ? 'insurance_statement' : type);
 
     // Get document type labels from branch document type labels
     // This ensures consistency with the rule system
@@ -700,8 +701,9 @@ const Dashboard = () => {
 
       // Filter out monthly documents (they are handled separately)
       const nonMonthlyRequired = requiredDocTypes.filter(docType => !monthlyTypes.includes(docType));
+      const uniqueRequired = [...new Set(nonMonthlyRequired)];
 
-      for (const docType of nonMonthlyRequired) {
+      for (const docType of uniqueRequired) {
         // Create unique key to prevent duplicates
         const alertKey = `${branch.id}-${docType}`;
         if (seenAlerts.has(alertKey)) {
@@ -713,13 +715,13 @@ const Dashboard = () => {
         // Also check that document exists and has a stored file reference (file_path is the main one for branch docs)
         const branchDocs = documents.filter(
           doc => doc.branch_id === branch.id &&
-            doc.document_type === docType &&
+            normalizeDocType(doc.document_type) === docType &&
             doc.is_active !== false &&
             hasStoredFile(doc)
         );
 
         const allBranchDocsOfType = documents.filter(
-          doc => doc.branch_id === branch.id && doc.document_type === docType
+          doc => doc.branch_id === branch.id && normalizeDocType(doc.document_type) === docType
         );
 
         // Check if there are archived documents of this type (expired documents)
@@ -944,7 +946,7 @@ const Dashboard = () => {
           license: 'الترخيص',
           permit: 'التصريح',
           insurance: 'التأمين',
-          insurance_print: 'كشف التأمينات',
+          insurance_print: 'كشف التأمينات (رعاية)',
           contract: 'العقد',
           rental_contract: 'عقد الايجار',
           certification: 'الشهادة',
@@ -953,7 +955,7 @@ const Dashboard = () => {
           civil_defense_certificate: 'شهادة الدفاع المدني',
           municipality_certificate: 'شهادة بلدي',
           insurance_certificate: 'شهادة التامينات',
-          insurance_statement: 'كشف التأمينات',
+          insurance_statement: 'كشف التأمينات (مدارس)',
           operational_plan: 'الخطة التشغلية للمركز',
           owner_civil_id_copy: 'نسخه من هوية الاحوال الشخصية لمالك المركز',
           disclosure_commitment: 'افصاح و تعهد',

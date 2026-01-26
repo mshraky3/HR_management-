@@ -51,10 +51,10 @@ const isBusComplete = (bus) => {
  */
 const calculateBusTasks = (buses, branchId) => {
   const tasks = [];
-  
+
   // Filter buses for this branch
   const branchBuses = buses.filter(bus => bus.branch_id === branchId);
-  
+
   // Task 1: No buses at all
   if (branchBuses.length === 0) {
     tasks.push({
@@ -79,22 +79,22 @@ const calculateBusTasks = (buses, branchId) => {
 
   // Task 2: Check for incomplete buses
   const incompleteBuses = branchBuses.filter(bus => !isBusComplete(bus));
-  
+
   if (incompleteBuses.length > 0) {
     // Check specific missing fields
-    const missingStudentCount = incompleteBuses.filter(bus => 
+    const missingStudentCount = incompleteBuses.filter(bus =>
       bus.student_count === null || bus.student_count === undefined
     );
-    
-    const missingRegistration = incompleteBuses.filter(bus => 
+
+    const missingRegistration = incompleteBuses.filter(bus =>
       !bus.registration_number || !bus.registration_document_url
     );
-    
-    const missingDriver = incompleteBuses.filter(bus => 
+
+    const missingDriver = incompleteBuses.filter(bus =>
       !bus.driver_full_name || !bus.license_document_url
     );
-    
-    const missingDocuments = incompleteBuses.filter(bus => 
+
+    const missingDocuments = incompleteBuses.filter(bus =>
       !bus.registration_document_url || !bus.license_document_url ||
       (bus.ownership_type === 'leased' && !bus.lease_contract_document_url)
     );
@@ -223,7 +223,7 @@ const calculateBranchInfoTask = (branchInfo) => {
  */
 const calculateDocumentTasks = (documents, branches, branchId, monthlyAlerts, missingAlerts, expiringDocs) => {
   const tasks = [];
-  
+
   // Get branch
   const branch = branches.find(b => b.id === branchId);
   if (!branch) return tasks;
@@ -252,29 +252,29 @@ const calculateDocumentTasks = (documents, branches, branchId, monthlyAlerts, mi
 
   // Must Do: Combined missing and monthly documents
   const missingRequired = missingAlerts.filter(alert => alert.branchId === branchId);
-  const monthlyDue = monthlyAlerts.filter(alert => 
-    alert.branchId === branchId && 
+  const monthlyDue = monthlyAlerts.filter(alert =>
+    alert.branchId === branchId &&
     (alert.status === 'critical' || alert.status === 'must_do')
   );
-  
+
   // Debug logging to diagnose document count issue
   if (missingRequired.length > 0 || monthlyDue.length > 0) {
     console.log('[taskPrioritizer] Document tasks calculation:', {
       branchId,
       missingAlertsTotal: missingAlerts.length,
       missingRequired: missingRequired.length,
-      missingRequiredDetails: missingRequired.map(a => ({ 
-        branchId: a.branchId, 
-        type: a.documentType, 
+      missingRequiredDetails: missingRequired.map(a => ({
+        branchId: a.branchId,
+        type: a.documentType,
         label: a.documentLabel,
         message: a.message
       })),
       monthlyAlertsTotal: monthlyAlerts.length,
       monthlyDue: monthlyDue.length,
-      monthlyDueDetails: monthlyDue.map(a => ({ 
+      monthlyDueDetails: monthlyDue.map(a => ({
         branchId: a.branchId,
-        type: a.documentType, 
-        label: a.documentLabel, 
+        type: a.documentType,
+        label: a.documentLabel,
         status: a.status,
         message: a.message
       })),
@@ -282,25 +282,26 @@ const calculateDocumentTasks = (documents, branches, branchId, monthlyAlerts, mi
         id: d.id,
         type: d.document_type,
         is_active: d.is_active,
+        has_file_path: !!d.file_path,
         has_file_url: !!d.file_url,
         has_blob_url: !!d.blob_url
       }))
     });
   }
-  
+
   const totalDocuments = missingRequired.length + monthlyDue.length;
-  
+
   if (totalDocuments > 0) {
     // Determine priority: critical if any monthly is critical, otherwise must_do
     const hasCriticalMonthly = monthlyDue.some(a => a.status === 'critical');
     const priority = hasCriticalMonthly ? 'critical' : 'must_do';
-    
+
     // Determine urgency: due_soon if any monthly is critical, otherwise no_deadline
     const urgency = hasCriticalMonthly ? 'due_soon' : 'no_deadline';
-    
+
     // Build description - simplified: just show total count
     const description = `${totalDocuments} مستند`;
-    
+
     tasks.push({
       id: 'documents-branch',
       type: 'document',
@@ -321,7 +322,7 @@ const calculateDocumentTasks = (documents, branches, branchId, monthlyAlerts, mi
   }
 
   // Should Do: Documents expiring soon
-  const expiringSoon = expiringDocs.filter(doc => 
+  const expiringSoon = expiringDocs.filter(doc =>
     !doc.isExpired && doc.daysUntilExpiry <= 30
   );
   if (expiringSoon.length > 0) {
@@ -352,7 +353,7 @@ const calculateDocumentTasks = (documents, branches, branchId, monthlyAlerts, mi
  */
 const calculateEmployeeTasks = (incompleteEmployees) => {
   const tasks = [];
-  
+
   if (incompleteEmployees.length === 0) return tasks;
 
   tasks.push({
@@ -381,9 +382,9 @@ const calculateEmployeeTasks = (incompleteEmployees) => {
  */
 const calculateNotificationTasks = (notifications) => {
   const tasks = [];
-  
+
   const unresponded = notifications.filter(notif => !notif.response_status);
-  
+
   if (unresponded.length === 0) return tasks;
 
   tasks.push({
@@ -446,9 +447,9 @@ const calculateTotalSalary = (employee) => {
   const annualLeaveAllowance = parseFloat(employee.annual_leave_allowance || 0);
   const otherAllowances = parseFloat(employee.other_allowances || 0);
   const deductions = parseFloat(employee.deductions || 0);
-  
-  return baseSalary + housingAllowance + transportationAllowance + 
-         endOfServiceAllowance + annualLeaveAllowance + otherAllowances - deductions;
+
+  return baseSalary + housingAllowance + transportationAllowance +
+    endOfServiceAllowance + annualLeaveAllowance + otherAllowances - deductions;
 };
 
 /**
@@ -467,7 +468,7 @@ const calculateAddEmployeeTask = (branchInfo, employees = []) => {
   }
 
   // Count only active employees (status is null or 'active')
-  const activeEmployees = employees.filter(emp => 
+  const activeEmployees = employees.filter(emp =>
     !emp.status || emp.status === 'active'
   );
   const activeCount = activeEmployees.length;
@@ -508,7 +509,7 @@ const calculateSalaryReviewTask = (employees = []) => {
   }
 
   // Filter to only active employees
-  const activeEmployees = employees.filter(emp => 
+  const activeEmployees = employees.filter(emp =>
     !emp.status || emp.status === 'active'
   );
 
@@ -518,11 +519,11 @@ const calculateSalaryReviewTask = (employees = []) => {
 
   // Calculate total salary for each employee and identify issues
   const employeeList = [];
-  
+
   activeEmployees.forEach(employee => {
     const totalSalary = calculateTotalSalary(employee);
     let issueType = null;
-    
+
     // Check for low salary (<= 0 or < 1000)
     if (totalSalary <= 0 || totalSalary < 1000) {
       issueType = 'low';
@@ -531,7 +532,7 @@ const calculateSalaryReviewTask = (employees = []) => {
     else if (totalSalary >= 13000) {
       issueType = 'high';
     }
-    
+
     if (issueType) {
       employeeList.push({
         employee,
