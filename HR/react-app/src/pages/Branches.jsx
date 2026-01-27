@@ -19,6 +19,8 @@ const Branches = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingBranch, setEditingBranch] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
   const [formData, setFormData] = useState({
     branch_name: '',
     branch_location: '',
@@ -183,7 +185,13 @@ const Branches = () => {
       if (!editingBranch || !response?.data?.success) {
         loadBranches();
       }
-      showSuccess(editingBranch ? 'تم تحديث الفرع بنجاح' : 'تم إنشاء الفرع بنجاح');
+      const message = editingBranch ? 'تم تحديث الفرع بنجاح' : 'تم إنشاء الفرع بنجاح';
+      setSuccessMessage(message);
+      setShowSuccessAnimation(true);
+      setTimeout(() => {
+        setShowSuccessAnimation(false);
+        showSuccess(message);
+      }, 2000);
     } catch (error) {
       showError(error.response?.data?.message || 'فشل حفظ الفرع');
     }
@@ -236,7 +244,18 @@ const Branches = () => {
   };
 
   if (loading) {
-    return <div className="loading">جاري تحميل الفروع...</div>;
+    return (
+      <div className="table-page">
+        <div className="page-header">
+          <h1>{جاري التحميل...}</h1>
+        </div>
+        <div style={{ padding: 'var(--spacing-xl)' }}>
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="skeleton skeleton-branch-row" style={{ animationDelay: `${i * 0.1}s` }}></div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -282,8 +301,8 @@ const Branches = () => {
       )}
 
       {showForm && isMainManager() && (
-        <div className="modal">
-          <div className="modal-content">
+        <div className="modal modal-animated">
+          <div className="modal-content modal-slide-up">
             <h2>{editingBranch ? 'تعديل الفرع' : 'إنشاء فرع جديد'}</h2>
             <form onSubmit={handleSubmit}>
               <div className="form-row">
@@ -428,8 +447,8 @@ const Branches = () => {
                 <td colSpan={isMainManager() ? "7" : "6"} style={{ textAlign: 'center' }}>لم يتم العثور على فروع</td>
               </tr>
             ) : (
-              branches.map((branch) => (
-                <tr key={branch.id}>
+              branches.map((branch, index) => (
+                <tr key={branch.id} className="branch-row" style={{ animationDelay: `${index * 0.05}s` }}>
                   <td><BranchBadge branch={branch} showName={true} /></td>
                   <td>{branch.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية'}</td>
                   <td>{branch.branch_location}</td>
@@ -469,6 +488,16 @@ const Branches = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Success Animation */}
+      {showSuccessAnimation && (
+        <div className="success-overlay">
+          <div className="success-card">
+            <div className="success-icon"></div>
+            <div className="success-message">{successMessage}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

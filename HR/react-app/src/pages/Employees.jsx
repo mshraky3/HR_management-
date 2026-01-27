@@ -695,6 +695,30 @@ const Employees = () => {
         setSaving(false);
         return;
       }
+
+      // Validate IBAN format (SA + 22 digits = 24 characters)
+      if (formData.bank_iban) {
+        const cleanIBAN = formData.bank_iban.replace(/\s/g, '').toUpperCase();
+
+        if (!cleanIBAN.startsWith('SA')) {
+          showWarning("رقم الآيبان يجب أن يبدأ بـ SA");
+          setSaving(false);
+          return;
+        }
+
+        if (cleanIBAN.length !== 24) {
+          showWarning(`رقم الآيبان غير صحيح. يجب أن يحتوي على SA متبوعة بـ 22 رقم (إجمالي 24 حرف). الطول الحالي: ${cleanIBAN.length}`);
+          setSaving(false);
+          return;
+        }
+
+        const numbers = cleanIBAN.substring(2);
+        if (!/^\d{22}$/.test(numbers)) {
+          showWarning("رقم الآيبان يجب أن يحتوي على SA متبوعة بـ 22 رقم فقط");
+          setSaving(false);
+          return;
+        }
+      }
     }
 
     // Validate only truly required fields (name, ID, nationality, contact info, bank info, national address)

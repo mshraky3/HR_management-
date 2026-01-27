@@ -22,6 +22,7 @@ import DashboardProgress from './DashboardProgress';
 import MissingEmployeeDataSection from '../components/MissingEmployeeDataSection.jsx';
 import PayrollAbsenceBranchSection from '../components/PayrollAbsenceBranchSection.jsx';
 import SalaryReviewSection from '../components/SalaryReviewSection.jsx';
+import IBANReviewSection from '../components/IBANReviewSection.jsx';
 import TaskProgressOverview from '../components/TaskProgressOverview';
 import FocusTaskCard from '../components/FocusTaskCard';
 import TaskQueue from '../components/TaskQueue';
@@ -1419,6 +1420,14 @@ const Dashboard = () => {
                       {currentTask.type === 'salary_review' && (
                         <TaskCardWrapper key={currentTask.id} task={currentTask} defaultExpanded={true}>
                           <SalaryReviewSection
+                            employeeList={currentTask.employeeList || []}
+                            onComplete={() => handleTaskComplete(currentTask.id)}
+                          />
+                        </TaskCardWrapper>
+                      )}
+                      {currentTask.type === 'iban_review' && (
+                        <TaskCardWrapper key={currentTask.id} task={currentTask} defaultExpanded={true}>
+                          <IBANReviewSection
                             employeeList={currentTask.employeeList || []}
                             onComplete={() => handleTaskComplete(currentTask.id)}
                           />

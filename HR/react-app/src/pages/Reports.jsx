@@ -81,6 +81,8 @@ const Reports = () => {
     const [generating, setGenerating] = useState(false);
     const [generatingExcel, setGeneratingExcel] = useState(false);
     const [reportTitle, setReportTitle] = useState('التقارير');
+    const [generationProgress, setGenerationProgress] = useState(0);
+    const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
 
     // File type and document selection
     const [fileType, setFileType] = useState('pdf');
@@ -643,6 +645,15 @@ const Reports = () => {
             setGenerating(fileTypeToUse === 'pdf');
             setGeneratingExcel(fileTypeToUse === 'excel');
             setIsGeneratingOverlay(true);
+            setGenerationProgress(0);
+
+            // Simulate progress
+            const progressInterval = setInterval(() => {
+                setGenerationProgress(prev => {
+                    if (prev >= 90) return prev;
+                    return prev + Math.random() * 15;
+                });
+            }, 300);
 
             if (!reportTitle.trim()) {
                 showWarning('الرجاء إدخال عنوان التقرير');
@@ -727,6 +738,9 @@ const Reports = () => {
                 responseType: 'blob'
             });
 
+            clearInterval(progressInterval);
+            setGenerationProgress(100);
+
             const mimeType = finalFileType === 'excel'
                 ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                 : 'application/pdf';
@@ -744,14 +758,20 @@ const Reports = () => {
             document.body.removeChild(link);
             window.URL.revokeObjectURL(url);
 
-            showSuccess(`تم إنشاء التقرير بنجاح`);
+            setShowSuccessAnimation(true);
+            setTimeout(() => {
+                setShowSuccessAnimation(false);
+                showSuccess(`تم إنشاء التقرير بنجاح`);
+            }, 2000);
         } catch (error) {
+            clearInterval(progressInterval);
             console.error('Error generating report:', error);
             showError(error.response?.data?.message || 'فشل إنشاء التقرير');
         } finally {
             setGenerating(false);
             setGeneratingExcel(false);
             setIsGeneratingOverlay(false);
+            setGenerationProgress(0);
         }
     };
 
@@ -1504,8 +1524,11 @@ const Reports = () => {
 
                     {previewLoading ? (
                         <div className="loading">
-                            <div className="loading-progress">{loadingProgress}%</div>
-                            <div className="loading-text">جاري التحميل...</div>
+                            <div className="skeleton-rows">
+                                {[...Array(8)].map((_, i) => (
+                                    <div key={i} className="skeleton skeleton-row" style={{ animationDelay: `${i * 0.05}s` }}></div>
+                                ))}
+                            </div>
                         </div>
                     ) : (
                         <div className="preview-table-wrapper">
@@ -1624,9 +1647,34 @@ const Reports = () => {
                 {isGeneratingOverlay && (
                     <div className="generating-overlay">
                         <div className="generating-content">
-                            <div className="spinner-large"></div>
-                            <div className="generating-text">جاري إنشاء الملف، الرجاء الانتظار...</div>
-                            <div className="generating-progress">{loadingProgress}%</div>
+                            <div className="progress-container">
+                                <div className="progress-header">
+                                    <span className="progress-title">جاري إنشاء التقرير</span>
+                                    <span className="progress-percentage">{Math.round(generationProgress)}%</span>
+                                </div>
+                                <div className="progress-bar">
+                                    <div className="progress-bar-fill" style={{ width: `${generationProgress}%` }}>
+                                        {generationProgress > 20 && `${Math.round(generationProgress)}%`}
+                                    </div>
+                                </div>
+                                <div className="progress-status">
+                                    {generationProgress < 30 && 'جاري تجهيز البيانات...'}
+                                    {generationProgress >= 30 && generationProgress < 60 && 'جاري معالجة الموظفين...'}
+                                    {generationProgress >= 60 && generationProgress < 90 && 'جاري إنشاء المستند...'}
+                                    {generationProgress >= 90 && 'جاري الانتهاء...'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Success Animation */}
+                {showSuccessAnimation && (
+                    <div className="success-overlay">
+                        <div className="success-card">
+                            <div className="success-icon"></div>
+                            <div className="success-message">تم إنشاء التقرير بنجاح!</div>
+                            <div className="success-submessage">جاري تحميل الملف...</div>
                         </div>
                     </div>
                 )}

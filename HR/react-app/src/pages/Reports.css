@@ -143,6 +143,217 @@
     }
 }
 
+/* Skeleton Loaders */
+@keyframes shimmer {
+    0% {
+        background-position: -1000px 0;
+    }
+
+    100% {
+        background-position: 1000px 0;
+    }
+}
+
+.skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite linear;
+    border-radius: var(--radius-md);
+}
+
+.skeleton-row {
+    height: 48px;
+    margin-bottom: 8px;
+    border-radius: var(--radius-md);
+}
+
+.skeleton-text {
+    height: 20px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 8px;
+}
+
+.skeleton-text.short {
+    width: 60%;
+}
+
+.skeleton-text.long {
+    width: 90%;
+}
+
+/* Smooth Dropdown Transitions */
+.dropdown-content,
+.filters-dropdown,
+.fields-dropdown,
+.branches-dropdown {
+    transform-origin: top;
+    animation: dropdownSlide 0.2s ease-out;
+}
+
+@keyframes dropdownSlide {
+    from {
+        opacity: 0;
+        transform: translateY(-10px) scaleY(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scaleY(1);
+    }
+}
+
+/* Progress Indicator */
+.progress-container {
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-md);
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    border-radius: var(--radius-lg);
+    border: 2px solid #38bdf8;
+}
+
+.progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-sm);
+}
+
+.progress-title {
+    font-weight: 600;
+    color: #0369a1;
+    font-size: var(--font-size-base);
+}
+
+.progress-percentage {
+    font-weight: 700;
+    color: #0369a1;
+    font-size: 1.25rem;
+}
+
+.progress-bar {
+    height: 24px;
+    background: #e0f2fe;
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0ea5e9 0%, #38bdf8 50%, #0ea5e9 100%);
+    background-size: 200% 100%;
+    border-radius: 999px;
+    transition: width 0.3s ease;
+    animation: progressShine 2s infinite linear;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 12px;
+    color: white;
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+@keyframes progressShine {
+    0% {
+        background-position: 0% 0%;
+    }
+
+    100% {
+        background-position: 200% 0%;
+    }
+}
+
+.progress-status {
+    margin-top: var(--spacing-xs);
+    color: #075985;
+    font-size: var(--font-size-sm);
+    text-align: center;
+}
+
+/* Success Animation */
+@keyframes successPulse {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+
+    50% {
+        transform: scale(1.1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.success-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: fadeIn 0.3s ease;
+}
+
+.success-card {
+    background: white;
+    padding: var(--spacing-xl);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    text-align: center;
+    animation: successPulse 0.5s ease;
+}
+
+.success-icon {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto var(--spacing-md);
+    animation: successPulse 0.6s ease 0.2s both;
+}
+
+.success-icon::after {
+    content: '✓';
+    color: white;
+    font-size: 3rem;
+    font-weight: bold;
+}
+
+.success-message {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: var(--spacing-sm);
+}
+
+.success-submessage {
+    color: var(--text-secondary);
+    font-size: var(--font-size-base);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
 /* Header with icon and summary badge */
 .section-header-with-icon {
     display: flex;

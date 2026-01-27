@@ -198,18 +198,179 @@
 .payroll-actions {
   display: flex;
   gap: var(--spacing-md);
-  align-items: flex-start;
-  flex-wrap: wrap;
-  margin-top: var(--spacing-lg);
-  padding: var(--spacing-lg);
-  background: var(--bg-secondary);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-light);
-  position: relative;
-  z-index: 2;
 }
 
-.payroll-actions > div {
+/* Skeleton Loaders */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite linear;
+  border-radius: var(--radius-md);
+}
+
+.skeleton-branch-row {
+  height: 60px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-lg);
+}
+
+/* Accordion Animations */
+@keyframes accordionSlide {
+  from {
+    opacity: 0;
+    max-height: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    max-height: 1000px;
+    transform: translateY(0);
+  }
+}
+
+.branch-details-expanded {
+  animation: accordionSlide 0.3s ease-out;
+  overflow: hidden;
+}
+
+/* Status Badge Transition */
+.tag {
+  transition: all 0.2s ease;
+}
+
+.tag:hover {
+  transform: scale(1.05);
+}
+
+/* Button Pulse on Action */
+@keyframes buttonPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(73, 136, 196, 0.7);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgba(73, 136, 196, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(73, 136, 196, 0);
+  }
+}
+
+.btn:active {
+  animation: buttonPulse 0.5s ease;
+}
+
+/* Success Animation */
+@keyframes successPulse {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.success-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.3s ease;
+}
+
+.success-card {
+  background: white;
+  padding: var(--spacing-xl);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  animation: successPulse 0.5s ease;
+}
+
+.success-icon {
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--spacing-md);
+  animation: successPulse 0.6s ease 0.2s both;
+}
+
+.success-icon::after {
+  content: '✓';
+  color: white;
+  font-size: 3rem;
+  font-weight: bold;
+}
+
+.success-message {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: var(--spacing-sm);
+}
+
+/* Row Hover Effect */
+.branch-row {
+  transition: all 0.2s ease;
+}
+
+.branch-row:hover {
+  transform: translateX(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+align-items: flex-start;
+flex-wrap: wrap;
+margin-top: var(--spacing-lg);
+padding: var(--spacing-lg);
+background: var(--bg-secondary);
+border-radius: var(--radius-lg);
+border: 1px solid var(--border-light);
+position: relative;
+z-index: 2;
+}
+
+.payroll-actions>div {
   flex: 1;
   min-width: 200px;
 }
@@ -355,7 +516,7 @@
 }
 
 /* Loading State */
-.payroll-absence-page > div:first-child {
+.payroll-absence-page>div:first-child {
   text-align: center;
   padding: var(--spacing-2xl);
   color: var(--text-light);
@@ -429,7 +590,7 @@
     flex-direction: column;
   }
 
-  .payroll-actions > div {
+  .payroll-actions>div {
     width: 100%;
   }
 

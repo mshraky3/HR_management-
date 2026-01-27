@@ -47,6 +47,8 @@ const PayrollAbsenceAdmin = () => {
   const [reopenUntil, setReopenUntil] = useState('');
   const [expandedBranches, setExpandedBranches] = useState(new Set());
   const [branchEntries, setBranchEntries] = useState({});
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const loadCycles = async () => {
     setLoading(true);
@@ -128,7 +130,12 @@ const PayrollAbsenceAdmin = () => {
         note: reopenNote || null,
         manual_expires_at: reopenUntil || null
       });
-      setSuccess('تم فتح الفروع المختارة لإعادة الإدخال');
+      setSuccessMessage('تم فتح الفروع المختارة لإعادة الإدخال');
+      setShowSuccessAnimation(true);
+      setTimeout(() => {
+        setShowSuccessAnimation(false);
+        setSuccess('تم فتح الفروع المختارة لإعادة الإدخال');
+      }, 2000);
       await loadBranches(selectedCycleId);
     } catch (err) {
       setError(err?.response?.data?.message || 'فشل إعادة الفتح');
@@ -147,7 +154,12 @@ const PayrollAbsenceAdmin = () => {
         cycle_id: selectedCycleId,
         branch_ids: Array.from(selectedBranches)
       });
-      setSuccess('تم إغلاق الإدخال للفروع المختارة');
+      setSuccessMessage('تم إغلاق الإدخال للفروع المختارة');
+      setShowSuccessAnimation(true);
+      setTimeout(() => {
+        setShowSuccessAnimation(false);
+        setSuccess('تم إغلاق الإدخال للفروع المختارة');
+      }, 2000);
       await loadBranches(selectedCycleId);
     } catch (err) {
       setError(err?.response?.data?.message || 'فشل إغلاق الإدخال');
@@ -311,8 +323,10 @@ const PayrollAbsenceAdmin = () => {
         </div>
 
         {loading ? (
-          <div className="helper-text" style={{ textAlign: 'center', padding: 'var(--spacing-2xl)' }}>
-            جاري التحميل...
+          <div style={{ padding: 'var(--spacing-xl)' }}>
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="skeleton skeleton-branch-row" style={{ animationDelay: `${i * 0.1}s` }}></div>
+            ))}
           </div>
         ) : (
           <div style={{ position: 'relative', zIndex: 2 }}>
@@ -341,7 +355,7 @@ const PayrollAbsenceAdmin = () => {
                   const st = statusLabel(b.status);
                   return (
                     <>
-                      <tr key={b.branch_id}>
+                      <tr key={b.branch_id} className="branch-row">
                         <td>
                           <input
                             type="checkbox"
@@ -367,18 +381,18 @@ const PayrollAbsenceAdmin = () => {
                       {expandedBranches.has(b.branch_id) && (
                         <tr>
                           <td colSpan={7}>
-                            <div className="state-block">
+                            <div className="state-block branch-details-expanded">
                               <div className="state-title">تفاصيل الموظفين</div>
                               {branchEntries[b.branch_id]?.entries?.length ? (
                                 <table className="payroll-table" style={{ marginTop: 'var(--spacing-md)' }}>
                                   <thead>
                                     <tr>
-                                    <th>الموظف</th>
-                                    <th>رقم الهوية</th>
-                                    <th>ايام الغياب بعذر</th>
-                                    <th>ايام الغياب بدون عذر</th>
-                                    <th>إجمالي الغياب</th>
-                                    <th>ملاحظات</th>
+                                      <th>الموظف</th>
+                                      <th>رقم الهوية</th>
+                                      <th>ايام الغياب بعذر</th>
+                                      <th>ايام الغياب بدون عذر</th>
+                                      <th>إجمالي الغياب</th>
+                                      <th>ملاحظات</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -409,6 +423,16 @@ const PayrollAbsenceAdmin = () => {
           </div>
         )}
       </div>
+
+      {/* Success Animation */}
+      {showSuccessAnimation && (
+        <div className="success-overlay">
+          <div className="success-card">
+            <div className="success-icon"></div>
+            <div className="success-message">{successMessage}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

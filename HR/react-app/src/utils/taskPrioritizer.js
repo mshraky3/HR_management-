@@ -299,8 +299,21 @@ const calculateDocumentTasks = (documents, branches, branchId, monthlyAlerts, mi
     // Determine urgency: due_soon if any monthly is critical, otherwise no_deadline
     const urgency = hasCriticalMonthly ? 'due_soon' : 'no_deadline';
 
-    // Build description - simplified: just show total count
-    const description = `${totalDocuments} مستند`;
+    // Build human-friendly description showing missing document names in Arabic
+    const docLabels = [...missingRequired, ...monthlyDue]
+      .map(a => a.documentLabel)
+      .filter(Boolean);
+
+    const uniqueLabels = Array.from(new Set(docLabels));
+
+    let description = `${totalDocuments} مستند`;
+    if (uniqueLabels.length > 0) {
+      const preview = uniqueLabels.slice(0, 3).join('، ');
+      const extraCount = Math.max(0, uniqueLabels.length - 3);
+      description = extraCount > 0
+        ? `${preview} ... (${extraCount} مستند إضافي)`
+        : preview;
+    }
 
     tasks.push({
       id: 'documents-branch',
@@ -583,6 +596,108 @@ const calculateSalaryReviewTask = (employees = []) => {
 };
 
 /**
+ * Validate IBAN format (SA + 22 digits)
+ */
+const validateIBAN = (iban) => {
+  if (!iban || typeof iban !== 'string') {
+    return { valid: false, issueType: 'missing' };
+  }
+
+  // Remove spaces and convert to uppercase
+  const cleanIBAN = iban.replace(/\s/g, '').toUpperCase();
+
+  // Check if starts with SA
+  if (!cleanIBAN.startsWith('SA')) {
+    return { valid: false, issueType: 'invalid_format' };
+  }
+
+  // Check total length (SA + 22 digits = 24 characters)
+  if (cleanIBAN.length !== 24) {
+    return { valid: false, issueType: 'short' };
+  }
+
+  // Check if the remaining 22 characters are all digits
+  const numbers = cleanIBAN.substring(2);
+  if (!/^\d{22}$/.test(numbers)) {
+    return { valid: false, issueType: 'invalid_format' };
+  }
+
+  return { valid: true };
+};
+
+/**
+ * Calculate IBAN review task (employees with invalid IBAN numbers)
+ */
+const calculateIBANReviewTask = (employees = []) => {
+  if (!employees || employees.length === 0) {
+    return null;
+  }
+
+  // Filter to only active employees
+  const activeEmployees = employees.filter(emp =>
+    !emp.status || emp.status === 'active'
+  );
+
+  if (activeEmployees.length === 0) {
+    return null;
+  }
+
+  // Find employees with invalid IBANs
+  const employeeList = [];
+
+  activeEmployees.forEach(employee => {
+    const validation = validateIBAN(employee.bank_iban);
+
+    if (!validation.valid) {
+      employeeList.push({
+        employee,
+        iban: employee.bank_iban || '',
+        issueType: validation.issueType,
+        employeeName: getEmployeeFullName(employee)
+      });
+    }
+  });
+
+  // Only create task if there are employees with IBAN issues
+  if (employeeList.length === 0) {
+    return null;
+  }
+
+  const missingCount = employeeList.filter(item => item.issueType === 'missing').length;
+  const invalidCount = employeeList.filter(item => item.issueType !== 'missing').length;
+
+  // Build description
+  let description = '';
+  if (missingCount > 0 && invalidCount > 0) {
+    description = `${missingCount} موظف بدون آيبان، ${invalidCount} موظف بآيبان غير صحيح`;
+  } else if (missingCount > 0) {
+    description = `${missingCount} موظف بحاجة إلى إضافة رقم الآيبان`;
+  } else {
+    description = `${invalidCount} موظف بآيبان غير صحيح يحتاج تصحيح`;
+  }
+
+  return {
+    id: 'employee-iban-review',
+    type: 'iban_review',
+    category: 'employees',
+    priority: 'should_do',
+    title: 'مراجعة أرقام الآيبان',
+    description: description,
+    totalItems: employeeList.length,
+    completedItems: 0,
+    remainingItems: employeeList.length,
+    progress: 0,
+    actionUrl: '/employees',
+    actionLabel: 'عرض الموظفين',
+    urgency: 'no_deadline',
+    estimatedTime: '5 min',
+    dependencies: [],
+    hasInlineEditor: true,
+    employeeList: employeeList
+  };
+};
+
+/**
  * Calculate payroll absence task
  */
 const calculatePayrollAbsenceTask = (payrollAbsenceState) => {
@@ -737,6 +852,10 @@ export const calculateTasks = ({
   const salaryReviewTask = calculateSalaryReviewTask(employees);
   if (salaryReviewTask) tasks.push(salaryReviewTask);
 
+  // 2.7. IBAN Review Task - Employees with invalid IBAN numbers
+  const ibanReviewTask = calculateIBANReviewTask(employees);
+  if (ibanReviewTask) tasks.push(ibanReviewTask);
+
   // 3. Employees (Must Do) - Employee related, comes before bus
   const employeeTasks = calculateEmployeeTasks(incompleteEmployees);
   tasks.push(...employeeTasks);
@@ -832,3 +951,8 @@ export const getCategoryLabel = (category) => {
   };
   return labels[category] || category;
 };
+
+/**
+ * Export IBAN validation function for reuse
+ */
+export { validateIBAN };
