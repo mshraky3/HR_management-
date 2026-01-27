@@ -7,6 +7,9 @@ import express from 'express';
 import Suggestion from '../models/Suggestion.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireMainManager } from '../middleware/authorization.js';
+import { sendNotificationEmail } from '../utils/emailService.js';
+import { User } from '../models/User.js';
+import { Branch } from '../models/Branch.js';
 
 const router = express.Router();
 
@@ -197,6 +200,40 @@ router.post('/', async (req, res) => {
             suggestion_text: suggestion_text.trim(),
             importance_level: importance_level || 'useful'
         });
+
+        // Send email notification to main managers
+        try {
+            const branch = await Branch.findById(branch_id);
+            const branchName = branch ? branch.branch_name : 'غير محدد';
+            const managerName = req.user.full_name || req.user.username;
+            const importanceLabel = Suggestion.getImportanceLevels()[importance_level || 'useful'];
+            const mainManagerEmail = 'Sharaksa@gmail.com';
+
+            console.log('Sending suggestion email', {
+                to: mainManagerEmail,
+                branch: branchName,
+                importance: importanceLabel
+            });
+
+            const emailResult = await sendNotificationEmail({
+                to: mainManagerEmail,
+                subject: `اقتراح جديد من ${branchName}`,
+                message: `تم تلقي اقتراح جديد من ${managerName} بمستوى أهمية: ${importanceLabel}`,
+                notificationType: 'new_suggestion',
+                appUrl: `${process.env.REACT_APP_URL || 'https://hr-react-theta.vercel.app'}/suggestions`,
+                data: {
+                    'الفرع': branchName,
+                    'المرسل': managerName,
+                    'مستوى الأهمية': importanceLabel,
+                    'الاقتراح': suggestion_text.substring(0, 100) + (suggestion_text.length > 100 ? '...' : '')
+                }
+            });
+
+            console.log('Suggestion email result', { emailResult });
+        } catch (emailError) {
+            console.error('Error sending suggestion notification email:', emailError);
+            // Don't fail the request if email fails
+        }
 
         res.status(201).json({
             success: true,

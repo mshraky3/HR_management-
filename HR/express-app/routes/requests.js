@@ -9,9 +9,11 @@ import { authenticate } from '../middleware/auth.js';
 import { requireMainManager } from '../middleware/authorization.js';
 import { Request } from '../models/Request.js';
 import { Branch } from '../models/Branch.js';
+import { User } from '../models/User.js';
 import { uploadSingle } from '../middleware/upload.js';
 import { uploadRequestAttachmentToBlob } from '../utils/blobStorage.js';
 import { fixFilenameEncoding } from '../utils/fileUpload.js';
+import { sendNotificationEmail } from '../utils/emailService.js';
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
 
@@ -31,7 +33,7 @@ router.get('/main-managers', async (req, res) => {
       role: 'main_manager',
       is_active: true
     });
-    
+
     res.json({
       success: true,
       data: managers
@@ -54,7 +56,7 @@ router.get('/main-managers', async (req, res) => {
 router.post('/', uploadSingle, async (req, res) => {
   try {
     const { main_manager_id, employee_id, request_name, request_text } = req.body;
-    
+
     // Validation
     if (!main_manager_id || !request_name || !request_text) {
       return res.status(400).json({
@@ -62,7 +64,7 @@ router.post('/', uploadSingle, async (req, res) => {
         message: 'معرف المدير الرئيسي واسم الطلب ونص الطلب مطلوبة'
       });
     }
-    
+
     // Branch managers can only create requests for their branch
     if (req.user.role !== 'branch_manager' || !req.user.branch_id) {
       return res.status(403).json({
@@ -70,7 +72,7 @@ router.post('/', uploadSingle, async (req, res) => {
         message: 'يمكن لمديري الفروع فقط إنشاء الطلبات'
       });
     }
-    
+
     // Validate main manager exists and is active
     const { User } = await import('../models/User.js');
     const mainManager = await User.findById(parseInt(main_manager_id));
@@ -80,7 +82,7 @@ router.post('/', uploadSingle, async (req, res) => {
         message: 'المدير الرئيسي المحدد غير صحيح'
       });
     }
-    
+
     // Validate employee if provided
     if (employee_id) {
       const { Employee } = await import('../models/Employee.js');
@@ -92,7 +94,7 @@ router.post('/', uploadSingle, async (req, res) => {
         });
       }
     }
-    
+
     // Create request without attachment first
     const request = await Request.create({
       branch_id: req.user.branch_id,
@@ -104,12 +106,12 @@ router.post('/', uploadSingle, async (req, res) => {
       attachment_name: null,
       attachment_type: null
     });
-    
+
     // Upload file if provided
     let attachmentUrl = null;
     let attachmentName = null;
     let attachmentType = null;
-    
+
     if (req.file) {
       try {
         const fixedFileName = fixFilenameEncoding(req.file.originalname);
@@ -121,7 +123,7 @@ router.post('/', uploadSingle, async (req, res) => {
         );
         attachmentName = fixedFileName;
         attachmentType = req.file.mimetype;
-        
+
         // Update request with attachment info
         await sql`
           UPDATE requests 
@@ -135,10 +137,46 @@ router.post('/', uploadSingle, async (req, res) => {
         // Don't fail the request creation if upload fails
       }
     }
-    
+
     // Fetch updated request
     const updatedRequest = await Request.findById(request.id);
-    
+
+    // Send email notification to main manager
+    try {
+      const branch = await Branch.findById(req.user.branch_id);
+      const branchName = branch ? branch.branch_name : 'غير محدد';
+      const requesterName = req.user.full_name || req.user.username;
+      const mainManagerEmail = 'Sharaksa@gmail.com';
+
+      log.info('Sending request notification email', {
+        to: mainManagerEmail,
+        branch: branchName,
+        requesterName: requesterName
+      });
+
+      const emailResult = await sendNotificationEmail({
+        to: mainManagerEmail,
+        subject: `طلب جديد من ${branchName}`,
+        message: `تلقيت طلب جديد من ${requesterName} بخصوص: ${request_name}`,
+        notificationType: 'new_request',
+        appUrl: `${process.env.REACT_APP_URL || 'https://hr-react-theta.vercel.app'}/manage-requests`,
+        data: {
+          'الفرع': branchName,
+          'المرسل': requesterName,
+          'عنوان الطلب': request_name,
+          'التفاصيل': request_text.substring(0, 100) + (request_text.length > 100 ? '...' : '')
+        }
+      });
+
+      log.info('Request notification email result', { emailResult });
+    } catch (emailError) {
+      log.error('Error sending request notification email', {
+        error: emailError.message,
+        stack: emailError.stack
+      });
+      // Don't fail the request creation if email fails
+    }
+
     res.status(201).json({
       success: true,
       message: 'تم إرسال الطلب بنجاح',
@@ -165,7 +203,7 @@ router.post('/', uploadSingle, async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     let filters = {};
-    
+
     if (req.user.role === 'branch_manager') {
       // Branch managers see only their branch's requests
       filters.branch_id = req.user.branch_id;
@@ -178,17 +216,17 @@ router.get('/', async (req, res) => {
         message: 'تم رفض الوصول'
       });
     }
-    
+
     if (req.query.status) {
       filters.status = req.query.status;
     }
-    
+
     if (req.query.employee_id) {
       filters.employee_id = parseInt(req.query.employee_id);
     }
-    
+
     const requests = await Request.findAll(filters);
-    
+
     res.json({
       success: true,
       data: requests
@@ -210,14 +248,14 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const request = await Request.findById(parseInt(req.params.id));
-    
+
     if (!request) {
       return res.status(404).json({
         success: false,
         message: 'الطلب غير موجود'
       });
     }
-    
+
     // Check access
     if (req.user.role === 'branch_manager') {
       if (request.branch_id !== req.user.branch_id) {
@@ -239,7 +277,7 @@ router.get('/:id', async (req, res) => {
         message: 'تم رفض الوصول'
       });
     }
-    
+
     res.json({
       success: true,
       data: request
@@ -262,14 +300,14 @@ router.get('/:id', async (req, res) => {
 router.put('/:id/respond', requireMainManager, uploadSingle, async (req, res) => {
   try {
     const { status, response_text } = req.body;
-    
+
     if (!status) {
       return res.status(400).json({
         success: false,
         message: 'الحالة مطلوبة'
       });
     }
-    
+
     const validStatuses = ['approved', 'rejected', 'in_progress', 'completed'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
@@ -277,16 +315,16 @@ router.put('/:id/respond', requireMainManager, uploadSingle, async (req, res) =>
         message: `يجب أن تكون الحالة واحدة من: ${validStatuses.join(', ')}`
       });
     }
-    
+
     const request = await Request.findById(parseInt(req.params.id));
-    
+
     if (!request) {
       return res.status(404).json({
         success: false,
         message: 'الطلب غير موجود'
       });
     }
-    
+
     // Check if request is assigned to this main manager
     if (request.main_manager_id !== req.user.id) {
       return res.status(403).json({
@@ -294,12 +332,12 @@ router.put('/:id/respond', requireMainManager, uploadSingle, async (req, res) =>
         message: 'يمكنك فقط الرد على الطلبات المخصصة لك'
       });
     }
-    
+
     // Upload response attachment if provided
     let responseAttachmentUrl = null;
     let responseAttachmentName = null;
     let responseAttachmentType = null;
-    
+
     if (req.file) {
       try {
         const fixedFileName = fixFilenameEncoding(req.file.originalname);
@@ -316,23 +354,58 @@ router.put('/:id/respond', requireMainManager, uploadSingle, async (req, res) =>
         // Don't fail the response if upload fails
       }
     }
-    
+
     // Update request
     const updateData = {
       status,
       response_text: response_text || null,
       responded_by: req.user.id
     };
-    
+
     if (responseAttachmentUrl) {
       updateData.response_attachment_url = responseAttachmentUrl;
       updateData.response_attachment_name = responseAttachmentName;
       updateData.response_attachment_type = responseAttachmentType;
     }
-    
+
     const updatedRequest = await Request.update(parseInt(req.params.id), updateData);
-    
-    
+
+    // Send email notification to branch manager
+    try {
+      const branchManager = await User.findById(request.created_by);
+      const branch = await Branch.findById(request.branch_id);
+      const branchName = branch ? branch.branch_name : 'غير محدد';
+      const managerName = req.user.full_name || req.user.username;
+
+      // Map status to Arabic
+      const statusLabels = {
+        'approved': 'موافق عليه',
+        'rejected': 'مرفوض',
+        'in_progress': 'قيد المعالجة',
+        'completed': 'مكتمل'
+      };
+      const statusLabel = statusLabels[status] || status;
+
+      if (branchManager && branchManager.email) {
+        await sendNotificationEmail({
+          to: branchManager.email,
+          subject: `رد على طلبك: ${request.request_name}`,
+          message: `تم الرد على طلبك من قبل ${managerName} بحالة: ${statusLabel}`,
+          notificationType: 'request_response',
+          appUrl: `${process.env.REACT_APP_URL || 'https://hr-react-theta.vercel.app'}/manage-requests`,
+          data: {
+            'عنوان الطلب': request.request_name,
+            'المدير': managerName,
+            'الحالة الجديدة': statusLabel,
+            'الملاحظات': response_text ? response_text.substring(0, 100) + (response_text.length > 100 ? '...' : '') : 'بدون ملاحظات'
+          }
+        });
+      }
+    } catch (emailError) {
+      log.error('Error sending request response email', { error: emailError.message });
+      // Don't fail the response if email fails
+    }
+
     res.json({
       success: true,
       message: 'تم الرد على الطلب بنجاح',
@@ -355,14 +428,14 @@ router.put('/:id/respond', requireMainManager, uploadSingle, async (req, res) =>
 router.delete('/:id', async (req, res) => {
   try {
     const request = await Request.findById(parseInt(req.params.id));
-    
+
     if (!request) {
       return res.status(404).json({
         success: false,
         message: 'الطلب غير موجود'
       });
     }
-    
+
     // Branch managers can only delete their own branch's pending requests
     if (req.user.role === 'branch_manager') {
       if (request.branch_id !== req.user.branch_id) {
@@ -383,7 +456,7 @@ router.delete('/:id', async (req, res) => {
         message: 'تم رفض الوصول'
       });
     }
-    
+
     // Delete attachment from blob storage if exists
     if (request.attachment_url) {
       try {
@@ -394,9 +467,9 @@ router.delete('/:id', async (req, res) => {
         // Continue with request deletion even if attachment deletion fails
       }
     }
-    
+
     await Request.delete(parseInt(req.params.id));
-    
+
     res.json({
       success: true,
       message: 'تم حذف الطلب بنجاح'

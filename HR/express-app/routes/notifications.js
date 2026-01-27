@@ -460,6 +460,47 @@ router.post('/:id/respond', async (req, res) => {
       }
     );
 
+    // Send email notification to main manager about response
+    try {
+      const branch = await Branch.findById(req.user.branch_id);
+      const branchName = branch ? branch.branch_name : 'غير محدد';
+
+      // Map response status to Arabic
+      const statusLabels = {
+        'received': 'وصل',
+        'acknowledged': 'تم التأكيد',
+        'in_progress': 'قيد التنفيذ',
+        'completed': 'مكتمل',
+        'needs_clarification': 'يحتاج توضيح'
+      };
+      const statusLabel = statusLabels[response_status] || response_status;
+      const mainManagerEmail = 'Sharaksa@gmail.com';
+
+      console.log('Sending notification response email', {
+        to: mainManagerEmail,
+        branch: branchName,
+        status: statusLabel
+      });
+
+      const emailResult = await sendNotificationEmail({
+        to: mainManagerEmail,
+        subject: `رد جديد من ${branchName}`,
+        message: `تلقيت ردًا على الإشعار من ${branchName} بحالة: ${statusLabel}`,
+        notificationType: 'notification_response',
+        appUrl: `${process.env.REACT_APP_URL || 'https://hr-react-theta.vercel.app'}/notify-branches`,
+        data: {
+          'الفرع': branchName,
+          'الحالة': statusLabel,
+          'الملاحظات': response_message ? response_message.substring(0, 100) + (response_message.length > 100 ? '...' : '') : 'بدون ملاحظات'
+        }
+      });
+
+      console.log('Notification response email result', { emailResult });
+    } catch (emailError) {
+      console.error('Error sending notification response email:', emailError);
+      // Don't fail the response if email fails
+    }
+
     res.json({
       success: true,
       message: 'تم حفظ الرد بنجاح',
