@@ -36,11 +36,51 @@ const BankSelect = ({
   required = false
 }) => {
   const [selectedBank, setSelectedBank] = useState(value || '');
+  const [ibanValidation, setIbanValidation] = useState({ valid: true, message: '' });
 
   useEffect(() => {
     // Always sync selectedBank with value prop
     setSelectedBank(value || '');
   }, [value]);
+
+  // Validate IBAN in real-time
+  useEffect(() => {
+    if (!ibanValue || ibanValue.trim() === '') {
+      setIbanValidation({ valid: true, message: '' });
+      return;
+    }
+
+    const cleanIBAN = ibanValue.replace(/\s/g, '').toUpperCase();
+
+    if (!cleanIBAN.startsWith('SA')) {
+      setIbanValidation({ valid: false, message: 'يجب أن يبدأ بـ SA' });
+      return;
+    }
+
+    if (cleanIBAN.length < 24) {
+      setIbanValidation({
+        valid: false,
+        message: `قصير جداً (${cleanIBAN.length}/24 حرف)`
+      });
+      return;
+    }
+
+    if (cleanIBAN.length > 24) {
+      setIbanValidation({
+        valid: false,
+        message: `طويل جداً (${cleanIBAN.length}/24 حرف)`
+      });
+      return;
+    }
+
+    const numbers = cleanIBAN.substring(2);
+    if (!/^\d{22}$/.test(numbers)) {
+      setIbanValidation({ valid: false, message: 'يجب أن يحتوي على أرقام فقط بعد SA' });
+      return;
+    }
+
+    setIbanValidation({ valid: true, message: 'صحيح ✓' });
+  }, [ibanValue]);
 
   const handleBankChange = (e) => {
     const bankName = e.target.value;
@@ -57,7 +97,7 @@ const BankSelect = ({
       const formatted = cleanIban.match(/.{1,4}/g)?.join(' ') || cleanIban;
       iban = formatted;
     }
-    
+
     // Update IBAN value
     onIbanChange(iban);
   };
@@ -86,16 +126,23 @@ const BankSelect = ({
           <label>
             رقم الآيبان البنكي {required && <span className="required">*</span>}
           </label>
-          <input
-            type="text"
-            value={ibanValue}
-            onChange={handleIbanChange}
-            placeholder="SAXX XXXX XXXX XXXX XXXX XXXX"
-            className="iban-input"
-            style={{ textTransform: 'uppercase' }}
-            maxLength={29}
-            dir="ltr"
-          />
+          <div style={{ position: 'relative' }}>
+            <input
+              type="text"
+              value={ibanValue}
+              onChange={handleIbanChange}
+              placeholder="SAXX XXXX XXXX XXXX XXXX XXXX"
+              className={`iban-input ${ibanValue && !ibanValidation.valid ? 'iban-invalid' : ''} ${ibanValue && ibanValidation.valid && ibanValidation.message ? 'iban-valid' : ''}`}
+              style={{ textTransform: 'uppercase' }}
+              maxLength={29}
+              dir="ltr"
+            />
+            {ibanValue && ibanValidation.message && (
+              <div className={`iban-validation-message ${ibanValidation.valid ? 'valid' : 'invalid'}`}>
+                {ibanValidation.message}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

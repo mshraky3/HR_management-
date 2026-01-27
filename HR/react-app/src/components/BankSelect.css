@@ -33,6 +33,42 @@
   text-align: left !important;
   font-family: 'Courier New', monospace;
   letter-spacing: 1px;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* IBAN validation states */
+.iban-input.iban-invalid {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+.iban-input.iban-valid {
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+/* Validation message */
+.iban-validation-message {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.iban-validation-message.valid {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.iban-validation-message.invalid {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
 }
 
 /* RTL support */
@@ -51,9 +87,8 @@ html[dir="rtl"] .iban-input {
     flex-direction: column;
     gap: 0;
   }
-  
+
   html[dir="rtl"] .bank-select-group .form-row {
     flex-direction: column;
   }
 }
-
