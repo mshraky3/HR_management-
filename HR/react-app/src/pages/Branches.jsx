@@ -247,7 +247,7 @@ const Branches = () => {
     return (
       <div className="table-page">
         <div className="page-header">
-          <h1>{جاري التحميل...}</h1>
+          <h1>{'جاري التحميل...'}</h1>
         </div>
         <div style={{ padding: 'var(--spacing-xl)' }}>
           {[...Array(5)].map((_, i) => (
