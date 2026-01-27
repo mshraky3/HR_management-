@@ -267,7 +267,7 @@ const BranchDocumentsReport = () => {
         dropped_students: 'الطلاب المنقطعين',
         free_seats: 'المقاعد المتاحة',
         acceptance_notifications: 'إشعارات القبول',
-        payroll_file: 'ملف مسيرات الرواتب',
+        // NOTE: payroll_file removed - users enter payroll data directly, not upload files
     };
 
     // Helper to get document type label in Arabic
@@ -310,15 +310,15 @@ const BranchDocumentsReport = () => {
                 <div className="filters-header">
                     <h3>🔍 تصفية وبحث</h3>
                     {selectedBranches.length > 0 && (
-                        <button 
-                            className="clear-filters-btn" 
+                        <button
+                            className="clear-filters-btn"
                             onClick={() => setSelectedBranches([])}
                         >
                             ✕ إزالة التصفية
                         </button>
                     )}
                 </div>
-                
+
                 <div className="filters-content">
                     <div className="filter-group">
                         <label>
@@ -465,18 +465,18 @@ const BranchDocumentsReport = () => {
                                     </span>
                                     <div className="branch-name">{getBranchName(doc.branch_id)}</div>
                                 </div>
-                                
+
                                 <div className="document-card-body">
                                     <div className="document-field">
                                         <span className="field-label">نوع المستند:</span>
                                         <span className="field-value">{getDocumentTypeLabel(doc.document_type)}</span>
                                     </div>
-                                    
+
                                     <div className="document-field">
                                         <span className="field-label">رقم المستند:</span>
                                         <span className="field-value">{doc.document_number || '-'}</span>
                                     </div>
-                                    
+
                                     <div className="document-dates">
                                         <div className="date-item">
                                             <span className="date-label">تاريخ الإصدار</span>
@@ -493,11 +493,11 @@ const BranchDocumentsReport = () => {
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 <div className="document-card-footer">
                                     <div className={`days-remaining ${doc.daysUntilExpiry < 0 ? 'danger' : 'warning'}`}>
-                                        {doc.daysUntilExpiry < 0 ? 
-                                            `متأخر ${Math.abs(doc.daysUntilExpiry)} يوم` : 
+                                        {doc.daysUntilExpiry < 0 ?
+                                            `متأخر ${Math.abs(doc.daysUntilExpiry)} يوم` :
                                             `${doc.daysUntilExpiry} يوم متبقي`
                                         }
                                     </div>

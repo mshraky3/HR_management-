@@ -119,7 +119,7 @@ const BranchDocumentsManagement = () => {
     dropped_students: "الطلاب المنقطعين",
     free_seats: "المقاعد المتاحة",
     acceptance_notifications: "إشعارات القبول",
-    payroll_file: "ملف مسيرات الرواتب",
+    // NOTE: payroll_file removed - users enter payroll data directly in payroll absence system, not as file upload
   };
 
   // Filtered document type labels for modals (exclude restricted types for branch managers)
@@ -2119,32 +2119,7 @@ const DocumentModal = ({
               </div>
             </div>
 
-            {formData.document_type === "payroll_file" && (
-              <div className="form-row">
-                <div className="form-group">
-                  <label>رقم IBAN</label>
-                  <input
-                    type="text"
-                    value={formData.iban_number}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        iban_number: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="form-group">
-                  <label>اسم البنك</label>
-                  <BankSelect
-                    value={formData.bank_name}
-                    onChange={(bank) =>
-                      setFormData((prev) => ({ ...prev, bank_name: bank }))
-                    }
-                  />
-                </div>
-              </div>
-            )}
+            {/* NOTE: payroll_file removed - users enter payroll data in payroll absence system, not as document upload */}
 
             <div className="form-group">
               <label>{isEdit ? "تغيير الملف (اختياري)" : "الملف *"}</label>

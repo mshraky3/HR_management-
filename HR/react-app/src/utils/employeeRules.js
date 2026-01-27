@@ -199,9 +199,11 @@ export const DOCUMENT_TYPE_RULES = {
 /**
  * Monthly Branch Documents
  * Documents that must be uploaded monthly
+ * NOTE: 'payroll_file' is NOT included here because it's handled by the payroll absence system
+ * which has its own dedicated task (calculatePayrollAbsenceTask) that opens when entry period starts
  */
 export const MONTHLY_BRANCH_DOCUMENTS = [
-  'payroll_file'
+  // Empty array - payroll is handled separately via payroll absence system
 ];
 
 // ============================================================================

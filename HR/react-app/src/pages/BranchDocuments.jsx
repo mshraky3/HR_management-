@@ -697,9 +697,10 @@ const BranchDocuments = () => {
     };
   }, [allDocuments, isMainManager, currentBranchId, user, searchParams]);
 
-  // Sort documents by priority: 1) Monthly (highest), 2) Student/Cadre, 3) Others
+  // Sort documents by priority: 1) Student/Cadre, 2) Others
+  // NOTE: payroll_file removed - users enter payroll data in payroll absence system, not as file upload
   const sortDocumentCardsByPriority = useCallback((cards) => {
-    const monthlyTypes = ['payroll_file'];
+    const monthlyTypes = [];
     const studentCadreTypes = ['student_cadre_file'];
 
     return [...cards].sort((a, b) => {

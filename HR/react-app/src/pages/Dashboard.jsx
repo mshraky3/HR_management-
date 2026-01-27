@@ -506,10 +506,10 @@ const Dashboard = () => {
 
   const checkMonthlyDocuments = (documents, branchesList) => {
     const alerts = [];
-    const monthlyTypes = ['payroll_file'];
-    const typeLabels = {
-      payroll_file: ' مسيرات الرواتب',
-    };
+    // REMOVED: 'payroll_file' is handled by payroll absence system, not as document upload
+    // It has its own dedicated task (calculatePayrollAbsenceTask) that opens when entry period starts
+    const monthlyTypes = [];
+    const typeLabels = {};
 
     // Helper function to get last day of current month
     const getLastDayOfMonth = (date) => {
@@ -685,7 +685,8 @@ const Dashboard = () => {
       operational_plan: 'الخطة التشغلية للمركز',
       owner_civil_id_copy: 'نسخه من هوية الاحوال الشخصية لمالك المركز',
       student_cadre_file: 'بيانات الطلاب',
-      payroll_file: ' مسيرات الرواتب'
+      // NOTE: payroll_file removed - users enter payroll data in payroll absence system, not as document upload
+      payroll_file: ' مسيرات الرواتب' // REMOVED from document management
     };
 
     // Get branches to check
@@ -776,14 +777,9 @@ const Dashboard = () => {
     // Sort by priority first, then by branch name, then by document type
     const sortAlerts = (alerts) => {
       return alerts.sort((a, b) => {
-        // Priority order: 1) Monthly (highest), 2) Student/Cadre, 3) Others
-        const monthlyTypes = ['payroll_file'];
+        // Priority order: 1) Student/Cadre, 2) Others
+        // NOTE: payroll_file is not included here because it's handled by payroll absence system
         const studentCadreTypes = ['student_cadre_file', 'dropped_students', 'free_seats', 'acceptance_notifications', 'staff_cadre'];
-
-        const aIsMonthly = monthlyTypes.includes(a.documentType);
-        const bIsMonthly = monthlyTypes.includes(b.documentType);
-        if (aIsMonthly && !bIsMonthly) return -1;
-        if (!aIsMonthly && bIsMonthly) return 1;
 
         const aIsStudentCadre = studentCadreTypes.includes(a.documentType);
         const bIsStudentCadre = studentCadreTypes.includes(b.documentType);
@@ -840,7 +836,8 @@ const Dashboard = () => {
 
     branchDocs.forEach(doc => {
       // Skip monthly documents (handled separately)
-      const monthlyTypes = ['payroll_file', 'attendance_file'];
+      // NOTE: payroll_file is handled by payroll absence system, not as document
+      const monthlyTypes = ['attendance_file'];
       if (monthlyTypes.includes(doc.document_type)) {
         return;
       }
@@ -986,11 +983,10 @@ const Dashboard = () => {
   }, [isMainManager, user, branches]);
 
   // Get monthly documents status for display
+  // NOTE: Payroll files are handled by payroll absence system, not monthly documents
   const getMonthlyDocumentsSummary = () => {
-    const monthlyTypes = ['payroll_file'];
-    const typeLabels = {
-      payroll_file: ' مسيرات الرواتب',
-    };
+    const monthlyTypes = [];
+    const typeLabels = {};
 
     if (isMainManager()) {
       // For main manager, show summary of all branches
