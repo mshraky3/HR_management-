@@ -216,7 +216,6 @@ const getFieldLabel = (field) => {
     contract_type: 'نوع العقد',
     years_of_experience_in_same_institution: 'سنوات الخبرة في نفس المؤسسة',
     years_of_experience_in_company: 'سنوات الخبرة في الشركة',
-    salary: 'الراتب',
     base_salary: 'الراتب الأساسي',
     housing_allowance: 'بدل السكن',
     transportation_allowance: 'بدل المواصلات',
@@ -279,7 +278,6 @@ const getFieldValue = (employee, field, branches) => {
     case 'passport_expiry_date':
     case 'residency_issue_date':
       return formatDate(employee[field]);
-    case 'salary':
     case 'base_salary':
     case 'housing_allowance':
     case 'transportation_allowance':
@@ -998,7 +996,7 @@ router.post('/generate-single/:employee_id', requireManager, async (req, res) =>
       'id_or_residency_number', 'id_type', 'gender', 'id_expiry_date_hijri', 'id_expiry_date_gregorian',
       'religion', 'marital_status', 'educational_qualification', 'specialization',
       'bank_iban', 'bank_name', 'email', 'phone_number', 'national_address', 'contract_type',
-      'years_of_experience_in_same_institution', 'salary', 'base_salary', 'housing_allowance',
+      'years_of_experience_in_same_institution', 'base_salary', 'housing_allowance',
       'transportation_allowance', 'end_of_service_allowance', 'annual_leave_allowance',
       'other_allowances', 'deductions', 'graduation_year', 'university_gpa',
       'passport_number', 'passport_issue_date', 'passport_expiry_date', 'passport_issue_place',

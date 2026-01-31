@@ -119,7 +119,6 @@ export async function initializeDatabase() {
       contract_end_date_gregorian DATE,
       years_of_experience_in_same_institution INTEGER DEFAULT 0,
       years_of_experience_in_company INTEGER DEFAULT 0,
-      salary DECIMAL(10,2),
       base_salary DECIMAL(10,2),
       housing_allowance DECIMAL(10,2),
       transportation_allowance DECIMAL(10,2),
@@ -1576,6 +1575,28 @@ export async function initializeDatabase() {
       );
     } catch (error) {
       console.error('Error in bus transportation field cleanup migration:', error.message);
+      // Don't throw - allow database to continue initializing
+    }
+
+    // Migration: Remove old 'salary' field from employees table
+    // Salary is now calculated as base_salary + other_allowances
+    try {
+      const checkSalaryColumn = await sql`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'employees' AND column_name = 'salary'
+      `;
+
+      if (checkSalaryColumn.length > 0) {
+        if (process.env.ALLOW_DESTRUCTIVE_DB_MIGRATIONS === 'true') {
+          await sql`ALTER TABLE employees DROP COLUMN salary CASCADE`;
+          console.log('[Migration] Removed old salary column from employees table');
+        } else {
+          console.log('[Migration] salary column exists but ALLOW_DESTRUCTIVE_DB_MIGRATIONS is not set - skipping removal');
+        }
+      }
+    } catch (error) {
+      console.error('Error removing salary column:', error.message);
       // Don't throw - allow database to continue initializing
     }
 

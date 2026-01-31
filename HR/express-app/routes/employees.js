@@ -169,31 +169,25 @@ const calculateEmployeeStatistics = (employees) => {
     if (gender === 'male') stats.overview.male++;
     else if (gender === 'female') stats.overview.female++;
 
-    // Salary calculations
-    if (emp.salary !== undefined && emp.salary !== null && emp.salary !== '') {
-      const numericSalary = typeof emp.salary === 'number'
-        ? emp.salary
-        : parseFloat(String(emp.salary).replace(/[^\d.-]/g, ''));
+    // Salary calculations (from base_salary + other_allowances)
+    const baseSalary = parseFloat(emp.base_salary || 0);
+    const allowances = parseFloat(emp.other_allowances || 0);
+    const empSalary = baseSalary + allowances;
 
-      if (!isNaN(numericSalary)) {
-        totalSalary += numericSalary;
-        salaryCount++;
-      }
+    if (empSalary > 0) {
+      totalSalary += empSalary;
+      salaryCount++;
 
       // Salary ranges (use integer part for bucketing)
-      const salary = typeof emp.salary === 'number'
-        ? Math.floor(emp.salary)
-        : parseInt(String(emp.salary).replace(/[^\d.-]/g, ''), 10);
+      const salary = Math.floor(empSalary);
       if (salary < 5000) salaryRanges['0-5000']++;
       else if (salary < 10000) salaryRanges['5000-10000']++;
       else if (salary < 20000) salaryRanges['10000-20000']++;
       else salaryRanges['20000+']++;
 
       // Min/Max salary
-      if (!isNaN(salary)) {
-        if (!stats.salary.min || salary < stats.salary.min) stats.salary.min = salary;
-        if (!stats.salary.max || salary > stats.salary.max) stats.salary.max = salary;
-      }
+      if (!stats.salary.min || salary < stats.salary.min) stats.salary.min = salary;
+      if (!stats.salary.max || salary > stats.salary.max) stats.salary.max = salary;
     }
 
     // Job titles
@@ -238,17 +232,18 @@ const calculateEmployeeStatistics = (employees) => {
           avgSalary: 0,
         };
       }
-      if (emp.salary !== undefined && emp.salary !== null && emp.salary !== '') {
-        const numericSalary = typeof emp.salary === 'number'
-          ? emp.salary
-          : parseFloat(String(emp.salary).replace(/[^\d.-]/g, ''));
-        if (!isNaN(numericSalary)) {
-          salaryByBranchMap[emp.branch_id].totalSalary += numericSalary;
-          salaryByBranchMap[emp.branch_id].salaryCount++;
-          salaryByBranchMap[emp.branch_id].avgSalary = Math.round(
-            salaryByBranchMap[emp.branch_id].totalSalary / salaryByBranchMap[emp.branch_id].salaryCount
-          );
-        }
+
+      // Calculate salary from base_salary + other_allowances
+      const baseSalary = parseFloat(emp.base_salary || 0);
+      const allowances = parseFloat(emp.other_allowances || 0);
+      const empTotalSalary = baseSalary + allowances;
+
+      if (empTotalSalary > 0) {
+        salaryByBranchMap[emp.branch_id].totalSalary += empTotalSalary;
+        salaryByBranchMap[emp.branch_id].salaryCount++;
+        salaryByBranchMap[emp.branch_id].avgSalary = Math.round(
+          salaryByBranchMap[emp.branch_id].totalSalary / salaryByBranchMap[emp.branch_id].salaryCount
+        );
       }
     }
 
@@ -875,7 +870,7 @@ router.get("/statistics", async (req, res) => {
         ? sql`AND branch_id = ANY(${sql(branchIds)})`
         : sql``;
 
-    // Get overview statistics
+    // Get overview statistics (salary calculated from base_salary + other_allowances)
     const overviewQuery = sql`
       SELECT
         COUNT(*)::int as total,
@@ -883,11 +878,11 @@ router.get("/statistics", async (req, res) => {
         COUNT(*) FILTER (WHERE gender = 'female')::int as female,
         COUNT(*) FILTER (WHERE status = 'active')::int as active_count,
         COUNT(*) FILTER (WHERE status = 'pending')::int as pending_count,
-        AVG(salary)::numeric(10,2) as avg_salary,
-        SUM(salary)::numeric(10,2) as total_salary_budget,
+        AVG(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as avg_salary,
+        SUM(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as total_salary_budget,
         COUNT(*) FILTER (WHERE data_completion_status = 'complete')::int as complete_count,
-        MIN(salary)::numeric(10,2) as min_salary,
-        MAX(salary)::numeric(10,2) as max_salary
+        MIN(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as min_salary,
+        MAX(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as max_salary
       FROM employees
       WHERE (status IN ('active', 'pending') OR status IS NULL)
       ${branchFilter}
@@ -905,64 +900,64 @@ router.get("/statistics", async (req, res) => {
       GROUP BY gender
     `;
 
-    // Salary by gender
+    // Salary by gender (calculated from base_salary + other_allowances)
     const salaryByGenderQuery = sql`
       SELECT
         gender,
-        AVG(salary)::numeric(10,2) as average,
+        AVG(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as average,
         COUNT(*)::int as count
       FROM employees
       WHERE (status IN ('active', 'pending') OR status IS NULL)
       ${branchFilter}
-      AND salary IS NOT NULL AND salary > 0 AND gender IS NOT NULL
+      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0 AND gender IS NOT NULL
       GROUP BY gender
     `;
 
-    // Salary ranges
+    // Salary ranges (calculated from base_salary + other_allowances)
     const salaryRangesQuery = sql`
       SELECT
         CASE
-          WHEN salary < 5000 THEN '0-5000'
-          WHEN salary < 10000 THEN '5000-10000'
-          WHEN salary < 15000 THEN '10000-15000'
-          WHEN salary < 20000 THEN '15000-20000'
+          WHEN (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) < 5000 THEN '0-5000'
+          WHEN (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) < 10000 THEN '5000-10000'
+          WHEN (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) < 15000 THEN '10000-15000'
+          WHEN (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) < 20000 THEN '15000-20000'
           ELSE '20000+'
         END as range,
         COUNT(*)::int as count
       FROM employees
       WHERE (status IN ('active', 'pending') OR status IS NULL)
       ${branchFilter}
-      AND salary IS NOT NULL AND salary > 0
+      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
       GROUP BY range
-      ORDER BY MIN(salary)
+      ORDER BY MIN(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))
     `;
 
-    // Salary by job title
+    // Salary by job title (calculated from base_salary + other_allowances)
     const salaryByJobTitleQuery = sql`
       SELECT
         COALESCE(job_title, occupation, 'غير محدد') as job_title,
-        AVG(salary)::numeric(10,2) as average,
+        AVG(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as average,
         COUNT(*)::int as count
       FROM employees
       WHERE (status IN ('active', 'pending') OR status IS NULL)
       ${branchFilter}
-      AND salary IS NOT NULL AND salary > 0
+      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
       GROUP BY COALESCE(job_title, occupation, 'غير محدد')
       HAVING COUNT(*) > 0
       ORDER BY average DESC
       LIMIT 20
     `;
 
-    // Top paid employees
+    // Top paid employees (calculate from base_salary + other_allowances)
     const topPaidQuery = sql`
       SELECT
         employee_id_number as employee_id,
         CONCAT(first_name, ' ', second_name, ' ', third_name, ' ', fourth_name) as name,
-        salary::numeric(10,2)
+        (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as salary
       FROM employees
       WHERE (status IN ('active', 'pending') OR status IS NULL)
       ${branchFilter}
-      AND salary IS NOT NULL AND salary > 0
+      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
       ORDER BY salary DESC
       LIMIT 10
     `;
@@ -1152,29 +1147,29 @@ router.get("/statistics", async (req, res) => {
         SELECT
           b.branch_name,
           b.id as branch_id,
-          AVG(e.salary)::numeric(10,2) as average_salary,
+          AVG(COALESCE(e.base_salary, 0) + COALESCE(e.other_allowances, 0))::numeric(10,2) as average_salary,
           COUNT(e.id)::int as count
         FROM branches b
         LEFT JOIN employees e ON e.branch_id = b.id
           AND (e.status IN ('active', 'pending') OR e.status IS NULL)
-          AND e.salary IS NOT NULL AND e.salary > 0
+          AND (COALESCE(e.base_salary, 0) + COALESCE(e.other_allowances, 0)) > 0
         WHERE b.is_active = true
         GROUP BY b.id, b.branch_name
         HAVING COUNT(e.id) > 0
         ORDER BY average_salary DESC
       `;
 
-      // Median salary by branch
+      // Median salary by branch (calculated from base_salary + other_allowances)
       var salaryMedianByBranchQuery = sql`
         SELECT
           b.branch_name,
           b.id as branch_id,
-          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY e.salary)::numeric(10,2) as median_salary,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (COALESCE(e.base_salary, 0) + COALESCE(e.other_allowances, 0)))::numeric(10,2) as median_salary,
           COUNT(e.id)::int as count
         FROM branches b
         LEFT JOIN employees e ON e.branch_id = b.id
           AND (e.status IN ('active', 'pending') OR e.status IS NULL)
-          AND e.salary IS NOT NULL AND e.salary > 0
+          AND (COALESCE(e.base_salary, 0) + COALESCE(e.other_allowances, 0)) > 0
         WHERE b.is_active = true
         GROUP BY b.id, b.branch_name
         HAVING COUNT(e.id) > 0
@@ -1194,16 +1189,16 @@ router.get("/statistics", async (req, res) => {
       ORDER BY count DESC
     `;
 
-    // Salary by contract type
+    // Salary by contract type (calculated from base_salary + other_allowances)
     const salaryByContractTypeQuery = sql`
       SELECT
         COALESCE(contract_type, 'غير محدد') as contract_type,
-        AVG(salary)::numeric(10,2) as average_salary,
+        AVG(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as average_salary,
         COUNT(*)::int as count
       FROM employees
       WHERE (status IN ('active', 'pending') OR status IS NULL)
       ${branchFilter}
-      AND salary IS NOT NULL AND salary > 0
+      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
       GROUP BY COALESCE(contract_type, 'غير محدد')
       ORDER BY average_salary DESC
     `;
@@ -1236,56 +1231,56 @@ router.get("/statistics", async (req, res) => {
           CONCAT(e.first_name, ' ', e.second_name, ' ', e.third_name, ' ', e.fourth_name) as name,
           COALESCE(e.job_title, e.occupation) as job_title,
           b.branch_name,
-          e.salary::numeric(10,2)
+          (COALESCE(e.base_salary, 0) + COALESCE(e.other_allowances, 0))::numeric(10,2) as salary
         FROM employees e
         LEFT JOIN branches b ON e.branch_id = b.id
         WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
-        AND e.salary IS NOT NULL AND e.salary > 0
-        ORDER BY e.salary DESC
+        AND (COALESCE(e.base_salary, 0) + COALESCE(e.other_allowances, 0)) > 0
+        ORDER BY salary DESC
         LIMIT 10
       `;
     }
 
-    // Salary by educational qualification
+    // Salary by educational qualification (calculated from base_salary + other_allowances)
     const salaryByQualificationQuery = sql`
       SELECT
         COALESCE(educational_qualification, 'غير محدد') as qualification,
-        AVG(salary)::numeric(10,2) as average_salary,
+        AVG(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as average_salary,
         COUNT(*)::int as count
       FROM employees
       WHERE (status IN ('active', 'pending') OR status IS NULL)
       ${branchFilter}
-      AND salary IS NOT NULL AND salary > 0
+      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
       GROUP BY COALESCE(educational_qualification, 'غير محدد')
       ORDER BY average_salary DESC
     `;
 
-    // Average salary by nationality (top 10)
+    // Average salary by nationality (top 10) - calculated from base_salary + other_allowances
     const salaryByNationalityQuery = sql`
       SELECT
         nationality,
-        AVG(salary)::numeric(10,2) as average_salary,
+        AVG(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as average_salary,
         COUNT(*)::int as count
       FROM employees
       WHERE (status IN ('active', 'pending') OR status IS NULL)
       ${branchFilter}
-      AND salary IS NOT NULL AND salary > 0
+      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
       AND nationality IS NOT NULL
       GROUP BY nationality
       ORDER BY count DESC
       LIMIT 10
     `;
 
-    // Total salary by nationality (top 10)
+    // Total salary by nationality (top 10) - calculated from base_salary + other_allowances
     const totalSalaryByNationalityQuery = sql`
       SELECT
         nationality,
-        SUM(salary)::numeric(10,2) as total_salary,
+        SUM(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as total_salary,
         COUNT(*)::int as count
       FROM employees
       WHERE (status IN ('active', 'pending') OR status IS NULL)
       ${branchFilter}
-      AND salary IS NOT NULL AND salary > 0
+      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
       AND nationality IS NOT NULL
       GROUP BY nationality
       ORDER BY total_salary DESC
@@ -1308,16 +1303,16 @@ router.get("/statistics", async (req, res) => {
       ${branchFilter}
     `;
 
-    // Total salary budget by gender
+    // Total salary budget by gender (calculated from base_salary + other_allowances)
     const totalSalaryByGenderQuery = sql`
       SELECT
         gender,
-        SUM(salary)::numeric(10,2) as total_salary,
+        SUM(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as total_salary,
         COUNT(*)::int as count
       FROM employees
       WHERE (status IN ('active', 'pending') OR status IS NULL)
       ${branchFilter}
-      AND salary IS NOT NULL AND salary > 0
+      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
       AND gender IS NOT NULL
       GROUP BY gender
     `;
@@ -1365,7 +1360,7 @@ router.get("/statistics", async (req, res) => {
         COUNT(*) FILTER (WHERE specialization IS NULL OR specialization = '')::int as missing_specialization,
         COUNT(*) FILTER (WHERE national_address IS NULL OR national_address = '')::int as missing_address,
         COUNT(*) FILTER (WHERE date_of_birth_gregorian IS NULL)::int as missing_birthdate,
-        COUNT(*) FILTER (WHERE salary IS NULL OR salary = 0)::int as missing_salary,
+        COUNT(*) FILTER (WHERE (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) = 0)::int as missing_salary,
         COUNT(*) FILTER (WHERE contract_start_date_gregorian IS NULL)::int as missing_contract_start,
         COUNT(*) FILTER (WHERE contract_end_date_gregorian IS NULL)::int as missing_contract_end
       FROM employees
@@ -1373,16 +1368,16 @@ router.get("/statistics", async (req, res) => {
       ${branchFilter}
     `;
 
-    // Salary percentiles (25th, 50th/median, 75th)
+    // Salary percentiles (25th, 50th/median, 75th) - calculated from base_salary + other_allowances
     const salaryPercentilesQuery = sql`
       SELECT
-        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY salary)::numeric(10,2) as p25,
-        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY salary)::numeric(10,2) as p50,
-        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY salary)::numeric(10,2) as p75
+        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)))::numeric(10,2) as p25,
+        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)))::numeric(10,2) as p50,
+        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)))::numeric(10,2) as p75
       FROM employees
       WHERE (status IN ('active', 'pending') OR status IS NULL)
       ${branchFilter}
-      AND salary IS NOT NULL AND salary > 0
+      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
     `;
 
     // Gender distribution in top 5 job titles
@@ -3398,7 +3393,12 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
       rawGender.includes("انث") ||
       rawGender.includes("female") ||
       rawGender.includes("femme");
-    const employeeSalary = certificate_data?.salary || employee.salary || "";
+
+    // Calculate total salary from base_salary + other_allowances
+    const baseSalaryValue = parseFloat(certificate_data?.basic_salary || employee.base_salary || 0);
+    const otherAllowancesValue = parseFloat(certificate_data?.other_allowances || employee.other_allowances || 0);
+    const employeeSalary = baseSalaryValue + otherAllowancesValue;
+
     const basicSalary = certificate_data?.basic_salary || "";
     const housingAllowance = certificate_data?.housing_allowance || "";
     const transportationAllowance =

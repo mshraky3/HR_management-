@@ -262,13 +262,13 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
   if (!employee.educational_qualification) {
     missingFields.push('المؤهل التعليمي');
   }
-  
+
   // Specialization, graduation_year, and university_gpa are only required for higher education qualifications
   // Basic education levels (ابتدائي، متوسط، ثانوي، غير متعلم) do not require these fields
   const basicEducationLevels = ['ابتدائي', 'متوسط', 'ثانوي', 'غير متعلم'];
-  const isBasicEducation = employee.educational_qualification && 
+  const isBasicEducation = employee.educational_qualification &&
     basicEducationLevels.includes(employee.educational_qualification);
-  
+
   if (!isBasicEducation && !employee.specialization) {
     missingFields.push('التخصص');
   }
@@ -284,8 +284,13 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
   if (!employee.contract_type) {
     missingFields.push('نوع العقد');
   }
-  if (employee.salary === null || employee.salary === undefined) {
-    missingFields.push('الراتب');
+
+  // Check if total salary (base_salary + other_allowances) is provided
+  const baseSalary = parseFloat(employee.base_salary || 0);
+  const otherAllowances = parseFloat(employee.other_allowances || 0);
+  const totalSalary = baseSalary + otherAllowances;
+  if (totalSalary === 0 && !employee.base_salary && !employee.other_allowances) {
+    missingFields.push('بيانات الراتب (الراتب الأساسي و/أو الدبلات)');
   }
 
   // ID expiry date: Only required for non-Saudis (residents have expiry dates)
@@ -310,7 +315,7 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
   // MUST be present for completion, regardless of other documents.
   // These are the four essential documents that ALL employees must have.
   // Other profession-specific documents are tracked but don't block completion if employee has some documents.
-  
+
   // Check for required common documents
   const requiredCommonDocuments = [
     'id_or_residency',
@@ -318,10 +323,10 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
     'bank_iban',
     'employment_contract'
   ];
-  const hasAllRequiredDocuments = requiredCommonDocuments.every(docType => 
+  const hasAllRequiredDocuments = requiredCommonDocuments.every(docType =>
     documentTypes.includes(docType)
   );
-  
+
   // Separate required document fields from optional ones
   const documentRelatedKeywords = ['مستند', 'شهادة', 'ترخيص', 'جواز', 'دورة', 'تصنيف'];
   const requiredDocumentKeywords = ['الهوية/الإقامة', 'خطاب مباشرة', 'مستند الآيبان', 'عقد العمل'];

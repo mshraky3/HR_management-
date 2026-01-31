@@ -318,7 +318,6 @@ const getFieldValue = (employee, field, branches) => {
     case 'passport_expiry_date':
     case 'residency_issue_date':
       return formatDate(employee[field]);
-    case 'salary':
     case 'base_salary':
     case 'housing_allowance':
     case 'transportation_allowance':

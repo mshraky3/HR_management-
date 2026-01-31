@@ -227,7 +227,46 @@ export const PayrollAbsence = {
 
     let employees = [];
     if (state === 'entry_open') {
-      employees = await this.getBranchEmployees(branchId);
+      // Get all current employees
+      const allEmployees = await this.getBranchEmployees(branchId);
+
+      // If there was a previous submission, merge with existing data
+      if (lastSubmission) {
+        const previousEntries = await this.getSubmissionEntries(lastSubmission.id);
+        const previousMap = new Map(previousEntries.map(e => [e.employee_id, e]));
+
+        employees = allEmployees.map(emp => {
+          const prev = previousMap.get(emp.id);
+          if (prev) {
+            // Employee was in previous submission - pre-fill their data
+            return {
+              ...emp,
+              excused_absences: prev.excused_absences || 0,
+              unexcused_absences: prev.unexcused_absences || 0,
+              notes: prev.notes || '',
+              is_new: false
+            };
+          } else {
+            // New employee added after previous submission
+            return {
+              ...emp,
+              excused_absences: 0,
+              unexcused_absences: 0,
+              notes: '',
+              is_new: true
+            };
+          }
+        });
+      } else {
+        // First submission - all employees start with 0
+        employees = allEmployees.map(emp => ({
+          ...emp,
+          excused_absences: 0,
+          unexcused_absences: 0,
+          notes: '',
+          is_new: false
+        }));
+      }
     }
 
     return {
@@ -511,6 +550,7 @@ export const PayrollAbsence = {
       LEFT JOIN branch_absence_windows w ON w.branch_id = b.id AND w.cycle_id = ${cycleId}
       LEFT JOIN branch_absence_submissions s ON s.branch_id = b.id AND s.cycle_id = ${cycleId} AND (s.is_superseded IS NULL OR s.is_superseded = FALSE)
       LEFT JOIN employee_absences ea ON ea.branch_id = b.id AND ea.cycle_id = ${cycleId}
+      WHERE b.is_active = TRUE
       GROUP BY b.id, w.id
       ORDER BY b.branch_name ASC
     `;
