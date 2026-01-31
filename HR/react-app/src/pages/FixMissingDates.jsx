@@ -42,6 +42,8 @@ const FixMissingDates = () => {
   const [loadingAbnormalDates, setLoadingAbnormalDates] = useState(true);
   const [editingDates, setEditingDates] = useState({});
   const [savingDates, setSavingDates] = useState({});
+  const [invalidSalaryEmployees, setInvalidSalaryEmployees] = useState([]);
+  const [loadingInvalidSalary, setLoadingInvalidSalary] = useState(true);
 
   useEffect(() => {
     if (!isMainManager()) {
@@ -53,6 +55,7 @@ const FixMissingDates = () => {
     loadPaperContractDocs();
     loadBranchDocuments();
     loadAbnormalDates();
+    loadInvalidSalaryEmployees();
   }, [currentPage]);
 
   const loadEmployees = async () => {
@@ -111,6 +114,31 @@ const FixMissingDates = () => {
     navigate('/employees', { state: { editEmployeeId: employee.id } });
   };
 
+  const loadInvalidSalaryEmployees = async () => {
+    try {
+      setLoadingInvalidSalary(true);
+      // Get all employees
+      const response = await employeesAPI.getAll({ page: 1, limit: 10000 });
+      if (response.data?.success) {
+        const allEmployees = response.data.data || [];
+        // Filter employees with salary < 500 (but not 0) or > 15000
+        const invalid = allEmployees.filter(emp => {
+          const baseSalary = parseFloat(emp.base_salary || 0);
+          const allowances = parseFloat(emp.other_allowances || 0);
+          const total = baseSalary + allowances;
+          // Show if: (salary > 0 and < 500) OR (salary > 15000)
+          return (total > 0 && total < 500) || total > 15000;
+        });
+        setInvalidSalaryEmployees(invalid);
+      }
+    } catch (error) {
+      console.error('Error loading invalid salary employees:', error);
+      showError(error.response?.data?.message || 'فشل جلب الموظفين ذوي الرواتب غير الصحيحة');
+    } finally {
+      setLoadingInvalidSalary(false);
+    }
+  };
+
   const handleNotify = async (employee) => {
     try {
       setProcessing({ ...processing, [employee.id]: true });
@@ -150,7 +178,7 @@ const FixMissingDates = () => {
 
   const confirmAction = async () => {
     if (!selectedEmployee) return;
-    
+
     setShowConfirmModal(false);
     if (actionType === 'notify') {
       await handleNotify(selectedEmployee);
@@ -282,10 +310,10 @@ const FixMissingDates = () => {
     setConvertingDocs((prev) => ({ ...prev, [docId]: true }));
     try {
       // Determine what needs conversion
-      const needsIssueConversion = (doc.has_issue_gregorian && !doc.has_issue_hijri) || 
-                                   (doc.has_issue_hijri && !doc.has_issue_gregorian);
-      const needsExpiryConversion = (doc.has_expiry_gregorian && !doc.has_expiry_hijri) || 
-                                     (doc.has_expiry_hijri && !doc.has_expiry_gregorian);
+      const needsIssueConversion = (doc.has_issue_gregorian && !doc.has_issue_hijri) ||
+        (doc.has_issue_hijri && !doc.has_issue_gregorian);
+      const needsExpiryConversion = (doc.has_expiry_gregorian && !doc.has_expiry_hijri) ||
+        (doc.has_expiry_hijri && !doc.has_expiry_gregorian);
 
       if (!needsIssueConversion && !needsExpiryConversion) {
         showWarning('لا يحتاج هذا المستند للتحويل - كلا التقويمين موجودان');
@@ -467,45 +495,45 @@ const FixMissingDates = () => {
           <p>لا توجد سجلات مكررة.</p>
         ) : (
           <div className="duplicates-list">
-                    {duplicates.map((cluster, idx) => (
-                      <div key={idx} className="duplicate-cluster-card">
-                        <div className="cluster-header">
-                          <strong>مجموعة #{idx + 1}</strong>
-                          <span>({cluster.ids.length} سجلات)</span>
+            {duplicates.map((cluster, idx) => (
+              <div key={idx} className="duplicate-cluster-card">
+                <div className="cluster-header">
+                  <strong>مجموعة #{idx + 1}</strong>
+                  <span>({cluster.ids.length} سجلات)</span>
+                </div>
+                <div className="cluster-body">
+                  {cluster.employees?.map((emp) => (
+                    <label key={emp.id} className="duplicate-row">
+                      <input
+                        type="radio"
+                        name={`canonical-${idx}`}
+                        checked={selectedCanonicals[idx] === emp.id}
+                        onChange={() => setSelectedCanonicals((prev) => ({ ...prev, [idx]: emp.id }))}
+                      />
+                      <div className="duplicate-info">
+                        <div className="dup-name">
+                          {emp.first_name} {emp.second_name} {emp.third_name} {emp.fourth_name}
                         </div>
-                        <div className="cluster-body">
-                          {cluster.employees?.map((emp) => (
-                            <label key={emp.id} className="duplicate-row">
-                              <input
-                                type="radio"
-                                name={`canonical-${idx}`}
-                                checked={selectedCanonicals[idx] === emp.id}
-                                onChange={() => setSelectedCanonicals((prev) => ({ ...prev, [idx]: emp.id }))}
-                              />
-                              <div className="duplicate-info">
-                                <div className="dup-name">
-                                  {emp.first_name} {emp.second_name} {emp.third_name} {emp.fourth_name}
-                                </div>
-                                <div className="dup-meta">
-                                  <span>معرف: {emp.id}</span>
-                                  <span>الهوية: {emp.id_or_residency_number || '—'}</span>
-                                  <span>الميلاد: {formatDob(emp.date_of_birth_gregorian)}</span>
-                                </div>
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                        <div className="cluster-actions">
-                          <button
-                            className="btn btn-primary"
-                            onClick={() => handleMergeDuplicates(cluster, idx)}
-                            disabled={mergeProcessing[selectedCanonicals[idx] || cluster.ids[0]]}
-                          >
-                            {mergeProcessing[selectedCanonicals[idx] || cluster.ids[0]] ? 'جارٍ الدمج...' : 'دمج وحذف المكررات'}
-                          </button>
+                        <div className="dup-meta">
+                          <span>معرف: {emp.id}</span>
+                          <span>الهوية: {emp.id_or_residency_number || '—'}</span>
+                          <span>الميلاد: {formatDob(emp.date_of_birth_gregorian)}</span>
                         </div>
                       </div>
-                    ))}
+                    </label>
+                  ))}
+                </div>
+                <div className="cluster-actions">
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => handleMergeDuplicates(cluster, idx)}
+                    disabled={mergeProcessing[selectedCanonicals[idx] || cluster.ids[0]]}
+                  >
+                    {mergeProcessing[selectedCanonicals[idx] || cluster.ids[0]] ? 'جارٍ الدمج...' : 'دمج وحذف المكررات'}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -619,12 +647,12 @@ const FixMissingDates = () => {
                             </label>
                             <input
                               type="date"
-                              value={edited.issue_date !== undefined 
-                                ? (edited.issue_date || '') 
+                              value={edited.issue_date !== undefined
+                                ? (edited.issue_date || '')
                                 : (doc.issue_date ? (typeof doc.issue_date === 'string' ? doc.issue_date.split('T')[0] : doc.issue_date) : '')}
                               onChange={(e) => handleDateEdit(doc.id, 'issue_date', e.target.value)}
                               className={issueGYear && issueGYear < 2000 ? 'abnormal-input' : ''}
-                              style={{ 
+                              style={{
                                 padding: '0.25rem 0.5rem',
                                 border: '1px solid #ccc',
                                 borderRadius: '4px',
@@ -645,12 +673,12 @@ const FixMissingDates = () => {
                             <input
                               type="text"
                               placeholder="DD/MM/YYYY"
-                              value={edited.issue_date_hijri !== undefined 
-                                ? (edited.issue_date_hijri || '') 
+                              value={edited.issue_date_hijri !== undefined
+                                ? (edited.issue_date_hijri || '')
                                 : (doc.issue_date_hijri || '')}
                               onChange={(e) => handleDateEdit(doc.id, 'issue_date_hijri', e.target.value)}
                               className={issueHYear && issueHYear < 1400 ? 'abnormal-input' : ''}
-                              style={{ 
+                              style={{
                                 padding: '0.25rem 0.5rem',
                                 border: '1px solid #ccc',
                                 borderRadius: '4px',
@@ -674,12 +702,12 @@ const FixMissingDates = () => {
                             </label>
                             <input
                               type="date"
-                              value={edited.expiry_date !== undefined 
-                                ? (edited.expiry_date || '') 
+                              value={edited.expiry_date !== undefined
+                                ? (edited.expiry_date || '')
                                 : (doc.expiry_date ? (typeof doc.expiry_date === 'string' ? doc.expiry_date.split('T')[0] : doc.expiry_date) : '')}
                               onChange={(e) => handleDateEdit(doc.id, 'expiry_date', e.target.value)}
                               className={expiryGYear && expiryGYear < 2000 ? 'abnormal-input' : ''}
-                              style={{ 
+                              style={{
                                 padding: '0.25rem 0.5rem',
                                 border: '1px solid #ccc',
                                 borderRadius: '4px',
@@ -700,12 +728,12 @@ const FixMissingDates = () => {
                             <input
                               type="text"
                               placeholder="DD/MM/YYYY"
-                              value={edited.expiry_date_hijri !== undefined 
-                                ? (edited.expiry_date_hijri || '') 
+                              value={edited.expiry_date_hijri !== undefined
+                                ? (edited.expiry_date_hijri || '')
                                 : (doc.expiry_date_hijri || '')}
                               onChange={(e) => handleDateEdit(doc.id, 'expiry_date_hijri', e.target.value)}
                               className={expiryHYear && expiryHYear < 1400 ? 'abnormal-input' : ''}
-                              style={{ 
+                              style={{
                                 padding: '0.25rem 0.5rem',
                                 border: '1px solid #ccc',
                                 borderRadius: '4px',
@@ -755,8 +783,8 @@ const FixMissingDates = () => {
                 onClick={handleBulkConvert}
                 disabled={selectedBranchDocs.size === 0 || Object.values(convertingDocs).some(v => v)}
               >
-                {Object.values(convertingDocs).some(v => v) 
-                  ? 'جارٍ التحويل...' 
+                {Object.values(convertingDocs).some(v => v)
+                  ? 'جارٍ التحويل...'
                   : `تحويل المحدد (${selectedBranchDocs.size})`}
               </button>
               <span style={{ marginLeft: '1rem' }}>
@@ -790,10 +818,10 @@ const FixMissingDates = () => {
                 </thead>
                 <tbody>
                   {branchDocuments.map((doc) => {
-                    const needsIssueConversion = (doc.has_issue_gregorian && !doc.has_issue_hijri) || 
-                                                 (doc.has_issue_hijri && !doc.has_issue_gregorian);
-                    const needsExpiryConversion = (doc.has_expiry_gregorian && !doc.has_expiry_hijri) || 
-                                                   (doc.has_expiry_hijri && !doc.has_expiry_gregorian);
+                    const needsIssueConversion = (doc.has_issue_gregorian && !doc.has_issue_hijri) ||
+                      (doc.has_issue_hijri && !doc.has_issue_gregorian);
+                    const needsExpiryConversion = (doc.has_expiry_gregorian && !doc.has_expiry_hijri) ||
+                      (doc.has_expiry_hijri && !doc.has_expiry_gregorian);
                     const needsConversion = needsIssueConversion || needsExpiryConversion;
 
                     return (
@@ -910,6 +938,76 @@ const FixMissingDates = () => {
                 {processingPaperDelete ? 'جارٍ الحذف...' : 'حذف التأمين الطبي للموظفين المحددين'}
               </button>
             </div>
+          </div>
+        )}
+      </div>
+
+      <div className="duplicates-section">
+        <h2>موظفون برواتب غير صحيحة</h2>
+        <p style={{ marginBottom: '1rem', color: '#666' }}>
+          الموظفون برواتب أقل من 500 ريال (باستثناء الصفر) أو أكثر من 15000 ريال
+        </p>
+        {loadingInvalidSalary ? (
+          <p>جاري التحميل...</p>
+        ) : invalidSalaryEmployees.length === 0 ? (
+          <p>✅ جميع الموظفين برواتب صحيحة.</p>
+        ) : (
+          <div className="table-container">
+            <table className="employees-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>اسم الموظف</th>
+                  <th>الفرع</th>
+                  <th>الراتب الأساسي</th>
+                  <th>الدبلات</th>
+                  <th>إجمالي الراتب</th>
+                  <th>الحالة</th>
+                  <th>الإجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invalidSalaryEmployees.map((employee) => {
+                  const baseSalary = parseFloat(employee.base_salary || 0);
+                  const allowances = parseFloat(employee.other_allowances || 0);
+                  const total = baseSalary + allowances;
+                  let status = '';
+                  if (total > 0 && total < 500) {
+                    status = '🔴 منخفض جداً (< 500)';
+                  } else if (total > 15000) {
+                    status = '🔵 مرتفع جداً (> 15000)';
+                  }
+
+                  return (
+                    <tr key={employee.id}>
+                      <td>{employee.id}</td>
+                      <td>
+                        <button
+                          className="link-button"
+                          onClick={() => navigate(`/employees/${employee.id}`)}
+                        >
+                          {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
+                        </button>
+                      </td>
+                      <td>{employee.branch_name || 'N/A'}</td>
+                      <td>{baseSalary.toFixed(2)}</td>
+                      <td>{allowances.toFixed(2)}</td>
+                      <td><strong>{total.toFixed(2)}</strong></td>
+                      <td>{status}</td>
+                      <td>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => navigate(`/employees/${employee.id}`)}
+                          title="تعديل البيانات"
+                        >
+                          تعديل
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

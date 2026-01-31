@@ -58,7 +58,23 @@ const PayrollAbsenceAdmin = () => {
       const data = res?.data?.data || [];
       setCycles(data);
       if (data.length > 0) {
-        setSelectedCycleId(data[0].id);
+        // Get current month (YYYY-MM format)
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth(); // 0-indexed
+
+        // Find the cycle that matches current month
+        let defaultCycle = data.find(c => {
+          const cycleDate = new Date(c.month_start);
+          return cycleDate.getFullYear() === currentYear && cycleDate.getMonth() === currentMonth;
+        });
+
+        // If no current month cycle, find the most recent one (first in the list, assuming sorted by date desc)
+        if (!defaultCycle) {
+          defaultCycle = data[0];
+        }
+
+        setSelectedCycleId(defaultCycle?.id || data[0].id);
       } else {
         setSelectedCycleId(null);
       }

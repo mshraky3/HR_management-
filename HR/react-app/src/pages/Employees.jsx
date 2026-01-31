@@ -149,7 +149,6 @@ const Employees = () => {
     contract_type: "",
     contract_start_date: "",
     contract_end_date: "",
-    salary: "",
     base_salary: "",
     housing_allowance: "",
     transportation_allowance: "",
@@ -844,6 +843,17 @@ const Employees = () => {
     // Validate database-required fields that have defaults but can be empty
     if (!formData.gender || formData.gender.trim() === "") {
       showWarning("الرجاء اختيار الجنس");
+      setSaving(false);
+      return;
+    }
+
+    // Validate salary - minimum 500
+    const baseSalary = parseFloat(formData.base_salary || 0);
+    const allowances = parseFloat(formData.other_allowances || 0);
+    const totalSalary = baseSalary + allowances;
+
+    if (totalSalary > 0 && totalSalary < 500) {
+      showWarning("الراتب غير صحيح");
       setSaving(false);
       return;
     }
@@ -1754,7 +1764,6 @@ const Employees = () => {
           employee.contract_start_date_gregorian,
         ),
         contract_end_date: toInputDate(employee.contract_end_date_gregorian),
-        salary: employee.salary || "",
         base_salary: employee.base_salary || "",
         housing_allowance: employee.housing_allowance || "",
         transportation_allowance: employee.transportation_allowance || "",
@@ -1901,7 +1910,6 @@ const Employees = () => {
       contract_type: "",
       contract_start_date: "",
       contract_end_date: "",
-      salary: "",
       base_salary: "",
       housing_allowance: "",
       transportation_allowance: "",
@@ -3647,20 +3655,6 @@ const Employees = () => {
                         />
                       </div>
 
-                      <div className="form-group col-3">
-                        <label>الراتب الإجمالي (قديم - للتوافق)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={formData.salary}
-                          onChange={(e) =>
-                            setFormData({ ...formData, salary: e.target.value })
-                          }
-                          style={{ background: "#f0f0f0", opacity: 0.7 }}
-                          title="هذا الحقل للتوافق مع البيانات القديمة فقط"
-                          placeholder="0.00"
-                        />
-                      </div>
 
                       {/* ========== القسم الرابع: المستندات ========== */}
                       <h3

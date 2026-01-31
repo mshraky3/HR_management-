@@ -185,7 +185,6 @@ const ExperienceCertificate = () => {
         contract_end_date: selectedEmployee.contract_end_date_hijri || "",
         contract_end_date_gregorian:
           selectedEmployee.contract_end_date_gregorian || "",
-        salary: selectedEmployee.salary || "",
         basic_salary: "",
         housing_allowance: "",
         transportation_allowance: "",
@@ -244,13 +243,6 @@ const ExperienceCertificate = () => {
       dataToCheck.contract_end_date_gregorian.trim() === ""
     ) {
       missingFields.push("تاريخ نهاية العقد");
-    }
-
-    // Check salary for salary certificate
-    if (certificateType === "salary") {
-      if (!dataToCheck.salary || dataToCheck.salary.trim() === "") {
-        missingFields.push("الراتب الإجمالي");
-      }
     }
 
     return missingFields;
@@ -530,8 +522,8 @@ const ExperienceCertificate = () => {
                     value={
                       searchFilters.branch_id
                         ? branches.find(
-                            (b) => b.id === parseInt(searchFilters.branch_id),
-                          )?.branch_name || ""
+                          (b) => b.id === parseInt(searchFilters.branch_id),
+                        )?.branch_name || ""
                         : branchSearchTerm
                     }
                     onChange={(e) => {

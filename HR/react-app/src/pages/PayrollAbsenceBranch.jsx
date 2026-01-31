@@ -47,7 +47,12 @@ const PayrollAbsenceBranch = ({ onComplete }) => {
       if (data?.employees?.length) {
         const defaults = {};
         data.employees.forEach((emp) => {
-          defaults[emp.id] = { absences: entries[emp.id]?.absences || 0, notes: entries[emp.id]?.notes || '' };
+          // Use pre-filled data from backend (includes previous submission data for reopened entries)
+          defaults[emp.id] = {
+            excused_absences: emp.excused_absences ?? 0,
+            unexcused_absences: emp.unexcused_absences ?? 0,
+            notes: emp.notes || ''
+          };
         });
         setEntries(defaults);
       }
@@ -105,7 +110,7 @@ const PayrollAbsenceBranch = ({ onComplete }) => {
       });
       setSuccess('تم الحفظ. للتعديل لاحقاً، يرجى مراسلة إدارة الموارد البشرية لفتح الإدخال.');
       await loadState();
-      
+
       // Call onComplete callback if provided (for task completion tracking)
       if (onComplete) {
         onComplete();
@@ -193,39 +198,42 @@ const PayrollAbsenceBranch = ({ onComplete }) => {
                   <tr>
                     <th>الموظف</th>
                     <th>رقم الهوية</th>
-                  <th> ايام الغياب بعذر</th>
-                  <th> ايام الغياب بدون عذر</th>
-                  <th>الإجمالي</th>
+                    <th> ايام الغياب بعذر</th>
+                    <th> ايام الغياب بدون عذر</th>
+                    <th>الإجمالي</th>
                     <th>ملاحظات</th>
                   </tr>
                 </thead>
                 <tbody>
                   {state.employees.map((emp) => (
-                    <tr key={emp.id}>
-                      <td>{emp.full_name}</td>
+                    <tr key={emp.id} className={emp.is_new ? 'new-employee-row' : ''}>
+                      <td>
+                        {emp.full_name}
+                        {emp.is_new && <span className="new-badge">جديد</span>}
+                      </td>
                       <td>{emp.employee_id}</td>
                       <td>
                         <input
                           type="number"
                           min="0"
                           className="table-input"
-                        value={entries[emp.id]?.excused_absences ?? 0}
-                        onChange={(e) => handleAbsenceChange(emp.id, Number(e.target.value), 'excused')}
+                          value={entries[emp.id]?.excused_absences ?? 0}
+                          onChange={(e) => handleAbsenceChange(emp.id, Number(e.target.value), 'excused')}
                         />
                       </td>
                       <td>
-                      <input
-                        type="number"
-                        min="0"
-                        className="table-input"
-                        value={entries[emp.id]?.unexcused_absences ?? 0}
-                        onChange={(e) => handleAbsenceChange(emp.id, Number(e.target.value), 'unexcused')}
-                      />
-                    </td>
-                    <td>
-                      {(entries[emp.id]?.excused_absences || 0) + (entries[emp.id]?.unexcused_absences || 0)}
-                    </td>
-                    <td>
+                        <input
+                          type="number"
+                          min="0"
+                          className="table-input"
+                          value={entries[emp.id]?.unexcused_absences ?? 0}
+                          onChange={(e) => handleAbsenceChange(emp.id, Number(e.target.value), 'unexcused')}
+                        />
+                      </td>
+                      <td>
+                        {(entries[emp.id]?.excused_absences || 0) + (entries[emp.id]?.unexcused_absences || 0)}
+                      </td>
+                      <td>
                         <textarea
                           className="note-input"
                           placeholder="ملاحظات إضافية"
@@ -260,9 +268,9 @@ const PayrollAbsenceBranch = ({ onComplete }) => {
                   <tr>
                     <th>الموظف</th>
                     <th>رقم الهوية</th>
-                  <th>غياب بعذر</th>
-                  <th>غياب بدون عذر</th>
-                  <th>الإجمالي</th>
+                    <th>غياب بعذر</th>
+                    <th>غياب بدون عذر</th>
+                    <th>الإجمالي</th>
                     <th>ملاحظات</th>
                   </tr>
                 </thead>
@@ -271,9 +279,9 @@ const PayrollAbsenceBranch = ({ onComplete }) => {
                     <tr key={row.employee_id}>
                       <td>{row.full_name}</td>
                       <td>{row.employee_id_number}</td>
-                    <td>{row.excused_absences ?? 0}</td>
-                    <td>{row.unexcused_absences ?? 0}</td>
-                    <td>{row.absences ?? ((row.excused_absences ?? 0) + (row.unexcused_absences ?? 0))}</td>
+                      <td>{row.excused_absences ?? 0}</td>
+                      <td>{row.unexcused_absences ?? 0}</td>
+                      <td>{row.absences ?? ((row.excused_absences ?? 0) + (row.unexcused_absences ?? 0))}</td>
                       <td>{row.notes || '—'}</td>
                     </tr>
                   ))}

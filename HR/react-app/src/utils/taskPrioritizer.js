@@ -537,8 +537,8 @@ const calculateSalaryReviewTask = (employees = []) => {
     const totalSalary = calculateTotalSalary(employee);
     let issueType = null;
 
-    // Check for low salary (<= 0 or < 1000)
-    if (totalSalary <= 0 || totalSalary < 1000) {
+    // Check for low salary (<= 0 or < 500)
+    if (totalSalary <= 0 || totalSalary < 500) {
       issueType = 'low';
     }
     // Check for high salary (>= 13000)
@@ -567,9 +567,9 @@ const calculateSalaryReviewTask = (employees = []) => {
   // Build description
   let description = '';
   if (lowSalaryCount > 0 && highSalaryCount > 0) {
-    description = `${lowSalaryCount} موظف براتب منخفض (0 أو أقل من 1000 ريال)، ${highSalaryCount} موظف براتب مرتفع (13000 ريال أو أكثر)`;
+    description = `${lowSalaryCount} موظف براتب منخفض (0 أو أقل من 500 ريال)، ${highSalaryCount} موظف براتب مرتفع (13000 ريال أو أكثر)`;
   } else if (lowSalaryCount > 0) {
-    description = `${lowSalaryCount} موظف براتب منخفض (0 أو أقل من 1000 ريال) يحتاج إضافة راتب`;
+    description = `${lowSalaryCount} موظف براتب منخفض (0 أو أقل من 500 ريال) يحتاج إضافة راتب`;
   } else {
     description = `${highSalaryCount} موظف براتب مرتفع (13000 ريال أو أكثر) يحتاج مراجعة`;
   }
@@ -771,12 +771,12 @@ const calculatePriorityScore = (task) => {
   };
 
   // Special cases for payroll absence:
-  // 1. When entry_open: gets higher priority (between employees and transportation)
+  // 1. When entry_open: gets HIGHEST priority (above everything - temporary and most important)
   // 2. When waiting/countdown: gets LOWEST priority (after notifications)
   if (task.type === 'payroll_absence') {
     if (task.urgency === 'due_soon') {
-      // Entry is open - high priority
-      score += 8000; // Between employees (9000) and transportation (7000)
+      // Entry is open - HIGHEST priority (temporary window, most important)
+      score += 15000; // Above everything including setup (10000)
     } else if (task.isWaiting || task.urgency === 'no_deadline' || task.urgency === 'due_later') {
       // Waiting for entry to open - lowest priority (even lower than notifications)
       score += 500; // Very low priority, below notifications (1000)
