@@ -207,12 +207,12 @@ const PayrollAbsenceBranch = ({ onComplete }) => {
                 <tbody>
                   {state.employees.map((emp) => (
                     <tr key={emp.id} className={emp.is_new ? 'new-employee-row' : ''}>
-                      <td>
+                      <td data-label="الموظف">
                         {emp.full_name}
                         {emp.is_new && <span className="new-badge">جديد</span>}
                       </td>
-                      <td>{emp.employee_id}</td>
-                      <td>
+                      <td data-label="رقم الهوية">{emp.employee_id}</td>
+                      <td data-label="غياب بعذر">
                         <input
                           type="number"
                           min="0"
@@ -221,7 +221,7 @@ const PayrollAbsenceBranch = ({ onComplete }) => {
                           onChange={(e) => handleAbsenceChange(emp.id, Number(e.target.value), 'excused')}
                         />
                       </td>
-                      <td>
+                      <td data-label="غياب بدون عذر">
                         <input
                           type="number"
                           min="0"
@@ -230,10 +230,10 @@ const PayrollAbsenceBranch = ({ onComplete }) => {
                           onChange={(e) => handleAbsenceChange(emp.id, Number(e.target.value), 'unexcused')}
                         />
                       </td>
-                      <td>
+                      <td data-label="الإجمالي">
                         {(entries[emp.id]?.excused_absences || 0) + (entries[emp.id]?.unexcused_absences || 0)}
                       </td>
-                      <td>
+                      <td data-label="ملاحظات">
                         <textarea
                           className="note-input"
                           placeholder="ملاحظات إضافية"
@@ -277,12 +277,12 @@ const PayrollAbsenceBranch = ({ onComplete }) => {
                 <tbody>
                   {state.entries?.map((row) => (
                     <tr key={row.employee_id}>
-                      <td>{row.full_name}</td>
-                      <td>{row.employee_id_number}</td>
-                      <td>{row.excused_absences ?? 0}</td>
-                      <td>{row.unexcused_absences ?? 0}</td>
-                      <td>{row.absences ?? ((row.excused_absences ?? 0) + (row.unexcused_absences ?? 0))}</td>
-                      <td>{row.notes || '—'}</td>
+                      <td data-label="الموظف">{row.full_name}</td>
+                      <td data-label="رقم الهوية">{row.employee_id_number}</td>
+                      <td data-label="غياب بعذر">{row.excused_absences ?? 0}</td>
+                      <td data-label="غياب بدون عذر">{row.unexcused_absences ?? 0}</td>
+                      <td data-label="الإجمالي">{row.absences ?? ((row.excused_absences ?? 0) + (row.unexcused_absences ?? 0))}</td>
+                      <td data-label="ملاحظات">{row.notes || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

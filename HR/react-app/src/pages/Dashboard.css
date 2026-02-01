@@ -9,8 +9,13 @@
 
 /* Loading spinner animation */
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .dashboard h1 {
@@ -114,11 +119,10 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(90deg, 
-    rgba(255, 255, 255, 0.2) 0%, 
-    transparent 50%, 
-    rgba(255, 255, 255, 0.2) 100%
-  );
+  background: linear-gradient(90deg,
+      rgba(255, 255, 255, 0.2) 0%,
+      transparent 50%,
+      rgba(255, 255, 255, 0.2) 100%);
   animation: shimmer 2s infinite;
 }
 
@@ -126,6 +130,7 @@
   0% {
     transform: translateX(-100%);
   }
+
   100% {
     transform: translateX(100%);
   }
@@ -337,15 +342,15 @@
     grid-template-columns: repeat(2, 1fr);
     gap: var(--spacing-sm);
   }
-  
+
   .stat-card {
     padding: var(--spacing-md);
   }
-  
+
   .alerts-container {
     grid-template-columns: 1fr;
   }
-  
+
   .notifications-section,
   .incomplete-employees-alert,
   .missing-branch-documents-alerts,
@@ -358,21 +363,21 @@
   .dashboard {
     padding: var(--spacing-sm);
   }
-  
+
   .dashboard h1 {
     font-size: var(--font-size-xl);
     margin-bottom: var(--spacing-sm);
   }
-  
+
   .stats-grid {
     grid-template-columns: 1fr;
     gap: var(--spacing-sm);
   }
-  
+
   .stat-card {
     padding: var(--spacing-md);
   }
-  
+
   .stat-number {
     font-size: var(--font-size-2xl);
   }
@@ -381,21 +386,21 @@
     font-size: var(--font-size-base);
     margin-bottom: var(--spacing-md);
   }
-  
+
   .alerts-container {
     grid-template-columns: 1fr;
     gap: var(--spacing-sm);
   }
-  
+
   .alert-card {
     padding: var(--spacing-sm);
   }
-  
+
   .incomplete-employees-table {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
-  
+
   .incomplete-employees-table table {
     min-width: 500px;
   }
@@ -407,137 +412,139 @@
     font-size: var(--font-size-xl);
     margin-bottom: var(--spacing-sm);
   }
-  
+
   .welcome-message {
     font-size: var(--font-size-sm);
     margin-bottom: var(--spacing-md);
   }
-  
+
   .stats-grid {
     gap: var(--spacing-sm);
   }
-  
+
   .stat-card {
     padding: var(--spacing-md);
   }
-  
+
   .stat-card h3 {
     font-size: var(--font-size-sm);
   }
-  
+
   .stat-number {
     font-size: var(--font-size-xl);
   }
-  
+
   .btn-stat-link {
     width: 100%;
     padding: var(--spacing-sm);
     font-size: var(--font-size-xs);
     min-height: 40px;
   }
-  
+
   .alerts-container {
     gap: var(--spacing-sm);
   }
-  
+
   .alert-card {
     padding: var(--spacing-sm);
   }
-  
+
   .alert-message {
     font-size: var(--font-size-xs);
   }
-  
+
   .btn-alert {
     width: 100%;
     padding: var(--spacing-sm);
     font-size: var(--font-size-xs);
     min-height: 40px;
   }
-  
+
   .dashboard-alert-section,
   .missing-branch-documents-alerts,
   .monthly-documents-alerts,
   .notifications-section {
     padding: var(--spacing-md);
   }
-  
+
   .dashboard-section-title {
     font-size: var(--font-size-lg);
   }
-  
+
   .incomplete-employees-table {
     font-size: var(--font-size-xs);
   }
-  
+
   .incomplete-employees-table th,
   .incomplete-employees-table td {
     padding: var(--spacing-xs);
     font-size: var(--font-size-xs);
     white-space: nowrap;
   }
-  
+
   .incomplete-employees-table {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
-  
+
   .incomplete-employees-table table {
     min-width: 400px;
   }
-  
+
   .notification-item {
     padding: var(--spacing-sm);
   }
-  
+
   .notification-header-dashboard {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--spacing-xs);
   }
-  
+
   .notification-message-dashboard {
     font-size: var(--font-size-xs);
   }
-  
+
   .response-form-dashboard {
     gap: var(--spacing-xs);
   }
-  
+
   .response-select,
   .response-textarea {
-    font-size: 16px; /* Prevents zoom on iOS */
-    min-height: 44px; /* Touch-friendly */
+    font-size: 16px;
+    /* Prevents zoom on iOS */
+    min-height: 44px;
+    /* Touch-friendly */
   }
-  
+
   .response-form-actions {
     flex-direction: column;
   }
-  
+
   .response-form-actions .btn {
     width: 100%;
   }
-  
+
   .branch-stats-summary {
     padding: var(--spacing-md);
   }
-  
+
   .branch-stats-summary h2 {
     font-size: var(--font-size-lg);
   }
-  
+
   .graph-label {
     font-size: var(--font-size-xs);
   }
-  
+
   .graph-bar-container {
     height: 32px;
   }
-  
+
   .graph-bar-value {
     font-size: var(--font-size-xs);
   }
-  
+
   .critical-notice {
     padding: var(--spacing-sm);
     font-size: var(--font-size-sm);
@@ -667,9 +674,12 @@
 }
 
 @keyframes pulse-critical {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
   }
+
   50% {
     box-shadow: 0 0 30px rgba(239, 68, 68, 0.6);
   }
@@ -731,9 +741,12 @@
 }
 
 @keyframes pulse-badge {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
   }
+
   50% {
     transform: scale(1.05);
   }
@@ -820,18 +833,24 @@
 }
 
 @keyframes pulse-btn {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
   }
+
   50% {
     box-shadow: 0 6px 20px rgba(239, 68, 68, 0.7);
   }
 }
 
 @keyframes pulse-critical-subtle {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 0 rgba(244, 67, 54, 0.3);
   }
+
   50% {
     box-shadow: 0 0 20px rgba(244, 67, 54, 0.5);
   }
@@ -888,10 +907,12 @@
     box-shadow: var(--shadow-md);
     transform: translateY(0);
   }
+
   35% {
     box-shadow: 0 14px 32px rgba(33, 150, 243, 0.25);
     transform: translateY(-2px);
   }
+
   100% {
     box-shadow: var(--shadow-md);
     transform: translateY(0);
@@ -1016,11 +1037,11 @@
   .alerts-container {
     grid-template-columns: 1fr;
   }
-  
+
   .incomplete-employees-table {
     font-size: var(--font-size-sm);
   }
-  
+
   .incomplete-employees-table th,
   .incomplete-employees-table td {
     padding: 8px;
@@ -1364,15 +1385,20 @@
 
 /* Celebration Animation */
 @keyframes celebration {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1) rotate(0deg);
   }
+
   25% {
     transform: scale(1.1) rotate(-5deg);
   }
+
   50% {
     transform: scale(1.15) rotate(5deg);
   }
+
   75% {
     transform: scale(1.1) rotate(-5deg);
   }
@@ -1387,6 +1413,7 @@
   0% {
     stroke-dashoffset: 100;
   }
+
   100% {
     stroke-dashoffset: 0;
   }
@@ -1402,10 +1429,12 @@
     opacity: 1;
     transform: scale(1);
   }
+
   50% {
     opacity: 0.8;
     transform: scale(0.95);
   }
+
   100% {
     opacity: 0;
     transform: scale(0.9);
@@ -1418,9 +1447,12 @@
 
 /* Focus Glow Effect */
 @keyframes focusGlow {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 20px rgba(73, 136, 196, 0.3);
   }
+
   50% {
     box-shadow: 0 0 30px rgba(73, 136, 196, 0.6);
   }
@@ -1469,10 +1501,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
     opacity: 1;
   }
+
   50% {
     transform: scale(1.2);
     opacity: 0.8;
@@ -1499,11 +1534,11 @@ html {
   margin-bottom: var(--spacing-xl);
 }
 
-.dashboard-tasks-section > * {
+.dashboard-tasks-section>* {
   margin-bottom: var(--spacing-lg);
 }
 
-.dashboard-tasks-section > *:last-child {
+.dashboard-tasks-section>*:last-child {
   margin-bottom: 0;
 }
 
@@ -1630,9 +1665,11 @@ html {
     transform: scale(0);
     opacity: 0;
   }
+
   50% {
     transform: scale(1.1);
   }
+
   100% {
     transform: scale(1);
     opacity: 1;
@@ -1668,5 +1705,81 @@ html {
 
   .completion-description {
     font-size: var(--font-size-base);
+  }
+}
+
+/* ============================================
+   MOBILE RESPONSIVE - Task Manager Section
+   ============================================ */
+
+@media (max-width: 480px) {
+
+  /* Main Task Section Container */
+  .dashboard-tasks-section {
+    padding: var(--spacing-md);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--spacing-md);
+    border-width: 1px;
+  }
+
+  .dashboard-tasks-section>* {
+    margin-bottom: var(--spacing-md);
+  }
+
+  /* Task Navigation Info */
+  .task-navigation-info {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .task-counter {
+    font-size: var(--font-size-xs);
+  }
+
+  /* Task Navigation Buttons */
+  .task-navigation-buttons {
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    width: 100%;
+    display: flex !important;
+  }
+
+  .task-nav-btn {
+    padding: 10px 16px;
+    font-size: 13px;
+    width: 100% !important;
+    justify-content: center;
+    border-radius: 8px;
+    display: flex !important;
+    visibility: visible !important;
+  }
+
+  .task-nav-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .task-nav-btn-prev svg {
+    transform: scaleX(-1);
+  }
+
+  /* Tasks Completion Message */
+  .tasks-completion-message {
+    padding: var(--spacing-xl) var(--spacing-md);
+  }
+
+  .completion-icon svg {
+    width: 60px;
+    height: 60px;
+  }
+
+  .completion-title {
+    font-size: var(--font-size-lg);
+  }
+
+  .completion-description {
+    font-size: var(--font-size-sm);
   }
 }

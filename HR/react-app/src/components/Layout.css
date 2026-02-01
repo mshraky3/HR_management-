@@ -83,13 +83,13 @@
 }
 
 @media (max-width: 1024px) {
-    .nav-links {
+    .navbar:not(.branch-navbar) .nav-links {
         gap: var(--spacing-xs);
     }
 }
 
 @media (max-width: 768px) {
-    .nav-links {
+    .navbar:not(.branch-navbar) .nav-links {
         display: none;
         width: 100%;
         flex-direction: column;
@@ -101,7 +101,7 @@
         gap: 0;
     }
 
-    .nav-links.mobile-open {
+    .navbar:not(.branch-navbar) .nav-links.mobile-open {
         display: flex;
     }
 }

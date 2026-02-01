@@ -49,12 +49,12 @@ const SalaryReviewSection = ({ employeeList = [], onComplete }) => {
               <tbody>
                 {lowSalaryEmployees.map((item) => (
                   <tr key={item.employee.id}>
-                    <td>{item.employeeName}</td>
-                    <td className="salary-amount">{formatSalary(item.totalSalary)}</td>
-                    <td>
+                    <td data-label="الموظف">{item.employeeName}</td>
+                    <td data-label="إجمالي الراتب" className="salary-amount">{formatSalary(item.totalSalary)}</td>
+                    <td data-label="الحالة">
                       <span className="badge badge-warning">راتب منخفض</span>
                     </td>
-                    <td>
+                    <td data-label="إجراءات">
                       <button
                         onClick={() => navigate('/employees', { state: { editEmployeeId: item.employee.id } })}
                         className="btn btn-primary btn-sm"
@@ -91,12 +91,12 @@ const SalaryReviewSection = ({ employeeList = [], onComplete }) => {
               <tbody>
                 {highSalaryEmployees.map((item) => (
                   <tr key={item.employee.id}>
-                    <td>{item.employeeName}</td>
-                    <td className="salary-amount">{formatSalary(item.totalSalary)}</td>
-                    <td>
+                    <td data-label="الموظف">{item.employeeName}</td>
+                    <td data-label="إجمالي الراتب" className="salary-amount">{formatSalary(item.totalSalary)}</td>
+                    <td data-label="الحالة">
                       <span className="badge badge-info">راتب مرتفع</span>
                     </td>
-                    <td>
+                    <td data-label="إجراءات">
                       <button
                         onClick={() => navigate('/employees', { state: { editEmployeeId: item.employee.id } })}
                         className="btn btn-primary btn-sm"

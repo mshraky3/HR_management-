@@ -143,6 +143,7 @@
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -166,5 +167,70 @@
   .task-card-wrapper-header-right {
     width: 100%;
     justify-content: space-between;
+  }
+}
+
+/* ============================================
+   MOBILE RESPONSIVE - Task Card Wrapper (480px)
+   ============================================ */
+
+@media (max-width: 480px) {
+  .task-card-wrapper {
+    padding: var(--spacing-sm);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--spacing-md);
+    border-width: 1px;
+  }
+
+  .task-card-wrapper-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+    padding-bottom: var(--spacing-sm);
+    border-bottom-width: 1px;
+  }
+
+  .task-card-wrapper-header-left {
+    width: 100%;
+    gap: var(--spacing-sm);
+  }
+
+  .task-card-wrapper-header-left .task-icon {
+    display: none;
+  }
+
+  .task-card-wrapper-title {
+    font-size: var(--font-size-sm);
+    margin-bottom: 4px;
+    line-height: 1.4;
+  }
+
+  .task-card-wrapper-priority {
+    padding: 0.15rem 0.5rem;
+    font-size: 10px;
+  }
+
+  .task-card-wrapper-header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .task-card-wrapper-progress-text {
+    font-size: var(--font-size-xs);
+  }
+
+  .task-card-wrapper-toggle {
+    width: 28px;
+    height: 28px;
+  }
+
+  .task-card-wrapper-body {
+    margin-top: var(--spacing-sm);
+  }
+
+  .task-card-wrapper-description {
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--spacing-sm);
   }
 }

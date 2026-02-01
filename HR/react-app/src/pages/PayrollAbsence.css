@@ -606,27 +606,269 @@ z-index: 2;
 
 @media (max-width: 480px) {
   .payroll-absence-page {
-    padding: var(--spacing-md) 0;
+    padding: 8px;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden !important;
+    box-sizing: border-box;
   }
 
   .payroll-absence-card {
-    padding: var(--spacing-md);
-    border-radius: var(--radius-lg);
+    padding: 10px;
+    border-radius: 12px;
+    overflow-x: hidden !important;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .payroll-absence-card h2 {
+    font-size: 16px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
 
   .payroll-absence-meta {
     flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .pill {
     width: 100%;
+    max-width: 100%;
+    justify-content: center;
+    padding: 6px 10px;
+    font-size: 12px;
+    box-sizing: border-box;
+    word-wrap: break-word;
+  }
+
+  .state-block {
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+
+  .state-title {
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+
+  .helper-text {
+    font-size: 11px !important;
+  }
+
+  /* ============================================
+     MOBILE CARDS LAYOUT - Employee Cards
+     ============================================ */
+
+  /* Hide table completely */
+  .payroll-table {
+    display: none !important;
+  }
+
+  /* Create mobile cards container */
+  .payroll-absence-card>div[style*="position: relative"] {
+    display: block;
+  }
+
+  /* Actions section */
+  .payroll-actions {
+    margin-top: 16px;
+    padding: 12px;
+    flex-direction: column;
+  }
+
+  .payroll-actions>div {
+    width: 100%;
+    align-items: stretch !important;
+  }
+
+  .payroll-actions .btn {
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 14px;
+    text-align: center;
     justify-content: center;
   }
 
+  /* View only container */
+  .view-only-container {
+    margin-top: 8px;
+  }
+
+  .compact-state-block {
+    padding: 8px !important;
+    margin-bottom: 8px !important;
+  }
+}
+
+/* ============================================
+   MOBILE EMPLOYEE CARDS - Replaces Table
+   ============================================ */
+@media (max-width: 480px) {
+
+  /* Show table as flex cards */
+  /* Show table as flex cards */
   .payroll-table {
+    display: flex !important;
+    flex-direction: column;
+    gap: 10px;
+    background: transparent;
+    box-shadow: none;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: unset !important;
+    overflow: visible !important;
+    box-sizing: border-box;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .payroll-table thead {
+    display: none;
+  }
+
+  .payroll-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+    width: 100% !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Each employee = one card - vertical */
+  .payroll-table tbody tr {
     display: block;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    max-width: 290px;
+    width: calc(100% - 20px);
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .payroll-table tbody tr.new-employee-row {
+    border-color: #22c55e;
+    border-width: 2px;
+    background: #f0fdf4;
+  }
+
+  /* Employee name - card header */
+  .payroll-table td:first-child {
+    display: block;
+    font-weight: 700;
+    font-size: 15px;
+    color: #1f2937;
+    padding: 0 0 10px 0;
+    margin-bottom: 10px;
+    border-bottom: 2px solid #e5e7eb;
+    text-align: center;
+  }
+
+  .payroll-table td:first-child::before {
+    display: none;
+  }
+
+  /* Other cells - vertical layout */
+  .payroll-table td {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 6px 0;
+    font-size: 13px;
+    border: none;
+  }
+
+  .payroll-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #6b7280;
+    font-size: 10px;
+    margin-bottom: 4px;
+    text-align: right;
+  }
+
+  /* Input fields - full width */
+  .table-input {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 8px !important;
+    font-size: 14px !important;
+    text-align: center;
+    border-radius: 6px;
+    box-sizing: border-box !important;
+  }
+
+  /* Total cell - prominent */
+  .payroll-table td[data-label="الإجمالي"] {
+    background: #f3f4f6;
+    border-radius: 6px;
+    padding: 10px;
+    margin-top: 8px;
+    font-weight: 700;
+    font-size: 16px;
+    text-align: center;
+    color: #1f2937;
+    word-wrap: break-word;
+  }
+
+  .payroll-table td[data-label="الإجمالي"]::before {
+    text-align: center;
+    margin-bottom: 6px;
+  }
+
+  /* Notes field - full width */
+  .payroll-table td[data-label="ملاحظات"],
+  .payroll-table td:has(.note-input) {
+    display: flex;
+    flex-direction: column;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .note-input {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 50px;
+    font-size: 13px !important;
+    padding: 10px !important;
+    border-radius: 6px;
+    resize: vertical;
+    box-sizing: border-box !important;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  /* Hide ID number on mobile to save space */
+  .payroll-table td[data-label="رقم الهوية"] {
+    display: none;
+  }
+
+  /* Compact table (view only) - simpler cards */
+  .compact-table tbody tr {
+    padding: 10px;
+  }
+
+  .compact-table td {
+    padding: 4px 0;
+    font-size: 12px;
+  }
+
+  .compact-table td:first-child {
+    font-size: 13px;
+    padding-bottom: 6px;
+    margin-bottom: 6px;
   }
 }
 

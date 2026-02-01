@@ -2617,105 +2617,106 @@ const Employees = () => {
 
           {/* Pagination Controls */}
           {employees.length > 0 && totalPages > 1 && (
-            <div className="pagination">
-              <div className="pagination-info">
-                عرض {(currentPage - 1) * itemsPerPage + 1} -{" "}
-                {Math.min(currentPage * itemsPerPage, employees.length)} من{" "}
-                {employees.length}
-              </div>
+            <div className="pagination-wrapper">
+              <div className="pagination">
+                <div className="pagination-info">
+                  عرض {(currentPage - 1) * itemsPerPage + 1} -{" "}
+                  {Math.min(currentPage * itemsPerPage, employees.length)} من{" "}
+                  {employees.length}
+                </div>
 
-              <div
-                style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}
-              >
-                <button
-                  onClick={() => setCurrentPage(1)}
-                  disabled={currentPage === 1}
-                  className="btn btn-secondary btn-sm"
-                >
-                  الأولى
-                </button>
-                <button
-                  onClick={() =>
-                    setCurrentPage((prev) => Math.max(1, prev - 1))
-                  }
-                  disabled={currentPage === 1}
-                  className="btn btn-secondary btn-sm"
-                >
-                  السابقة
-                </button>
+                <div className="pagination-controls">
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    className="btn btn-secondary btn-sm pagination-btn"
+                    aria-label="الصفحة الأولى"
+                  >
+                    <span className="pagination-btn-text">الأولى</span>
+                    <span className="pagination-btn-icon">⏮</span>
+                  </button>
+                  <button
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(1, prev - 1))
+                    }
+                    disabled={currentPage === 1}
+                    className="btn btn-secondary btn-sm pagination-btn"
+                    aria-label="الصفحة السابقة"
+                  >
+                    <span className="pagination-btn-text">السابقة</span>
+                    <span className="pagination-btn-icon">◀</span>
+                  </button>
 
-                {/* Page numbers */}
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum;
-                  if (totalPages <= 5) {
-                    pageNum = i + 1;
-                  } else if (currentPage <= 3) {
-                    pageNum = i + 1;
-                  } else if (currentPage >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    pageNum = currentPage - 2 + i;
-                  }
+                  {/* Page numbers */}
+                  <div className="pagination-numbers">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
 
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => setCurrentPage(pageNum)}
-                      className={`btn btn-sm ${currentPage === pageNum ? "btn-primary active" : "btn-secondary"}`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`btn btn-sm pagination-btn pagination-number ${currentPage === pageNum ? "btn-primary active" : "btn-secondary"}`}
+                          aria-label={`صفحة ${pageNum}`}
+                          aria-current={currentPage === pageNum ? "page" : undefined}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
 
-                <button
-                  onClick={() =>
-                    setCurrentPage((prev) => Math.min(totalPages, prev + 1))
-                  }
-                  disabled={currentPage === totalPages}
-                  className="btn btn-secondary btn-sm"
-                >
-                  التالية
-                </button>
-                <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="btn btn-secondary btn-sm"
-                >
-                  الأخيرة
-                </button>
-              </div>
+                  <button
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                    }
+                    disabled={currentPage === totalPages}
+                    className="btn btn-secondary btn-sm pagination-btn"
+                    aria-label="الصفحة التالية"
+                  >
+                    <span className="pagination-btn-text">التالية</span>
+                    <span className="pagination-btn-icon">▶</span>
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="btn btn-secondary btn-sm pagination-btn"
+                    aria-label="الصفحة الأخيرة"
+                  >
+                    <span className="pagination-btn-text">الأخيرة</span>
+                    <span className="pagination-btn-icon">⏭</span>
+                  </button>
+                </div>
 
-              {/* Items per page selector */}
-              <div
-                style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}
-              >
-                <label
-                  style={{ fontSize: "0.875rem", color: "var(--text-light)" }}
-                >
-                  عدد العناصر:
-                </label>
-                <select
-                  value={itemsPerPage}
-                  onChange={(e) => {
-                    setItemsPerPage(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  style={{
-                    padding: "0.5rem",
-                    border: "2px solid var(--border)",
-                    borderRadius: "var(--radius-md)",
-                    fontSize: "0.875rem",
-                    background: "var(--bg)",
-                    color: "var(--text)",
-                    cursor: "pointer",
-                  }}
-                >
-                  <option value="10">10</option>
-                  <option value="25">25</option>
-                  <option value="50">50</option>
-                  <option value="100">100</option>
-                </select>
+                {/* Items per page selector */}
+                <div className="pagination-per-page">
+                  <label className="pagination-label">
+                    عدد العناصر:
+                  </label>
+                  <select
+                    value={itemsPerPage}
+                    onChange={(e) => {
+                      setItemsPerPage(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="pagination-select"
+                    aria-label="عدد العناصر في الصفحة"
+                  >
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </div>
               </div>
             </div>
           )}

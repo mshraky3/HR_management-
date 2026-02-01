@@ -58,16 +58,16 @@ const IBANReviewSection = ({ employeeList = [], onComplete }) => {
                         <tbody>
                             {employeeList.map((item) => (
                                 <tr key={item.employee.id}>
-                                    <td>{item.employeeName}</td>
-                                    <td className="iban-value" dir="ltr" style={{ textAlign: 'left', fontFamily: 'monospace' }}>
+                                    <td data-label="الموظف">{item.employeeName}</td>
+                                    <td data-label="رقم الآيبان" className="iban-value" dir="ltr" style={{ textAlign: 'left', fontFamily: 'monospace' }}>
                                         {formatIBAN(item.iban)}
                                     </td>
-                                    <td>
+                                    <td data-label="المشكلة">
                                         <span className="badge badge-warning">
                                             {getIssueDescription(item.issueType, item.iban)}
                                         </span>
                                     </td>
-                                    <td>
+                                    <td data-label="إجراءات">
                                         <button
                                             onClick={() => navigate('/employees', { state: { editEmployeeId: item.employee.id } })}
                                             className="btn btn-primary btn-sm"

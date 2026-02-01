@@ -68,64 +68,76 @@ const BranchManagerLayout = ({ children }) => {
         >
           {mobileMenuOpen ? "✕" : "☰"}
         </button>
-        <div className={`nav-links ${mobileMenuOpen ? "mobile-open" : ""}`}>
-          {Object.entries(menuItems).map(([key, menu]) => (
-            <div key={key} className="nav-dropdown">
-              <button
-                className={`dropdown-toggle ${isActive(menu.items.map((item) => item.path).find((path) => location.pathname === path)) ? "active" : ""}`}
-                onClick={() => toggleDropdown(key)}
-              >
-                {menu.label}
-                <span className="dropdown-arrow">▼</span>
-              </button>
-              <div
-                className={`dropdown-menu ${openDropdown === key ? "open" : ""}`}
-              >
-                {menu.items.map((item) => (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={isActive(item.path)}
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      closeDropdown();
-                    }}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
+        <div className={`nav-links ${mobileMenuOpen ? "mobile-open" : ""}`} onClick={() => setMobileMenuOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()}>
+            {Object.entries(menuItems).map(([key, menu]) => (
+              <div key={key} className="nav-dropdown">
+                <button
+                  className={`dropdown-toggle ${isActive(menu.items.map((item) => item.path).find((path) => location.pathname === path)) ? "active" : ""}`}
+                  onClick={() => toggleDropdown(key)}
+                >
+                  {menu.label}
+                  <span className="dropdown-arrow">▼</span>
+                </button>
+                <div
+                  className={`dropdown-menu ${openDropdown === key ? "open" : ""}`}
+                >
+                  {menu.items.map((item) => (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      className={isActive(item.path)}
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        closeDropdown();
+                      }}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-          {/* Direct navigation links (moved from documents dropdown) */}
-          <Link
-            to="/branch-documents"
-            className={`nav-link ${isActive("/branch-documents")}`}
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            مستندات الفرع
-          </Link>
-          <Link
-            to="/branch-requests"
-            className={`nav-link ${isActive("/branch-requests")}`}
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            طلبات
-          </Link>
-          <Link
-            to="/bus-transportation"
-            className={`nav-link ${isActive("/bus-transportation")}`}
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            الباصات
-          </Link>
-          <Link
-            to="/suggestions"
-            className={`nav-link ${isActive("/suggestions")}`}
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            اقتراحات
-          </Link>
+            ))}
+            {/* Direct navigation links */}
+            <Link
+              to="/branch-documents"
+              className={`nav-link ${isActive("/branch-documents")}`}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              مستندات الفرع
+            </Link>
+            <Link
+              to="/branch-requests"
+              className={`nav-link ${isActive("/branch-requests")}`}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              طلبات
+            </Link>
+            <Link
+              to="/bus-transportation"
+              className={`nav-link ${isActive("/bus-transportation")}`}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              الباصات
+            </Link>
+            <Link
+              to="/suggestions"
+              className={`nav-link ${isActive("/suggestions")}`}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              اقتراحات
+            </Link>
+            {/* Logout button */}
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                handleLogout();
+              }}
+              className="btn btn-secondary logout-button"
+            >
+              تسجيل الخروج
+            </button>
+          </div>
         </div>
         <div className="nav-user">
           <span className="user-info">{user?.full_name || user?.username}</span>
