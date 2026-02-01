@@ -8,6 +8,45 @@ import { log } from '../utils/logger.js';
 
 export const BusStudent = {
   /**
+   * Count how many students share a phone number within the same branch and term
+   * Used to enforce max 2 students per phone number rule
+   * @param {string} phoneNumber - The phone number to check
+   * @param {number} branchId - The branch ID to check within
+   * @param {number} termId - The term ID to check within
+   * @param {number|null} excludeStudentId - Student ID to exclude (for updates)
+   * @returns {Promise<number>} - Count of students with this phone number
+   */
+  async countByPhoneNumber(phoneNumber, branchId, termId, excludeStudentId = null) {
+    try {
+      let result;
+      if (excludeStudentId) {
+        result = await sql`
+          SELECT COUNT(*)::int as count
+          FROM bus_students bs
+          INNER JOIN bus_transportation bt ON bs.bus_id = bt.id
+          WHERE bs.contact_mobile_number = ${phoneNumber}
+            AND bt.branch_id = ${branchId}
+            AND bs.term_id = ${termId}
+            AND bs.id != ${excludeStudentId}
+        `;
+      } else {
+        result = await sql`
+          SELECT COUNT(*)::int as count
+          FROM bus_students bs
+          INNER JOIN bus_transportation bt ON bs.bus_id = bt.id
+          WHERE bs.contact_mobile_number = ${phoneNumber}
+            AND bt.branch_id = ${branchId}
+            AND bs.term_id = ${termId}
+        `;
+      }
+      return result[0]?.count || 0;
+    } catch (error) {
+      log.error('Error counting students by phone number', { error: error.message });
+      throw error;
+    }
+  },
+
+  /**
    * Find student by ID
    */
   async findById(id) {

@@ -879,6 +879,7 @@ router.get('/:id/students', checkBranchAccess, async (req, res) => {
 router.post('/:id/students', checkBranchAccess, validateRequired(['student_full_name', 'contact_mobile_number', 'term_id']), async (req, res) => {
   try {
     const busId = parseInt(req.params.id);
+    const { contact_mobile_number, term_id } = req.body;
 
     // Verify bus exists and user has access
     const bus = await BusTransportation.findById(busId);
@@ -896,6 +897,20 @@ router.post('/:id/students', checkBranchAccess, validateRequired(['student_full_
           message: 'تم رفض الوصول.'
         });
       }
+    }
+
+    // Check phone number limit (max 2 students per phone number in same branch/term)
+    const phoneCount = await BusStudent.countByPhoneNumber(
+      contact_mobile_number,
+      bus.branch_id,
+      term_id
+    );
+
+    if (phoneCount >= 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'رقم الجوال مسجل بالفعل لطالبين. الحد الأقصى هو طالبين لكل رقم جوال.'
+      });
     }
 
     const student = await BusStudent.create({
@@ -930,6 +945,7 @@ router.post('/:id/students', checkBranchAccess, validateRequired(['student_full_
 router.put('/:id/students/:studentId', checkBranchAccess, async (req, res) => {
   try {
     const studentId = parseInt(req.params.studentId);
+    const { contact_mobile_number, term_id } = req.body;
 
     // Verify student exists and belongs to the bus
     const student = await BusStudent.findById(studentId);
@@ -947,6 +963,24 @@ router.put('/:id/students/:studentId', checkBranchAccess, async (req, res) => {
         return res.status(403).json({
           success: false,
           message: 'تم رفض الوصول.'
+        });
+      }
+    }
+
+    // Check phone number limit if phone is being changed (max 2 students per phone number)
+    if (contact_mobile_number && contact_mobile_number !== student.contact_mobile_number) {
+      const termToCheck = term_id || student.term_id;
+      const phoneCount = await BusStudent.countByPhoneNumber(
+        contact_mobile_number,
+        bus.branch_id,
+        termToCheck,
+        studentId // Exclude current student from count
+      );
+
+      if (phoneCount >= 2) {
+        return res.status(400).json({
+          success: false,
+          message: 'رقم الجوال مسجل بالفعل لطالبين. الحد الأقصى هو طالبين لكل رقم جوال.'
         });
       }
     }

@@ -1013,27 +1013,37 @@ export const Employee = {
       const clusters = [];
       const seen = new Set();
 
+      // Only include active employees from active branches
       const idDupes = await sql`
-        SELECT array_agg(id) AS ids
-        FROM employees
-        WHERE id_or_residency_number IS NOT NULL
-        GROUP BY id_or_residency_number
+        SELECT array_agg(e.id) AS ids
+        FROM employees e
+        LEFT JOIN branches b ON e.branch_id = b.id
+        WHERE e.id_or_residency_number IS NOT NULL
+          AND (e.status IS NULL OR e.status IN ('active', 'pending'))
+          AND (b.is_active = true OR b.is_active IS NULL)
+        GROUP BY e.id_or_residency_number
         HAVING COUNT(*) > 1
       `;
 
       const nameDobDupes = await sql`
-        SELECT array_agg(id) AS ids
-        FROM employees
-        WHERE date_of_birth_gregorian IS NOT NULL
-        GROUP BY LOWER(TRIM(first_name || ' ' || second_name || ' ' || third_name || ' ' || fourth_name)), date_of_birth_gregorian
+        SELECT array_agg(e.id) AS ids
+        FROM employees e
+        LEFT JOIN branches b ON e.branch_id = b.id
+        WHERE e.date_of_birth_gregorian IS NOT NULL
+          AND (e.status IS NULL OR e.status IN ('active', 'pending'))
+          AND (b.is_active = true OR b.is_active IS NULL)
+        GROUP BY LOWER(TRIM(e.first_name || ' ' || e.second_name || ' ' || e.third_name || ' ' || e.fourth_name)), e.date_of_birth_gregorian
         HAVING COUNT(*) > 1
       `;
 
       // Full name only (even if DOB missing)
       const nameOnlyDupes = await sql`
-        SELECT array_agg(id) AS ids
-        FROM employees
-        GROUP BY LOWER(TRIM(first_name || ' ' || second_name || ' ' || third_name || ' ' || fourth_name))
+        SELECT array_agg(e.id) AS ids
+        FROM employees e
+        LEFT JOIN branches b ON e.branch_id = b.id
+        WHERE (e.status IS NULL OR e.status IN ('active', 'pending'))
+          AND (b.is_active = true OR b.is_active IS NULL)
+        GROUP BY LOWER(TRIM(e.first_name || ' ' || e.second_name || ' ' || e.third_name || ' ' || e.fourth_name))
         HAVING COUNT(*) > 1
       `;
 

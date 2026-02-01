@@ -412,19 +412,24 @@ router.get("/duplicate-documents", requireMainManager, async (req, res) => {
       "other",
     ];
 
+    // Only include documents from active employees in active branches
     const rows = await sql`
-      SELECT employee_id, document_type, COUNT(*) as doc_count,
+      SELECT ed.employee_id, ed.document_type, COUNT(*) as doc_count,
              array_agg(json_build_object(
-               'id', id,
-               'file_name', file_name,
-               'uploaded_at', uploaded_at,
-               'is_active', is_active
+               'id', ed.id,
+               'file_name', ed.file_name,
+               'uploaded_at', ed.uploaded_at,
+               'is_active', ed.is_active
              )) AS documents
-      FROM employee_documents
-      WHERE is_active = true
-      GROUP BY employee_id, document_type
+      FROM employee_documents ed
+      INNER JOIN employees e ON ed.employee_id = e.id
+      LEFT JOIN branches b ON e.branch_id = b.id
+      WHERE ed.is_active = true
+        AND (e.status IS NULL OR e.status IN ('active', 'pending'))
+        AND (b.is_active = true OR b.is_active IS NULL)
+      GROUP BY ed.employee_id, ed.document_type
       HAVING COUNT(*) > 1
-      ORDER BY employee_id
+      ORDER BY ed.employee_id
       LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
     `;
 
@@ -515,6 +520,7 @@ router.get(
   async (req, res) => {
     try {
       const docType = req.query.doc_type || "تأمين طبي";
+      // Only include active employees from active branches
       const rows = await sql`
       SELECT e.id AS employee_id,
              e.first_name, e.second_name, e.third_name, e.fourth_name,
@@ -522,9 +528,12 @@ router.get(
              array_agg(json_build_object('id', d.id, 'file_name', d.file_name, 'uploaded_at', d.uploaded_at)) AS documents
       FROM employees e
       INNER JOIN employee_documents d ON d.employee_id = e.id
+      LEFT JOIN branches b ON e.branch_id = b.id
       WHERE e.contract_type = 'ورقي'
         AND d.document_type = ${docType}
         AND d.is_active = true
+        AND (e.status IS NULL OR e.status IN ('active', 'pending'))
+        AND (b.is_active = true OR b.is_active IS NULL)
       GROUP BY e.id
       ORDER BY e.id
     `;
