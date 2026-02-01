@@ -707,7 +707,7 @@ const calculatePayrollAbsenceTask = (payrollAbsenceState) => {
 
   const { state, target_open_at, days_until_open } = payrollAbsenceState;
 
-  // If already submitted or closed, no task needed
+  // If already submitted (view_only) or closed, no task needed
   if (state === 'view_only' || state === 'closed') {
     return null;
   }
@@ -724,32 +724,31 @@ const calculatePayrollAbsenceTask = (payrollAbsenceState) => {
 
   const isEntryOpen = state === 'entry_open';
   const isCountdown = state === 'countdown' || state === 'countdown_next';
-  const isWaiting = !isEntryOpen; // Waiting for entry to open
 
-  // If waiting, don't create a task (treat as done until it opens)
-  if (isWaiting) {
-    return null;
-  }
-
+  // Show task in both cases: entry_open (can submit now) and countdown (waiting)
   return {
     id: 'payroll-absence',
     type: 'payroll_absence',
     category: 'payroll',
-    priority: 'must_do', // Only shown when entry is open
-    title: 'تسجيل غياب الموظفين',
-    description: 'يجب تسجيل غياب الموظفين لهذا الشهر',
+    priority: isEntryOpen ? 'critical' : 'must_do',
+    title: isEntryOpen ? 'تسجيل غياب الموظفين' : 'تسجيل غياب الموظفين (قريباً)',
+    description: isEntryOpen
+      ? 'التسجيل مفتوح الآن! يجب تسجيل غياب الموظفين لهذا الشهر'
+      : `سيفتح التسجيل في ${formatDate(target_open_at)} (بعد ${days_until_open || 0} يوم)`,
     totalItems: 1,
     completedItems: 0,
     remainingItems: 1,
     progress: 0,
     actionUrl: '#payroll-absence',
-    actionLabel: 'تسجيل الغياب',
-    urgency: 'due_soon',
+    actionLabel: isEntryOpen ? 'تسجيل الغياب' : 'عرض التفاصيل',
+    urgency: isEntryOpen ? 'due_soon' : 'due_later',
     estimatedTime: '15 min',
     dependencies: [],
     hasInlineEditor: true,
     deadline: target_open_at,
-    daysUntilDeadline: days_until_open || 0
+    daysUntilDeadline: days_until_open || 0,
+    isWaiting: isCountdown,
+    isEntryOpen
   };
 };
 
@@ -771,15 +770,15 @@ const calculatePriorityScore = (task) => {
   };
 
   // Special cases for payroll absence:
-  // 1. When entry_open: gets HIGHEST priority (above everything - temporary and most important)
-  // 2. When waiting/countdown: gets LOWEST priority (after notifications)
+  // 1. When entry_open: gets ABSOLUTE HIGHEST priority (above everything - temporary and most important)
+  // 2. When countdown/waiting: gets normal priority (visible but not urgent)
   if (task.type === 'payroll_absence') {
-    if (task.urgency === 'due_soon') {
-      // Entry is open - HIGHEST priority (temporary window, most important)
-      score += 15000; // Above everything including setup (10000)
-    } else if (task.isWaiting || task.urgency === 'no_deadline' || task.urgency === 'due_later') {
-      // Waiting for entry to open - lowest priority (even lower than notifications)
-      score += 500; // Very low priority, below notifications (1000)
+    if (task.isEntryOpen) {
+      // Entry is open - ABSOLUTE HIGHEST priority (temporary window, most important task)
+      score += 50000; // Way above everything - this is the most critical task when open
+    } else if (task.isWaiting) {
+      // Waiting for entry to open - show but with lower priority
+      score += 2000; // Below documents (5000) but above notifications (1000)
     } else {
       score += categoryOrder[task.category] || 0;
     }
