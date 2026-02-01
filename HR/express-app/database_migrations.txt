@@ -7613,3 +7613,1915 @@ SQL Query: DO $$
          END $$;
 ---
 
+[2026-02-01T06:47:47.262Z] - CUSTOM QUERY - Added phone_number/email/number_of_employees columns to branches
+SQL Query: ALTER TABLE branches
+         ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS number_of_employees INTEGER
+---
+
+[2026-02-01T06:47:54.624Z] - CUSTOM QUERY - Added document_number/iban_number/bank_name columns to branch_documents
+SQL Query: ALTER TABLE branch_documents
+         ADD COLUMN IF NOT EXISTS document_number VARCHAR(100),
+         ADD COLUMN IF NOT EXISTS iban_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS bank_name VARCHAR(200)
+---
+
+[2026-02-01T06:47:54.937Z] - CUSTOM QUERY - Added issue_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS issue_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T06:47:55.273Z] - CUSTOM QUERY - Added expiry_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T06:47:59.796Z] - CUSTOM QUERY - Added UNIQUE constraint on terms (branch_type, academic_year_label, term_number)
+SQL Query: DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint 
+          WHERE conname = 'terms_unique_per_branch_year_term'
+        ) THEN
+          ALTER TABLE terms 
+          ADD CONSTRAINT terms_unique_per_branch_year_term 
+          UNIQUE(branch_type, academic_year_label, term_number);
+        END IF;
+      END $$;
+---
+
+[2026-02-01T06:48:09.889Z] - CUSTOM QUERY - Added expiry_date_hijri column to employee_documents
+SQL Query: ALTER TABLE employee_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T06:48:10.230Z] - CUSTOM QUERY - Added expires_at column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP
+---
+
+[2026-02-01T06:48:10.549Z] - CUSTOM QUERY - Added one_time column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS one_time BOOLEAN DEFAULT false
+---
+
+[2026-02-01T06:48:10.739Z] - CUSTOM QUERY - Added seen_by_branches column to notifications table
+SQL Query: DO $$ 
+        BEGIN 
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'notifications' AND column_name = 'seen_by_branches'
+          ) THEN
+            ALTER TABLE notifications ADD COLUMN seen_by_branches INTEGER[] DEFAULT ARRAY[]::INTEGER[];
+          END IF;
+        END $$;
+---
+
+[2026-02-01T06:48:10.890Z] - CUSTOM QUERY - Updated importance_level constraint to allow level 5
+SQL Query: DO $$ 
+        BEGIN 
+          IF EXISTS (
+            SELECT 1 FROM information_schema.constraint_column_usage 
+            WHERE table_name = 'notifications' 
+            AND constraint_name = 'notifications_importance_level_check'
+          ) THEN
+            ALTER TABLE notifications DROP CONSTRAINT notifications_importance_level_check;
+          END IF;
+        END $$;
+        ALTER TABLE notifications ADD CONSTRAINT notifications_importance_level_check 
+        CHECK (importance_level IN (1, 2, 3, 4, 5))
+---
+
+[2026-02-01T06:48:11.199Z] - CUSTOM QUERY - Created notification_views table
+SQL Query: CREATE TABLE IF NOT EXISTS notification_views (
+          id SERIAL PRIMARY KEY,
+          notification_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(notification_id, user_id)
+        )
+---
+
+[2026-02-01T06:48:13.265Z] - CUSTOM QUERY - Add excused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS excused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T06:48:13.654Z] - CUSTOM QUERY - Add unexcused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS unexcused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T06:48:14.481Z] - CUSTOM QUERY - Added term_id column to bus_transportation
+SQL Query: ALTER TABLE bus_transportation ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T06:48:14.643Z] - CUSTOM QUERY - Set default term_id for school buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 1
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'school'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T06:48:14.822Z] - CUSTOM QUERY - Set default term_id for healthcare buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 3
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'healthcare_center'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T06:48:15.135Z] - CUSTOM QUERY - Dropped old unique constraint
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_id_bus_number_key'
+             ) THEN
+               ALTER TABLE bus_transportation DROP CONSTRAINT bus_transportation_branch_id_bus_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:48:15.277Z] - CUSTOM QUERY - Added new unique constraint with term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_bus_term_unique'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_branch_bus_term_unique UNIQUE(branch_id, bus_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:48:15.445Z] - CUSTOM QUERY - Added foreign key for term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_term_fkey'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:48:15.766Z] - CUSTOM QUERY - Added lease contract document columns to bus_transportation
+SQL Query: ALTER TABLE bus_transportation
+           ADD COLUMN IF NOT EXISTS lease_contract_document_url VARCHAR(500),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_name VARCHAR(255),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_mime_type VARCHAR(100)
+---
+
+[2026-02-01T06:48:16.544Z] - CUSTOM QUERY - Added term_id column to bus_students
+SQL Query: ALTER TABLE bus_students ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T06:48:16.720Z] - CUSTOM QUERY - Set term_id for existing students from bus term_id
+SQL Query: UPDATE bus_students bs
+           SET term_id = bt.term_id
+           FROM bus_transportation bt
+           WHERE bs.bus_id = bt.id
+           AND bs.term_id IS NULL
+           AND bt.term_id IS NOT NULL
+---
+
+[2026-02-01T06:48:17.035Z] - CUSTOM QUERY - Dropped old unique constraint from bus_students
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_id_contact_mobile_number_key'
+             ) THEN
+               ALTER TABLE bus_students DROP CONSTRAINT bus_students_bus_id_contact_mobile_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:48:17.202Z] - CUSTOM QUERY - Added new unique constraint with term_id to bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_contact_term_unique'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_bus_contact_term_unique UNIQUE(bus_id, contact_mobile_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:48:17.375Z] - CUSTOM QUERY - Added foreign key for term_id in bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_term_fkey'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:48:17.984Z] - CUSTOM QUERY - Added assistant driver fields to driver_license_data
+SQL Query: ALTER TABLE driver_license_data
+         ADD COLUMN IF NOT EXISTS has_assistant BOOLEAN DEFAULT false,
+         ADD COLUMN IF NOT EXISTS assistant_full_name VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS assistant_phone_number VARCHAR(50)
+---
+
+[2026-02-01T06:48:18.143Z] - CUSTOM QUERY - Normalized bus_details ownership_type rented->leased
+SQL Query: UPDATE bus_details SET ownership_type = 'leased' WHERE ownership_type = 'rented'
+---
+
+[2026-02-01T06:48:18.323Z] - CUSTOM QUERY - Dropped old ownership_type check constraint
+SQL Query: DO $$
+         BEGIN
+           IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details DROP CONSTRAINT bus_details_ownership_type_check;
+           END IF;
+         END $$;
+---
+
+[2026-02-01T06:48:18.498Z] - CUSTOM QUERY - Added ownership_type check constraint (owned/leased)
+SQL Query: DO $$
+         BEGIN
+           IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details
+             ADD CONSTRAINT bus_details_ownership_type_check CHECK (ownership_type IN ('owned', 'leased'));
+           END IF;
+         END $$;
+---
+
+[2026-02-01T06:50:54.165Z] - CUSTOM QUERY - Added phone_number/email/number_of_employees columns to branches
+SQL Query: ALTER TABLE branches
+         ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS number_of_employees INTEGER
+---
+
+[2026-02-01T06:51:03.200Z] - CUSTOM QUERY - Added document_number/iban_number/bank_name columns to branch_documents
+SQL Query: ALTER TABLE branch_documents
+         ADD COLUMN IF NOT EXISTS document_number VARCHAR(100),
+         ADD COLUMN IF NOT EXISTS iban_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS bank_name VARCHAR(200)
+---
+
+[2026-02-01T06:51:03.550Z] - CUSTOM QUERY - Added issue_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS issue_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T06:51:03.839Z] - CUSTOM QUERY - Added expiry_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T06:51:08.568Z] - CUSTOM QUERY - Added UNIQUE constraint on terms (branch_type, academic_year_label, term_number)
+SQL Query: DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint 
+          WHERE conname = 'terms_unique_per_branch_year_term'
+        ) THEN
+          ALTER TABLE terms 
+          ADD CONSTRAINT terms_unique_per_branch_year_term 
+          UNIQUE(branch_type, academic_year_label, term_number);
+        END IF;
+      END $$;
+---
+
+[2026-02-01T06:51:17.986Z] - CUSTOM QUERY - Added expiry_date_hijri column to employee_documents
+SQL Query: ALTER TABLE employee_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T06:51:18.370Z] - CUSTOM QUERY - Added expires_at column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP
+---
+
+[2026-02-01T06:51:18.794Z] - CUSTOM QUERY - Added one_time column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS one_time BOOLEAN DEFAULT false
+---
+
+[2026-02-01T06:51:19.013Z] - CUSTOM QUERY - Added seen_by_branches column to notifications table
+SQL Query: DO $$ 
+        BEGIN 
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'notifications' AND column_name = 'seen_by_branches'
+          ) THEN
+            ALTER TABLE notifications ADD COLUMN seen_by_branches INTEGER[] DEFAULT ARRAY[]::INTEGER[];
+          END IF;
+        END $$;
+---
+
+[2026-02-01T06:51:19.175Z] - CUSTOM QUERY - Updated importance_level constraint to allow level 5
+SQL Query: DO $$ 
+        BEGIN 
+          IF EXISTS (
+            SELECT 1 FROM information_schema.constraint_column_usage 
+            WHERE table_name = 'notifications' 
+            AND constraint_name = 'notifications_importance_level_check'
+          ) THEN
+            ALTER TABLE notifications DROP CONSTRAINT notifications_importance_level_check;
+          END IF;
+        END $$;
+        ALTER TABLE notifications ADD CONSTRAINT notifications_importance_level_check 
+        CHECK (importance_level IN (1, 2, 3, 4, 5))
+---
+
+[2026-02-01T06:51:19.482Z] - CUSTOM QUERY - Created notification_views table
+SQL Query: CREATE TABLE IF NOT EXISTS notification_views (
+          id SERIAL PRIMARY KEY,
+          notification_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(notification_id, user_id)
+        )
+---
+
+[2026-02-01T06:51:21.503Z] - CUSTOM QUERY - Add excused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS excused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T06:51:21.903Z] - CUSTOM QUERY - Add unexcused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS unexcused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T06:51:22.559Z] - CUSTOM QUERY - Added term_id column to bus_transportation
+SQL Query: ALTER TABLE bus_transportation ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T06:51:22.737Z] - CUSTOM QUERY - Set default term_id for school buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 1
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'school'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T06:51:22.893Z] - CUSTOM QUERY - Set default term_id for healthcare buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 3
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'healthcare_center'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T06:51:23.213Z] - CUSTOM QUERY - Dropped old unique constraint
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_id_bus_number_key'
+             ) THEN
+               ALTER TABLE bus_transportation DROP CONSTRAINT bus_transportation_branch_id_bus_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:51:23.376Z] - CUSTOM QUERY - Added new unique constraint with term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_bus_term_unique'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_branch_bus_term_unique UNIQUE(branch_id, bus_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:51:23.536Z] - CUSTOM QUERY - Added foreign key for term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_term_fkey'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:51:23.841Z] - CUSTOM QUERY - Added lease contract document columns to bus_transportation
+SQL Query: ALTER TABLE bus_transportation
+           ADD COLUMN IF NOT EXISTS lease_contract_document_url VARCHAR(500),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_name VARCHAR(255),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_mime_type VARCHAR(100)
+---
+
+[2026-02-01T06:51:24.543Z] - CUSTOM QUERY - Added term_id column to bus_students
+SQL Query: ALTER TABLE bus_students ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T06:51:24.754Z] - CUSTOM QUERY - Set term_id for existing students from bus term_id
+SQL Query: UPDATE bus_students bs
+           SET term_id = bt.term_id
+           FROM bus_transportation bt
+           WHERE bs.bus_id = bt.id
+           AND bs.term_id IS NULL
+           AND bt.term_id IS NOT NULL
+---
+
+[2026-02-01T06:51:25.065Z] - CUSTOM QUERY - Dropped old unique constraint from bus_students
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_id_contact_mobile_number_key'
+             ) THEN
+               ALTER TABLE bus_students DROP CONSTRAINT bus_students_bus_id_contact_mobile_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:51:25.219Z] - CUSTOM QUERY - Added new unique constraint with term_id to bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_contact_term_unique'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_bus_contact_term_unique UNIQUE(bus_id, contact_mobile_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:51:25.384Z] - CUSTOM QUERY - Added foreign key for term_id in bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_term_fkey'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:51:25.988Z] - CUSTOM QUERY - Added assistant driver fields to driver_license_data
+SQL Query: ALTER TABLE driver_license_data
+         ADD COLUMN IF NOT EXISTS has_assistant BOOLEAN DEFAULT false,
+         ADD COLUMN IF NOT EXISTS assistant_full_name VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS assistant_phone_number VARCHAR(50)
+---
+
+[2026-02-01T06:51:26.157Z] - CUSTOM QUERY - Normalized bus_details ownership_type rented->leased
+SQL Query: UPDATE bus_details SET ownership_type = 'leased' WHERE ownership_type = 'rented'
+---
+
+[2026-02-01T06:51:26.317Z] - CUSTOM QUERY - Dropped old ownership_type check constraint
+SQL Query: DO $$
+         BEGIN
+           IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details DROP CONSTRAINT bus_details_ownership_type_check;
+           END IF;
+         END $$;
+---
+
+[2026-02-01T06:51:26.431Z] - CUSTOM QUERY - Added ownership_type check constraint (owned/leased)
+SQL Query: DO $$
+         BEGIN
+           IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details
+             ADD CONSTRAINT bus_details_ownership_type_check CHECK (ownership_type IN ('owned', 'leased'));
+           END IF;
+         END $$;
+---
+
+[2026-02-01T06:55:35.008Z] - CUSTOM QUERY - Added phone_number/email/number_of_employees columns to branches
+SQL Query: ALTER TABLE branches
+         ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS number_of_employees INTEGER
+---
+
+[2026-02-01T06:55:42.307Z] - CUSTOM QUERY - Added document_number/iban_number/bank_name columns to branch_documents
+SQL Query: ALTER TABLE branch_documents
+         ADD COLUMN IF NOT EXISTS document_number VARCHAR(100),
+         ADD COLUMN IF NOT EXISTS iban_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS bank_name VARCHAR(200)
+---
+
+[2026-02-01T06:55:42.625Z] - CUSTOM QUERY - Added issue_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS issue_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T06:55:42.949Z] - CUSTOM QUERY - Added expiry_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T06:55:47.083Z] - CUSTOM QUERY - Added UNIQUE constraint on terms (branch_type, academic_year_label, term_number)
+SQL Query: DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint 
+          WHERE conname = 'terms_unique_per_branch_year_term'
+        ) THEN
+          ALTER TABLE terms 
+          ADD CONSTRAINT terms_unique_per_branch_year_term 
+          UNIQUE(branch_type, academic_year_label, term_number);
+        END IF;
+      END $$;
+---
+
+[2026-02-01T06:55:55.105Z] - CUSTOM QUERY - Added expiry_date_hijri column to employee_documents
+SQL Query: ALTER TABLE employee_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T06:55:55.428Z] - CUSTOM QUERY - Added expires_at column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP
+---
+
+[2026-02-01T06:55:55.726Z] - CUSTOM QUERY - Added one_time column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS one_time BOOLEAN DEFAULT false
+---
+
+[2026-02-01T06:55:55.865Z] - CUSTOM QUERY - Added seen_by_branches column to notifications table
+SQL Query: DO $$ 
+        BEGIN 
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'notifications' AND column_name = 'seen_by_branches'
+          ) THEN
+            ALTER TABLE notifications ADD COLUMN seen_by_branches INTEGER[] DEFAULT ARRAY[]::INTEGER[];
+          END IF;
+        END $$;
+---
+
+[2026-02-01T06:55:56.031Z] - CUSTOM QUERY - Updated importance_level constraint to allow level 5
+SQL Query: DO $$ 
+        BEGIN 
+          IF EXISTS (
+            SELECT 1 FROM information_schema.constraint_column_usage 
+            WHERE table_name = 'notifications' 
+            AND constraint_name = 'notifications_importance_level_check'
+          ) THEN
+            ALTER TABLE notifications DROP CONSTRAINT notifications_importance_level_check;
+          END IF;
+        END $$;
+        ALTER TABLE notifications ADD CONSTRAINT notifications_importance_level_check 
+        CHECK (importance_level IN (1, 2, 3, 4, 5))
+---
+
+[2026-02-01T06:55:56.158Z] - CUSTOM QUERY - Created notification_views table
+SQL Query: CREATE TABLE IF NOT EXISTS notification_views (
+          id SERIAL PRIMARY KEY,
+          notification_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(notification_id, user_id)
+        )
+---
+
+[2026-02-01T06:55:57.930Z] - CUSTOM QUERY - Add excused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS excused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T06:55:58.367Z] - CUSTOM QUERY - Add unexcused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS unexcused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T06:55:58.981Z] - CUSTOM QUERY - Added term_id column to bus_transportation
+SQL Query: ALTER TABLE bus_transportation ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T06:55:59.121Z] - CUSTOM QUERY - Set default term_id for school buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 1
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'school'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T06:55:59.261Z] - CUSTOM QUERY - Set default term_id for healthcare buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 3
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'healthcare_center'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T06:55:59.533Z] - CUSTOM QUERY - Dropped old unique constraint
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_id_bus_number_key'
+             ) THEN
+               ALTER TABLE bus_transportation DROP CONSTRAINT bus_transportation_branch_id_bus_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:55:59.675Z] - CUSTOM QUERY - Added new unique constraint with term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_bus_term_unique'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_branch_bus_term_unique UNIQUE(branch_id, bus_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:55:59.821Z] - CUSTOM QUERY - Added foreign key for term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_term_fkey'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:56:00.251Z] - CUSTOM QUERY - Added lease contract document columns to bus_transportation
+SQL Query: ALTER TABLE bus_transportation
+           ADD COLUMN IF NOT EXISTS lease_contract_document_url VARCHAR(500),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_name VARCHAR(255),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_mime_type VARCHAR(100)
+---
+
+[2026-02-01T06:56:01.111Z] - CUSTOM QUERY - Added term_id column to bus_students
+SQL Query: ALTER TABLE bus_students ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T06:56:01.227Z] - CUSTOM QUERY - Set term_id for existing students from bus term_id
+SQL Query: UPDATE bus_students bs
+           SET term_id = bt.term_id
+           FROM bus_transportation bt
+           WHERE bs.bus_id = bt.id
+           AND bs.term_id IS NULL
+           AND bt.term_id IS NOT NULL
+---
+
+[2026-02-01T06:56:01.503Z] - CUSTOM QUERY - Dropped old unique constraint from bus_students
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_id_contact_mobile_number_key'
+             ) THEN
+               ALTER TABLE bus_students DROP CONSTRAINT bus_students_bus_id_contact_mobile_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:56:01.769Z] - CUSTOM QUERY - Added new unique constraint with term_id to bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_contact_term_unique'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_bus_contact_term_unique UNIQUE(bus_id, contact_mobile_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:56:01.933Z] - CUSTOM QUERY - Added foreign key for term_id in bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_term_fkey'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:56:02.750Z] - CUSTOM QUERY - Added assistant driver fields to driver_license_data
+SQL Query: ALTER TABLE driver_license_data
+         ADD COLUMN IF NOT EXISTS has_assistant BOOLEAN DEFAULT false,
+         ADD COLUMN IF NOT EXISTS assistant_full_name VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS assistant_phone_number VARCHAR(50)
+---
+
+[2026-02-01T06:56:02.878Z] - CUSTOM QUERY - Normalized bus_details ownership_type rented->leased
+SQL Query: UPDATE bus_details SET ownership_type = 'leased' WHERE ownership_type = 'rented'
+---
+
+[2026-02-01T06:56:03.029Z] - CUSTOM QUERY - Dropped old ownership_type check constraint
+SQL Query: DO $$
+         BEGIN
+           IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details DROP CONSTRAINT bus_details_ownership_type_check;
+           END IF;
+         END $$;
+---
+
+[2026-02-01T06:56:03.282Z] - CUSTOM QUERY - Added ownership_type check constraint (owned/leased)
+SQL Query: DO $$
+         BEGIN
+           IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details
+             ADD CONSTRAINT bus_details_ownership_type_check CHECK (ownership_type IN ('owned', 'leased'));
+           END IF;
+         END $$;
+---
+
+[2026-02-01T06:56:20.603Z] - CUSTOM QUERY - Added phone_number/email/number_of_employees columns to branches
+SQL Query: ALTER TABLE branches
+         ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS number_of_employees INTEGER
+---
+
+[2026-02-01T06:56:27.743Z] - CUSTOM QUERY - Added document_number/iban_number/bank_name columns to branch_documents
+SQL Query: ALTER TABLE branch_documents
+         ADD COLUMN IF NOT EXISTS document_number VARCHAR(100),
+         ADD COLUMN IF NOT EXISTS iban_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS bank_name VARCHAR(200)
+---
+
+[2026-02-01T06:56:28.145Z] - CUSTOM QUERY - Added issue_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS issue_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T06:56:28.472Z] - CUSTOM QUERY - Added expiry_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T06:56:32.302Z] - CUSTOM QUERY - Added UNIQUE constraint on terms (branch_type, academic_year_label, term_number)
+SQL Query: DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint 
+          WHERE conname = 'terms_unique_per_branch_year_term'
+        ) THEN
+          ALTER TABLE terms 
+          ADD CONSTRAINT terms_unique_per_branch_year_term 
+          UNIQUE(branch_type, academic_year_label, term_number);
+        END IF;
+      END $$;
+---
+
+[2026-02-01T06:56:40.872Z] - CUSTOM QUERY - Added expiry_date_hijri column to employee_documents
+SQL Query: ALTER TABLE employee_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T06:56:41.185Z] - CUSTOM QUERY - Added expires_at column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP
+---
+
+[2026-02-01T06:56:41.506Z] - CUSTOM QUERY - Added one_time column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS one_time BOOLEAN DEFAULT false
+---
+
+[2026-02-01T06:56:41.653Z] - CUSTOM QUERY - Added seen_by_branches column to notifications table
+SQL Query: DO $$ 
+        BEGIN 
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'notifications' AND column_name = 'seen_by_branches'
+          ) THEN
+            ALTER TABLE notifications ADD COLUMN seen_by_branches INTEGER[] DEFAULT ARRAY[]::INTEGER[];
+          END IF;
+        END $$;
+---
+
+[2026-02-01T06:56:41.811Z] - CUSTOM QUERY - Updated importance_level constraint to allow level 5
+SQL Query: DO $$ 
+        BEGIN 
+          IF EXISTS (
+            SELECT 1 FROM information_schema.constraint_column_usage 
+            WHERE table_name = 'notifications' 
+            AND constraint_name = 'notifications_importance_level_check'
+          ) THEN
+            ALTER TABLE notifications DROP CONSTRAINT notifications_importance_level_check;
+          END IF;
+        END $$;
+        ALTER TABLE notifications ADD CONSTRAINT notifications_importance_level_check 
+        CHECK (importance_level IN (1, 2, 3, 4, 5))
+---
+
+[2026-02-01T06:56:42.012Z] - CUSTOM QUERY - Created notification_views table
+SQL Query: CREATE TABLE IF NOT EXISTS notification_views (
+          id SERIAL PRIMARY KEY,
+          notification_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(notification_id, user_id)
+        )
+---
+
+[2026-02-01T06:56:43.797Z] - CUSTOM QUERY - Add excused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS excused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T06:56:44.189Z] - CUSTOM QUERY - Add unexcused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS unexcused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T06:56:44.784Z] - CUSTOM QUERY - Added term_id column to bus_transportation
+SQL Query: ALTER TABLE bus_transportation ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T06:56:44.933Z] - CUSTOM QUERY - Set default term_id for school buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 1
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'school'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T06:56:45.062Z] - CUSTOM QUERY - Set default term_id for healthcare buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 3
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'healthcare_center'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T06:56:45.532Z] - CUSTOM QUERY - Dropped old unique constraint
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_id_bus_number_key'
+             ) THEN
+               ALTER TABLE bus_transportation DROP CONSTRAINT bus_transportation_branch_id_bus_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:56:45.701Z] - CUSTOM QUERY - Added new unique constraint with term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_bus_term_unique'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_branch_bus_term_unique UNIQUE(branch_id, bus_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:56:45.848Z] - CUSTOM QUERY - Added foreign key for term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_term_fkey'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:56:46.145Z] - CUSTOM QUERY - Added lease contract document columns to bus_transportation
+SQL Query: ALTER TABLE bus_transportation
+           ADD COLUMN IF NOT EXISTS lease_contract_document_url VARCHAR(500),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_name VARCHAR(255),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_mime_type VARCHAR(100)
+---
+
+[2026-02-01T06:56:46.946Z] - CUSTOM QUERY - Added term_id column to bus_students
+SQL Query: ALTER TABLE bus_students ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T06:56:47.115Z] - CUSTOM QUERY - Set term_id for existing students from bus term_id
+SQL Query: UPDATE bus_students bs
+           SET term_id = bt.term_id
+           FROM bus_transportation bt
+           WHERE bs.bus_id = bt.id
+           AND bs.term_id IS NULL
+           AND bt.term_id IS NOT NULL
+---
+
+[2026-02-01T06:56:47.446Z] - CUSTOM QUERY - Dropped old unique constraint from bus_students
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_id_contact_mobile_number_key'
+             ) THEN
+               ALTER TABLE bus_students DROP CONSTRAINT bus_students_bus_id_contact_mobile_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:56:47.611Z] - CUSTOM QUERY - Added new unique constraint with term_id to bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_contact_term_unique'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_bus_contact_term_unique UNIQUE(bus_id, contact_mobile_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:56:47.827Z] - CUSTOM QUERY - Added foreign key for term_id in bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_term_fkey'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T06:56:48.466Z] - CUSTOM QUERY - Added assistant driver fields to driver_license_data
+SQL Query: ALTER TABLE driver_license_data
+         ADD COLUMN IF NOT EXISTS has_assistant BOOLEAN DEFAULT false,
+         ADD COLUMN IF NOT EXISTS assistant_full_name VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS assistant_phone_number VARCHAR(50)
+---
+
+[2026-02-01T06:56:48.645Z] - CUSTOM QUERY - Normalized bus_details ownership_type rented->leased
+SQL Query: UPDATE bus_details SET ownership_type = 'leased' WHERE ownership_type = 'rented'
+---
+
+[2026-02-01T06:56:48.812Z] - CUSTOM QUERY - Dropped old ownership_type check constraint
+SQL Query: DO $$
+         BEGIN
+           IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details DROP CONSTRAINT bus_details_ownership_type_check;
+           END IF;
+         END $$;
+---
+
+[2026-02-01T06:56:49.055Z] - CUSTOM QUERY - Added ownership_type check constraint (owned/leased)
+SQL Query: DO $$
+         BEGIN
+           IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details
+             ADD CONSTRAINT bus_details_ownership_type_check CHECK (ownership_type IN ('owned', 'leased'));
+           END IF;
+         END $$;
+---
+
+[2026-02-01T08:18:23.360Z] - CUSTOM QUERY - Added phone_number/email/number_of_employees columns to branches
+SQL Query: ALTER TABLE branches
+         ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS number_of_employees INTEGER
+---
+
+[2026-02-01T08:18:29.840Z] - CUSTOM QUERY - Added document_number/iban_number/bank_name columns to branch_documents
+SQL Query: ALTER TABLE branch_documents
+         ADD COLUMN IF NOT EXISTS document_number VARCHAR(100),
+         ADD COLUMN IF NOT EXISTS iban_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS bank_name VARCHAR(200)
+---
+
+[2026-02-01T08:18:30.160Z] - CUSTOM QUERY - Added issue_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS issue_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T08:18:30.459Z] - CUSTOM QUERY - Added expiry_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T08:18:34.631Z] - CUSTOM QUERY - Added UNIQUE constraint on terms (branch_type, academic_year_label, term_number)
+SQL Query: DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint 
+          WHERE conname = 'terms_unique_per_branch_year_term'
+        ) THEN
+          ALTER TABLE terms 
+          ADD CONSTRAINT terms_unique_per_branch_year_term 
+          UNIQUE(branch_type, academic_year_label, term_number);
+        END IF;
+      END $$;
+---
+
+[2026-02-01T08:18:43.169Z] - CUSTOM QUERY - Added expiry_date_hijri column to employee_documents
+SQL Query: ALTER TABLE employee_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T08:18:43.484Z] - CUSTOM QUERY - Added expires_at column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP
+---
+
+[2026-02-01T08:18:43.817Z] - CUSTOM QUERY - Added one_time column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS one_time BOOLEAN DEFAULT false
+---
+
+[2026-02-01T08:18:44.001Z] - CUSTOM QUERY - Added seen_by_branches column to notifications table
+SQL Query: DO $$ 
+        BEGIN 
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'notifications' AND column_name = 'seen_by_branches'
+          ) THEN
+            ALTER TABLE notifications ADD COLUMN seen_by_branches INTEGER[] DEFAULT ARRAY[]::INTEGER[];
+          END IF;
+        END $$;
+---
+
+[2026-02-01T08:18:44.162Z] - CUSTOM QUERY - Updated importance_level constraint to allow level 5
+SQL Query: DO $$ 
+        BEGIN 
+          IF EXISTS (
+            SELECT 1 FROM information_schema.constraint_column_usage 
+            WHERE table_name = 'notifications' 
+            AND constraint_name = 'notifications_importance_level_check'
+          ) THEN
+            ALTER TABLE notifications DROP CONSTRAINT notifications_importance_level_check;
+          END IF;
+        END $$;
+        ALTER TABLE notifications ADD CONSTRAINT notifications_importance_level_check 
+        CHECK (importance_level IN (1, 2, 3, 4, 5))
+---
+
+[2026-02-01T08:18:44.360Z] - CUSTOM QUERY - Created notification_views table
+SQL Query: CREATE TABLE IF NOT EXISTS notification_views (
+          id SERIAL PRIMARY KEY,
+          notification_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(notification_id, user_id)
+        )
+---
+
+[2026-02-01T08:18:46.805Z] - CUSTOM QUERY - Add excused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS excused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T08:18:47.284Z] - CUSTOM QUERY - Add unexcused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS unexcused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T08:18:47.892Z] - CUSTOM QUERY - Added term_id column to bus_transportation
+SQL Query: ALTER TABLE bus_transportation ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T08:18:48.052Z] - CUSTOM QUERY - Set default term_id for school buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 1
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'school'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T08:18:48.214Z] - CUSTOM QUERY - Set default term_id for healthcare buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 3
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'healthcare_center'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T08:18:48.604Z] - CUSTOM QUERY - Dropped old unique constraint
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_id_bus_number_key'
+             ) THEN
+               ALTER TABLE bus_transportation DROP CONSTRAINT bus_transportation_branch_id_bus_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T08:18:48.761Z] - CUSTOM QUERY - Added new unique constraint with term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_bus_term_unique'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_branch_bus_term_unique UNIQUE(branch_id, bus_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T08:18:48.897Z] - CUSTOM QUERY - Added foreign key for term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_term_fkey'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T08:18:49.241Z] - CUSTOM QUERY - Added lease contract document columns to bus_transportation
+SQL Query: ALTER TABLE bus_transportation
+           ADD COLUMN IF NOT EXISTS lease_contract_document_url VARCHAR(500),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_name VARCHAR(255),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_mime_type VARCHAR(100)
+---
+
+[2026-02-01T08:18:50.341Z] - CUSTOM QUERY - Added term_id column to bus_students
+SQL Query: ALTER TABLE bus_students ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T08:18:50.483Z] - CUSTOM QUERY - Set term_id for existing students from bus term_id
+SQL Query: UPDATE bus_students bs
+           SET term_id = bt.term_id
+           FROM bus_transportation bt
+           WHERE bs.bus_id = bt.id
+           AND bs.term_id IS NULL
+           AND bt.term_id IS NOT NULL
+---
+
+[2026-02-01T08:18:50.794Z] - CUSTOM QUERY - Dropped old unique constraint from bus_students
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_id_contact_mobile_number_key'
+             ) THEN
+               ALTER TABLE bus_students DROP CONSTRAINT bus_students_bus_id_contact_mobile_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T08:18:50.924Z] - CUSTOM QUERY - Added new unique constraint with term_id to bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_contact_term_unique'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_bus_contact_term_unique UNIQUE(bus_id, contact_mobile_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T08:18:51.083Z] - CUSTOM QUERY - Added foreign key for term_id in bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_term_fkey'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T08:18:51.647Z] - CUSTOM QUERY - Added assistant driver fields to driver_license_data
+SQL Query: ALTER TABLE driver_license_data
+         ADD COLUMN IF NOT EXISTS has_assistant BOOLEAN DEFAULT false,
+         ADD COLUMN IF NOT EXISTS assistant_full_name VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS assistant_phone_number VARCHAR(50)
+---
+
+[2026-02-01T08:18:51.865Z] - CUSTOM QUERY - Normalized bus_details ownership_type rented->leased
+SQL Query: UPDATE bus_details SET ownership_type = 'leased' WHERE ownership_type = 'rented'
+---
+
+[2026-02-01T08:18:52.001Z] - CUSTOM QUERY - Dropped old ownership_type check constraint
+SQL Query: DO $$
+         BEGIN
+           IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details DROP CONSTRAINT bus_details_ownership_type_check;
+           END IF;
+         END $$;
+---
+
+[2026-02-01T08:18:52.162Z] - CUSTOM QUERY - Added ownership_type check constraint (owned/leased)
+SQL Query: DO $$
+         BEGIN
+           IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details
+             ADD CONSTRAINT bus_details_ownership_type_check CHECK (ownership_type IN ('owned', 'leased'));
+           END IF;
+         END $$;
+---
+
+[2026-02-01T20:15:55.106Z] - CUSTOM QUERY - Added phone_number/email/number_of_employees columns to branches
+SQL Query: ALTER TABLE branches
+         ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS number_of_employees INTEGER
+---
+
+[2026-02-01T20:15:59.581Z] - CUSTOM QUERY - Added document_number/iban_number/bank_name columns to branch_documents
+SQL Query: ALTER TABLE branch_documents
+         ADD COLUMN IF NOT EXISTS document_number VARCHAR(100),
+         ADD COLUMN IF NOT EXISTS iban_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS bank_name VARCHAR(200)
+---
+
+[2026-02-01T20:15:59.812Z] - CUSTOM QUERY - Added issue_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS issue_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T20:16:00.030Z] - CUSTOM QUERY - Added expiry_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T20:16:02.849Z] - CUSTOM QUERY - Added UNIQUE constraint on terms (branch_type, academic_year_label, term_number)
+SQL Query: DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint 
+          WHERE conname = 'terms_unique_per_branch_year_term'
+        ) THEN
+          ALTER TABLE terms 
+          ADD CONSTRAINT terms_unique_per_branch_year_term 
+          UNIQUE(branch_type, academic_year_label, term_number);
+        END IF;
+      END $$;
+---
+
+[2026-02-01T20:16:08.877Z] - CUSTOM QUERY - Added expiry_date_hijri column to employee_documents
+SQL Query: ALTER TABLE employee_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T20:16:09.106Z] - CUSTOM QUERY - Added expires_at column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP
+---
+
+[2026-02-01T20:16:09.334Z] - CUSTOM QUERY - Added one_time column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS one_time BOOLEAN DEFAULT false
+---
+
+[2026-02-01T20:16:09.437Z] - CUSTOM QUERY - Added seen_by_branches column to notifications table
+SQL Query: DO $$ 
+        BEGIN 
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'notifications' AND column_name = 'seen_by_branches'
+          ) THEN
+            ALTER TABLE notifications ADD COLUMN seen_by_branches INTEGER[] DEFAULT ARRAY[]::INTEGER[];
+          END IF;
+        END $$;
+---
+
+[2026-02-01T20:16:09.551Z] - CUSTOM QUERY - Updated importance_level constraint to allow level 5
+SQL Query: DO $$ 
+        BEGIN 
+          IF EXISTS (
+            SELECT 1 FROM information_schema.constraint_column_usage 
+            WHERE table_name = 'notifications' 
+            AND constraint_name = 'notifications_importance_level_check'
+          ) THEN
+            ALTER TABLE notifications DROP CONSTRAINT notifications_importance_level_check;
+          END IF;
+        END $$;
+        ALTER TABLE notifications ADD CONSTRAINT notifications_importance_level_check 
+        CHECK (importance_level IN (1, 2, 3, 4, 5))
+---
+
+[2026-02-01T20:16:09.780Z] - CUSTOM QUERY - Created notification_views table
+SQL Query: CREATE TABLE IF NOT EXISTS notification_views (
+          id SERIAL PRIMARY KEY,
+          notification_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(notification_id, user_id)
+        )
+---
+
+[2026-02-01T20:16:11.099Z] - CUSTOM QUERY - Add excused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS excused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T20:16:11.316Z] - CUSTOM QUERY - Add unexcused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS unexcused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T20:16:11.741Z] - CUSTOM QUERY - Added term_id column to bus_transportation
+SQL Query: ALTER TABLE bus_transportation ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T20:16:11.972Z] - CUSTOM QUERY - Set default term_id for school buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 1
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'school'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T20:16:12.076Z] - CUSTOM QUERY - Set default term_id for healthcare buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 3
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'healthcare_center'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T20:16:12.276Z] - CUSTOM QUERY - Dropped old unique constraint
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_id_bus_number_key'
+             ) THEN
+               ALTER TABLE bus_transportation DROP CONSTRAINT bus_transportation_branch_id_bus_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:16:12.374Z] - CUSTOM QUERY - Added new unique constraint with term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_bus_term_unique'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_branch_bus_term_unique UNIQUE(branch_id, bus_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:16:12.476Z] - CUSTOM QUERY - Added foreign key for term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_term_fkey'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:16:12.710Z] - CUSTOM QUERY - Added lease contract document columns to bus_transportation
+SQL Query: ALTER TABLE bus_transportation
+           ADD COLUMN IF NOT EXISTS lease_contract_document_url VARCHAR(500),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_name VARCHAR(255),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_mime_type VARCHAR(100)
+---
+
+[2026-02-01T20:16:13.247Z] - CUSTOM QUERY - Added term_id column to bus_students
+SQL Query: ALTER TABLE bus_students ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T20:16:13.353Z] - CUSTOM QUERY - Set term_id for existing students from bus term_id
+SQL Query: UPDATE bus_students bs
+           SET term_id = bt.term_id
+           FROM bus_transportation bt
+           WHERE bs.bus_id = bt.id
+           AND bs.term_id IS NULL
+           AND bt.term_id IS NOT NULL
+---
+
+[2026-02-01T20:16:13.555Z] - CUSTOM QUERY - Dropped old unique constraint from bus_students
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_id_contact_mobile_number_key'
+             ) THEN
+               ALTER TABLE bus_students DROP CONSTRAINT bus_students_bus_id_contact_mobile_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:16:13.656Z] - CUSTOM QUERY - Added new unique constraint with term_id to bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_contact_term_unique'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_bus_contact_term_unique UNIQUE(bus_id, contact_mobile_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:16:13.759Z] - CUSTOM QUERY - Added foreign key for term_id in bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_term_fkey'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:16:14.184Z] - CUSTOM QUERY - Added assistant driver fields to driver_license_data
+SQL Query: ALTER TABLE driver_license_data
+         ADD COLUMN IF NOT EXISTS has_assistant BOOLEAN DEFAULT false,
+         ADD COLUMN IF NOT EXISTS assistant_full_name VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS assistant_phone_number VARCHAR(50)
+---
+
+[2026-02-01T20:16:14.286Z] - CUSTOM QUERY - Normalized bus_details ownership_type rented->leased
+SQL Query: UPDATE bus_details SET ownership_type = 'leased' WHERE ownership_type = 'rented'
+---
+
+[2026-02-01T20:16:14.386Z] - CUSTOM QUERY - Dropped old ownership_type check constraint
+SQL Query: DO $$
+         BEGIN
+           IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details DROP CONSTRAINT bus_details_ownership_type_check;
+           END IF;
+         END $$;
+---
+
+[2026-02-01T20:16:14.493Z] - CUSTOM QUERY - Added ownership_type check constraint (owned/leased)
+SQL Query: DO $$
+         BEGIN
+           IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details
+             ADD CONSTRAINT bus_details_ownership_type_check CHECK (ownership_type IN ('owned', 'leased'));
+           END IF;
+         END $$;
+---
+
+[2026-02-01T20:36:50.440Z] - CUSTOM QUERY - Added phone_number/email/number_of_employees columns to branches
+SQL Query: ALTER TABLE branches
+         ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS number_of_employees INTEGER
+---
+
+[2026-02-01T20:36:54.204Z] - CUSTOM QUERY - Added document_number/iban_number/bank_name columns to branch_documents
+SQL Query: ALTER TABLE branch_documents
+         ADD COLUMN IF NOT EXISTS document_number VARCHAR(100),
+         ADD COLUMN IF NOT EXISTS iban_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS bank_name VARCHAR(200)
+---
+
+[2026-02-01T20:36:54.433Z] - CUSTOM QUERY - Added issue_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS issue_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T20:36:54.663Z] - CUSTOM QUERY - Added expiry_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T20:36:57.512Z] - CUSTOM QUERY - Added UNIQUE constraint on terms (branch_type, academic_year_label, term_number)
+SQL Query: DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint 
+          WHERE conname = 'terms_unique_per_branch_year_term'
+        ) THEN
+          ALTER TABLE terms 
+          ADD CONSTRAINT terms_unique_per_branch_year_term 
+          UNIQUE(branch_type, academic_year_label, term_number);
+        END IF;
+      END $$;
+---
+
+[2026-02-01T20:37:03.605Z] - CUSTOM QUERY - Added expiry_date_hijri column to employee_documents
+SQL Query: ALTER TABLE employee_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T20:37:03.822Z] - CUSTOM QUERY - Added expires_at column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP
+---
+
+[2026-02-01T20:37:04.049Z] - CUSTOM QUERY - Added one_time column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS one_time BOOLEAN DEFAULT false
+---
+
+[2026-02-01T20:37:04.149Z] - CUSTOM QUERY - Added seen_by_branches column to notifications table
+SQL Query: DO $$ 
+        BEGIN 
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'notifications' AND column_name = 'seen_by_branches'
+          ) THEN
+            ALTER TABLE notifications ADD COLUMN seen_by_branches INTEGER[] DEFAULT ARRAY[]::INTEGER[];
+          END IF;
+        END $$;
+---
+
+[2026-02-01T20:37:04.255Z] - CUSTOM QUERY - Updated importance_level constraint to allow level 5
+SQL Query: DO $$ 
+        BEGIN 
+          IF EXISTS (
+            SELECT 1 FROM information_schema.constraint_column_usage 
+            WHERE table_name = 'notifications' 
+            AND constraint_name = 'notifications_importance_level_check'
+          ) THEN
+            ALTER TABLE notifications DROP CONSTRAINT notifications_importance_level_check;
+          END IF;
+        END $$;
+        ALTER TABLE notifications ADD CONSTRAINT notifications_importance_level_check 
+        CHECK (importance_level IN (1, 2, 3, 4, 5))
+---
+
+[2026-02-01T20:37:04.486Z] - CUSTOM QUERY - Created notification_views table
+SQL Query: CREATE TABLE IF NOT EXISTS notification_views (
+          id SERIAL PRIMARY KEY,
+          notification_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(notification_id, user_id)
+        )
+---
+
+[2026-02-01T20:37:05.818Z] - CUSTOM QUERY - Add excused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS excused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T20:37:06.038Z] - CUSTOM QUERY - Add unexcused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS unexcused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T20:37:06.485Z] - CUSTOM QUERY - Added term_id column to bus_transportation
+SQL Query: ALTER TABLE bus_transportation ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T20:37:06.584Z] - CUSTOM QUERY - Set default term_id for school buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 1
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'school'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T20:37:06.689Z] - CUSTOM QUERY - Set default term_id for healthcare buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 3
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'healthcare_center'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T20:37:06.884Z] - CUSTOM QUERY - Dropped old unique constraint
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_id_bus_number_key'
+             ) THEN
+               ALTER TABLE bus_transportation DROP CONSTRAINT bus_transportation_branch_id_bus_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:37:06.989Z] - CUSTOM QUERY - Added new unique constraint with term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_bus_term_unique'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_branch_bus_term_unique UNIQUE(branch_id, bus_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:37:07.087Z] - CUSTOM QUERY - Added foreign key for term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_term_fkey'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:37:07.309Z] - CUSTOM QUERY - Added lease contract document columns to bus_transportation
+SQL Query: ALTER TABLE bus_transportation
+           ADD COLUMN IF NOT EXISTS lease_contract_document_url VARCHAR(500),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_name VARCHAR(255),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_mime_type VARCHAR(100)
+---
+
+[2026-02-01T20:37:07.847Z] - CUSTOM QUERY - Added term_id column to bus_students
+SQL Query: ALTER TABLE bus_students ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T20:37:07.947Z] - CUSTOM QUERY - Set term_id for existing students from bus term_id
+SQL Query: UPDATE bus_students bs
+           SET term_id = bt.term_id
+           FROM bus_transportation bt
+           WHERE bs.bus_id = bt.id
+           AND bs.term_id IS NULL
+           AND bt.term_id IS NOT NULL
+---
+
+[2026-02-01T20:37:08.147Z] - CUSTOM QUERY - Dropped old unique constraint from bus_students
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_id_contact_mobile_number_key'
+             ) THEN
+               ALTER TABLE bus_students DROP CONSTRAINT bus_students_bus_id_contact_mobile_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:37:08.254Z] - CUSTOM QUERY - Added new unique constraint with term_id to bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_contact_term_unique'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_bus_contact_term_unique UNIQUE(bus_id, contact_mobile_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:37:08.355Z] - CUSTOM QUERY - Added foreign key for term_id in bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_term_fkey'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:37:08.781Z] - CUSTOM QUERY - Added assistant driver fields to driver_license_data
+SQL Query: ALTER TABLE driver_license_data
+         ADD COLUMN IF NOT EXISTS has_assistant BOOLEAN DEFAULT false,
+         ADD COLUMN IF NOT EXISTS assistant_full_name VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS assistant_phone_number VARCHAR(50)
+---
+
+[2026-02-01T20:37:08.887Z] - CUSTOM QUERY - Normalized bus_details ownership_type rented->leased
+SQL Query: UPDATE bus_details SET ownership_type = 'leased' WHERE ownership_type = 'rented'
+---
+
+[2026-02-01T20:37:08.996Z] - CUSTOM QUERY - Dropped old ownership_type check constraint
+SQL Query: DO $$
+         BEGIN
+           IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details DROP CONSTRAINT bus_details_ownership_type_check;
+           END IF;
+         END $$;
+---
+
+[2026-02-01T20:37:09.093Z] - CUSTOM QUERY - Added ownership_type check constraint (owned/leased)
+SQL Query: DO $$
+         BEGIN
+           IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details
+             ADD CONSTRAINT bus_details_ownership_type_check CHECK (ownership_type IN ('owned', 'leased'));
+           END IF;
+         END $$;
+---
+
+[2026-02-01T20:45:08.598Z] - CUSTOM QUERY - Added phone_number/email/number_of_employees columns to branches
+SQL Query: ALTER TABLE branches
+         ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS number_of_employees INTEGER
+---
+
+[2026-02-01T20:45:12.322Z] - CUSTOM QUERY - Added document_number/iban_number/bank_name columns to branch_documents
+SQL Query: ALTER TABLE branch_documents
+         ADD COLUMN IF NOT EXISTS document_number VARCHAR(100),
+         ADD COLUMN IF NOT EXISTS iban_number VARCHAR(50),
+         ADD COLUMN IF NOT EXISTS bank_name VARCHAR(200)
+---
+
+[2026-02-01T20:45:12.555Z] - CUSTOM QUERY - Added issue_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS issue_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T20:45:12.786Z] - CUSTOM QUERY - Added expiry_date_hijri column to branch_documents
+SQL Query: ALTER TABLE branch_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T20:45:15.706Z] - CUSTOM QUERY - Added UNIQUE constraint on terms (branch_type, academic_year_label, term_number)
+SQL Query: DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint 
+          WHERE conname = 'terms_unique_per_branch_year_term'
+        ) THEN
+          ALTER TABLE terms 
+          ADD CONSTRAINT terms_unique_per_branch_year_term 
+          UNIQUE(branch_type, academic_year_label, term_number);
+        END IF;
+      END $$;
+---
+
+[2026-02-01T20:45:21.999Z] - CUSTOM QUERY - Added expiry_date_hijri column to employee_documents
+SQL Query: ALTER TABLE employee_documents ADD COLUMN IF NOT EXISTS expiry_date_hijri VARCHAR(50)
+---
+
+[2026-02-01T20:45:22.230Z] - CUSTOM QUERY - Added expires_at column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP
+---
+
+[2026-02-01T20:45:22.464Z] - CUSTOM QUERY - Added one_time column to notifications
+SQL Query: ALTER TABLE notifications ADD COLUMN IF NOT EXISTS one_time BOOLEAN DEFAULT false
+---
+
+[2026-02-01T20:45:22.568Z] - CUSTOM QUERY - Added seen_by_branches column to notifications table
+SQL Query: DO $$ 
+        BEGIN 
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'notifications' AND column_name = 'seen_by_branches'
+          ) THEN
+            ALTER TABLE notifications ADD COLUMN seen_by_branches INTEGER[] DEFAULT ARRAY[]::INTEGER[];
+          END IF;
+        END $$;
+---
+
+[2026-02-01T20:45:22.682Z] - CUSTOM QUERY - Updated importance_level constraint to allow level 5
+SQL Query: DO $$ 
+        BEGIN 
+          IF EXISTS (
+            SELECT 1 FROM information_schema.constraint_column_usage 
+            WHERE table_name = 'notifications' 
+            AND constraint_name = 'notifications_importance_level_check'
+          ) THEN
+            ALTER TABLE notifications DROP CONSTRAINT notifications_importance_level_check;
+          END IF;
+        END $$;
+        ALTER TABLE notifications ADD CONSTRAINT notifications_importance_level_check 
+        CHECK (importance_level IN (1, 2, 3, 4, 5))
+---
+
+[2026-02-01T20:45:22.787Z] - CUSTOM QUERY - Created notification_views table
+SQL Query: CREATE TABLE IF NOT EXISTS notification_views (
+          id SERIAL PRIMARY KEY,
+          notification_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(notification_id, user_id)
+        )
+---
+
+[2026-02-01T20:45:24.157Z] - CUSTOM QUERY - Add excused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS excused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T20:45:24.385Z] - CUSTOM QUERY - Add unexcused_absences to employee_absences
+SQL Query: ALTER TABLE employee_absences ADD COLUMN IF NOT EXISTS unexcused_absences INTEGER NOT NULL DEFAULT 0
+---
+
+[2026-02-01T20:45:24.813Z] - CUSTOM QUERY - Added term_id column to bus_transportation
+SQL Query: ALTER TABLE bus_transportation ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T20:45:24.919Z] - CUSTOM QUERY - Set default term_id for school buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 1
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'school'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T20:45:25.024Z] - CUSTOM QUERY - Set default term_id for healthcare buses
+SQL Query: UPDATE bus_transportation bt
+             SET term_id = 3
+             FROM branches b
+             WHERE bt.branch_id = b.id
+             AND b.branch_type = 'healthcare_center'
+             AND bt.term_id IS NULL
+---
+
+[2026-02-01T20:45:25.234Z] - CUSTOM QUERY - Dropped old unique constraint
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_id_bus_number_key'
+             ) THEN
+               ALTER TABLE bus_transportation DROP CONSTRAINT bus_transportation_branch_id_bus_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:45:25.341Z] - CUSTOM QUERY - Added new unique constraint with term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_branch_bus_term_unique'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_branch_bus_term_unique UNIQUE(branch_id, bus_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:45:25.445Z] - CUSTOM QUERY - Added foreign key for term_id
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_transportation_term_fkey'
+             ) THEN
+               ALTER TABLE bus_transportation ADD CONSTRAINT bus_transportation_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:45:25.678Z] - CUSTOM QUERY - Added lease contract document columns to bus_transportation
+SQL Query: ALTER TABLE bus_transportation
+           ADD COLUMN IF NOT EXISTS lease_contract_document_url VARCHAR(500),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_name VARCHAR(255),
+           ADD COLUMN IF NOT EXISTS lease_contract_document_mime_type VARCHAR(100)
+---
+
+[2026-02-01T20:45:26.218Z] - CUSTOM QUERY - Added term_id column to bus_students
+SQL Query: ALTER TABLE bus_students ADD COLUMN IF NOT EXISTS term_id INTEGER
+---
+
+[2026-02-01T20:45:26.322Z] - CUSTOM QUERY - Set term_id for existing students from bus term_id
+SQL Query: UPDATE bus_students bs
+           SET term_id = bt.term_id
+           FROM bus_transportation bt
+           WHERE bs.bus_id = bt.id
+           AND bs.term_id IS NULL
+           AND bt.term_id IS NOT NULL
+---
+
+[2026-02-01T20:45:26.537Z] - CUSTOM QUERY - Dropped old unique constraint from bus_students
+SQL Query: DO $$ 
+           BEGIN
+             IF EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_id_contact_mobile_number_key'
+             ) THEN
+               ALTER TABLE bus_students DROP CONSTRAINT bus_students_bus_id_contact_mobile_number_key;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:45:26.657Z] - CUSTOM QUERY - Added new unique constraint with term_id to bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_bus_contact_term_unique'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_bus_contact_term_unique UNIQUE(bus_id, contact_mobile_number, term_id);
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:45:26.761Z] - CUSTOM QUERY - Added foreign key for term_id in bus_students
+SQL Query: DO $$
+           BEGIN
+             IF NOT EXISTS (
+               SELECT 1 FROM pg_constraint 
+               WHERE conname = 'bus_students_term_fkey'
+             ) THEN
+               ALTER TABLE bus_students ADD CONSTRAINT bus_students_term_fkey FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE RESTRICT;
+             END IF;
+           END $$;
+---
+
+[2026-02-01T20:45:27.200Z] - CUSTOM QUERY - Added assistant driver fields to driver_license_data
+SQL Query: ALTER TABLE driver_license_data
+         ADD COLUMN IF NOT EXISTS has_assistant BOOLEAN DEFAULT false,
+         ADD COLUMN IF NOT EXISTS assistant_full_name VARCHAR(255),
+         ADD COLUMN IF NOT EXISTS assistant_phone_number VARCHAR(50)
+---
+
+[2026-02-01T20:45:27.313Z] - CUSTOM QUERY - Normalized bus_details ownership_type rented->leased
+SQL Query: UPDATE bus_details SET ownership_type = 'leased' WHERE ownership_type = 'rented'
+---
+
+[2026-02-01T20:45:27.419Z] - CUSTOM QUERY - Dropped old ownership_type check constraint
+SQL Query: DO $$
+         BEGIN
+           IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details DROP CONSTRAINT bus_details_ownership_type_check;
+           END IF;
+         END $$;
+---
+
+[2026-02-01T20:45:27.522Z] - CUSTOM QUERY - Added ownership_type check constraint (owned/leased)
+SQL Query: DO $$
+         BEGIN
+           IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bus_details_ownership_type_check') THEN
+             ALTER TABLE bus_details
+             ADD CONSTRAINT bus_details_ownership_type_check CHECK (ownership_type IN ('owned', 'leased'));
+           END IF;
+         END $$;
+---
+

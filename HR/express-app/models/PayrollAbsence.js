@@ -622,6 +622,8 @@ export const PayrollAbsence = {
         ea.branch_id,
         ea.employee_id,
         ea.absences,
+        ea.excused_absences,
+        ea.unexcused_absences,
         ea.notes,
         emp.id_or_residency_number,
         emp.first_name, emp.second_name, emp.third_name, emp.fourth_name,
@@ -644,6 +646,8 @@ export const PayrollAbsence = {
       employee_id_number: row.id_or_residency_number,
       full_name: buildFullName(row),
       absences: row.absences,
+      excused_absences: row.excused_absences ?? 0,
+      unexcused_absences: row.unexcused_absences ?? 0,
       notes: row.notes,
       submission_number: row.submission_number,
       submitted_at: row.submitted_at

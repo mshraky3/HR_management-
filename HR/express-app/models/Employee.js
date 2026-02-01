@@ -19,11 +19,11 @@ export const Employee = {
         SELECT * FROM employees 
         WHERE id = ${id}
       `;
-      
+
       if (!employee) {
         return null;
       }
-      
+
       // Get all branches associated with this employee
       try {
         const branches = await sql`
@@ -38,7 +38,7 @@ export const Employee = {
           WHERE eb.employee_id = ${id}
           ORDER BY eb.is_primary DESC, eb.added_at ASC
         `;
-        
+
         return {
           ...employee,
           branches: branches.map(b => ({
@@ -106,10 +106,10 @@ export const Employee = {
       const conditions = [];
       const params = [];
       let paramIndex = 1;
-      
+
       // Base condition
       conditions.push('1=1');
-      
+
       const shouldJoinBranches = !!filters.branch_id;
       if (filters.branch_id) {
         if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
@@ -122,12 +122,12 @@ export const Employee = {
           paramIndex++;
         }
       }
-      
+
       if (filters.occupation) {
         conditions.push(`occupation = $${paramIndex++}`);
         params.push(filters.occupation);
       }
-      
+
       // Handle status filter (takes precedence over is_active for employee filtering)
       if (filters.status) {
         // If status is explicitly set, use it (allows filtering by specific status)
@@ -138,7 +138,7 @@ export const Employee = {
         // This ensures archived employees only appear in the archive page
         conditions.push(`(status IS NULL OR status IN ('active', 'pending'))`);
       }
-      
+
       // Note: is_active filter is kept for backward compatibility but status takes precedence
       // For employees, status should be used instead of is_active
       if (filters.is_active !== undefined && !filters.status) {
@@ -147,7 +147,7 @@ export const Employee = {
         conditions.push(`is_active = $${paramIndex++}`);
         params.push(filters.is_active);
       }
-      
+
       if (filters.data_completion_status) {
         if (Array.isArray(filters.data_completion_status) && filters.data_completion_status.length > 0) {
           const placeholders = filters.data_completion_status.map(() => `$${paramIndex++}`).join(', ');
@@ -195,7 +195,7 @@ export const Employee = {
         conditions.push(`contract_type IN (${placeholders})`);
         params.push(...filters.contract_type);
       }
-      
+
       // Search by name (partial match on full name or any individual name field)
       if (filters.search_name) {
         const namePattern = `%${filters.search_name}%`;
@@ -209,26 +209,26 @@ export const Employee = {
         params.push(namePattern);
         paramIndex++;
       }
-      
+
       // Search by ID or residency number (exact or partial match)
       if (filters.search_id) {
         conditions.push(`id_or_residency_number ILIKE $${paramIndex++}`);
         params.push(`%${filters.search_id}%`);
       }
-      
+
       // Search by phone number (partial match)
       if (filters.search_phone) {
         conditions.push(`phone_number ILIKE $${paramIndex++}`);
         params.push(`%${filters.search_phone}%`);
       }
-      
+
       const whereClause = conditions.join(' AND ');
-      
+
       // Performance Optimization: Use LIMIT for large result sets
       // This prevents loading too much data at once
       const limit = filters.limit ? parseInt(filters.limit, 10) : null;
       const offset = filters.offset ? parseInt(filters.offset, 10) : null;
-      
+
       // Order by full name alphabetically (construct full name from name fields)
       // Note: full_name is not a column, it's computed from first_name, second_name, third_name, fourth_name
       let queryString = `
@@ -238,7 +238,7 @@ export const Employee = {
         ${shouldJoinBranches ? 'LEFT JOIN employee_branches eb ON eb.employee_id = e.id' : ''}
         WHERE ${whereClause}
         ORDER BY full_name ASC`;
-      
+
       // Add LIMIT and OFFSET if provided (for pagination support)
       if (limit && limit > 0 && limit <= 10000) {
         queryString += ` LIMIT ${limit}`;
@@ -246,7 +246,7 @@ export const Employee = {
           queryString += ` OFFSET ${offset}`;
         }
       }
-      
+
       // If pagination is requested, also return total count
       if (filters.withCount === true || filters.withCount === 'true') {
         const countQuery = `
@@ -257,7 +257,7 @@ export const Employee = {
           sql.unsafe(queryString, params),
           sql.unsafe(countQuery, params)
         ]);
-        
+
         return {
           data: employees,
           total: parseInt(countResult[0]?.total || 0, 10),
@@ -265,7 +265,7 @@ export const Employee = {
           offset: offset || 0
         };
       }
-      
+
       return await sql.unsafe(queryString, params);
     } catch (error) {
       log.error('Error finding employees', { error: error.message });
@@ -286,9 +286,9 @@ export const Employee = {
       const conditions = [];
       const params = [];
       let paramIndex = 1;
-      
+
       conditions.push('1=1');
-      
+
       const shouldJoinBranches = !!filters.branch_id;
       if (filters.branch_id) {
         if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
@@ -301,24 +301,24 @@ export const Employee = {
           paramIndex++;
         }
       }
-      
+
       if (filters.occupation) {
         conditions.push(`occupation = $${paramIndex++}`);
         params.push(filters.occupation);
       }
-      
+
       if (filters.status) {
         conditions.push(`status = $${paramIndex++}`);
         params.push(filters.status);
       } else {
         conditions.push(`(status IS NULL OR status IN ('active', 'pending'))`);
       }
-      
+
       if (filters.data_completion_status) {
         conditions.push(`data_completion_status = $${paramIndex++}`);
         params.push(filters.data_completion_status);
       }
-      
+
       if (filters.search_name) {
         const namePattern = `%${filters.search_name}%`;
         conditions.push(`(
@@ -331,22 +331,22 @@ export const Employee = {
         params.push(namePattern);
         paramIndex++;
       }
-      
+
       if (filters.search_id) {
         conditions.push(`id_or_residency_number ILIKE $${paramIndex++}`);
         params.push(`%${filters.search_id}%`);
       }
-      
+
       if (filters.search_phone) {
         conditions.push(`phone_number ILIKE $${paramIndex++}`);
         params.push(`%${filters.search_phone}%`);
       }
-      
+
       const whereClause = conditions.join(' AND ');
-      
+
       // Calculate offset
       const offset = (page - 1) * pageSize;
-      
+
       // Execute count and data queries in parallel
       const countQuery = `
         SELECT COUNT(DISTINCT e.id) as total FROM employees e
@@ -364,15 +364,15 @@ export const Employee = {
         ORDER BY full_name ASC 
         LIMIT ${pageSize} OFFSET ${offset}
       `;
-      
+
       const [countResult, employees] = await Promise.all([
         sql.unsafe(countQuery, params),
         sql.unsafe(dataQuery, params)
       ]);
-      
+
       const total = parseInt(countResult[0]?.total || 0, 10);
       const totalPages = Math.ceil(total / pageSize);
-      
+
       return {
         data: employees,
         total,
@@ -401,7 +401,7 @@ export const Employee = {
     console.log('[EMPLOYEE MODEL] Branch ID:', employeeData.branch_id);
     console.log('[EMPLOYEE MODEL] Created by:', employeeData.created_by);
     console.log('[EMPLOYEE MODEL] Updated by:', employeeData.updated_by);
-    
+
     try {
       const {
         employee_id_number, branch_id, first_name, second_name, third_name, fourth_name,
@@ -410,30 +410,30 @@ export const Employee = {
         religion, marital_status, educational_qualification, specialization,
         bank_iban, bank_name, email, phone_number, national_address, contract_type,
         contract_start_date_hijri, contract_start_date_gregorian, contract_end_date_hijri, contract_end_date_gregorian,
-        years_of_experience_in_same_institution, years_of_experience_in_company, salary,
-        base_salary, housing_allowance, transportation_allowance, 
+        years_of_experience_in_same_institution, years_of_experience_in_company,
+        base_salary, housing_allowance, transportation_allowance,
         end_of_service_allowance, annual_leave_allowance, other_allowances,
         deductions, graduation_year, university_gpa,
         passport_number, passport_issue_date, passport_expiry_date, passport_issue_place, residency_issue_date,
         job_title, data_completion_status, status, created_by, updated_by
       } = employeeData;
-      
+
       console.log('[EMPLOYEE MODEL] Destructured data successfully');
-      
+
       // If updated_by is not provided, use created_by (for new records)
       const finalUpdatedBy = updated_by || created_by;
-      
+
       if (!created_by || !finalUpdatedBy) {
         console.log('[EMPLOYEE MODEL] ERROR: created_by or updated_by is missing');
         console.log('[EMPLOYEE MODEL] created_by:', created_by, 'updated_by:', updated_by, 'finalUpdatedBy:', finalUpdatedBy);
         throw new Error('created_by and updated_by are required');
       }
-      
+
       // Ensure status is set to 'active' for new employees (unless explicitly provided)
       const employeeStatus = status || 'active';
       console.log('[EMPLOYEE MODEL] Employee status:', employeeStatus);
       console.log('[EMPLOYEE MODEL] Executing INSERT query...');
-      
+
       const [employee] = await sql`
         INSERT INTO employees (
           employee_id_number, branch_id, first_name, second_name, third_name, fourth_name,
@@ -442,7 +442,7 @@ export const Employee = {
           religion, marital_status, educational_qualification, specialization,
           bank_iban, bank_name, email, phone_number, national_address, contract_type, 
           contract_start_date_hijri, contract_start_date_gregorian, contract_end_date_hijri, contract_end_date_gregorian,
-          years_of_experience_in_same_institution, years_of_experience_in_company, salary,
+          years_of_experience_in_same_institution, years_of_experience_in_company,
           base_salary, housing_allowance, transportation_allowance,
           end_of_service_allowance, annual_leave_allowance, other_allowances,
           deductions, graduation_year, university_gpa,
@@ -458,7 +458,7 @@ export const Employee = {
           ${national_address || null}, ${contract_type || null}, 
           ${contract_start_date_hijri || null}, ${contract_start_date_gregorian || null}, 
           ${contract_end_date_hijri || null}, ${contract_end_date_gregorian || null},
-          ${years_of_experience_in_same_institution !== undefined && years_of_experience_in_same_institution !== null ? years_of_experience_in_same_institution : 0}, ${years_of_experience_in_company !== undefined && years_of_experience_in_company !== null ? years_of_experience_in_company : 0}, ${salary !== undefined && salary !== null ? salary : 0},
+          ${years_of_experience_in_same_institution !== undefined && years_of_experience_in_same_institution !== null ? years_of_experience_in_same_institution : 0}, ${years_of_experience_in_company !== undefined && years_of_experience_in_company !== null ? years_of_experience_in_company : 0},
           ${base_salary !== undefined && base_salary !== null ? base_salary : 0}, 
           ${housing_allowance !== undefined && housing_allowance !== null ? housing_allowance : 0}, 
           ${transportation_allowance !== undefined && transportation_allowance !== null ? transportation_allowance : 0},
@@ -472,7 +472,7 @@ export const Employee = {
         )
         RETURNING *
       `;
-      
+
       console.log('[EMPLOYEE MODEL] INSERT query executed successfully');
       console.log('[EMPLOYEE MODEL] Created employee ID:', employee?.id);
       console.log('[EMPLOYEE MODEL] Employee data returned:', {
@@ -481,7 +481,7 @@ export const Employee = {
         branch_id: employee?.branch_id,
         name: `${employee?.first_name} ${employee?.second_name}`
       });
-      
+
       return employee;
     } catch (error) {
       console.log('[EMPLOYEE MODEL] ERROR in create():', error.message);
@@ -501,14 +501,14 @@ export const Employee = {
     console.log('[EMPLOYEE MODEL] Employee ID:', id);
     console.log('[EMPLOYEE MODEL] Updated by:', updatedBy);
     console.log('[EMPLOYEE MODEL] Update fields received:', Object.keys(updates));
-    
+
     try {
       const allowedFields = [
         'first_name', 'second_name', 'third_name', 'fourth_name',
         'occupation', 'nationality', 'date_of_birth_hijri', 'date_of_birth_gregorian',
         'id_type', 'gender', 'id_expiry_date_hijri', 'id_expiry_date_gregorian',
         'religion', 'marital_status', 'educational_qualification', 'specialization',
-        'bank_iban', 'bank_name', 'email', 'phone_number', 'national_address', 'contract_type', 
+        'bank_iban', 'bank_name', 'email', 'phone_number', 'national_address', 'contract_type',
         'contract_start_date_hijri', 'contract_start_date_gregorian', 'contract_end_date_hijri', 'contract_end_date_gregorian',
         'years_of_experience_in_same_institution', 'years_of_experience_in_company', 'salary',
         'base_salary', 'housing_allowance', 'transportation_allowance',
@@ -517,46 +517,46 @@ export const Employee = {
         'passport_number', 'passport_issue_date', 'passport_expiry_date', 'passport_issue_place', 'residency_issue_date',
         'job_title', 'data_completion_status'
       ];
-      
+
       const updateFields = Object.keys(updates).filter(key => allowedFields.includes(key));
       console.log('[EMPLOYEE MODEL] Allowed update fields:', updateFields);
-      
+
       if (updateFields.length === 0) {
         console.log('[EMPLOYEE MODEL] ERROR: No valid fields to update');
         throw new Error('No valid fields to update');
       }
-      
+
       updates.updated_at = new Date();
       updates.updated_by = updatedBy;
       console.log('[EMPLOYEE MODEL] Executing UPDATE query...');
-      
+
       // Ensure salary fields are 0 instead of null
       const salaryFields = ['salary', 'base_salary', 'housing_allowance', 'transportation_allowance',
         'end_of_service_allowance', 'annual_leave_allowance', 'other_allowances', 'deductions'];
-      
+
       salaryFields.forEach(field => {
         if (updates.hasOwnProperty(field) && (updates[field] === null || updates[field] === undefined)) {
           updates[field] = 0;
         }
       });
-      
+
       // Build SET clause manually
       const setClause = updateFields.map((field, index) => {
         return `${field} = $${index + 2}`;
       }).join(', ');
-      
+
       const values = updateFields.map(field => updates[field]);
       values.unshift(id);
-      
+
       const query = `
         UPDATE employees 
         SET ${setClause}, updated_at = $${values.length + 1}, updated_by = $${values.length + 2}
         WHERE id = $1
         RETURNING *
       `;
-      
+
       values.push(updates.updated_at, updates.updated_by);
-      
+
       const result = await sql.unsafe(query, values);
       console.log('[EMPLOYEE MODEL] UPDATE query executed successfully');
       console.log('[EMPLOYEE MODEL] Updated employee ID:', result[0]?.id);
@@ -582,7 +582,7 @@ export const Employee = {
         WHERE id = ${id}
         RETURNING id, employee_id_number, is_active
       `;
-      
+
       return employee;
     } catch (error) {
       log.error('Error soft deleting employee', { error: error.message });
@@ -600,12 +600,12 @@ export const Employee = {
       if (!validStatuses.includes(status)) {
         throw new Error('Invalid status');
       }
-      
+
       // Keep is_active in sync with status
       // Active and pending employees should have is_active = true
       // Archived employees (terminated, resigned, etc.) should have is_active = false
       const isActive = (status === 'active' || status === 'pending');
-      
+
       const [employee] = await sql`
         UPDATE employees 
         SET status = ${status},
@@ -617,7 +617,7 @@ export const Employee = {
         WHERE id = ${id}
         RETURNING *
       `;
-      
+
       return employee;
     } catch (error) {
       log.error('Error updating employee status', { error: error.message });
@@ -633,10 +633,10 @@ export const Employee = {
       const conditions = [];
       const params = [];
       let paramIndex = 1;
-      
+
       conditions.push('status = $' + paramIndex++);
       params.push(status);
-      
+
       if (filters.branch_id) {
         if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
           const placeholders = filters.branch_id.map(() => `$${paramIndex++}`).join(', ');
@@ -647,15 +647,15 @@ export const Employee = {
           params.push(filters.branch_id);
         }
       }
-      
+
       if (filters.academic_year) {
         conditions.push(`academic_year = $${paramIndex++}`);
         params.push(filters.academic_year);
       }
-      
+
       const whereClause = conditions.join(' AND ');
       const queryString = `SELECT * FROM employees WHERE ${whereClause} ORDER BY created_at DESC`;
-      
+
       return await sql.unsafe(queryString, params);
     } catch (error) {
       log.error('Error finding employees by status', { error: error.message });
@@ -689,19 +689,19 @@ export const Employee = {
         FROM information_schema.columns 
         WHERE table_name = 'employees' AND column_name = 'status'
       `;
-      
+
       if (!statusColumnExists || statusColumnExists.length === 0) {
         log.warn('Status column does not exist. Please run migration script: node express-app/scripts/migrate-add-employee-status-and-terms.js');
         return { data: [], total: 0 }; // Return empty result if column doesn't exist
       }
-      
+
       const conditions = [];
       const params = [];
       let paramIndex = 1;
-      
+
       // Exclude active and pending (pending are not archived yet)
       conditions.push("e.status NOT IN ('active', 'pending')");
-      
+
       if (filters.branch_id) {
         if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
           const placeholders = filters.branch_id.map(() => `$${paramIndex++}`).join(', ');
@@ -712,38 +712,38 @@ export const Employee = {
           params.push(filters.branch_id);
         }
       }
-      
+
       if (filters.status) {
         conditions.push(`e.status = $${paramIndex++}`);
         params.push(filters.status);
       }
-      
+
       if (filters.academic_year) {
         conditions.push(`e.academic_year = $${paramIndex++}`);
         params.push(filters.academic_year);
       }
-      
+
       // Date range filters
       if (filters.registration_date_from) {
         conditions.push(`e.created_at >= $${paramIndex++}`);
         params.push(filters.registration_date_from);
       }
-      
+
       if (filters.registration_date_to) {
         conditions.push(`e.created_at <= $${paramIndex++}`);
         params.push(filters.registration_date_to);
       }
-      
+
       if (filters.status_change_date_from) {
         conditions.push(`e.status_changed_at >= $${paramIndex++}`);
         params.push(filters.status_change_date_from);
       }
-      
+
       if (filters.status_change_date_to) {
         conditions.push(`e.status_changed_at <= $${paramIndex++}`);
         params.push(filters.status_change_date_to);
       }
-      
+
       // Server-side search by name (using ILIKE for partial match on full name or individual fields)
       if (filters.search_name) {
         const namePattern = `%${filters.search_name}%`;
@@ -757,7 +757,7 @@ export const Employee = {
         params.push(namePattern);
         paramIndex++;
       }
-      
+
       // Server-side search by ID or residency number
       if (filters.search_id) {
         conditions.push(`(
@@ -767,9 +767,9 @@ export const Employee = {
         params.push(`%${filters.search_id}%`);
         paramIndex++;
       }
-      
+
       const whereClause = conditions.join(' AND ');
-      
+
       // Get total count first (for pagination)
       const countQuery = `
         SELECT COUNT(*) as total
@@ -778,7 +778,7 @@ export const Employee = {
       `;
       const countResult = await sql.unsafe(countQuery, params);
       const total = parseInt(countResult[0]?.total || 0, 10);
-      
+
       // Build main query with JOIN to get branch information (fixes N+1 query problem)
       let queryString = `
         SELECT 
@@ -790,11 +790,11 @@ export const Employee = {
         WHERE ${whereClause}
         ORDER BY e.status_changed_at DESC, e.created_at DESC
       `;
-      
+
       // Add pagination if provided
       const limit = filters.limit ? parseInt(filters.limit, 10) : null;
       const offset = filters.offset ? parseInt(filters.offset, 10) : null;
-      
+
       if (limit && limit > 0 && limit <= 10000) {
         queryString += ` LIMIT $${paramIndex++}`;
         params.push(limit);
@@ -803,16 +803,16 @@ export const Employee = {
           params.push(offset);
         }
       }
-      
+
       const employees = await sql.unsafe(queryString, params);
-      
+
       // Map results to include branch_name and branch_type (already in result from JOIN)
       const employeesWithBranches = employees.map(employee => ({
         ...employee,
         branch_name: employee.branch_name || 'غير معروف',
         branch_type: employee.branch_type || 'unknown'
       }));
-      
+
       return {
         data: employeesWithBranches,
         total: total
@@ -842,7 +842,7 @@ export const Employee = {
         WHERE id = ${id} AND status = 'pending'
         RETURNING *
       `;
-      
+
       return employee;
     } catch (error) {
       log.error('Error renewing employee', { error: error.message });
@@ -913,7 +913,7 @@ export const Employee = {
             WHERE eb.employee_id = ${emp.id}
             ORDER BY eb.is_primary DESC, eb.added_at ASC
           `;
-          
+
           return {
             ...emp,
             branches: branches.map(b => ({
@@ -1111,7 +1111,7 @@ export const Employee = {
         for (const field of fieldsToMerge) {
           // If canonical field is null/empty and duplicate has a value, use duplicate's value
           if ((mergedData[field] === null || mergedData[field] === '' || mergedData[field] === undefined) &&
-              duplicate[field] !== null && duplicate[field] !== '' && duplicate[field] !== undefined) {
+            duplicate[field] !== null && duplicate[field] !== '' && duplicate[field] !== undefined) {
             mergedData[field] = duplicate[field];
           }
         }
@@ -1120,10 +1120,10 @@ export const Employee = {
       // Update canonical employee with merged data
       const updateFields = {};
       for (const field of fieldsToMerge) {
-        if (mergedData[field] !== canonical[field] && 
-            mergedData[field] !== null && 
-            mergedData[field] !== undefined && 
-            mergedData[field] !== '') {
+        if (mergedData[field] !== canonical[field] &&
+          mergedData[field] !== null &&
+          mergedData[field] !== undefined &&
+          mergedData[field] !== '') {
           updateFields[field] = mergedData[field];
         }
       }
@@ -1133,16 +1133,16 @@ export const Employee = {
         const setClause = Object.keys(updateFields).map((field, index) => {
           return `${field} = $${index + 2}`;
         }).join(', ');
-        
+
         const values = Object.keys(updateFields).map(field => updateFields[field]);
         values.unshift(canonicalId);
-        
+
         const query = `
           UPDATE employees 
           SET ${setClause}, updated_at = CURRENT_TIMESTAMP
           WHERE id = $1
         `;
-        
+
         await trx.unsafe(query, values);
       }
 
@@ -1185,7 +1185,7 @@ export const Employee = {
       for (const doc of duplicateDocs) {
         const key = `${doc.document_type || ''}:${doc.file_name || ''}`;
         const existingDoc = canonicalDocMap.get(key);
-        
+
         if (!existingDoc) {
           // No document of this type exists for canonical, move it
           await trx`
@@ -1197,7 +1197,7 @@ export const Employee = {
           // Document already exists - keep the most recent active one
           const existingDate = new Date(existingDoc.uploaded_at);
           const duplicateDate = new Date(doc.uploaded_at);
-          
+
           if (duplicateDate > existingDate && doc.is_active) {
             // Duplicate is newer and active - deactivate old one and move new one
             await trx`
