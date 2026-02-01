@@ -7,6 +7,7 @@ import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
 
 const VIEW_ONLY_DAYS = 4;
+const ENTRY_OPEN_DAYS = 4; // Entry stays open for 4 days after auto_open_at
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 const formatDateOnly = (date) => {
@@ -30,6 +31,25 @@ const getCycleDates = (targetDate = new Date()) => {
   const autoOpenAt = new Date(Date.UTC(year, month + 1, 0, 0, 0, 0)); // start of last day
 
   return { monthStart, monthEnd, autoOpenAt };
+};
+
+/**
+ * Determines which cycle should be active based on the current date.
+ * If we're within ENTRY_OPEN_DAYS after the previous month's auto_open_at,
+ * we should still be in the previous month's cycle (entry still open).
+ */
+const getActiveCycleDate = (now = new Date()) => {
+  const current = new Date(now);
+  const currentDay = current.getUTCDate();
+
+  // If we're in the first few days of the month, check if previous month's entry is still open
+  if (currentDay <= ENTRY_OPEN_DAYS) {
+    // Get previous month
+    const prevMonth = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 1, 15));
+    return prevMonth;
+  }
+
+  return current;
 };
 
 const getNextMonthDate = (cycle) => {
@@ -157,13 +177,16 @@ export const PayrollAbsence = {
 
   async getBranchState(branchId, { cycleId = null, now = new Date() } = {}) {
     const referenceDate = new Date(now);
-    const cycle = cycleId ? await this.ensureCycleById(cycleId) : await this.ensureCycle(referenceDate);
+    // Use getActiveCycleDate to determine which month's cycle we should be working with
+    const activeCycleDate = getActiveCycleDate(referenceDate);
+    const cycle = cycleId ? await this.ensureCycleById(cycleId) : await this.ensureCycle(activeCycleDate);
 
     await this.ensureWindowsForCycle(cycle);
     const window = await this.ensureBranchWindow(cycle, branchId);
 
     const nowTs = referenceDate.getTime();
     const entryOpenAt = new Date(window.entry_open_at);
+    const entryCloseAt = addDays(entryOpenAt, ENTRY_OPEN_DAYS); // Entry stays open for 4 days
     const viewUntil = window.view_until ? new Date(window.view_until) : null;
     const manualExpires = window.manual_expires_at ? new Date(window.manual_expires_at) : null;
     const manualActive = window.manual_opened && (!manualExpires || nowTs <= manualExpires.getTime());
@@ -173,10 +196,14 @@ export const PayrollAbsence = {
     let activeCycle = cycle;
     let nextCycle = null;
 
+    // Check if we're within the entry window (from auto_open_at to auto_open_at + ENTRY_OPEN_DAYS)
+    const isWithinEntryWindow = nowTs >= entryOpenAt.getTime() && nowTs <= entryCloseAt.getTime();
+
     if (manualActive) {
       state = 'entry_open';
     } else if ((window.submission_count || 0) === 0) {
-      state = nowTs >= entryOpenAt.getTime() ? 'entry_open' : 'countdown';
+      // No submission yet - check if entry window is open
+      state = isWithinEntryWindow ? 'entry_open' : (nowTs < entryOpenAt.getTime() ? 'countdown' : 'closed');
     } else if (viewUntil && nowTs <= viewUntil.getTime()) {
       state = 'view_only';
     } else {
