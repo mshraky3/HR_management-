@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index.js"
+    }
+  ],
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 60,
+      "memory": 3008,
+      "includeFiles": "**/*"
+    }
+  },
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
