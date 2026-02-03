@@ -462,8 +462,10 @@ const BusTransportation = () => {
 
 
     filteredBuses.forEach((bus) => {
+      const studentCount = parseInt(bus.student_count, 10);
       const missingStudents =
-        bus.student_count === 0 ||
+        studentCount === 0 ||
+        isNaN(studentCount) ||
         bus.student_count === null ||
         bus.student_count === undefined;
       const missingRegDoc = !bus.registration_document_url;
@@ -1339,8 +1341,10 @@ const BusTransportation = () => {
                   </button>
                   <button
                     className={`btn-edit ${(() => {
+                      const studentCount = parseInt(bus.student_count, 10);
                       const missingStudents =
-                        bus.student_count === 0 ||
+                        studentCount === 0 ||
+                        isNaN(studentCount) ||
                         bus.student_count === null ||
                         bus.student_count === undefined;
                       const missingRegDoc = !bus.registration_document_url;
@@ -1355,8 +1359,10 @@ const BusTransportation = () => {
                     onClick={() => {
                       // If the form is already open, force re-mount by changing key (below)
                       // and open the most relevant missing section.
+                      const studentCount = parseInt(bus.student_count, 10);
                       const missingStudents =
-                        bus.student_count === 0 ||
+                        studentCount === 0 ||
+                        isNaN(studentCount) ||
                         bus.student_count === null ||
                         bus.student_count === undefined;
                       const missingRegDoc = !bus.registration_document_url;
@@ -1377,8 +1383,10 @@ const BusTransportation = () => {
                     }}
                   >
                     {(() => {
+                      const studentCount = parseInt(bus.student_count, 10);
                       const missingStudents =
-                        bus.student_count === 0 ||
+                        studentCount === 0 ||
+                        isNaN(studentCount) ||
                         bus.student_count === null ||
                         bus.student_count === undefined;
                       const missingRegDoc = !bus.registration_document_url;
@@ -1831,11 +1839,11 @@ const BusFormModal = ({
 
     if (tabKey === "basic") {
       if (isMainManager && isBlank(basicFormData.branch_id)) {
-        showError("يرجى اختيار الفرع");
+        showError("⚠️ الفرع مطلوب\n\nيرجى اختيار الفرع من القائمة المنسدلة في تبويب 'البيانات الأساسية'.");
         return { ok: false };
       }
       if (isBlank(basicFormData.term_id)) {
-        showError("يرجى اختيار الفصل الدراسي");
+        showError("⚠️ الفصل الدراسي مطلوب\n\nيرجى اختيار الفصل الدراسي الذي ستعمل فيه الحافلة.");
         return { ok: false };
       }
 
@@ -1845,7 +1853,7 @@ const BusFormModal = ({
         plateParsed.lettersEn.length !== 3 ||
         plateParsed.lettersAr.length !== 3
       ) {
-        showError("يرجى إدخال رقم لوحة صحيح");
+        showError("⚠️ رقم اللوحة غير مكتمل\n\nاللوحة يجب أن تحتوي على:\n• 4 أرقام (مثال: 1234)\n• 3 حروف إنجليزية (مثال: ABC)\n• 3 حروف عربية (مثال: أبج)");
         return { ok: false };
       }
 
@@ -2189,7 +2197,7 @@ const BusFormModal = ({
 
   const handleSaveStudents = async () => {
     if (!createdBusId && !bus?.id) {
-      showError("يرجى إنشاء الحافلة أولاً");
+      showError("⚠️ لا يمكن حفظ الطلاب\n\nيرجى إنشاء الحافلة أولاً بإكمال البيانات الأساسية والضغط على 'التالي'.");
       return;
     }
     const busId = createdBusId || bus.id;
@@ -2242,33 +2250,33 @@ const BusFormModal = ({
       userBranchId &&
       parseInt(bus.branch_id) !== parseInt(userBranchId)
     ) {
-      showError("لا يمكنك تعديل بيانات حافلة تابعة لفرع آخر");
+      showError("⚠️ ليس لديك صلاحية\n\nلا يمكنك تعديل بيانات حافلة تابعة لفرع آخر.");
       return;
     }
     // 1) Basic (required)
     if (isMainManager && isBlank(basicFormData.branch_id)) {
-      showError("يرجى اختيار الفرع");
+      showError("⚠️ الفرع مطلوب\n\nيرجى اختيار الفرع من القائمة في تبويب 'البيانات الأساسية'.");
       setActiveTab("basic");
       return;
     }
     if (isBlank(basicFormData.term_id)) {
-      showError("يرجى اختيار الفصل الدراسي");
+      showError("⚠️ الفصل الدراسي مطلوب\n\nيرجى اختيار الفصل الدراسي الذي ستعمل فيه الحافلة.");
       setActiveTab("basic");
       return;
     }
     const plateParsed = parsePlate(basicFormData.plate_number);
     if (plateParsed.numbers.length !== 4) {
-      showError("يرجى إدخال 4 أرقام للوحة");
+      showError("⚠️ أرقام اللوحة غير مكتملة\n\nيجب إدخال 4 أرقام للوحة (مثال: 1234)\nالأرقام الحالية: ${plateParsed.numbers || 'لا يوجد'}");
       setActiveTab("basic");
       return;
     }
     if (plateParsed.lettersEn.length !== 3) {
-      showError("يرجى إدخال 3 حروف إنجليزية للوحة");
+      showError("⚠️ الحروف الإنجليزية غير مكتملة\n\nيجب إدخال 3 حروف إنجليزية للوحة (مثال: ABC)\nالحروف الحالية: ${plateParsed.lettersEn || 'لا يوجد'}");
       setActiveTab("basic");
       return;
     }
     if (plateParsed.lettersAr.length !== 3) {
-      showError("يرجى إدخال 3 حروف عربية للوحة");
+      showError("⚠️ الحروف العربية غير مكتملة\n\nيجب إدخال 3 حروف عربية للوحة (مثال: أبج)\nالحروف الحالية: ${plateParsed.lettersAr || 'لا يوجد'}");
       setActiveTab("basic");
       return;
     }
@@ -2280,7 +2288,12 @@ const BusFormModal = ({
       isBlank(registrationData.vehicle_model) ||
       isBlank(registrationData.expiry_date_gregorian)
     ) {
-      showError("يرجى إكمال بيانات التسجيل المطلوبة");
+      const missingReg = [];
+      if (isBlank(registrationData.registration_number)) missingReg.push('رقم التسجيل');
+      if (isBlank(registrationData.chassis_number)) missingReg.push('رقم الهيكل');
+      if (isBlank(registrationData.vehicle_model)) missingReg.push('موديل المركبة');
+      if (isBlank(registrationData.expiry_date_gregorian)) missingReg.push('تاريخ انتهاء الرخصة');
+      showError(`⚠️ بيانات التسجيل غير مكتملة\n\nالحقول الناقصة:\n• ${missingReg.join('\n• ')}\n\nيرجى إكمال هذه البيانات في تبويب 'رخصة السير'.`);
       setActiveTab("registration");
       return;
     }
@@ -2292,7 +2305,12 @@ const BusFormModal = ({
       isBlank(driverLicenseData.license_number) ||
       isBlank(driverLicenseData.expiry_date_gregorian)
     ) {
-      showError("يرجى إكمال بيانات رخصة السائق المطلوبة");
+      const missingDriver = [];
+      if (isBlank(driverLicenseData.driver_full_name)) missingDriver.push('اسم السائق');
+      if (isBlank(driverLicenseData.driver_id_number)) missingDriver.push('رقم هوية السائق');
+      if (isBlank(driverLicenseData.license_number)) missingDriver.push('رقم رخصة القيادة');
+      if (isBlank(driverLicenseData.expiry_date_gregorian)) missingDriver.push('تاريخ انتهاء الرخصة');
+      showError(`⚠️ بيانات السائق غير مكتملة\n\nالحقول الناقصة:\n• ${missingDriver.join('\n• ')}\n\nيرجى إكمال هذه البيانات في تبويب 'رخصة السائق'.`);
       setActiveTab("driver");
       return;
     }
@@ -2302,7 +2320,10 @@ const BusFormModal = ({
       (isBlank(driverLicenseData.assistant_full_name) ||
         isBlank(driverLicenseData.assistant_phone_number))
     ) {
-      showError("يرجى إكمال بيانات مرافق السائق");
+      const missingAssistant = [];
+      if (isBlank(driverLicenseData.assistant_full_name)) missingAssistant.push('اسم المرافق');
+      if (isBlank(driverLicenseData.assistant_phone_number)) missingAssistant.push('رقم جوال المرافق');
+      showError(`⚠️ بيانات مرافق السائق غير مكتملة\n\nتم تفعيل خيار 'يوجد مرافق' لكن البيانات ناقصة:\n• ${missingAssistant.join('\n• ')}\n\nيرجى إكمالها أو إلغاء خيار 'يوجد مرافق'.`);
       setActiveTab("driver");
       return;
     }
@@ -2312,7 +2333,10 @@ const BusFormModal = ({
       isBlank(busDetailsData.number_of_seats) ||
       isBlank(busDetailsData.ownership_type)
     ) {
-      showError("يرجى إكمال تفاصيل الحافلة المطلوبة");
+      const missingDetails = [];
+      if (isBlank(busDetailsData.number_of_seats)) missingDetails.push('عدد المقاعد');
+      if (isBlank(busDetailsData.ownership_type)) missingDetails.push('نوع الملكية');
+      showError(`⚠️ تفاصيل الحافلة غير مكتملة\n\nالحقول الناقصة:\n• ${missingDetails.join('\n• ')}\n\nيرجى إكمالها في تبويب 'تفاصيل الحافلة'.`);
       setActiveTab("details");
       return;
     }
@@ -2338,7 +2362,7 @@ const BusFormModal = ({
         );
       });
       if (hasInvalidStudent) {
-        showError("يرجى إكمال بيانات الطلاب أو حذف الصفوف غير المكتملة");
+        showError("⚠️ بيانات الطلاب غير مكتملة\n\nيوجد طالب/طلاب ببيانات ناقصة.\n\nكل طالب يجب أن يحتوي على:\n• الاسم الكامل\n• رقم الجوال\n• العنوان/الملاحظات\n\nيرجى إكمال البيانات أو حذف الصفوف غير المكتملة.");
         setActiveTab("students");
         return;
       }

@@ -607,7 +607,7 @@ const Employees = () => {
 
     // Validate nationality is selected first
     if (!formData.nationality) {
-      showWarning("الرجاء اختيار الجنسية أولاً");
+      showWarning("⚠️ الجنسية مطلوبة\n\nيرجى اختيار الجنسية من القائمة المنسدلة في قسم البيانات الشخصية.\nالجنسية تحدد نوع الهوية والمستندات المطلوبة.");
       setSaving(false);
       return;
     }
@@ -624,7 +624,7 @@ const Employees = () => {
 
     // Only require branch type selection for main managers
     if (isMainManager() && !currentBranchType && !editingEmployee) {
-      showWarning("الرجاء اختيار نوع الفرع أولاً");
+      showWarning("⚠️ نوع الفرع مطلوب\n\nيرجى اختيار نوع الفرع (بنين/بنات) من الأزرار في أعلى النموذج قبل إضافة الموظف.");
       setSaving(false);
       return;
     }
@@ -636,7 +636,12 @@ const Employees = () => {
       !formData.third_name ||
       !formData.fourth_name
     ) {
-      showWarning("الرجاء إدخال جميع الأسماء الأربعة");
+      const missingNames = [];
+      if (!formData.first_name) missingNames.push("الاسم الأول");
+      if (!formData.second_name) missingNames.push("اسم الأب");
+      if (!formData.third_name) missingNames.push("اسم الجد");
+      if (!formData.fourth_name) missingNames.push("اسم العائلة");
+      showWarning(`⚠️ الاسم الرباعي مطلوب\n\nالحقول الناقصة: ${missingNames.join(" - ")}\n\nيجب إدخال الاسم الرباعي كاملاً كما هو في الهوية.`);
       setSaving(false);
       return;
     }
@@ -646,7 +651,7 @@ const Employees = () => {
       !formData.id_or_residency_number ||
       formData.id_or_residency_number.trim() === ""
     ) {
-      showWarning("الرجاء إدخال رقم الهوية أو الإقامة");
+      showWarning("⚠️ رقم الهوية/الإقامة مطلوب\n\nيرجى إدخال رقم الهوية الوطنية (للسعوديين) أو رقم الإقامة (لغير السعوديين).\n\n• رقم الهوية: 10 أرقام تبدأ بـ 1\n• رقم الإقامة: 10 أرقام تبدأ بـ 2");
       setSaving(false);
       return;
     }
@@ -662,7 +667,7 @@ const Employees = () => {
     const isSaudiNationality = isSaudi();
     if (dateOfBirthCalendarType) {
       if (isSaudiNationality && dateOfBirthCalendarType !== "hijri") {
-        showWarning("السعوديون يجب أن يستخدموا التقويم الهجري فقط");
+        showWarning("⚠️ نوع التقويم غير صحيح\n\nالموظفون السعوديون يجب أن يستخدموا التقويم الهجري لتاريخ الميلاد.\n\nيرجى تغيير نوع التقويم إلى 'هجري' في حقل تاريخ الميلاد.");
         setSaving(false);
         return;
       }
@@ -676,7 +681,7 @@ const Employees = () => {
 
     // Validate bank name is changed from default (for both new and editing)
     if (formData.bank_name === DEFAULT_BANK_PLACEHOLDER) {
-      showWarning("الرجاء اختيار اسم البنك - يجب تغيير القيمة الافتراضية");
+      showWarning("⚠️ اسم البنك مطلوب\n\nيرجى اختيار البنك من القائمة المنسدلة في قسم البيانات البنكية.\n\nالبنك مطلوب لتحويل الراتب الشهري.");
       setSaving(false);
       return;
     }
@@ -684,12 +689,12 @@ const Employees = () => {
     // Validate bank name and IBAN are both provided if one is provided
     if (formData.bank_iban || formData.bank_name) {
       if (formData.bank_iban && !formData.bank_name) {
-        showWarning("الرجاء اختيار اسم البنك");
+        showWarning("⚠️ اسم البنك مطلوب\n\nتم إدخال رقم الآيبان لكن لم يتم اختيار البنك.\nيرجى اختيار البنك من القائمة.");
         setSaving(false);
         return;
       }
       if (formData.bank_name && !formData.bank_iban) {
-        showWarning("الرجاء إدخال رقم الآيبان البنكي");
+        showWarning("⚠️ رقم الآيبان مطلوب\n\nتم اختيار البنك لكن لم يتم إدخال رقم الآيبان.\nيرجى إدخال رقم الآيبان (IBAN) الخاص بالموظف.");
         setSaving(false);
         return;
       }
@@ -699,20 +704,20 @@ const Employees = () => {
         const cleanIBAN = formData.bank_iban.replace(/\s/g, '').toUpperCase();
 
         if (!cleanIBAN.startsWith('SA')) {
-          showWarning("رقم الآيبان يجب أن يبدأ بـ SA");
+          showWarning("⚠️ صيغة الآيبان غير صحيحة\n\nرقم الآيبان السعودي يجب أن يبدأ بـ SA\n\nمثال: SA0380000000608010167519");
           setSaving(false);
           return;
         }
 
         if (cleanIBAN.length !== 24) {
-          showWarning(`رقم الآيبان غير صحيح. يجب أن يحتوي على SA متبوعة بـ 22 رقم (إجمالي 24 حرف). الطول الحالي: ${cleanIBAN.length}`);
+          showWarning(`⚠️ طول الآيبان غير صحيح\n\nالآيبان السعودي يجب أن يتكون من 24 حرفاً:\n• SA + 22 رقم\n\nالطول الحالي: ${cleanIBAN.length} حرف\nينقص: ${24 - cleanIBAN.length > 0 ? (24 - cleanIBAN.length) + ' حرف' : 'يوجد ' + (cleanIBAN.length - 24) + ' حرف زائد'}`);
           setSaving(false);
           return;
         }
 
         const numbers = cleanIBAN.substring(2);
         if (!/^\d{22}$/.test(numbers)) {
-          showWarning("رقم الآيبان يجب أن يحتوي على SA متبوعة بـ 22 رقم فقط");
+          showWarning("⚠️ الآيبان يحتوي على أحرف غير صحيحة\n\nبعد SA يجب أن تكون جميع الأحرف أرقاماً فقط (22 رقم).\n\nتأكد من عدم وجود مسافات أو أحرف بين الأرقام.");
           setSaving(false);
           return;
         }
@@ -761,7 +766,7 @@ const Employees = () => {
         !formData.date_of_birth_hijri ||
         formData.date_of_birth_hijri.trim() === ""
       ) {
-        showWarning("تاريخ الميلاد مطلوب للموظف السعودي (يجب أن يكون هجري)");
+        showWarning("⚠️ تاريخ الميلاد مطلوب\n\nللموظفين السعوديين: يجب إدخال تاريخ الميلاد بالتقويم الهجري.\n\nيرجى إدخال التاريخ كما هو في بطاقة الهوية الوطنية.");
         setSaving(false);
         return;
       }
@@ -771,9 +776,7 @@ const Employees = () => {
         !formData.date_of_birth_gregorian ||
         formData.date_of_birth_gregorian.trim() === ""
       ) {
-        showWarning(
-          "تاريخ الميلاد مطلوب للموظف غير السعودي (يجب أن يكون ميلادي)",
-        );
+        showWarning("⚠️ تاريخ الميلاد مطلوب\n\nللموظفين غير السعوديين: يجب إدخال تاريخ الميلاد بالتقويم الميلادي.\n\nيرجى إدخال التاريخ كما هو في جواز السفر.");
         setSaving(false);
         return;
       }
@@ -781,19 +784,19 @@ const Employees = () => {
 
     // Validate Section 2 fields (required)
     if (!formData.religion || formData.religion.trim() === "") {
-      showWarning("الرجاء اختيار الديانة");
+      showWarning("⚠️ الديانة مطلوبة\n\nيرجى اختيار الديانة من القائمة المنسدلة في قسم البيانات الشخصية.");
       setSaving(false);
       return;
     }
 
     if (!formData.marital_status || formData.marital_status.trim() === "") {
-      showWarning("الرجاء اختيار الحالة الاجتماعية");
+      showWarning("⚠️ الحالة الاجتماعية مطلوبة\n\nيرجى اختيار الحالة الاجتماعية (أعزب/متزوج/مطلق/أرمل) من القائمة.");
       setSaving(false);
       return;
     }
 
     if (!formData.contract_type || formData.contract_type.trim() === "") {
-      showWarning("الرجاء اختيار نوع العقد");
+      showWarning("⚠️ نوع العقد مطلوب\n\nيرجى اختيار نوع العقد (رسمي/ورقي) من القائمة في قسم بيانات العقد.");
       setSaving(false);
       return;
     }
@@ -801,7 +804,7 @@ const Employees = () => {
     // Validate passport fields for non-Saudis (required)
     if (!isSaudiNationality) {
       if (!formData.passport_number || formData.passport_number.trim() === "") {
-        showWarning("رقم جواز السفر مطلوب للموظف غير السعودي");
+        showWarning("⚠️ بيانات جواز السفر مطلوبة\n\nللموظفين غير السعوديين: يرجى إدخال رقم جواز السفر.\n\nالرقم موجود في الصفحة الأولى من الجواز.");
         setSaving(false);
         return;
       }
@@ -809,7 +812,7 @@ const Employees = () => {
         !formData.passport_issue_date ||
         formData.passport_issue_date.trim() === ""
       ) {
-        showWarning("تاريخ اصدار جواز السفر مطلوب للموظف غير السعودي");
+        showWarning("⚠️ تاريخ إصدار الجواز مطلوب\n\nللموظفين غير السعوديين: يرجى إدخال تاريخ إصدار جواز السفر.");
         setSaving(false);
         return;
       }
@@ -817,7 +820,7 @@ const Employees = () => {
         !formData.passport_expiry_date ||
         formData.passport_expiry_date.trim() === ""
       ) {
-        showWarning("تاريخ انتهاء جواز السفر مطلوب للموظف غير السعودي");
+        showWarning("⚠️ تاريخ انتهاء الجواز مطلوب\n\nللموظفين غير السعوديين: يرجى إدخال تاريخ انتهاء صلاحية جواز السفر.");
         setSaving(false);
         return;
       }
@@ -825,7 +828,7 @@ const Employees = () => {
         !formData.passport_issue_place ||
         formData.passport_issue_place.trim() === ""
       ) {
-        showWarning("مكان إصدار جواز السفر مطلوب للموظف غير السعودي");
+        showWarning("⚠️ مكان إصدار الجواز مطلوب\n\nللموظفين غير السعوديين: يرجى إدخال مكان/دولة إصدار الجواز.");
         setSaving(false);
         return;
       }
@@ -833,7 +836,7 @@ const Employees = () => {
         !formData.residency_issue_date ||
         formData.residency_issue_date.trim() === ""
       ) {
-        showWarning("تاريخ اصدار الإقامة مطلوب للموظف غير السعودي");
+        showWarning("⚠️ تاريخ إصدار الإقامة مطلوب\n\nللموظفين غير السعوديين: يرجى إدخال تاريخ إصدار الإقامة.");
         setSaving(false);
         return;
       }
@@ -841,7 +844,7 @@ const Employees = () => {
 
     // Validate database-required fields that have defaults but can be empty
     if (!formData.gender || formData.gender.trim() === "") {
-      showWarning("الرجاء اختيار الجنس");
+      showWarning("⚠️ الجنس مطلوب\n\nيرجى اختيار الجنس (ذكر/أنثى) من القائمة.");
       setSaving(false);
       return;
     }
@@ -858,7 +861,7 @@ const Employees = () => {
       endOfServiceAllowance + annualLeaveAllowance + otherAllowances;
 
     if (totalSalary > 0 && totalSalary < 500) {
-      showWarning("الراتب غير صحيح");
+      showWarning("⚠️ الراتب غير صحيح\n\nإجمالي الراتب المدخل (${totalSalary} ريال) أقل من الحد الأدنى (500 ريال).\n\nيرجى مراجعة قيم الراتب الأساسي والبدلات.");
       setSaving(false);
       return;
     }
@@ -876,7 +879,7 @@ const Employees = () => {
         // Use job_title as occupation if occupation is empty
         formData.occupation = formData.job_title;
       } else {
-        showWarning("الرجاء إدخال المهنة أو اختيار المسمى الوظيفي");
+        showWarning("⚠️ المهنة أو المسمى الوظيفي مطلوب\n\nيرجى إدخال المهنة في حقل 'المهنة'\nأو اختيار المسمى الوظيفي من القائمة.");
         setSaving(false);
         return;
       }
