@@ -1,0 +1,1 @@
+import{j as a}from"./react-vendor-EBH2kwDx.js";/* empty css                    */const t=({branch:e,size:r=18,showName:n=!1})=>{const s={display:"inline-flex",alignItems:"center",gap:"8px"};return a.jsx("span",{style:s,className:"branch-badge-inline",children:n&&a.jsx("span",{className:"branch-badge-name",children:e?.branch_name||e||""})})};export{t as B};
