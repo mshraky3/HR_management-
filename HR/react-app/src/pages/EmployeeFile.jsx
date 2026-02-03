@@ -35,14 +35,14 @@ const EmployeeFile = () => {
   const [branchSearchTerm, setBranchSearchTerm] = useState(''); // Search term for filtering branches
   const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
   const [showFieldsDropdown, setShowFieldsDropdown] = useState(false);
-  
+
   // Refs to maintain focus on search inputs
   const searchNameRef = useRef(null);
   const searchIdRef = useRef(null);
   const searchPhoneRef = useRef(null);
   const fieldsToggleRef = useRef(null);
   const fieldsDropdownRef = useRef(null);
-  
+
   // Available fields for selection
   const availableFields = [
     { value: 'employee_id_number', label: 'رقم الموظف' },
@@ -81,7 +81,6 @@ const EmployeeFile = () => {
     { value: 'end_of_service_allowance', label: 'بدل نهاية الخدمة' },
     { value: 'annual_leave_allowance', label: 'بدل الإجازة السنوية' },
     { value: 'other_allowances', label: 'بدلات أخرى' },
-    { value: 'deductions', label: 'الخصومات' },
     { value: 'graduation_year', label: 'سنة التخرج' },
     { value: 'university_gpa', label: 'المعدل التراكمي' },
     { value: 'passport_number', label: 'رقم الجواز' },
@@ -91,7 +90,7 @@ const EmployeeFile = () => {
     { value: 'residency_issue_date', label: 'تاريخ إصدار الإقامة' },
     { value: 'data_completion_status', label: 'حالة إكمال البيانات' },
   ];
-  
+
   const [selectedFields, setSelectedFields] = useState([
     'full_name',
     'employee_id_number',
@@ -129,23 +128,23 @@ const EmployeeFile = () => {
 
   const loadEmployees = async () => {
     // Check if at least one search filter is filled
-    const hasSearchCriteria = 
+    const hasSearchCriteria =
       searchFilters.search_name.trim() ||
       searchFilters.search_id.trim() ||
       searchFilters.search_phone.trim() ||
       searchFilters.branch_id;
-    
+
     if (!hasSearchCriteria) {
       setEmployees([]);
       setHasSearched(false);
       return;
     }
-    
+
     try {
       setLoading(true);
       setHasSearched(true);
       const filters = { is_active: true };
-      
+
       // Add search filters
       if (searchFilters.search_name.trim()) {
         filters.search_name = searchFilters.search_name.trim();
@@ -159,7 +158,7 @@ const EmployeeFile = () => {
       if (searchFilters.branch_id) {
         filters.branch_id = parseInt(searchFilters.branch_id);
       }
-      
+
       const response = await employeesAPI.getAll(filters);
       if (response.data.success) {
         setEmployees(response.data.data);
@@ -249,7 +248,7 @@ const EmployeeFile = () => {
 
   const handleSelectAllDocuments = () => {
     const allSelected = documents.length > 0 && documents.every(doc => selectedDocumentIds.includes(doc.id));
-    
+
     if (allSelected) {
       // Deselect all
       setSelectedDocumentIds([]);
@@ -299,24 +298,24 @@ const EmployeeFile = () => {
 
   const handleGenerateFile = async (e) => {
     e.preventDefault();
-    
+
     if (!selectedEmployeeId) {
       showWarning('الرجاء اختيار موظف');
       return;
     }
-    
+
     if (selectedFields.length === 0) {
       showWarning('الرجاء اختيار حقل واحد على الأقل للعرض');
       return;
     }
-    
+
     try {
       setGenerating(true);
-      
+
       // Generate fixed title: "ملف الموظف" + employee name
       const employeeName = selectedEmployee ? getFullName(selectedEmployee) : 'موظف';
       const fileTitle = `ملف الموظف ${employeeName}`;
-      
+
       // Prepare selected documents map for single employee
       const selectedDocumentsForRequest = {
         [selectedEmployeeId]: selectedDocumentIds
@@ -330,10 +329,10 @@ const EmployeeFile = () => {
       }, {
         responseType: 'blob'
       });
-      
+
       // Create blob URL and download (response.data is already a blob when responseType is 'blob')
-      const blob = response.data instanceof Blob 
-        ? response.data 
+      const blob = response.data instanceof Blob
+        ? response.data
         : new Blob([response.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -343,9 +342,9 @@ const EmployeeFile = () => {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
+
       showSuccess('تم إنشاء الملف بنجاح');
-      
+
     } catch (error) {
       console.error('Error generating file:', error);
       const errorMessage = error.response?.data?.message || error.message || 'فشل إنشاء الملف';
@@ -431,8 +430,8 @@ const EmployeeFile = () => {
                 <div style={{ position: 'relative' }}>
                   <input
                     type="text"
-                    value={searchFilters.branch_id 
-                      ? branches.find(b => b.id === parseInt(searchFilters.branch_id))?.branch_name || '' 
+                    value={searchFilters.branch_id
+                      ? branches.find(b => b.id === parseInt(searchFilters.branch_id))?.branch_name || ''
                       : branchSearchTerm}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -459,7 +458,7 @@ const EmployeeFile = () => {
                         setIsBranchDropdownOpen(false);
                         // If no branch selected and search term doesn't match any branch, clear it
                         if (!searchFilters.branch_id) {
-                          const matchingBranch = branches.find(b => 
+                          const matchingBranch = branches.find(b =>
                             b.branch_name.toLowerCase() === branchSearchTerm.toLowerCase()
                           );
                           if (!matchingBranch) {
@@ -509,8 +508,8 @@ const EmployeeFile = () => {
                         جميع الفروع
                       </div>
                       {branches
-                        .filter(branch => 
-                          !branchSearchTerm || 
+                        .filter(branch =>
+                          !branchSearchTerm ||
                           (branch.branch_name || '').toLowerCase().includes(branchSearchTerm.toLowerCase())
                         )
                         .map(branch => (
@@ -607,8 +606,8 @@ const EmployeeFile = () => {
                   onClick={handleSelectAllDocuments}
                   className="btn btn-secondary btn-sm"
                 >
-                  {documents.length > 0 && documents.every(doc => selectedDocumentIds.includes(doc.id)) 
-                    ? 'إلغاء تحديد الكل' 
+                  {documents.length > 0 && documents.every(doc => selectedDocumentIds.includes(doc.id))
+                    ? 'إلغاء تحديد الكل'
                     : 'تحديد الكل'}
                 </button>
               )}
@@ -657,15 +656,15 @@ const EmployeeFile = () => {
         {selectedEmployeeId && (
           <div className="form-section">
             <div className="fields-compact">
-              <button 
-                ref={fieldsToggleRef} 
-                type="button" 
-                className="fields-toggle btn btn-secondary" 
+              <button
+                ref={fieldsToggleRef}
+                type="button"
+                className="fields-toggle btn btn-secondary"
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowFieldsDropdown(prev => !prev);
-                }} 
-                aria-haspopup="true" 
+                }}
+                aria-haspopup="true"
                 aria-expanded={showFieldsDropdown}
               >
                 الحقول: {selectedFields.length} محددة ▾
@@ -687,11 +686,11 @@ const EmployeeFile = () => {
                         tabIndex={0}
                         className={`field-btn ${selectedFields.includes(field.value) ? 'selected' : ''}`}
                         onClick={() => handleFieldToggle(field.value)}
-                        onKeyDown={(e) => { 
-                          if (e.key === 'Enter' || e.key === ' ') { 
-                            e.preventDefault(); 
-                            handleFieldToggle(field.value); 
-                          } 
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            handleFieldToggle(field.value);
+                          }
                         }}
                       >
                         {field.label}

@@ -17,13 +17,18 @@ const Archive = () => {
   const { isMainManager } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const navigate = useNavigate();
-  
+
   // Tab state
-  const [activeTab, setActiveTab] = useState('employees'); // 'employees', 'documents', or 'employee-documents'
-  
+  const [activeTab, setActiveTab] = useState('employees'); // 'employees', 'documents', 'employee-documents', or 'branches'
+
   // Employees state
   const [archivedEmployees, setArchivedEmployees] = useState([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
+
+  // Archived Branches state
+  const [archivedBranches, setArchivedBranches] = useState([]);
+  const [loadingBranches, setLoadingBranches] = useState(true);
+  const [reactivatingBranchId, setReactivatingBranchId] = useState(null);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [employeeDetails, setEmployeeDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -32,23 +37,23 @@ const Archive = () => {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
-  
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const [totalEmployees, setTotalEmployees] = useState(0);
-  
+
   // Branch Documents state
   const [archivedDocuments, setArchivedDocuments] = useState([]);
   const [loadingDocuments, setLoadingDocuments] = useState(true);
   const [previewDocument, setPreviewDocument] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
-  
+
   // Employee Documents state
   const [archivedEmployeeDocuments, setArchivedEmployeeDocuments] = useState([]);
   const [loadingEmployeeDocuments, setLoadingEmployeeDocuments] = useState(true);
   const [deletingDocumentId, setDeletingDocumentId] = useState(null);
-  
+
   // Filters
   const [filters, setFilters] = useState({
     // Employee document filters
@@ -69,7 +74,7 @@ const Archive = () => {
     doc_branch_id: '',
     doc_document_type: ''
   });
-  
+
   const [branches, setBranches] = useState([]);
 
   const loadBranches = async () => {
@@ -83,11 +88,55 @@ const Archive = () => {
     }
   };
 
+  const loadArchivedBranches = async () => {
+    try {
+      setLoadingBranches(true);
+      const response = await branchesAPI.getAll({ is_active: false });
+      if (response.data.success) {
+        setArchivedBranches(response.data.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading archived branches:', error);
+      showError('فشل تحميل الفروع المؤرشفة');
+    } finally {
+      setLoadingBranches(false);
+    }
+  };
+
+  const handleReactivateBranch = async (branchId, branchName) => {
+    const confirmMessage = `هل أنت متأكد من إعادة تفعيل الفرع "${branchName}"؟`;
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setReactivatingBranchId(branchId);
+      const response = await branchesAPI.update(branchId, { is_active: true });
+
+      if (response.data.success) {
+        showSuccess('تم إعادة تفعيل الفرع بنجاح');
+        // Reload archived branches and active branches
+        loadArchivedBranches();
+        loadBranches();
+      }
+    } catch (error) {
+      console.error('Error reactivating branch:', error);
+      if (error.response?.data?.message) {
+        showError(error.response.data.message);
+      } else {
+        showError('فشل إعادة تفعيل الفرع');
+      }
+    } finally {
+      setReactivatingBranchId(null);
+    }
+  };
+
   const loadArchivedEmployees = async (page = currentPage) => {
     try {
       setLoadingEmployees(true);
       const filterParams = {};
-      
+
       // Add search filters (now server-side)
       if (filters.search_name) {
         filterParams.search_name = filters.search_name;
@@ -116,13 +165,13 @@ const Archive = () => {
       if (filters.status_change_date_to) {
         filterParams.status_change_date_to = filters.status_change_date_to;
       }
-      
+
       // Add pagination
       filterParams.limit = itemsPerPage;
       filterParams.page = page;
-      
+
       const response = await archiveAPI.getAll(filterParams);
-      
+
       if (response.data.success) {
         setArchivedEmployees(response.data.data || []);
         setTotalEmployees(response.data.total || 0);
@@ -144,16 +193,16 @@ const Archive = () => {
     try {
       setLoadingDocuments(true);
       const filterParams = {};
-      
+
       if (filters.doc_branch_id) {
         filterParams.branch_id = parseInt(filters.doc_branch_id);
       }
       if (filters.doc_document_type) {
         filterParams.document_type = filters.doc_document_type;
       }
-      
+
       const response = await archiveAPI.getArchivedBranchDocuments(filterParams);
-      
+
       if (response.data.success) {
         setArchivedDocuments(response.data.data || []);
       }
@@ -176,6 +225,8 @@ const Archive = () => {
       loadArchivedDocuments();
     } else if (activeTab === 'employee-documents') {
       loadArchivedEmployeeDocuments();
+    } else if (activeTab === 'branches') {
+      loadArchivedBranches();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMainManager, activeTab]);
@@ -187,10 +238,10 @@ const Archive = () => {
       loadArchivedEmployees(1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.search_name, filters.search_id, filters.branch_id, filters.status, 
-      filters.academic_year, filters.registration_date_from, filters.registration_date_to,
-      filters.status_change_date_from, filters.status_change_date_to, itemsPerPage]);
-  
+  }, [filters.search_name, filters.search_id, filters.branch_id, filters.status,
+  filters.academic_year, filters.registration_date_from, filters.registration_date_to,
+  filters.status_change_date_from, filters.status_change_date_to, itemsPerPage]);
+
   // Load page when currentPage changes (but not when filters change)
   useEffect(() => {
     if (activeTab === 'employees') {
@@ -210,7 +261,7 @@ const Archive = () => {
     try {
       setLoadingEmployeeDocuments(true);
       const filterParams = {};
-      
+
       if (filters.emp_doc_branch_id) {
         filterParams.branch_id = parseInt(filters.emp_doc_branch_id);
       }
@@ -220,9 +271,9 @@ const Archive = () => {
       if (filters.emp_doc_employee_id) {
         filterParams.employee_id = parseInt(filters.emp_doc_employee_id);
       }
-      
+
       const response = await archiveAPI.getArchivedEmployeeDocuments(filterParams);
-      
+
       if (response.data.success) {
         setArchivedEmployeeDocuments(response.data.data || []);
       }
@@ -265,7 +316,7 @@ const Archive = () => {
 
   const handlePermanentDeleteEmployee = async (employeeId, employeeName) => {
     const confirmMessage = `هل أنت متأكد من رغبتك في حذف الموظف "${employeeName}" نهائياً؟\n\nسيتم حذف جميع بيانات الموظف ومستنداته بشكل دائم.\nلا يمكن التراجع عن هذا الإجراء.`;
-    
+
     if (!confirm(confirmMessage)) {
       return;
     }
@@ -301,7 +352,7 @@ const Archive = () => {
       setLoadingDetails(true);
       setSelectedEmployee(employeeId);
       const response = await archiveAPI.getById(employeeId);
-      
+
       if (response.data.success) {
         setEmployeeDetails(response.data.data);
       }
@@ -322,8 +373,8 @@ const Archive = () => {
     // Check if trying to restore (change to active/pending)
     const archivedStatuses = ['terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
     const currentStatus = employeeDetails?.status;
-    const isRestore = archivedStatuses.includes(currentStatus) && 
-                     (statusForm.status === 'active' || statusForm.status === 'pending');
+    const isRestore = archivedStatuses.includes(currentStatus) &&
+      (statusForm.status === 'active' || statusForm.status === 'pending');
 
     if (isRestore) {
       // Use restore endpoint
@@ -414,31 +465,31 @@ const Archive = () => {
   const handlePreviewDocument = async (doc) => {
     try {
       setPreviewDocument(doc);
-      
+
       // If it's an image and file_path is a URL (Blob Storage), use it directly
-      if (doc.mime_type?.startsWith('image/') && doc.file_path && 
-          (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://'))) {
+      if (doc.mime_type?.startsWith('image/') && doc.file_path &&
+        (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://'))) {
         setPreviewUrl(doc.file_path);
         return;
       }
-      
+
       // For other cases, try the preview endpoint
       try {
         const response = await documentsAPI.preview(doc.id);
-        
+
         // If response is a redirect or URL, use it directly
-        if (response.data && typeof response.data === 'string' && 
-            (response.data.startsWith('http://') || response.data.startsWith('https://'))) {
+        if (response.data && typeof response.data === 'string' &&
+          (response.data.startsWith('http://') || response.data.startsWith('https://'))) {
           setPreviewUrl(response.data);
           return;
         }
-        
+
         // If response has file_url, use it
         if (response.data?.file_url) {
           setPreviewUrl(response.data.file_url);
           return;
         }
-        
+
         // Otherwise, try to get blob from download endpoint
         const downloadResponse = await documentsAPI.download(doc.id);
         if (downloadResponse.data instanceof Blob) {
@@ -487,31 +538,31 @@ const Archive = () => {
   const handlePreviewBranchDocument = async (doc) => {
     try {
       setPreviewDocument(doc);
-      
+
       // If it's an image and file_path is a URL (Blob Storage), use it directly
-      if (doc.mime_type?.startsWith('image/') && doc.file_path && 
-          (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://'))) {
+      if (doc.mime_type?.startsWith('image/') && doc.file_path &&
+        (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://'))) {
         setPreviewUrl(doc.file_path);
         return;
       }
-      
+
       // For other cases, try the preview endpoint
       try {
         const response = await branchDocumentsAPI.preview(doc.id);
-        
+
         // If response is a redirect or URL, use it directly
-        if (response.data && typeof response.data === 'string' && 
-            (response.data.startsWith('http://') || response.data.startsWith('https://'))) {
+        if (response.data && typeof response.data === 'string' &&
+          (response.data.startsWith('http://') || response.data.startsWith('https://'))) {
           setPreviewUrl(response.data);
           return;
         }
-        
+
         // If response has file_url, use it
         if (response.data?.file_url) {
           setPreviewUrl(response.data.file_url);
           return;
         }
-        
+
         // Otherwise, try to get blob from download endpoint
         const downloadResponse = await branchDocumentsAPI.download(doc.id);
         if (downloadResponse.data instanceof Blob) {
@@ -541,7 +592,7 @@ const Archive = () => {
   const handleExportExcel = async () => {
     try {
       const filterParams = {};
-      
+
       // Build filter params same as loadArchivedEmployees
       if (filters.search_name) filterParams.search_name = filters.search_name;
       if (filters.search_id) filterParams.search_id = filters.search_id;
@@ -552,12 +603,12 @@ const Archive = () => {
       if (filters.registration_date_to) filterParams.registration_date_to = filters.registration_date_to;
       if (filters.status_change_date_from) filterParams.status_change_date_from = filters.status_change_date_from;
       if (filters.status_change_date_to) filterParams.status_change_date_to = filters.status_change_date_to;
-      
+
       const response = await archiveAPI.export(filterParams, 'excel');
-      
+
       // Create blob from arraybuffer
-      const blob = new Blob([response.data], { 
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -586,11 +637,11 @@ const Archive = () => {
       }
 
       // Navigate to reports page with archived employee filter
-      navigate('/reports', { 
-        state: { 
+      navigate('/reports', {
+        state: {
           archivedEmployeeIds: employeeIds,
-          archiveMode: true 
-        } 
+          archiveMode: true
+        }
       });
     } catch (error) {
       console.error('Error generating report:', error);
@@ -663,6 +714,12 @@ const Archive = () => {
           onClick={() => setActiveTab('employees')}
         >
           الموظفين المؤرشفين ({archivedEmployees.length})
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'branches' ? 'active' : ''}`}
+          onClick={() => setActiveTab('branches')}
+        >
+          الفروع المؤرشفة ({archivedBranches.length})
         </button>
         <button
           className={`tab-button ${activeTab === 'documents' ? 'active' : ''}`}
@@ -774,6 +831,9 @@ const Archive = () => {
                 className="btn btn-secondary"
                 onClick={() => {
                   setFilters({
+                    emp_doc_branch_id: '',
+                    emp_doc_document_type: '',
+                    emp_doc_employee_id: '',
                     search_name: '',
                     search_id: '',
                     branch_id: '',
@@ -870,14 +930,14 @@ const Archive = () => {
                   ))}
                 </tbody>
               </table>
-              
+
               {/* Pagination Controls */}
               {totalEmployees > itemsPerPage && (
                 <div className="pagination" style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                   <div className="pagination-info" style={{ color: '#666', fontSize: '14px' }}>
                     عرض {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, totalEmployees)} من {totalEmployees}
                   </div>
-                  
+
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <select
                       value={itemsPerPage}
@@ -892,7 +952,7 @@ const Archive = () => {
                       <option value={100}>100 لكل صفحة</option>
                       <option value={200}>200 لكل صفحة</option>
                     </select>
-                    
+
                     <button
                       onClick={() => setCurrentPage(1)}
                       disabled={currentPage === 1}
@@ -907,7 +967,7 @@ const Archive = () => {
                     >
                       السابقة
                     </button>
-                    
+
                     {/* Page numbers */}
                     {Array.from({ length: Math.min(5, Math.ceil(totalEmployees / itemsPerPage)) }, (_, i) => {
                       const totalPages = Math.ceil(totalEmployees / itemsPerPage);
@@ -921,7 +981,7 @@ const Archive = () => {
                       } else {
                         pageNum = currentPage - 2 + i;
                       }
-                      
+
                       return (
                         <button
                           key={pageNum}
@@ -932,7 +992,7 @@ const Archive = () => {
                         </button>
                       );
                     })}
-                    
+
                     <button
                       onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalEmployees / itemsPerPage), prev + 1))}
                       disabled={currentPage >= Math.ceil(totalEmployees / itemsPerPage)}
@@ -1222,6 +1282,81 @@ const Archive = () => {
         </div>
       )}
 
+      {/* Branches Tab */}
+      {activeTab === 'branches' && (
+        <div className="archive-content">
+          <div className="archive-info-box">
+            <p>الفروع المؤرشفة هي الفروع التي تم إيقافها. يمكنك إعادة تفعيلها لاستعادة جميع بياناتها وموظفيها.</p>
+          </div>
+
+          {/* Branches List */}
+          {loadingBranches ? (
+            <div className="loading">جاري التحميل...</div>
+          ) : archivedBranches.length === 0 ? (
+            <div className="empty-state">
+              <p>لا توجد فروع مؤرشفة</p>
+            </div>
+          ) : (
+            <div className="archive-table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>اسم الفرع</th>
+                    <th>نوع الفرع</th>
+                    <th>الموقع</th>
+                    <th>رقم الجوال</th>
+                    <th>البريد الإلكتروني</th>
+                    <th>عدد الموظفين</th>
+                    <th>تاريخ الإنشاء</th>
+                    <th>تاريخ الإيقاف</th>
+                    <th>الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {archivedBranches.map((branch, index) => (
+                    <tr key={branch.id}>
+                      <td>{index + 1}</td>
+                      <td>{branch.branch_name}</td>
+                      <td>
+                        <span className={`branch-type-badge ${branch.branch_type}`}>
+                          {branch.branch_type === 'boys' ? 'بنين' : branch.branch_type === 'girls' ? 'بنات' : branch.branch_type}
+                        </span>
+                      </td>
+                      <td>{branch.branch_location || '-'}</td>
+                      <td dir="ltr">{branch.phone_number || '-'}</td>
+                      <td>{branch.email || '-'}</td>
+                      <td>{branch.number_of_employees ?? '-'}</td>
+                      <td>
+                        {branch.created_at
+                          ? formatDate(branch.created_at)
+                          : '-'}
+                      </td>
+                      <td>
+                        {branch.updated_at
+                          ? formatDate(branch.updated_at)
+                          : '-'}
+                      </td>
+                      <td>
+                        <div className="action-buttons">
+                          <button
+                            className="btn btn-sm btn-success"
+                            onClick={() => handleReactivateBranch(branch.id, branch.branch_name)}
+                            disabled={reactivatingBranchId === branch.id}
+                          >
+                            {reactivatingBranchId === branch.id ? 'جاري التفعيل...' : 'إعادة تفعيل'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Status Update Modal */}
       {showStatusModal && (
         <div className="modal-overlay" onClick={() => {
@@ -1254,8 +1389,8 @@ const Archive = () => {
               </select>
               {employeeDetails && (() => {
                 const archivedStatuses = ['terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
-                const isRestore = archivedStatuses.includes(employeeDetails.status) && 
-                                 (statusForm.status === 'active' || statusForm.status === 'pending');
+                const isRestore = archivedStatuses.includes(employeeDetails.status) &&
+                  (statusForm.status === 'active' || statusForm.status === 'pending');
                 if (isRestore) {
                   return (
                     <div style={{ marginTop: '8px', padding: '8px', background: '#e3f2fd', borderRadius: '4px', fontSize: '12px', color: '#1976d2' }}>

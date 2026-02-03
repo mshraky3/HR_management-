@@ -273,8 +273,7 @@ const EmployeeInfoSections = ({ employee, branches }) => (
       (employee.transportation_allowance || 0) !== 0 ||
       (employee.end_of_service_allowance || 0) !== 0 ||
       (employee.annual_leave_allowance || 0) !== 0 ||
-      (employee.other_allowances || 0) !== 0 ||
-      (employee.deductions || 0) !== 0) && (
+      (employee.other_allowances || 0) !== 0) && (
         <div className="employee-info-section">
           <h2 className="section-title">القسم الخامس: الراتب والبدلات</h2>
           <table className="employee-info-table">
@@ -360,14 +359,6 @@ const EmployeeInfoSections = ({ employee, branches }) => (
                     )}
                   </tr>
                 )}
-              {(employee.deductions || 0) !== 0 && (
-                <tr style={{ color: "var(--danger)" }}>
-                  <th>الاستقطاعات (خصومات، سلف، إلخ)</th>
-                  <td colSpan="3">
-                    -{(employee.deductions || 0).toLocaleString("en-US")} ريال
-                  </td>
-                </tr>
-              )}
               <tr className="salary-total-row">
                 <th>إجمالي الراتب والبدلات</th>
                 <td
@@ -381,41 +372,6 @@ const EmployeeInfoSections = ({ employee, branches }) => (
                     parseFloat(employee.end_of_service_allowance || 0) +
                     parseFloat(employee.annual_leave_allowance || 0) +
                     parseFloat(employee.other_allowances || 0)
-                  ).toLocaleString("en-US")}{" "}
-                  ريال
-                </td>
-              </tr>
-              {(employee.deductions || 0) > 0 && (
-                <tr className="salary-deduction-row">
-                  <th>الاستقطاعات</th>
-                  <td
-                    colSpan="3"
-                    style={{ fontWeight: "bold", color: "var(--danger)" }}
-                  >
-                    -
-                    {parseFloat(employee.deductions || 0).toLocaleString("en-US")}{" "}
-                    ريال
-                  </td>
-                </tr>
-              )}
-              <tr className="salary-net-row">
-                <th>صافي الراتب</th>
-                <td
-                  colSpan="3"
-                  style={{
-                    fontWeight: "bold",
-                    color: "var(--success)",
-                    fontSize: "1.1em",
-                  }}
-                >
-                  {(
-                    parseFloat(employee.base_salary || 0) +
-                    parseFloat(employee.housing_allowance || 0) +
-                    parseFloat(employee.transportation_allowance || 0) +
-                    parseFloat(employee.end_of_service_allowance || 0) +
-                    parseFloat(employee.annual_leave_allowance || 0) +
-                    parseFloat(employee.other_allowances || 0) -
-                    parseFloat(employee.deductions || 0)
                   ).toLocaleString("en-US")}{" "}
                   ريال
                 </td>

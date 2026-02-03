@@ -47,6 +47,24 @@ const isBusComplete = (bus) => {
 };
 
 /**
+ * Check if a bus needs completion (shows "إكمال" button)
+ * This matches the criteria used in BusTransportation.jsx
+ */
+const busNeedsCompletion = (bus) => {
+  // Missing student count (0 is also considered incomplete for operations)
+  const missingStudents = bus.student_count === 0 ||
+    bus.student_count === null ||
+    bus.student_count === undefined;
+
+  // Missing documents
+  const missingRegDoc = !bus.registration_document_url;
+  const missingDriverDoc = !bus.license_document_url;
+  const missingDocs = missingRegDoc || missingDriverDoc;
+
+  return missingDocs || missingStudents;
+};
+
+/**
  * Calculate bus transportation tasks
  */
 const calculateBusTasks = (buses, branchId) => {
@@ -77,7 +95,53 @@ const calculateBusTasks = (buses, branchId) => {
     return tasks; // Return early if no buses
   }
 
-  // Task 2: Check for incomplete buses
+  // Task 2: Buses needing completion (matching "إكمال" button criteria)
+  // This is the main task for incomplete buses
+  const busesNeedingCompletion = branchBuses.filter(bus => busNeedsCompletion(bus));
+
+  if (busesNeedingCompletion.length > 0) {
+    // Build detailed list of buses and their missing items
+    const busList = busesNeedingCompletion.map(bus => {
+      const missing = [];
+      if (bus.student_count === 0 || bus.student_count === null || bus.student_count === undefined) {
+        missing.push('عدد الطلاب');
+      }
+      if (!bus.registration_document_url) {
+        missing.push('مستند التسجيل');
+      }
+      if (!bus.license_document_url) {
+        missing.push('مستند رخصة السائق');
+      }
+      return {
+        bus,
+        busNumber: bus.bus_number || bus.primary_plate || `حافلة #${bus.id}`,
+        missing
+      };
+    });
+
+    const completedBuses = branchBuses.length - busesNeedingCompletion.length;
+
+    tasks.push({
+      id: 'bus-needs-completion',
+      type: 'bus_completion',
+      category: 'transportation',
+      priority: 'must_do',
+      title: 'إكمال بيانات الحافلات',
+      description: `${busesNeedingCompletion.length} حافلة تحتاج إكمال البيانات`,
+      totalItems: branchBuses.length,
+      completedItems: completedBuses,
+      remainingItems: busesNeedingCompletion.length,
+      progress: (completedBuses / branchBuses.length) * 100,
+      actionUrl: '/bus-transportation',
+      actionLabel: 'إكمال بيانات الحافلات',
+      urgency: 'no_deadline',
+      estimatedTime: `${busesNeedingCompletion.length * 5} min`,
+      dependencies: [],
+      busList // Include detailed list for display
+    });
+  }
+
+  // Task 3: Check for incomplete buses based on full completion criteria
   const incompleteBuses = branchBuses.filter(bus => !isBusComplete(bus));
 
   if (incompleteBuses.length > 0) {
@@ -451,18 +515,24 @@ const calculateEmployeeContractDataTask = (missingEmployeeContractData) => {
 
 /**
  * Calculate total salary for an employee
+ * Uses computed total_salary column if available, otherwise calculates manually
  */
 const calculateTotalSalary = (employee) => {
+  // Use computed total_salary column if available
+  if (employee.total_salary != null) {
+    return parseFloat(employee.total_salary);
+  }
+
+  // Fallback: calculate manually
   const baseSalary = parseFloat(employee.base_salary || 0);
   const housingAllowance = parseFloat(employee.housing_allowance || 0);
   const transportationAllowance = parseFloat(employee.transportation_allowance || 0);
   const endOfServiceAllowance = parseFloat(employee.end_of_service_allowance || 0);
   const annualLeaveAllowance = parseFloat(employee.annual_leave_allowance || 0);
   const otherAllowances = parseFloat(employee.other_allowances || 0);
-  const deductions = parseFloat(employee.deductions || 0);
 
   return baseSalary + housingAllowance + transportationAllowance +
-    endOfServiceAllowance + annualLeaveAllowance + otherAllowances - deductions;
+    endOfServiceAllowance + annualLeaveAllowance + otherAllowances;
 };
 
 /**

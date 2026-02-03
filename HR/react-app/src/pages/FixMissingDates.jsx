@@ -140,6 +140,7 @@ const FixMissingDates = () => {
         });
 
         // Filter employees with salary < 500 (but not 0) or > 15000
+        // Total salary = all allowances (no deductions)
         // Only include active employees from active branches
         const invalid = allEmployees.filter(emp => {
           // Check if employee is active (not archived/deleted)
@@ -149,9 +150,12 @@ const FixMissingDates = () => {
 
           if (!isActiveEmployee || !isActiveBranch) return false;
 
-          const baseSalary = parseFloat(emp.base_salary || 0);
-          const allowances = parseFloat(emp.other_allowances || 0);
-          const total = baseSalary + allowances;
+          // Use total_salary if available (computed column), otherwise calculate manually
+          const total = emp.total_salary != null
+            ? parseFloat(emp.total_salary)
+            : parseFloat(emp.base_salary || 0) + parseFloat(emp.housing_allowance || 0) +
+            parseFloat(emp.transportation_allowance || 0) + parseFloat(emp.end_of_service_allowance || 0) +
+            parseFloat(emp.annual_leave_allowance || 0) + parseFloat(emp.other_allowances || 0);
           // Show if: (salary > 0 and < 500) OR (salary > 15000)
           return (total > 0 && total < 500) || total > 15000;
         }).map(emp => ({
@@ -198,14 +202,12 @@ const FixMissingDates = () => {
 
           if (!isActiveEmployee || !isActiveBranch) return false;
 
-          const baseSalary = parseFloat(emp.base_salary || 0);
-          const housingAllowance = parseFloat(emp.housing_allowance || 0);
-          const transportAllowance = parseFloat(emp.transportation_allowance || 0);
-          const endOfServiceAllowance = parseFloat(emp.end_of_service_allowance || 0);
-          const annualLeaveAllowance = parseFloat(emp.annual_leave_allowance || 0);
-          const otherAllowances = parseFloat(emp.other_allowances || 0);
-          const total = baseSalary + housingAllowance + transportAllowance +
-            endOfServiceAllowance + annualLeaveAllowance + otherAllowances;
+          // Use total_salary if available (computed column), otherwise calculate manually
+          const total = emp.total_salary != null
+            ? parseFloat(emp.total_salary)
+            : parseFloat(emp.base_salary || 0) + parseFloat(emp.housing_allowance || 0) +
+            parseFloat(emp.transportation_allowance || 0) + parseFloat(emp.end_of_service_allowance || 0) +
+            parseFloat(emp.annual_leave_allowance || 0) + parseFloat(emp.other_allowances || 0);
           return total === 0;
         }).map(emp => ({
           ...emp,
@@ -1119,8 +1121,16 @@ const FixMissingDates = () => {
                   <tbody>
                     {invalidSalaryEmployees.map((employee) => {
                       const baseSalary = parseFloat(employee.base_salary || 0);
-                      const allowances = parseFloat(employee.other_allowances || 0);
-                      const total = baseSalary + allowances;
+                      // Calculate total salary = all allowances
+                      const total = employee.total_salary != null
+                        ? parseFloat(employee.total_salary)
+                        : baseSalary + parseFloat(employee.housing_allowance || 0) +
+                        parseFloat(employee.transportation_allowance || 0) + parseFloat(employee.end_of_service_allowance || 0) +
+                        parseFloat(employee.annual_leave_allowance || 0) + parseFloat(employee.other_allowances || 0);
+                      // Calculate total allowances for display
+                      const totalAllowances = parseFloat(employee.housing_allowance || 0) +
+                        parseFloat(employee.transportation_allowance || 0) + parseFloat(employee.end_of_service_allowance || 0) +
+                        parseFloat(employee.annual_leave_allowance || 0) + parseFloat(employee.other_allowances || 0);
                       let status = '';
                       if (total > 0 && total < 500) {
                         status = '🔴 منخفض جداً (< 500)';
@@ -1141,7 +1151,7 @@ const FixMissingDates = () => {
                           </td>
                           <td>{employee.branch_name || 'N/A'}</td>
                           <td>{baseSalary.toFixed(2)}</td>
-                          <td>{allowances.toFixed(2)}</td>
+                          <td>{totalAllowances.toFixed(2)}</td>
                           <td><strong>{total.toFixed(2)}</strong></td>
                           <td>{status}</td>
                           <td>

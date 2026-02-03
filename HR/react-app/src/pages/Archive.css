@@ -168,7 +168,7 @@
   border-radius: 8px;
 }
 
-.employee-info-grid > div {
+.employee-info-grid>div {
   padding: 10px;
   background: #fff;
   border-radius: 4px;
@@ -247,7 +247,8 @@
 
 /* Archive-specific override: make delete button text color distinct on this page */
 .archive-page .btn-delete {
-  color: #111 !important; /* darker text for delete on archive page */
+  color: #111 !important;
+  /* darker text for delete on archive page */
 }
 
 /* Modal */
@@ -429,7 +430,7 @@
     flex-direction: column;
     width: 100%;
   }
-  
+
   .action-buttons .btn {
     width: 100%;
     min-height: 44px;
@@ -442,51 +443,103 @@
     padding: var(--spacing-sm);
     gap: var(--spacing-sm);
   }
-  
+
   .page-header h1 {
     font-size: var(--font-size-lg);
   }
-  
+
   .archive-tabs {
     gap: var(--spacing-xs);
   }
-  
+
   .filters-grid {
     gap: var(--spacing-sm);
   }
-  
+
   .documents-grid {
     gap: var(--spacing-sm);
   }
-  
+
   .employee-info-grid {
     gap: var(--spacing-sm);
   }
-  
+
   .action-buttons {
     gap: var(--spacing-sm);
   }
-  
+
   .action-buttons .btn {
     width: 100%;
-    min-height: 44px; /* Touch-friendly */
+    min-height: 44px;
+    /* Touch-friendly */
   }
-  
+
   .preview-modal {
     padding: var(--spacing-xs);
   }
-  
+
   .preview-header {
     padding: var(--spacing-sm);
   }
-  
+
   .preview-content {
     padding: var(--spacing-sm);
     min-height: 300px;
   }
-  
+
   .preview-content iframe {
     min-height: 400px;
   }
 }
 
+/* Branch type badge */
+.branch-type-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.branch-type-badge.boys {
+  background-color: #e3f2fd;
+  color: #1565c0;
+}
+
+.branch-type-badge.girls {
+  background-color: #fce4ec;
+  color: #c2185b;
+}
+
+/* Info box for branches tab */
+.archive-info-box {
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: 8px;
+  padding: 15px 20px;
+  margin-bottom: 20px;
+}
+
+.archive-info-box p {
+  margin: 0;
+  color: #1565c0;
+  font-size: 14px;
+}
+
+/* Success button for reactivate */
+.btn-success {
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-success:hover {
+  background-color: #43a047;
+}
+
+.btn-success:disabled {
+  background-color: #a5d6a7;
+  cursor: not-allowed;
+}

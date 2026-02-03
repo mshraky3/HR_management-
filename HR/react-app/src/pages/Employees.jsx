@@ -155,7 +155,6 @@ const Employees = () => {
     end_of_service_allowance: "",
     annual_leave_allowance: "",
     other_allowances: "",
-    deductions: "",
     years_of_experience_in_same_institution: "",
     graduation_year: "",
     university_gpa: "",
@@ -848,9 +847,15 @@ const Employees = () => {
     }
 
     // Validate salary - minimum 500
+    // Total salary = all allowances (no deductions)
     const baseSalary = parseFloat(formData.base_salary || 0);
-    const allowances = parseFloat(formData.other_allowances || 0);
-    const totalSalary = baseSalary + allowances;
+    const housingAllowance = parseFloat(formData.housing_allowance || 0);
+    const transportationAllowance = parseFloat(formData.transportation_allowance || 0);
+    const endOfServiceAllowance = parseFloat(formData.end_of_service_allowance || 0);
+    const annualLeaveAllowance = parseFloat(formData.annual_leave_allowance || 0);
+    const otherAllowances = parseFloat(formData.other_allowances || 0);
+    const totalSalary = baseSalary + housingAllowance + transportationAllowance +
+      endOfServiceAllowance + annualLeaveAllowance + otherAllowances;
 
     if (totalSalary > 0 && totalSalary < 500) {
       showWarning("الراتب غير صحيح");
@@ -1031,7 +1036,6 @@ const Employees = () => {
         "end_of_service_allowance",
         "annual_leave_allowance",
         "other_allowances",
-        "deductions",
       ];
 
       salaryFields.forEach((field) => {
@@ -1770,7 +1774,6 @@ const Employees = () => {
         end_of_service_allowance: employee.end_of_service_allowance || "",
         annual_leave_allowance: employee.annual_leave_allowance || "",
         other_allowances: employee.other_allowances || "",
-        deductions: employee.deductions || "",
         years_of_experience_in_same_institution:
           employee.years_of_experience_in_same_institution || "",
         graduation_year: (() => {
@@ -3634,22 +3637,6 @@ const Employees = () => {
                             setFormData({
                               ...formData,
                               other_allowances: e.target.value,
-                            })
-                          }
-                          placeholder="0.00"
-                        />
-                      </div>
-
-                      <div className="form-group col-3">
-                        <label>الاستقطاعات (خصومات، سلف، إلخ)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={formData.deductions}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              deductions: e.target.value,
                             })
                           }
                           placeholder="0.00"

@@ -49,7 +49,6 @@ const availableFields = [
     { value: 'end_of_service_allowance', label: 'بدل نهاية الخدمة' },
     { value: 'annual_leave_allowance', label: 'بدل الإجازة السنوية' },
     { value: 'other_allowances', label: 'بدلات أخرى' },
-    { value: 'deductions', label: 'الخصومات' },
     { value: 'total_salary', label: 'اجمالي الراتب' },
     { value: 'passport_number', label: 'رقم الجواز' },
     { value: 'passport_issue_date', label: 'تاريخ إصدار الجواز' },
@@ -1569,16 +1568,19 @@ const Reports = () => {
                                                 }
 
                                                 if (field === 'total_salary') {
+                                                    // Use computed total_salary column if available, otherwise calculate manually
+                                                    if (emp.total_salary != null) {
+                                                        return parseFloat(emp.total_salary).toFixed(2);
+                                                    }
                                                     const baseSalary = parseFloat(emp.base_salary) || 0;
                                                     const housingAllowance = parseFloat(emp.housing_allowance) || 0;
                                                     const transportationAllowance = parseFloat(emp.transportation_allowance) || 0;
                                                     const endOfServiceAllowance = parseFloat(emp.end_of_service_allowance) || 0;
                                                     const annualLeaveAllowance = parseFloat(emp.annual_leave_allowance) || 0;
                                                     const otherAllowances = parseFloat(emp.other_allowances) || 0;
-                                                    const deductions = parseFloat(emp.deductions) || 0;
 
                                                     const total = baseSalary + housingAllowance + transportationAllowance +
-                                                        endOfServiceAllowance + annualLeaveAllowance + otherAllowances - deductions;
+                                                        endOfServiceAllowance + annualLeaveAllowance + otherAllowances;
 
                                                     return total > 0 ? total.toFixed(2) : '0.00';
                                                 }

@@ -1295,10 +1295,11 @@ const BusTransportation = () => {
                       <span className="info-value">{bus.driver_full_name}</span>
                     </div>
                   )}
-                  {bus.primary_plate && (
+                  {/* Show plate - use primary_plate if available, fallback to bus_number */}
+                  {(bus.primary_plate || bus.bus_number) && (
                     <div className="plate-display-wrapper">
                       <span className="info-label">رقم اللوحات</span>
-                      <PlateDisplay value={bus.primary_plate} />
+                      <PlateDisplay value={bus.primary_plate || bus.bus_number} />
                     </div>
                   )}
                   {bus.route_name && (
