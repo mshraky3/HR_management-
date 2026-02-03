@@ -52,7 +52,9 @@ const isBusComplete = (bus) => {
  */
 const busNeedsCompletion = (bus) => {
   // Missing student count (0 is also considered incomplete for operations)
-  const missingStudents = bus.student_count === 0 ||
+  const studentCount = parseInt(bus.student_count, 10);
+  const missingStudents = studentCount === 0 ||
+    isNaN(studentCount) ||
     bus.student_count === null ||
     bus.student_count === undefined;
 
@@ -103,7 +105,8 @@ const calculateBusTasks = (buses, branchId) => {
     // Build detailed list of buses and their missing items
     const busList = busesNeedingCompletion.map(bus => {
       const missing = [];
-      if (bus.student_count === 0 || bus.student_count === null || bus.student_count === undefined) {
+      const studentCount = parseInt(bus.student_count, 10);
+      if (studentCount === 0 || isNaN(studentCount) || bus.student_count === null || bus.student_count === undefined) {
         missing.push('عدد الطلاب');
       }
       if (!bus.registration_document_url) {
@@ -146,9 +149,10 @@ const calculateBusTasks = (buses, branchId) => {
 
   if (incompleteBuses.length > 0) {
     // Check specific missing fields
-    const missingStudentCount = incompleteBuses.filter(bus =>
-      bus.student_count === null || bus.student_count === undefined
-    );
+    const missingStudentCount = incompleteBuses.filter(bus => {
+      const studentCount = parseInt(bus.student_count, 10);
+      return studentCount === 0 || isNaN(studentCount) || bus.student_count === null || bus.student_count === undefined;
+    });
 
     const missingRegistration = incompleteBuses.filter(bus =>
       !bus.registration_number || !bus.registration_document_url
