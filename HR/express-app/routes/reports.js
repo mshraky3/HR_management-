@@ -278,7 +278,6 @@ const getFieldLabel = (field) => {
     end_of_service_allowance: 'بدل نهاية الخدمة',
     annual_leave_allowance: 'بدل الإجازة السنوية',
     other_allowances: 'بدلات أخرى',
-    deductions: 'الخصومات',
     graduation_year: 'سنة التخرج',
     university_gpa: 'المعدل التراكمي',
     passport_number: 'رقم الجواز',
@@ -324,7 +323,6 @@ const getFieldValue = (employee, field, branches) => {
     case 'end_of_service_allowance':
     case 'annual_leave_allowance':
     case 'other_allowances':
-    case 'deductions':
       return formatCurrency(employee[field]);
     case 'data_completion_status':
       return employee.data_completion_status === 'complete' ? 'مكتمل' : 'غير مكتمل';

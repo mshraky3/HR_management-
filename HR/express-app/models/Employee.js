@@ -413,7 +413,7 @@ export const Employee = {
         years_of_experience_in_same_institution, years_of_experience_in_company,
         base_salary, housing_allowance, transportation_allowance,
         end_of_service_allowance, annual_leave_allowance, other_allowances,
-        deductions, graduation_year, university_gpa,
+        graduation_year, university_gpa,
         passport_number, passport_issue_date, passport_expiry_date, passport_issue_place, residency_issue_date,
         job_title, data_completion_status, status, created_by, updated_by
       } = employeeData;
@@ -445,7 +445,7 @@ export const Employee = {
           years_of_experience_in_same_institution, years_of_experience_in_company,
           base_salary, housing_allowance, transportation_allowance,
           end_of_service_allowance, annual_leave_allowance, other_allowances,
-          deductions, graduation_year, university_gpa,
+          graduation_year, university_gpa,
           passport_number, passport_issue_date, passport_expiry_date, passport_issue_place, residency_issue_date,
           job_title, data_completion_status, status, created_by, updated_by
         )
@@ -465,7 +465,6 @@ export const Employee = {
           ${end_of_service_allowance !== undefined && end_of_service_allowance !== null ? end_of_service_allowance : 0}, 
           ${annual_leave_allowance !== undefined && annual_leave_allowance !== null ? annual_leave_allowance : 0}, 
           ${other_allowances !== undefined && other_allowances !== null ? other_allowances : 0},
-          ${deductions !== undefined && deductions !== null ? deductions : 0}, 
           ${graduation_year || null}, ${university_gpa || null},
           ${passport_number || null}, ${passport_issue_date || null}, ${passport_expiry_date || null}, ${passport_issue_place || null}, ${residency_issue_date || null},
           ${job_title || null}, ${data_completion_status || 'incomplete'}, ${employeeStatus}, ${created_by}, ${finalUpdatedBy}
@@ -513,7 +512,7 @@ export const Employee = {
         'years_of_experience_in_same_institution', 'years_of_experience_in_company', 'salary',
         'base_salary', 'housing_allowance', 'transportation_allowance',
         'end_of_service_allowance', 'annual_leave_allowance', 'other_allowances',
-        'deductions', 'graduation_year', 'university_gpa',
+        'graduation_year', 'university_gpa',
         'passport_number', 'passport_issue_date', 'passport_expiry_date', 'passport_issue_place', 'residency_issue_date',
         'job_title', 'data_completion_status'
       ];
@@ -532,7 +531,7 @@ export const Employee = {
 
       // Ensure salary fields are 0 instead of null
       const salaryFields = ['salary', 'base_salary', 'housing_allowance', 'transportation_allowance',
-        'end_of_service_allowance', 'annual_leave_allowance', 'other_allowances', 'deductions'];
+        'end_of_service_allowance', 'annual_leave_allowance', 'other_allowances'];
 
       salaryFields.forEach(field => {
         if (updates.hasOwnProperty(field) && (updates[field] === null || updates[field] === undefined)) {
@@ -1110,7 +1109,7 @@ export const Employee = {
         'salary', 'base_salary',
         'housing_allowance', 'transportation_allowance',
         'end_of_service_allowance', 'annual_leave_allowance',
-        'other_allowances', 'deductions',
+        'other_allowances',
         'academic_year', 'registration_term_id', 'current_term_id'
       ];
 

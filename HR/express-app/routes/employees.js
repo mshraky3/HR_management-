@@ -872,101 +872,104 @@ router.get("/statistics", async (req, res) => {
       }
     }
 
-    // Build branch filter for SQL
+    // Build branch filter for SQL - include active branch filter for main manager
     const branchFilter = branchId
-      ? sql`AND branch_id = ${branchId}`
+      ? sql`AND e.branch_id = ${branchId}`
       : branchIds && branchIds.length > 0
-        ? sql`AND branch_id = ANY(${sql(branchIds)})`
-        : sql``;
+        ? sql`AND e.branch_id = ANY(${sql(branchIds)})`
+        : sql`AND e.branch_id IN (SELECT id FROM branches WHERE is_active = true)`;
 
-    // Get overview statistics (salary calculated from base_salary + other_allowances)
+    // Helper: Total salary = computed total_salary column (sum of all allowances)
+    // The total_salary column is automatically computed by the database
+
+    // Get overview statistics (using computed total_salary column)
     const overviewQuery = sql`
       SELECT
         COUNT(*)::int as total,
-        COUNT(*) FILTER (WHERE gender = 'male')::int as male,
-        COUNT(*) FILTER (WHERE gender = 'female')::int as female,
-        COUNT(*) FILTER (WHERE status = 'active')::int as active_count,
-        COUNT(*) FILTER (WHERE status = 'pending')::int as pending_count,
-        AVG(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as avg_salary,
-        SUM(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as total_salary_budget,
-        COUNT(*) FILTER (WHERE data_completion_status = 'complete')::int as complete_count,
-        MIN(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as min_salary,
-        MAX(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as max_salary
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+        COUNT(*) FILTER (WHERE e.gender = 'male')::int as male,
+        COUNT(*) FILTER (WHERE e.gender = 'female')::int as female,
+        COUNT(*) FILTER (WHERE e.status = 'active')::int as active_count,
+        COUNT(*) FILTER (WHERE e.status = 'pending')::int as pending_count,
+        AVG(COALESCE(e.total_salary, 0))::numeric(10,2) as avg_salary,
+        SUM(COALESCE(e.total_salary, 0))::numeric(10,2) as total_salary_budget,
+        COUNT(*) FILTER (WHERE e.data_completion_status = 'complete')::int as complete_count,
+        MIN(COALESCE(e.total_salary, 0))::numeric(10,2) as min_salary,
+        MAX(COALESCE(e.total_salary, 0))::numeric(10,2) as max_salary
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
     `;
 
     // Gender distribution
     const genderQuery = sql`
       SELECT
-        gender,
+        e.gender,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND gender IS NOT NULL
-      GROUP BY gender
+      AND e.gender IS NOT NULL
+      GROUP BY e.gender
     `;
 
-    // Salary by gender (calculated from base_salary + other_allowances)
+    // Salary by gender (using computed total_salary column)
     const salaryByGenderQuery = sql`
       SELECT
-        gender,
-        AVG(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as average,
+        e.gender,
+        AVG(COALESCE(e.total_salary, 0))::numeric(10,2) as average,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0 AND gender IS NOT NULL
-      GROUP BY gender
+      AND COALESCE(e.total_salary, 0) > 0 AND e.gender IS NOT NULL
+      GROUP BY e.gender
     `;
 
-    // Salary ranges (calculated from base_salary + other_allowances)
+    // Salary ranges (using computed total_salary column)
     const salaryRangesQuery = sql`
       SELECT
         CASE
-          WHEN (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) < 5000 THEN '0-5000'
-          WHEN (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) < 10000 THEN '5000-10000'
-          WHEN (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) < 15000 THEN '10000-15000'
-          WHEN (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) < 20000 THEN '15000-20000'
+          WHEN COALESCE(e.total_salary, 0) < 5000 THEN '0-5000'
+          WHEN COALESCE(e.total_salary, 0) < 10000 THEN '5000-10000'
+          WHEN COALESCE(e.total_salary, 0) < 15000 THEN '10000-15000'
+          WHEN COALESCE(e.total_salary, 0) < 20000 THEN '15000-20000'
           ELSE '20000+'
         END as range,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
+      AND COALESCE(e.total_salary, 0) > 0
       GROUP BY range
-      ORDER BY MIN(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))
+      ORDER BY MIN(COALESCE(e.total_salary, 0))
     `;
 
-    // Salary by job title (calculated from base_salary + other_allowances)
+    // Salary by job title (using computed total_salary column)
     const salaryByJobTitleQuery = sql`
       SELECT
-        COALESCE(job_title, occupation, 'غير محدد') as job_title,
-        AVG(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as average,
+        COALESCE(e.job_title, e.occupation, 'غير محدد') as job_title,
+        AVG(COALESCE(e.total_salary, 0))::numeric(10,2) as average,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
-      GROUP BY COALESCE(job_title, occupation, 'غير محدد')
+      AND COALESCE(e.total_salary, 0) > 0
+      GROUP BY COALESCE(e.job_title, e.occupation, 'غير محدد')
       HAVING COUNT(*) > 0
       ORDER BY average DESC
       LIMIT 20
     `;
 
-    // Top paid employees (calculate from base_salary + other_allowances)
+    // Top paid employees (using computed total_salary column)
     const topPaidQuery = sql`
       SELECT
-        employee_id_number as employee_id,
-        CONCAT(first_name, ' ', second_name, ' ', third_name, ' ', fourth_name) as name,
-        (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as salary
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+        e.employee_id_number as employee_id,
+        CONCAT(e.first_name, ' ', e.second_name, ' ', e.third_name, ' ', e.fourth_name) as name,
+        COALESCE(e.total_salary, 0)::numeric(10,2) as salary
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
+      AND COALESCE(e.total_salary, 0) > 0
       ORDER BY salary DESC
       LIMIT 10
     `;
@@ -975,49 +978,49 @@ router.get("/statistics", async (req, res) => {
     // Handle both NULL and empty strings by converting empty strings to NULL first
     const jobTitlesQuery = sql`
       SELECT
-        COALESCE(NULLIF(job_title, ''), NULLIF(occupation, ''), 'غير محدد') as job_title,
+        COALESCE(NULLIF(e.job_title, ''), NULLIF(e.occupation, ''), 'غير محدد') as job_title,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      GROUP BY COALESCE(NULLIF(job_title, ''), NULLIF(occupation, ''), 'غير محدد')
+      GROUP BY COALESCE(NULLIF(e.job_title, ''), NULLIF(e.occupation, ''), 'غير محدد')
       ORDER BY count DESC
     `;
 
     // Contract types
     const contractTypesQuery = sql`
       SELECT
-        COALESCE(contract_type, 'غير محدد') as contract_type,
+        COALESCE(e.contract_type, 'غير محدد') as contract_type,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      GROUP BY COALESCE(contract_type, 'غير محدد')
+      GROUP BY COALESCE(e.contract_type, 'غير محدد')
       ORDER BY count DESC
     `;
 
     // Marital status
     const maritalStatusQuery = sql`
       SELECT
-        COALESCE(marital_status, 'غير محدد') as status,
+        COALESCE(e.marital_status, 'غير محدد') as status,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      GROUP BY COALESCE(marital_status, 'غير محدد')
+      GROUP BY COALESCE(e.marital_status, 'غير محدد')
       ORDER BY count DESC
     `;
 
     // Nationalities (top 15)
     const nationalitiesQuery = sql`
       SELECT
-        nationality,
+        e.nationality,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND nationality IS NOT NULL
-      GROUP BY nationality
+      AND e.nationality IS NOT NULL
+      GROUP BY e.nationality
       ORDER BY count DESC
       LIMIT 15
     `;
@@ -1025,14 +1028,14 @@ router.get("/statistics", async (req, res) => {
     // Nationality breakdown by gender (top 10)
     const nationalityGenderQuery = sql`
       SELECT
-        nationality,
-        COUNT(*) FILTER (WHERE gender = 'male')::int as male_count,
-        COUNT(*) FILTER (WHERE gender = 'female')::int as female_count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+        e.nationality,
+        COUNT(*) FILTER (WHERE e.gender = 'male')::int as male_count,
+        COUNT(*) FILTER (WHERE e.gender = 'female')::int as female_count
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND nationality IS NOT NULL
-      GROUP BY nationality
+      AND e.nationality IS NOT NULL
+      GROUP BY e.nationality
       ORDER BY (COUNT(*)) DESC
       LIMIT 10
     `;
@@ -1040,24 +1043,24 @@ router.get("/statistics", async (req, res) => {
     // Educational qualifications
     const qualificationsQuery = sql`
       SELECT
-        COALESCE(educational_qualification, 'غير محدد') as qualification,
+        COALESCE(e.educational_qualification, 'غير محدد') as qualification,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      GROUP BY COALESCE(educational_qualification, 'غير محدد')
+      GROUP BY COALESCE(e.educational_qualification, 'غير محدد')
       ORDER BY count DESC
     `;
 
     // Status distribution
     const statusQuery = sql`
       SELECT
-        COALESCE(status, 'active') as status,
+        COALESCE(e.status, 'active') as status,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      GROUP BY COALESCE(status, 'active')
+      GROUP BY COALESCE(e.status, 'active')
       ORDER BY count DESC
     `;
 
@@ -1082,51 +1085,51 @@ router.get("/statistics", async (req, res) => {
     const ageGroupsQuery = sql`
       SELECT
         CASE
-          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 25 THEN 'أقل من 25'
-          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 30 THEN '25-30'
-          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 35 THEN '30-35'
-          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 40 THEN '35-40'
-          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 45 THEN '40-45'
-          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 50 THEN '45-50'
-          WHEN EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)) < 55 THEN '50-55'
+          WHEN EXTRACT(YEAR FROM AGE(e.date_of_birth_gregorian)) < 25 THEN 'أقل من 25'
+          WHEN EXTRACT(YEAR FROM AGE(e.date_of_birth_gregorian)) < 30 THEN '25-30'
+          WHEN EXTRACT(YEAR FROM AGE(e.date_of_birth_gregorian)) < 35 THEN '30-35'
+          WHEN EXTRACT(YEAR FROM AGE(e.date_of_birth_gregorian)) < 40 THEN '35-40'
+          WHEN EXTRACT(YEAR FROM AGE(e.date_of_birth_gregorian)) < 45 THEN '40-45'
+          WHEN EXTRACT(YEAR FROM AGE(e.date_of_birth_gregorian)) < 50 THEN '45-50'
+          WHEN EXTRACT(YEAR FROM AGE(e.date_of_birth_gregorian)) < 55 THEN '50-55'
           ELSE '55+'
         END as age_group,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND date_of_birth_gregorian IS NOT NULL
+      AND e.date_of_birth_gregorian IS NOT NULL
       GROUP BY age_group
-      ORDER BY MIN(EXTRACT(YEAR FROM AGE(date_of_birth_gregorian)))
+      ORDER BY MIN(EXTRACT(YEAR FROM AGE(e.date_of_birth_gregorian)))
     `;
 
     // Experience levels
     const experienceQuery = sql`
       SELECT
         CASE
-          WHEN years_of_experience_in_same_institution IS NULL OR years_of_experience_in_same_institution < 2 THEN '0-2'
-          WHEN years_of_experience_in_same_institution < 5 THEN '2-5'
-          WHEN years_of_experience_in_same_institution < 10 THEN '5-10'
-          WHEN years_of_experience_in_same_institution < 15 THEN '10-15'
+          WHEN e.years_of_experience_in_same_institution IS NULL OR e.years_of_experience_in_same_institution < 2 THEN '0-2'
+          WHEN e.years_of_experience_in_same_institution < 5 THEN '2-5'
+          WHEN e.years_of_experience_in_same_institution < 10 THEN '5-10'
+          WHEN e.years_of_experience_in_same_institution < 15 THEN '10-15'
           ELSE '15+'
         END as experience_range,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
       GROUP BY experience_range
-      ORDER BY MIN(COALESCE(years_of_experience_in_same_institution, 0))
+      ORDER BY MIN(COALESCE(e.years_of_experience_in_same_institution, 0))
     `;
 
     // ID Type distribution (citizen vs resident)
     const idTypeQuery = sql`
       SELECT
-        COALESCE(id_type, 'غير محدد') as id_type,
+        COALESCE(e.id_type, 'غير محدد') as id_type,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      GROUP BY COALESCE(id_type, 'غير محدد')
+      GROUP BY COALESCE(e.id_type, 'غير محدد')
       ORDER BY count DESC
     `;
 
@@ -1134,51 +1137,51 @@ router.get("/statistics", async (req, res) => {
     const companyExperienceQuery = sql`
       SELECT
         CASE
-          WHEN years_of_experience_in_company IS NULL OR years_of_experience_in_company < 1 THEN 'أقل من سنة'
-          WHEN years_of_experience_in_company < 2 THEN '1-2'
-          WHEN years_of_experience_in_company < 3 THEN '2-3'
-          WHEN years_of_experience_in_company < 5 THEN '3-5'
-          WHEN years_of_experience_in_company < 10 THEN '5-10'
+          WHEN e.years_of_experience_in_company IS NULL OR e.years_of_experience_in_company < 1 THEN 'أقل من سنة'
+          WHEN e.years_of_experience_in_company < 2 THEN '1-2'
+          WHEN e.years_of_experience_in_company < 3 THEN '2-3'
+          WHEN e.years_of_experience_in_company < 5 THEN '3-5'
+          WHEN e.years_of_experience_in_company < 10 THEN '5-10'
           ELSE '10+'
         END as experience_range,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
       GROUP BY experience_range
-      ORDER BY MIN(COALESCE(years_of_experience_in_company, 0))
+      ORDER BY MIN(COALESCE(e.years_of_experience_in_company, 0))
     `;
 
-    // Salary by branch (only if main manager)
+    // Salary by branch (only if main manager) - using computed total_salary column
     let salaryByBranchQuery = null;
     if (!branchId && (!branchIds || branchIds.length === 0)) {
       salaryByBranchQuery = sql`
         SELECT
           b.branch_name,
           b.id as branch_id,
-          AVG(COALESCE(e.base_salary, 0) + COALESCE(e.other_allowances, 0))::numeric(10,2) as average_salary,
+          AVG(COALESCE(e.total_salary, 0))::numeric(10,2) as average_salary,
           COUNT(e.id)::int as count
         FROM branches b
         LEFT JOIN employees e ON e.branch_id = b.id
           AND (e.status IN ('active', 'pending') OR e.status IS NULL)
-          AND (COALESCE(e.base_salary, 0) + COALESCE(e.other_allowances, 0)) > 0
+          AND COALESCE(e.total_salary, 0) > 0
         WHERE b.is_active = true
         GROUP BY b.id, b.branch_name
         HAVING COUNT(e.id) > 0
         ORDER BY average_salary DESC
       `;
 
-      // Median salary by branch (calculated from base_salary + other_allowances)
+      // Median salary by branch (using computed total_salary column)
       var salaryMedianByBranchQuery = sql`
         SELECT
           b.branch_name,
           b.id as branch_id,
-          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (COALESCE(e.base_salary, 0) + COALESCE(e.other_allowances, 0)))::numeric(10,2) as median_salary,
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY COALESCE(e.total_salary, 0))::numeric(10,2) as median_salary,
           COUNT(e.id)::int as count
         FROM branches b
         LEFT JOIN employees e ON e.branch_id = b.id
           AND (e.status IN ('active', 'pending') OR e.status IS NULL)
-          AND (COALESCE(e.base_salary, 0) + COALESCE(e.other_allowances, 0)) > 0
+          AND COALESCE(e.total_salary, 0) > 0
         WHERE b.is_active = true
         GROUP BY b.id, b.branch_name
         HAVING COUNT(e.id) > 0
@@ -1189,26 +1192,26 @@ router.get("/statistics", async (req, res) => {
     // Religious distribution
     const religionsQuery = sql`
       SELECT
-        COALESCE(religion, 'غير محدد') as religion,
+        COALESCE(e.religion, 'غير محدد') as religion,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      GROUP BY COALESCE(religion, 'غير محدد')
+      GROUP BY COALESCE(e.religion, 'غير محدد')
       ORDER BY count DESC
     `;
 
-    // Salary by contract type (calculated from base_salary + other_allowances)
+    // Salary by contract type (using computed total_salary column)
     const salaryByContractTypeQuery = sql`
       SELECT
-        COALESCE(contract_type, 'غير محدد') as contract_type,
-        AVG(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as average_salary,
+        COALESCE(e.contract_type, 'غير محدد') as contract_type,
+        AVG(COALESCE(e.total_salary, 0))::numeric(10,2) as average_salary,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
-      GROUP BY COALESCE(contract_type, 'غير محدد')
+      AND COALESCE(e.total_salary, 0) > 0
+      GROUP BY COALESCE(e.contract_type, 'غير محدد')
       ORDER BY average_salary DESC
     `;
 
@@ -1231,7 +1234,7 @@ router.get("/statistics", async (req, res) => {
       `;
     }
 
-    // Top 10 highest paid employees with job title and branch (only if main manager)
+    // Top 10 highest paid employees with job title and branch (only if main manager) - using computed total_salary column
     let topPaidEmployeesQuery = null;
     if (!branchId && (!branchIds || branchIds.length === 0)) {
       topPaidEmployeesQuery = sql`
@@ -1240,163 +1243,169 @@ router.get("/statistics", async (req, res) => {
           CONCAT(e.first_name, ' ', e.second_name, ' ', e.third_name, ' ', e.fourth_name) as name,
           COALESCE(e.job_title, e.occupation) as job_title,
           b.branch_name,
-          (COALESCE(e.base_salary, 0) + COALESCE(e.other_allowances, 0))::numeric(10,2) as salary
+          COALESCE(e.total_salary, 0)::numeric(10,2) as salary
         FROM employees e
         LEFT JOIN branches b ON e.branch_id = b.id
         WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
-        AND (COALESCE(e.base_salary, 0) + COALESCE(e.other_allowances, 0)) > 0
+        AND b.is_active = true
+        AND COALESCE(e.total_salary, 0) > 0
         ORDER BY salary DESC
         LIMIT 10
       `;
     }
 
-    // Salary by educational qualification (calculated from base_salary + other_allowances)
+    // Salary by educational qualification (using computed total_salary column)
     const salaryByQualificationQuery = sql`
       SELECT
-        COALESCE(educational_qualification, 'غير محدد') as qualification,
-        AVG(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as average_salary,
+        COALESCE(e.educational_qualification, 'غير محدد') as qualification,
+        AVG(COALESCE(e.total_salary, 0))::numeric(10,2) as average_salary,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
-      GROUP BY COALESCE(educational_qualification, 'غير محدد')
+      AND COALESCE(e.total_salary, 0) > 0
+      GROUP BY COALESCE(e.educational_qualification, 'غير محدد')
       ORDER BY average_salary DESC
     `;
 
-    // Average salary by nationality (top 10) - calculated from base_salary + other_allowances
+    // Average salary by nationality (top 10) - using computed total_salary column
     const salaryByNationalityQuery = sql`
       SELECT
-        nationality,
-        AVG(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as average_salary,
+        e.nationality,
+        AVG(COALESCE(e.total_salary, 0))::numeric(10,2) as average_salary,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
-      AND nationality IS NOT NULL
-      GROUP BY nationality
+      AND COALESCE(e.total_salary, 0) > 0
+      AND e.nationality IS NOT NULL
+      GROUP BY e.nationality
       ORDER BY count DESC
       LIMIT 10
     `;
 
-    // Total salary by nationality (top 10) - calculated from base_salary + other_allowances
+    // Total salary by nationality (top 10) - using computed total_salary column
     const totalSalaryByNationalityQuery = sql`
       SELECT
-        nationality,
-        SUM(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as total_salary,
+        e.nationality,
+        SUM(COALESCE(e.total_salary, 0))::numeric(10,2) as total_salary,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
-      AND nationality IS NOT NULL
-      GROUP BY nationality
+      AND COALESCE(e.total_salary, 0) > 0
+      AND e.nationality IS NOT NULL
+      GROUP BY e.nationality
       ORDER BY total_salary DESC
       LIMIT 10
     `;
 
-    // Salary breakdown by allowances (average)
+    // Salary breakdown by allowances (average) - keep individual allowance breakdown
     const salaryBreakdownQuery = sql`
       SELECT
-        AVG(base_salary)::numeric(10,2) as avg_base_salary,
-        AVG(housing_allowance)::numeric(10,2) as avg_housing_allowance,
-        AVG(transportation_allowance)::numeric(10,2) as avg_transportation_allowance,
-        AVG(other_allowances)::numeric(10,2) as avg_other_allowances,
-        COUNT(*) FILTER (WHERE base_salary IS NOT NULL AND base_salary > 0)::int as base_salary_count,
-        COUNT(*) FILTER (WHERE housing_allowance IS NOT NULL AND housing_allowance > 0)::int as housing_allowance_count,
-        COUNT(*) FILTER (WHERE transportation_allowance IS NOT NULL AND transportation_allowance > 0)::int as transportation_allowance_count,
-        COUNT(*) FILTER (WHERE other_allowances IS NOT NULL AND other_allowances > 0)::int as other_allowances_count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+        AVG(e.base_salary)::numeric(10,2) as avg_base_salary,
+        AVG(e.housing_allowance)::numeric(10,2) as avg_housing_allowance,
+        AVG(e.transportation_allowance)::numeric(10,2) as avg_transportation_allowance,
+        AVG(e.end_of_service_allowance)::numeric(10,2) as avg_end_of_service_allowance,
+        AVG(e.annual_leave_allowance)::numeric(10,2) as avg_annual_leave_allowance,
+        AVG(e.other_allowances)::numeric(10,2) as avg_other_allowances,
+        AVG(e.total_salary)::numeric(10,2) as avg_total_salary,
+        COUNT(*) FILTER (WHERE e.base_salary IS NOT NULL AND e.base_salary > 0)::int as base_salary_count,
+        COUNT(*) FILTER (WHERE e.housing_allowance IS NOT NULL AND e.housing_allowance > 0)::int as housing_allowance_count,
+        COUNT(*) FILTER (WHERE e.transportation_allowance IS NOT NULL AND e.transportation_allowance > 0)::int as transportation_allowance_count,
+        COUNT(*) FILTER (WHERE e.end_of_service_allowance IS NOT NULL AND e.end_of_service_allowance > 0)::int as end_of_service_allowance_count,
+        COUNT(*) FILTER (WHERE e.annual_leave_allowance IS NOT NULL AND e.annual_leave_allowance > 0)::int as annual_leave_allowance_count,
+        COUNT(*) FILTER (WHERE e.other_allowances IS NOT NULL AND e.other_allowances > 0)::int as other_allowances_count
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
     `;
 
-    // Total salary budget by gender (calculated from base_salary + other_allowances)
+    // Total salary budget by gender (using computed total_salary column)
     const totalSalaryByGenderQuery = sql`
       SELECT
-        gender,
-        SUM(COALESCE(base_salary, 0) + COALESCE(other_allowances, 0))::numeric(10,2) as total_salary,
+        e.gender,
+        SUM(COALESCE(e.total_salary, 0))::numeric(10,2) as total_salary,
         COUNT(*)::int as count
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
-      AND gender IS NOT NULL
-      GROUP BY gender
+      AND COALESCE(e.total_salary, 0) > 0
+      AND e.gender IS NOT NULL
+      GROUP BY e.gender
     `;
 
     // Contract expiration timeline (next 3, 6, 12 months and expired)
     const contractExpirationQuery = sql`
       SELECT
         CASE
-          WHEN contract_end_date_gregorian < CURRENT_DATE THEN 'منتهي'
-          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 'خلال 3 أشهر'
-          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 'خلال 6 أشهر'
-          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '12 months' THEN 'خلال سنة'
+          WHEN e.contract_end_date_gregorian < CURRENT_DATE THEN 'منتهي'
+          WHEN e.contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 'خلال 3 أشهر'
+          WHEN e.contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 'خلال 6 أشهر'
+          WHEN e.contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '12 months' THEN 'خلال سنة'
           ELSE 'أكثر من سنة'
         END as expiration_period,
         COUNT(*)::int as count,
         MIN(CASE
-          WHEN contract_end_date_gregorian < CURRENT_DATE THEN 1
-          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 2
-          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 3
-          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '12 months' THEN 4
+          WHEN e.contract_end_date_gregorian < CURRENT_DATE THEN 1
+          WHEN e.contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 2
+          WHEN e.contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 3
+          WHEN e.contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '12 months' THEN 4
           ELSE 5
         END) as sort_order
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND contract_end_date_gregorian IS NOT NULL
+      AND e.contract_end_date_gregorian IS NOT NULL
       GROUP BY 
         CASE
-          WHEN contract_end_date_gregorian < CURRENT_DATE THEN 'منتهي'
-          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 'خلال 3 أشهر'
-          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 'خلال 6 أشهر'
-          WHEN contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '12 months' THEN 'خلال سنة'
+          WHEN e.contract_end_date_gregorian < CURRENT_DATE THEN 'منتهي'
+          WHEN e.contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 'خلال 3 أشهر'
+          WHEN e.contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 'خلال 6 أشهر'
+          WHEN e.contract_end_date_gregorian <= CURRENT_DATE + INTERVAL '12 months' THEN 'خلال سنة'
           ELSE 'أكثر من سنة'
         END
       ORDER BY sort_order
     `;
 
-    // Data completion by field (which fields are most incomplete)
+    // Data completion by field (which fields are most incomplete) - using computed total_salary column
     const incompleteDataQuery = sql`
       SELECT
-        COUNT(*) FILTER (WHERE phone_number IS NULL OR phone_number = '')::int as missing_phone,
-        COUNT(*) FILTER (WHERE email IS NULL OR email = '')::int as missing_email,
-        COUNT(*) FILTER (WHERE bank_iban IS NULL OR bank_iban = '')::int as missing_iban,
-        COUNT(*) FILTER (WHERE educational_qualification IS NULL OR educational_qualification = '')::int as missing_qualification,
-        COUNT(*) FILTER (WHERE specialization IS NULL OR specialization = '')::int as missing_specialization,
-        COUNT(*) FILTER (WHERE national_address IS NULL OR national_address = '')::int as missing_address,
-        COUNT(*) FILTER (WHERE date_of_birth_gregorian IS NULL)::int as missing_birthdate,
-        COUNT(*) FILTER (WHERE (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) = 0)::int as missing_salary,
-        COUNT(*) FILTER (WHERE contract_start_date_gregorian IS NULL)::int as missing_contract_start,
-        COUNT(*) FILTER (WHERE contract_end_date_gregorian IS NULL)::int as missing_contract_end
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+        COUNT(*) FILTER (WHERE e.phone_number IS NULL OR e.phone_number = '')::int as missing_phone,
+        COUNT(*) FILTER (WHERE e.email IS NULL OR e.email = '')::int as missing_email,
+        COUNT(*) FILTER (WHERE e.bank_iban IS NULL OR e.bank_iban = '')::int as missing_iban,
+        COUNT(*) FILTER (WHERE e.educational_qualification IS NULL OR e.educational_qualification = '')::int as missing_qualification,
+        COUNT(*) FILTER (WHERE e.specialization IS NULL OR e.specialization = '')::int as missing_specialization,
+        COUNT(*) FILTER (WHERE e.national_address IS NULL OR e.national_address = '')::int as missing_address,
+        COUNT(*) FILTER (WHERE e.date_of_birth_gregorian IS NULL)::int as missing_birthdate,
+        COUNT(*) FILTER (WHERE COALESCE(e.total_salary, 0) = 0)::int as missing_salary,
+        COUNT(*) FILTER (WHERE e.contract_start_date_gregorian IS NULL)::int as missing_contract_start,
+        COUNT(*) FILTER (WHERE e.contract_end_date_gregorian IS NULL)::int as missing_contract_end
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
     `;
 
-    // Salary percentiles (25th, 50th/median, 75th) - calculated from base_salary + other_allowances
+    // Salary percentiles (25th, 50th/median, 75th) - using computed total_salary column
     const salaryPercentilesQuery = sql`
       SELECT
-        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)))::numeric(10,2) as p25,
-        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)))::numeric(10,2) as p50,
-        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)))::numeric(10,2) as p75
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY COALESCE(e.total_salary, 0))::numeric(10,2) as p25,
+        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY COALESCE(e.total_salary, 0))::numeric(10,2) as p50,
+        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE(e.total_salary, 0))::numeric(10,2) as p75
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND (COALESCE(base_salary, 0) + COALESCE(other_allowances, 0)) > 0
+      AND COALESCE(e.total_salary, 0) > 0
     `;
 
     // Gender distribution in top 5 job titles
     const genderByJobTitleQuery = sql`
       WITH top_jobs AS (
-        SELECT COALESCE(job_title, occupation, 'غير محدد') as job_title
-        FROM employees
-        WHERE (status IN ('active', 'pending') OR status IS NULL)
-        ${branchFilter}
-        GROUP BY COALESCE(job_title, occupation, 'غير محدد')
+        SELECT COALESCE(e2.job_title, e2.occupation, 'غير محدد') as job_title
+        FROM employees e2
+        WHERE (e2.status IN ('active', 'pending') OR e2.status IS NULL)
+        AND e2.branch_id IN (SELECT id FROM branches WHERE is_active = true)
+        GROUP BY COALESCE(e2.job_title, e2.occupation, 'غير محدد')
         ORDER BY COUNT(*) DESC
         LIMIT 5
       )
@@ -1416,30 +1425,30 @@ router.get("/statistics", async (req, res) => {
     const idExpirationQuery = sql`
       SELECT
         CASE
-          WHEN id_expiry_date_gregorian < CURRENT_DATE THEN 'منتهية'
-          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '1 month' THEN 'خلال شهر'
-          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 'خلال 3 أشهر'
-          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 'خلال 6 أشهر'
+          WHEN e.id_expiry_date_gregorian < CURRENT_DATE THEN 'منتهية'
+          WHEN e.id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '1 month' THEN 'خلال شهر'
+          WHEN e.id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 'خلال 3 أشهر'
+          WHEN e.id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 'خلال 6 أشهر'
           ELSE 'أكثر من 6 أشهر'
         END as expiration_period,
         COUNT(*)::int as count,
         MIN(CASE
-          WHEN id_expiry_date_gregorian < CURRENT_DATE THEN 1
-          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '1 month' THEN 2
-          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 3
-          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 4
+          WHEN e.id_expiry_date_gregorian < CURRENT_DATE THEN 1
+          WHEN e.id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '1 month' THEN 2
+          WHEN e.id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 3
+          WHEN e.id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 4
           ELSE 5
         END) as sort_order
-      FROM employees
-      WHERE (status IN ('active', 'pending') OR status IS NULL)
+      FROM employees e
+      WHERE (e.status IN ('active', 'pending') OR e.status IS NULL)
       ${branchFilter}
-      AND id_expiry_date_gregorian IS NOT NULL
+      AND e.id_expiry_date_gregorian IS NOT NULL
       GROUP BY 
         CASE
-          WHEN id_expiry_date_gregorian < CURRENT_DATE THEN 'منتهية'
-          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '1 month' THEN 'خلال شهر'
-          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 'خلال 3 أشهر'
-          WHEN id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 'خلال 6 أشهر'
+          WHEN e.id_expiry_date_gregorian < CURRENT_DATE THEN 'منتهية'
+          WHEN e.id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '1 month' THEN 'خلال شهر'
+          WHEN e.id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '3 months' THEN 'خلال 3 أشهر'
+          WHEN e.id_expiry_date_gregorian <= CURRENT_DATE + INTERVAL '6 months' THEN 'خلال 6 أشهر'
           ELSE 'أكثر من 6 أشهر'
         END
       ORDER BY sort_order

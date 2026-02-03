@@ -222,7 +222,6 @@ const getFieldLabel = (field) => {
     end_of_service_allowance: 'بدل نهاية الخدمة',
     annual_leave_allowance: 'بدل الإجازة السنوية',
     other_allowances: 'بدلات أخرى',
-    deductions: 'الخصومات',
     graduation_year: 'سنة التخرج',
     university_gpa: 'المعدل التراكمي',
     passport_number: 'رقم الجواز',
@@ -284,7 +283,6 @@ const getFieldValue = (employee, field, branches) => {
     case 'end_of_service_allowance':
     case 'annual_leave_allowance':
     case 'other_allowances':
-    case 'deductions':
       return formatCurrency(employee[field]);
     case 'data_completion_status':
       return employee.data_completion_status === 'complete' ? 'مكتمل' : 'غير مكتمل';
@@ -998,7 +996,7 @@ router.post('/generate-single/:employee_id', requireManager, async (req, res) =>
       'bank_iban', 'bank_name', 'email', 'phone_number', 'national_address', 'contract_type',
       'years_of_experience_in_same_institution', 'base_salary', 'housing_allowance',
       'transportation_allowance', 'end_of_service_allowance', 'annual_leave_allowance',
-      'other_allowances', 'deductions', 'graduation_year', 'university_gpa',
+      'other_allowances', 'graduation_year', 'university_gpa',
       'passport_number', 'passport_issue_date', 'passport_expiry_date', 'passport_issue_place',
       'residency_issue_date', 'job_title'
     ];

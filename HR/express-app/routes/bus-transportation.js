@@ -879,7 +879,7 @@ router.get('/:id/students', checkBranchAccess, async (req, res) => {
 router.post('/:id/students', checkBranchAccess, validateRequired(['student_full_name', 'contact_mobile_number', 'term_id']), async (req, res) => {
   try {
     const busId = parseInt(req.params.id);
-    const { contact_mobile_number, term_id } = req.body;
+    const { student_full_name, contact_mobile_number, term_id } = req.body;
 
     // Verify bus exists and user has access
     const bus = await BusTransportation.findById(busId);
@@ -897,6 +897,23 @@ router.post('/:id/students', checkBranchAccess, validateRequired(['student_full_
           message: 'تم رفض الوصول.'
         });
       }
+    }
+
+    // Check if student already exists in another bus in the same branch/term
+    const duplicateStudent = await BusStudent.findDuplicateInOtherBus(
+      student_full_name,
+      contact_mobile_number,
+      bus.branch_id,
+      term_id,
+      busId // exclude current bus
+    );
+
+    if (duplicateStudent) {
+      const busIdentifier = duplicateStudent.primary_plate || duplicateStudent.bus_number || `رقم ${duplicateStudent.bus_id}`;
+      return res.status(400).json({
+        success: false,
+        message: `هذا الطالب مسجل بالفعل في حافلة أخرى (${busIdentifier}). لا يمكن تسجيل نفس الطالب في أكثر من حافلة.`
+      });
     }
 
     // Check phone number limit (max 2 students per phone number in same branch/term)
@@ -967,9 +984,31 @@ router.put('/:id/students/:studentId', checkBranchAccess, async (req, res) => {
       }
     }
 
+    // Get the values to check (use new values if provided, otherwise use existing)
+    const nameToCheck = req.body.student_full_name || student.student_full_name;
+    const phoneToCheck = contact_mobile_number || student.contact_mobile_number;
+    const termToCheck = term_id || student.term_id;
+
+    // Check if this update would create a duplicate in another bus
+    const duplicateStudent = await BusStudent.findDuplicateInOtherBus(
+      nameToCheck,
+      phoneToCheck,
+      bus.branch_id,
+      termToCheck,
+      student.bus_id, // exclude current bus
+      studentId // exclude current student
+    );
+
+    if (duplicateStudent) {
+      const busIdentifier = duplicateStudent.primary_plate || duplicateStudent.bus_number || `رقم ${duplicateStudent.bus_id}`;
+      return res.status(400).json({
+        success: false,
+        message: `هذا الطالب مسجل بالفعل في حافلة أخرى (${busIdentifier}). لا يمكن تسجيل نفس الطالب في أكثر من حافلة.`
+      });
+    }
+
     // Check phone number limit if phone is being changed (max 2 students per phone number)
     if (contact_mobile_number && contact_mobile_number !== student.contact_mobile_number) {
-      const termToCheck = term_id || student.term_id;
       const phoneCount = await BusStudent.countByPhoneNumber(
         contact_mobile_number,
         bus.branch_id,

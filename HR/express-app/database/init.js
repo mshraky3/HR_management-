@@ -125,7 +125,6 @@ export async function initializeDatabase() {
       end_of_service_allowance DECIMAL(10,2),
       annual_leave_allowance DECIMAL(10,2),
       other_allowances DECIMAL(10,2),
-      deductions DECIMAL(10,2),
       data_completion_status VARCHAR(20) DEFAULT 'incomplete' CHECK (data_completion_status IN ('incomplete', 'complete')),
       status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'pending', 'terminated', 'resigned', 'contract_ended', 'non_renewal', 'other')),
       status_changed_at TIMESTAMP,

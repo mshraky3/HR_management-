@@ -233,6 +233,82 @@ export const BusStudent = {
     }
   },
 
+  /**
+   * Check if a student (by name and phone) exists in another bus within the same branch/term
+   * Used to prevent the same student from being registered in multiple buses
+   * @param {string} studentName - The student's full name
+   * @param {string} phoneNumber - The contact phone number
+   * @param {number} branchId - The branch ID to check within
+   * @param {number} termId - The term ID to check within
+   * @param {number|null} excludeBusId - Bus ID to exclude (for current bus)
+   * @param {number|null} excludeStudentId - Student ID to exclude (for updates)
+   * @returns {Promise<object|null>} - The existing student record if found, null otherwise
+   */
+  async findDuplicateInOtherBus(studentName, phoneNumber, branchId, termId, excludeBusId = null, excludeStudentId = null) {
+    try {
+      // Normalize name for comparison (trim and lowercase)
+      const normalizedName = studentName?.trim().toLowerCase();
+
+      let result;
+      if (excludeBusId && excludeStudentId) {
+        result = await sql`
+          SELECT bs.*, bt.bus_number, lpd.plate_number as primary_plate
+          FROM bus_students bs
+          INNER JOIN bus_transportation bt ON bs.bus_id = bt.id
+          LEFT JOIN (
+            SELECT bus_id, plate_number
+            FROM license_plate_data
+            WHERE plate_type = 'primary'
+          ) lpd ON bt.id = lpd.bus_id
+          WHERE LOWER(TRIM(bs.student_full_name)) = ${normalizedName}
+            AND bs.contact_mobile_number = ${phoneNumber}
+            AND bt.branch_id = ${branchId}
+            AND bs.term_id = ${termId}
+            AND bs.bus_id != ${excludeBusId}
+            AND bs.id != ${excludeStudentId}
+          LIMIT 1
+        `;
+      } else if (excludeBusId) {
+        result = await sql`
+          SELECT bs.*, bt.bus_number, lpd.plate_number as primary_plate
+          FROM bus_students bs
+          INNER JOIN bus_transportation bt ON bs.bus_id = bt.id
+          LEFT JOIN (
+            SELECT bus_id, plate_number
+            FROM license_plate_data
+            WHERE plate_type = 'primary'
+          ) lpd ON bt.id = lpd.bus_id
+          WHERE LOWER(TRIM(bs.student_full_name)) = ${normalizedName}
+            AND bs.contact_mobile_number = ${phoneNumber}
+            AND bt.branch_id = ${branchId}
+            AND bs.term_id = ${termId}
+            AND bs.bus_id != ${excludeBusId}
+          LIMIT 1
+        `;
+      } else {
+        result = await sql`
+          SELECT bs.*, bt.bus_number, lpd.plate_number as primary_plate
+          FROM bus_students bs
+          INNER JOIN bus_transportation bt ON bs.bus_id = bt.id
+          LEFT JOIN (
+            SELECT bus_id, plate_number
+            FROM license_plate_data
+            WHERE plate_type = 'primary'
+          ) lpd ON bt.id = lpd.bus_id
+          WHERE LOWER(TRIM(bs.student_full_name)) = ${normalizedName}
+            AND bs.contact_mobile_number = ${phoneNumber}
+            AND bt.branch_id = ${branchId}
+            AND bs.term_id = ${termId}
+          LIMIT 1
+        `;
+      }
+      return result[0] || null;
+    } catch (error) {
+      log.error('Error checking for duplicate student in other bus', { error: error.message });
+      throw error;
+    }
+  },
+
   async findByBusIds(busIds = [], filters = {}) {
     try {
       if (!Array.isArray(busIds) || busIds.length === 0) {
