@@ -8,22 +8,22 @@ import { log } from './logger.js';
 
 // Create email transporter
 const emailTransporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    auth: {
-        user: 'alshrakynodeapp@gmail.com',
-        pass: 'ymfnqdsctolgcfzv',
-    },
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
+  auth: {
+    user: 'alshrakynodeapp@gmail.com',
+    pass: 'ssjpnctdsyqxylxd', // Updated app password Feb 2026
+  },
 });
 
 // Verify email connection
 emailTransporter.verify((error, success) => {
-    if (error) {
-        log.error('Email transporter connection failed', { error: error.message });
-    } else {
-        log.info('Email transporter ready to send emails');
-    }
+  if (error) {
+    log.error('Email transporter connection failed', { error: error.message });
+  } else {
+    log.info('Email transporter ready to send emails');
+  }
 });
 
 /**
@@ -37,50 +37,50 @@ emailTransporter.verify((error, success) => {
  * @param {Object} params.data - Additional data for the email
  */
 export async function sendNotificationEmail({ to, subject, message, notificationType, appUrl, data = {} }) {
-    try {
-        const htmlContent = generateEmailHtml({ subject, message, notificationType, appUrl, data });
+  try {
+    const htmlContent = generateEmailHtml({ subject, message, notificationType, appUrl, data });
 
-        const mailOptions = {
-            from: '"نظام إدارة الموارد البشرية" <alshrakynodeapp@gmail.com>',
-            to,
-            subject,
-            html: htmlContent,
-            text: message, // Plain text fallback
-        };
+    const mailOptions = {
+      from: '"نظام إدارة الموارد البشرية" <alshrakynodeapp@gmail.com>',
+      to,
+      subject,
+      html: htmlContent,
+      text: message, // Plain text fallback
+    };
 
-        const result = await emailTransporter.sendMail(mailOptions);
-        log.info('Email sent successfully', { to, subject, messageId: result.messageId });
-        return { success: true, messageId: result.messageId };
-    } catch (error) {
-        log.error('Failed to send email', { to, subject, error: error.message });
-        return { success: false, error: error.message };
-    }
+    const result = await emailTransporter.sendMail(mailOptions);
+    log.info('Email sent successfully', { to, subject, messageId: result.messageId });
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    log.error('Failed to send email', { to, subject, error: error.message });
+    return { success: false, error: error.message };
+  }
 }
 
 /**
  * Generate HTML content for email
  */
 function generateEmailHtml({ subject, message, notificationType, appUrl, data }) {
-    const currentDate = new Date().toLocaleDateString('ar-SA', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-    });
+  const currentDate = new Date().toLocaleDateString('ar-SA', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 
-    // Build additional data rows
-    let dataRows = '';
-    if (data && Object.keys(data).length > 0) {
-        dataRows = Object.entries(data)
-            .map(([key, value]) => `
+  // Build additional data rows
+  let dataRows = '';
+  if (data && Object.keys(data).length > 0) {
+    dataRows = Object.entries(data)
+      .map(([key, value]) => `
         <tr>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #4a5568;">${key}:</td>
           <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; color: #2d3748;">${value}</td>
         </tr>
       `)
-            .join('');
-    }
+      .join('');
+  }
 
-    return `
+  return `
     <!DOCTYPE html>
     <html dir="rtl" lang="ar">
     <head>
@@ -174,30 +174,30 @@ function generateEmailHtml({ subject, message, notificationType, appUrl, data })
  * Send critical statistics alert email
  */
 export async function sendStatisticsAlertEmail({ to, appUrl, alerts }) {
-    const subject = '⚠️ تنبيهات مهمة - نظام إدارة الموارد البشرية';
+  const subject = '⚠️ تنبيهات مهمة - نظام إدارة الموارد البشرية';
 
-    let message = 'تم رصد التنبيهات التالية التي تحتاج إلى اهتمامكم:';
+  let message = 'تم رصد التنبيهات التالية التي تحتاج إلى اهتمامكم:';
 
-    const data = {};
-    if (alerts.expiredContracts > 0) {
-        data['عقود منتهية'] = `${alerts.expiredContracts} موظف`;
-    }
-    if (alerts.expiringSoon > 0) {
-        data['عقود تنتهي قريباً'] = `${alerts.expiringSoon} موظف`;
-    }
-    if (alerts.expiredIds > 0) {
-        data['هويات منتهية'] = `${alerts.expiredIds} موظف`;
-    }
-    if (alerts.incompleteData > 0) {
-        data['بيانات ناقصة'] = `${alerts.incompleteData} موظف`;
-    }
+  const data = {};
+  if (alerts.expiredContracts > 0) {
+    data['عقود منتهية'] = `${alerts.expiredContracts} موظف`;
+  }
+  if (alerts.expiringSoon > 0) {
+    data['عقود تنتهي قريباً'] = `${alerts.expiringSoon} موظف`;
+  }
+  if (alerts.expiredIds > 0) {
+    data['هويات منتهية'] = `${alerts.expiredIds} موظف`;
+  }
+  if (alerts.incompleteData > 0) {
+    data['بيانات ناقصة'] = `${alerts.incompleteData} موظف`;
+  }
 
-    return sendNotificationEmail({
-        to,
-        subject,
-        message,
-        notificationType: 'statistics_alert',
-        appUrl,
-        data,
-    });
+  return sendNotificationEmail({
+    to,
+    subject,
+    message,
+    notificationType: 'statistics_alert',
+    appUrl,
+    data,
+  });
 }

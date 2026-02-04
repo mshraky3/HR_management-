@@ -1,9 +1,10 @@
 /**
  * Error Handling Middleware
- * Centralized error handling
+ * Centralized error handling with email notifications for critical errors
  */
 
 import { logError, log } from '../utils/logger.js';
+import { reportBackendError } from '../utils/errorNotificationService.js';
 
 export const errorHandler = (err, req, res, next) => {
   logError(err, { path: req.path, method: req.method });
@@ -57,8 +58,17 @@ export const errorHandler = (err, req, res, next) => {
     });
   }
 
+  // For 500 errors, send email notification
+  const statusCode = err.status || 500;
+  if (statusCode >= 500) {
+    // Send email notification asynchronously (don't block response)
+    reportBackendError(err, req).catch(e => {
+      log.error('Failed to send error notification', { error: e.message });
+    });
+  }
+
   // Default error
-  res.status(err.status || 500).json({
+  res.status(statusCode).json({
     success: false,
     message: err.message || 'Internal server error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
@@ -71,4 +81,3 @@ export const notFound = (req, res) => {
     message: `Route ${req.method} ${req.path} not found`
   });
 };
-

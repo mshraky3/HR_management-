@@ -26,6 +26,7 @@ import busTransportationRoutes from './bus-transportation.js';
 import busTransportationReportRoutes from './bus-transportation-report.js';
 import studentsReportRoutes from './students-report.js';
 import suggestionsRoutes from './suggestions.js';
+import errorReportRoutes from './error-report.js';
 
 const router = express.Router();
 
@@ -57,5 +58,7 @@ router.use('/bus-transportation', busTransportationRoutes);
 router.use('/bus-transportation-report', busTransportationReportRoutes);
 router.use('/students-report', studentsReportRoutes);
 router.use('/suggestions', suggestionsRoutes);
+router.use('/error-report', errorReportRoutes);
+
 export default router;
 
