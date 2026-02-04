@@ -8,6 +8,10 @@ import "./styles/buttons.css";
 import "./styles/containers.css";
 import App from "./App.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import { initErrorTracking } from "./utils/errorTracking.js";
+
+// Initialize error tracking for email notifications on critical errors
+initErrorTracking();
 
 const safeToString = (v) => {
   try {
@@ -58,12 +62,12 @@ window.addEventListener("unhandledrejection", (event) => {
     stack: error?.stack,
     response: error?.response
       ? {
-          status: error.response.status,
-          statusText: error.response.statusText,
-          data: error.response.data,
-          url: error.config?.url,
-          method: error.config?.method,
-        }
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        url: error.config?.url,
+        method: error.config?.method,
+      }
       : null,
     code: error?.code,
     name: error?.name,

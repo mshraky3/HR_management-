@@ -6,6 +6,7 @@
 
 import axios from 'axios';
 import { API_URL, getCurrentApiUrl } from '../config/api.js';
+import { reportApiError } from './errorTracking.js';
 
 // API Response Cache - stores successful GET requests
 // Key: cache key (URL + params), Value: { data, timestamp, expiry }
@@ -377,6 +378,9 @@ api.interceptors.response.use(
         } : null,
       });
 
+      // Report critical error via email notification
+      reportApiError(error, config);
+
       // Set backend error state via global function (set by BackendErrorProvider)
       if (window.setBackendError) {
         window.setBackendError(error);
@@ -385,6 +389,11 @@ api.interceptors.response.use(
       // Don't show individual error notifications for backend errors (prevent spam)
       // The maintenance page will be shown instead
       return Promise.reject(error);
+    }
+
+    // Report server errors (500+) that aren't backend connection issues
+    if (error.response?.status >= 500) {
+      reportApiError(error, config);
     }
 
     // Only redirect to login for authentication-related 401 errors
