@@ -2453,7 +2453,7 @@ const BusFormModal = ({
   const handleSaveCurrentTab = async () => {
     const busId = createdBusId || bus?.id;
     if (!busId) {
-      showError("يرجى إنشاء الحافلة أولاً");
+      showError("⚠️ لا يوجد حافلة لحفظ البيانات\n\nهذه الحافلة لم يتم إنشاؤها بعد. يرجى:\n• التأكد من إدخال البيانات الأساسية (رقم اللوحة)\n• إذا كنت تضيف حافلة جديدة، استخدم زر 'التالي' بدلاً من 'حفظ'");
       return;
     }
 
@@ -2461,11 +2461,11 @@ const BusFormModal = ({
     try {
       if (activeTab === "basic") {
         if (isMainManager && isBlank(basicFormData.branch_id)) {
-          showError("يرجى اختيار الفرع");
+          showError("⚠️ الفرع مطلوب\n\nيرجى اختيار الفرع من القائمة المنسدلة.");
           return;
         }
         if (isBlank(basicFormData.term_id)) {
-          showError("يرجى اختيار الفصل الدراسي");
+          showError("⚠️ الفصل الدراسي مطلوب\n\nلم يتم تحديد الفصل الدراسي. تأكد من اختيار الفرع أولاً.");
           return;
         }
         const plateParsed = parsePlate(basicFormData.plate_number);
@@ -2474,7 +2474,7 @@ const BusFormModal = ({
           plateParsed.lettersEn.length !== 3 ||
           plateParsed.lettersAr.length !== 3
         ) {
-          showError("يرجى إدخال رقم لوحة صحيح");
+          showError("⚠️ رقم اللوحة غير صحيح\n\nاللوحة يجب أن تحتوي على:\n• 4 أرقام (مثال: 1234)\n• 3 حروف إنجليزية (مثال: ABC)\n• 3 حروف عربية (مثال: أبج)");
           return;
         }
 
