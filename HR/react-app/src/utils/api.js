@@ -487,6 +487,9 @@ export const employeesAPI = {
   checkDuplicate: (data) =>
     api.post('/api/employees/check-duplicate', data),
 
+  linkToBranch: (data) =>
+    api.post('/api/employees/link-to-branch', data),
+
   create: (data) =>
     api.post('/api/employees', data),
 

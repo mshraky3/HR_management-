@@ -1357,10 +1357,67 @@ const Employees = () => {
       console.error("Error saving employee:", error);
       let errorMessage = "فشل حفظ الموظف";
 
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
+      const responseData = error.response?.data;
+
+      // Check if employee exists in another branch and can be linked
+      if (responseData?.error === "EMPLOYEE_EXISTS_IN_OTHER_BRANCH" && responseData?.canLink) {
+        const existingEmp = responseData.existingEmployee;
+
+        // Ask user if they want to link the employee to their branch
+        const confirmLink = window.confirm(
+          `📋 الموظف موجود مسبقاً في فرع آخر\n\n` +
+          `👤 الاسم: ${existingEmp.name}\n` +
+          `🔢 رقم الهوية/الإقامة: ${existingEmp.id_or_residency_number}\n` +
+          `🏢 الفروع الحالية: ${existingEmp.branches?.map(b => b.name).join('، ') || 'غير محدد'}\n\n` +
+          `❓ هل تريد ربط هذا الموظف بفرعك أيضاً؟\n\n` +
+          `اضغط "موافق" للربط أو "إلغاء" للإغاء`
+        );
+
+        if (confirmLink) {
+          try {
+            const linkResponse = await employeesAPI.linkToBranch({
+              employee_id: existingEmp.id
+            });
+
+            if (linkResponse.data.success) {
+              showSuccess(linkResponse.data.message || `تم ربط الموظف "${existingEmp.name}" بفرعك بنجاح`);
+              setShowForm(false);
+              setEditingEmployee(null);
+              resetForm();
+              resetDocuments();
+              loadEmployees();
+              return;
+            }
+          } catch (linkError) {
+            console.error("Error linking employee:", linkError);
+            showError(
+              linkError.response?.data?.message ||
+              "فشل ربط الموظف بالفرع. الرجاء المحاولة مرة أخرى."
+            );
+          }
+        }
+        setSaving(false);
+        setUploadingDocuments(false);
+        return;
+      }
+
+      // Check if employee is already in this branch
+      if (responseData?.error === "EMPLOYEE_ALREADY_IN_BRANCH") {
+        showWarning(
+          `⚠️ الموظف مسجل بالفعل في هذا الفرع\n\n` +
+          `الموظف: ${responseData.existingEmployee?.name || 'غير محدد'}\n` +
+          `رقم الهوية/الإقامة: ${responseData.existingEmployee?.id_or_residency_number || 'غير محدد'}\n\n` +
+          `يمكنك البحث عن الموظف في قائمة الموظفين لتعديل بياناته.`
+        );
+        setSaving(false);
+        setUploadingDocuments(false);
+        return;
+      }
+
+      if (responseData?.message) {
+        errorMessage = responseData.message;
+      } else if (responseData?.error) {
+        errorMessage = responseData.error;
       } else if (error.message) {
         errorMessage = error.message;
       }

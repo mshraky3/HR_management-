@@ -102,6 +102,39 @@
   margin-top: var(--spacing-xs);
 }
 
+/* Employee Branches Section */
+.employee-branches {
+  margin-top: var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.branches-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+}
+
+.branch-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border: 1px solid var(--primary);
+}
+
+.branch-chip::before {
+  content: '🏢';
+  margin-left: var(--spacing-xs);
+  font-size: 0.8em;
+}
+
 /* Info Cards Grid */
 .info-cards-grid {
   display: grid;
@@ -724,6 +757,7 @@
   .section-title {
     font-size: var(--font-size-lg);
   }
+
   .employee-details-page {
     padding: var(--spacing-md);
   }
@@ -779,4 +813,3 @@
   color: var(--text-light);
   font-size: var(--font-size-lg);
 }
-
