@@ -2548,6 +2548,97 @@ router.post("/check-duplicate", async (req, res) => {
   }
 });
 
+// Link existing employee to current branch
+router.post("/link-to-branch", async (req, res) => {
+  try {
+    const { Employee } = await import("../models/Employee.js");
+    const { Branch } = await import("../models/Branch.js");
+    const { employee_id } = req.body;
+
+    if (!employee_id) {
+      return res.status(400).json({
+        success: false,
+        message: "معرف الموظف مطلوب",
+      });
+    }
+
+    // Determine the branch to link to
+    let targetBranchId = req.body.branch_id;
+
+    // For branch managers, force to their branch
+    if (req.user.role === "branch_manager") {
+      targetBranchId = req.user.branch_id;
+    }
+
+    if (!targetBranchId) {
+      return res.status(400).json({
+        success: false,
+        message: "لا يمكن تحديد الفرع للربط",
+      });
+    }
+
+    // Check if employee exists
+    const existingEmployee = await Employee.findById(parseInt(employee_id));
+    if (!existingEmployee) {
+      return res.status(404).json({
+        success: false,
+        message: "الموظف غير موجود",
+      });
+    }
+
+    // Check if already linked to this branch
+    const isAlreadyLinked = await Employee.isLinkedToBranch(existingEmployee.id, targetBranchId);
+    if (isAlreadyLinked) {
+      return res.status(409).json({
+        success: false,
+        message: `الموظف "${existingEmployee.first_name} ${existingEmployee.second_name}" مرتبط بالفعل بهذا الفرع`,
+        error: "ALREADY_LINKED",
+      });
+    }
+
+    // Get target branch info
+    const targetBranch = await Branch.findById(targetBranchId);
+    if (!targetBranch) {
+      return res.status(404).json({
+        success: false,
+        message: "الفرع المستهدف غير موجود",
+      });
+    }
+
+    // Link the employee to the new branch
+    await Employee.linkToBranch(existingEmployee.id, targetBranchId, req.user.id);
+
+    // Reload employee with updated branch info
+    const updatedEmployee = await Employee.findById(existingEmployee.id);
+
+    // Clear caches
+    clearByPrefix(`dashboard:summary:${targetBranchId}`);
+    clearByPrefix("branch-statistics");
+
+    log.info("Employee linked to branch", {
+      employee_id: existingEmployee.id,
+      employee_name: `${existingEmployee.first_name} ${existingEmployee.second_name}`,
+      branch_id: targetBranchId,
+      branch_name: targetBranch.branch_name,
+      linked_by: req.user.id
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `تم ربط الموظف "${existingEmployee.first_name} ${existingEmployee.second_name} ${existingEmployee.third_name} ${existingEmployee.fourth_name}" بفرع "${targetBranch.branch_name}" بنجاح`,
+      data: updatedEmployee,
+    });
+
+  } catch (error) {
+    log.error("Error linking employee to branch", { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "فشل ربط الموظف بالفرع",
+      error: error.message,
+    });
+  }
+});
+
 // Create employee
 router.post(
   "/",
@@ -2709,6 +2800,149 @@ router.post(
         createdByBranchId,
       );
 
+      // ========== PROACTIVE DUPLICATE CHECK ==========
+      // Check for existing employees BEFORE attempting to create
+      // This prevents hitting database constraints and provides better UX
+      console.log("[EMPLOYEE CREATE] Checking for existing employees with same ID...");
+
+      const { Branch } = await import("../models/Branch.js");
+
+      // Check by id_or_residency_number (most common duplicate scenario)
+      if (req.body.id_or_residency_number) {
+        const existingByIdNumber = await Employee.findDuplicates(req.body.id_or_residency_number);
+
+        if (existingByIdNumber && existingByIdNumber.length > 0) {
+          const existingEmployee = existingByIdNumber[0];
+          console.log("[EMPLOYEE CREATE] Found existing employee with same ID:", existingEmployee.id);
+
+          // Get all branches the employee is linked to
+          let existingBranches = [];
+          try {
+            const branchIds = await Employee.getBranchIds(existingEmployee.id);
+            for (const branchId of branchIds) {
+              const branch = await Branch.findById(branchId);
+              if (branch) {
+                existingBranches.push({
+                  id: branch.id,
+                  name: branch.branch_name,
+                  type: branch.branch_type
+                });
+              }
+            }
+          } catch (branchErr) {
+            // Fallback to primary branch_id
+            if (existingEmployee.branch_id) {
+              const branch = await Branch.findById(existingEmployee.branch_id);
+              if (branch) {
+                existingBranches.push({
+                  id: branch.id,
+                  name: branch.branch_name,
+                  type: branch.branch_type
+                });
+              }
+            }
+          }
+
+          // Check if already linked to the target branch
+          const isAlreadyLinked = existingBranches.some(b => b.id === createdByBranchId);
+
+          if (isAlreadyLinked) {
+            console.log("[EMPLOYEE CREATE] Employee already exists in this branch");
+            return res.status(409).json({
+              success: false,
+              message: `⚠️ الموظف "${existingEmployee.first_name} ${existingEmployee.second_name} ${existingEmployee.third_name} ${existingEmployee.fourth_name}" مسجل بالفعل في هذا الفرع.\n\nرقم الهوية/الإقامة: ${existingEmployee.id_or_residency_number}\nالرقم الوظيفي: ${existingEmployee.employee_id_number || 'غير محدد'}\n\nيمكنك البحث عن الموظف في قائمة الموظفين لتعديل بياناته.`,
+              error: "EMPLOYEE_ALREADY_IN_BRANCH",
+              existingEmployee: {
+                id: existingEmployee.id,
+                name: `${existingEmployee.first_name} ${existingEmployee.second_name} ${existingEmployee.third_name} ${existingEmployee.fourth_name}`,
+                employee_id_number: existingEmployee.employee_id_number,
+                id_or_residency_number: existingEmployee.id_or_residency_number,
+                branches: existingBranches
+              },
+              canLink: false
+            });
+          } else {
+            // Employee exists in other branch(es), offer to link
+            const branchNames = existingBranches.map(b => b.name).join('، ');
+            console.log("[EMPLOYEE CREATE] Employee exists in other branches:", branchNames);
+            return res.status(409).json({
+              success: false,
+              message: `📋 الموظف "${existingEmployee.first_name} ${existingEmployee.second_name} ${existingEmployee.third_name} ${existingEmployee.fourth_name}" مسجل مسبقاً في فرع آخر.\n\n🏢 الفروع الحالية: ${branchNames}\n📝 رقم الهوية/الإقامة: ${existingEmployee.id_or_residency_number}\n🔢 الرقم الوظيفي: ${existingEmployee.employee_id_number || 'غير محدد'}\n\n❓ هل تريد ربط هذا الموظف بفرعك أيضاً؟`,
+              error: "EMPLOYEE_EXISTS_IN_OTHER_BRANCH",
+              existingEmployee: {
+                id: existingEmployee.id,
+                name: `${existingEmployee.first_name} ${existingEmployee.second_name} ${existingEmployee.third_name} ${existingEmployee.fourth_name}`,
+                employee_id_number: existingEmployee.employee_id_number,
+                id_or_residency_number: existingEmployee.id_or_residency_number,
+                branches: existingBranches
+              },
+              canLink: true
+            });
+          }
+        }
+      }
+
+      // Also check by employee_id_number if provided
+      if (req.body.employee_id_number) {
+        const existingByEmployeeId = await Employee.findByEmployeeId(req.body.employee_id_number);
+
+        if (existingByEmployeeId) {
+          console.log("[EMPLOYEE CREATE] Found existing employee with same employee_id_number:", existingByEmployeeId.id);
+
+          // Get full employee info with branches
+          const fullEmployee = await Employee.findById(existingByEmployeeId.id);
+          let existingBranches = fullEmployee?.branches || [];
+
+          // If branches not available, get from primary
+          if (existingBranches.length === 0 && existingByEmployeeId.branch_id) {
+            const branch = await Branch.findById(existingByEmployeeId.branch_id);
+            if (branch) {
+              existingBranches = [{
+                id: branch.id,
+                name: branch.branch_name,
+                type: branch.branch_type
+              }];
+            }
+          }
+
+          const isAlreadyLinked = existingBranches.some(b => b.branch_id === createdByBranchId || b.id === createdByBranchId);
+
+          if (isAlreadyLinked) {
+            return res.status(409).json({
+              success: false,
+              message: `⚠️ الموظف برقم وظيفي "${req.body.employee_id_number}" مسجل بالفعل في هذا الفرع.\n\nيمكنك البحث عن الموظف في قائمة الموظفين لتعديل بياناته.`,
+              error: "EMPLOYEE_ALREADY_IN_BRANCH",
+              existingEmployee: {
+                id: existingByEmployeeId.id,
+                name: `${existingByEmployeeId.first_name} ${existingByEmployeeId.second_name} ${existingByEmployeeId.third_name} ${existingByEmployeeId.fourth_name}`,
+                employee_id_number: existingByEmployeeId.employee_id_number,
+                id_or_residency_number: existingByEmployeeId.id_or_residency_number,
+                branches: existingBranches
+              },
+              canLink: false
+            });
+          } else {
+            const branchNames = existingBranches.map(b => b.branch_name || b.name).join('، ') || 'غير محدد';
+            return res.status(409).json({
+              success: false,
+              message: `📋 يوجد موظف آخر بنفس الرقم الوظيفي "${req.body.employee_id_number}" مسجل في فرع آخر.\n\n🏢 الفروع الحالية: ${branchNames}\n👤 الاسم: ${existingByEmployeeId.first_name} ${existingByEmployeeId.second_name}\n\n❓ هل تريد ربط هذا الموظف بفرعك؟`,
+              error: "EMPLOYEE_EXISTS_IN_OTHER_BRANCH",
+              existingEmployee: {
+                id: existingByEmployeeId.id,
+                name: `${existingByEmployeeId.first_name} ${existingByEmployeeId.second_name} ${existingByEmployeeId.third_name} ${existingByEmployeeId.fourth_name}`,
+                employee_id_number: existingByEmployeeId.employee_id_number,
+                id_or_residency_number: existingByEmployeeId.id_or_residency_number,
+                branches: existingBranches
+              },
+              canLink: true
+            });
+          }
+        }
+      }
+
+      console.log("[EMPLOYEE CREATE] No duplicates found, proceeding with creation");
+      // ========== END PROACTIVE DUPLICATE CHECK ==========
+
       // Check if this is linking to an existing employee (via existing_employee_id)
       if (req.body.existing_employee_id && req.body.link_to_branch) {
         console.log(
@@ -2840,6 +3074,122 @@ router.post(
         error: error.message,
         stack: error.stack,
       });
+
+      // Handle duplicate key errors with user-friendly messages and auto-link suggestion
+      if (error.message && error.message.includes('duplicate key value violates unique constraint')) {
+        const { Employee } = await import("../models/Employee.js");
+        const { Branch } = await import("../models/Branch.js");
+
+        let userMessage = "يوجد موظف بنفس البيانات مسبقاً";
+        let duplicateField = "unknown";
+        let existingEmployee = null;
+        let existingBranches = [];
+
+        try {
+          // Try to find the existing employee based on the constraint that was violated
+          if (error.message.includes('employees_employee_id_number_key')) {
+            duplicateField = "employee_id_number";
+            existingEmployee = await Employee.findByEmployeeId(req.body.employee_id_number);
+          } else if (error.message.includes('employees_id_or_residency_number_key')) {
+            duplicateField = "id_or_residency_number";
+            // Find by id_or_residency_number
+            const duplicates = await Employee.findDuplicates(req.body.id_or_residency_number);
+            if (duplicates && duplicates.length > 0) {
+              existingEmployee = duplicates[0];
+            }
+          }
+
+          // If we found the existing employee, get their branch info
+          if (existingEmployee) {
+            // Get all branches the employee is linked to
+            try {
+              const branchIds = await Employee.getBranchIds(existingEmployee.id);
+              for (const branchId of branchIds) {
+                const branch = await Branch.findById(branchId);
+                if (branch) {
+                  existingBranches.push({
+                    id: branch.id,
+                    name: branch.branch_name,
+                    type: branch.branch_type
+                  });
+                }
+              }
+            } catch (branchErr) {
+              // If getBranchIds fails, use the primary branch_id
+              if (existingEmployee.branch_id) {
+                const branch = await Branch.findById(existingEmployee.branch_id);
+                if (branch) {
+                  existingBranches.push({
+                    id: branch.id,
+                    name: branch.branch_name,
+                    type: branch.branch_type
+                  });
+                }
+              }
+            }
+
+            // Check if already linked to the current branch
+            const currentBranchId = req.body.branch_id || req.user.branch_id;
+            const isAlreadyLinked = existingBranches.some(b => b.id === currentBranchId);
+
+            if (isAlreadyLinked) {
+              userMessage = `⚠️ الموظف "${existingEmployee.first_name} ${existingEmployee.second_name} ${existingEmployee.third_name} ${existingEmployee.fourth_name}" مسجل بالفعل في هذا الفرع.\n\nرقم الهوية/الإقامة: ${existingEmployee.id_or_residency_number}\nالرقم الوظيفي: ${existingEmployee.employee_id_number || 'غير محدد'}`;
+
+              return res.status(409).json({
+                success: false,
+                message: userMessage,
+                error: "EMPLOYEE_ALREADY_IN_BRANCH",
+                existingEmployee: {
+                  id: existingEmployee.id,
+                  name: `${existingEmployee.first_name} ${existingEmployee.second_name} ${existingEmployee.third_name} ${existingEmployee.fourth_name}`,
+                  employee_id_number: existingEmployee.employee_id_number,
+                  id_or_residency_number: existingEmployee.id_or_residency_number,
+                  branches: existingBranches
+                },
+                canLink: false
+              });
+            } else {
+              // Employee exists in other branch(es), offer to link
+              const branchNames = existingBranches.map(b => b.name).join('، ');
+              userMessage = `📋 الموظف "${existingEmployee.first_name} ${existingEmployee.second_name} ${existingEmployee.third_name} ${existingEmployee.fourth_name}" مسجل مسبقاً في فرع آخر.\n\n🏢 الفروع الحالية: ${branchNames}\n📝 رقم الهوية/الإقامة: ${existingEmployee.id_or_residency_number}\n🔢 الرقم الوظيفي: ${existingEmployee.employee_id_number || 'غير محدد'}\n\n❓ هل تريد ربط هذا الموظف بفرعك أيضاً؟`;
+
+              return res.status(409).json({
+                success: false,
+                message: userMessage,
+                error: "EMPLOYEE_EXISTS_IN_OTHER_BRANCH",
+                existingEmployee: {
+                  id: existingEmployee.id,
+                  name: `${existingEmployee.first_name} ${existingEmployee.second_name} ${existingEmployee.third_name} ${existingEmployee.fourth_name}`,
+                  employee_id_number: existingEmployee.employee_id_number,
+                  id_or_residency_number: existingEmployee.id_or_residency_number,
+                  branches: existingBranches
+                },
+                canLink: true,
+                linkInstructions: "لربط الموظف بفرعك، أعد إرسال الطلب مع إضافة الحقول: existing_employee_id و link_to_branch"
+              });
+            }
+          }
+        } catch (lookupError) {
+          console.log("[EMPLOYEE CREATE] Error looking up existing employee:", lookupError.message);
+          // Continue with generic error message
+        }
+
+        // Fallback generic messages if we couldn't find the existing employee
+        if (duplicateField === "employee_id_number") {
+          userMessage = "يوجد موظف بنفس الرقم الوظيفي مسبقاً. الرجاء التحقق من الرقم الوظيفي أو البحث عن الموظف الموجود.";
+        } else if (duplicateField === "id_or_residency_number") {
+          userMessage = "يوجد موظف بنفس رقم الهوية أو الإقامة مسبقاً. الرجاء التحقق من رقم الهوية أو البحث عن الموظف الموجود.";
+        } else if (error.message.includes('employees_email_key')) {
+          userMessage = "يوجد موظف بنفس البريد الإلكتروني مسبقاً.";
+        }
+
+        return res.status(409).json({
+          success: false,
+          message: userMessage,
+          error: "DUPLICATE_EMPLOYEE",
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: "فشل إنشاء الموظف",
