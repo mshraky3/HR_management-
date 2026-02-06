@@ -154,6 +154,11 @@
     color: var(--primary);
 }
 
+.dropdown-toggle:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
 .dropdown-toggle.active {
     background: var(--primary);
     color: #ffffff;
@@ -260,6 +265,12 @@
     padding-right: calc(var(--spacing-md) + 4px);
 }
 
+.dropdown-menu a:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+    background: var(--primary-light);
+}
+
 .dropdown-menu a.active {
     background: var(--primary);
     color: #ffffff;
@@ -282,6 +293,11 @@
 .nav-link:hover {
     background: var(--primary-light);
     color: var(--primary);
+}
+
+.nav-link:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
 }
 
 .nav-link.active {

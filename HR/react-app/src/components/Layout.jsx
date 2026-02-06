@@ -36,6 +36,44 @@ const Layout = ({ children }) => {
     setOpenDropdown(null);
   };
 
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Don't trigger if user is typing in an input/textarea/contenteditable
+      const tag = e.target.tagName;
+      const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
+
+      // "/" to focus any search input on the page (skip if already in an input)
+      if (e.key === '/' && !isEditable) {
+        e.preventDefault();
+        const searchInput = document.querySelector('input[type="search"], input[placeholder*="بحث"], input[placeholder*="search"]');
+        if (searchInput) searchInput.focus();
+        return;
+      }
+
+      // Escape to close dropdowns/modals
+      if (e.key === 'Escape') {
+        setOpenDropdown(null);
+        setMobileMenuOpen(false);
+        // Blur active element to dismiss page dropdowns
+        if (isEditable) e.target.blur();
+        return;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setOpenDropdown(null);
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
   // Navigation menu structure
   const menuItems = {
     management: {
@@ -96,25 +134,34 @@ const Layout = ({ children }) => {
           onClick={toggleMobileMenu}
           aria-label="تبديل القائمة"
         >
-          {mobileMenuOpen ? "✕" : "☰"}
+          <span aria-hidden="true">{mobileMenuOpen ? "✕" : "☰"}</span>
         </button>
         <div className={`nav-links ${mobileMenuOpen ? "mobile-open" : ""}`}>
           {Object.entries(menuItems).map(([key, menu]) => (
             <div key={key} className="nav-dropdown">
               <button
                 className={`dropdown-toggle ${isActive(menu.items.map((item) => item.path).find((path) => location.pathname === path)) ? "active" : ""}`}
-                onClick={() => toggleDropdown(key)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleDropdown(key);
+                }}
+                aria-expanded={openDropdown === key}
+                aria-haspopup="true"
+                aria-controls={`dropdown-${key}`}
               >
                 {menu.label}
                 <span className="dropdown-arrow">▼</span>
               </button>
               <div
+                id={`dropdown-${key}`}
+                role="menu"
                 className={`dropdown-menu ${openDropdown === key ? "open" : ""}`}
               >
                 {menu.items.map((item) => (
                   <Link
                     key={item.path}
                     to={item.path}
+                    role="menuitem"
                     className={isActive(item.path)}
                     onClick={() => {
                       setMobileMenuOpen(false);

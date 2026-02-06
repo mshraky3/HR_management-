@@ -26,12 +26,7 @@ const TaskCardWrapper = ({ task, children, collapsed: initialCollapsed, defaultE
     }
   };
 
-  const getPriorityLabel = (priority, task) => {
-    // Special label for payroll absence in waiting state (though it shouldn't show)
-    if (task?.type === 'payroll_absence' && task?.isWaiting) {
-      return 'لم يفتح بعد';
-    }
-    
+  const getPriorityLabel = (priority) => {
     switch (priority) {
       case 'critical':
         return 'الأولوية القصوى';
@@ -45,7 +40,7 @@ const TaskCardWrapper = ({ task, children, collapsed: initialCollapsed, defaultE
   };
 
   const priorityClass = getPriorityColor(task.priority);
-  const priorityLabel = getPriorityLabel(task.priority, task);
+  const priorityLabel = getPriorityLabel(task.priority);
 
   const handleScrollToSection = () => {
     const sectionId = task.actionUrl.replace('#', '');

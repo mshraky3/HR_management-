@@ -23,12 +23,7 @@ const FocusTaskCard = ({ task, onSkip }) => {
     }
   };
 
-  const getPriorityLabel = (priority, task) => {
-    // Special label for payroll absence in waiting state (though it shouldn't show)
-    if (task?.type === 'payroll_absence' && task?.isWaiting) {
-      return 'لم يفتح بعد';
-    }
-    
+  const getPriorityLabel = (priority) => {
     switch (priority) {
       case 'critical':
         return 'الأولوية القصوى';
@@ -42,7 +37,7 @@ const FocusTaskCard = ({ task, onSkip }) => {
   };
 
   const priorityClass = getPriorityColor(task.priority);
-  const priorityLabel = getPriorityLabel(task.priority, task);
+  const priorityLabel = getPriorityLabel(task.priority);
 
   return (
     <div className={`focus-task-card ${priorityClass}`}>
@@ -84,8 +79,8 @@ const FocusTaskCard = ({ task, onSkip }) => {
           <div className="focus-task-meta">
             <span className="meta-item">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                <path d="M12 6V12L16 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                <path d="M12 6V12L16 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
               {task.estimatedTime}
             </span>
@@ -94,27 +89,27 @@ const FocusTaskCard = ({ task, onSkip }) => {
                 {task.urgency === 'expired' ? (
                   <>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                     منتهي
                   </>
                 ) : task.urgency === 'due_soon' ? (
                   <>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                      <path d="M12 6V12L16 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                      <path d="M12 6V12L16 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                     </svg>
                     قريب
                   </>
                 ) : (
                   <>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" stroke="currentColor" strokeWidth="2"/>
-                      <path d="M16 2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                      <path d="M8 2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                      <path d="M3 10H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" stroke="currentColor" strokeWidth="2" />
+                      <path d="M16 2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <path d="M8 2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <path d="M3 10H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                     </svg>
                     لاحقاً
                   </>
