@@ -3,6 +3,75 @@
     display: none;
 }
 
+/* ========================================
+   SEARCH BAR (moved from inline styles)
+   ======================================== */
+.employees-search-bar {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f5f5f5;
+    border-radius: 8px;
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+.employees-search-field {
+    flex: 1;
+    min-width: 200px;
+}
+
+.employees-search-label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.employees-search-hint {
+    font-size: 12px;
+    color: #f59e0b;
+    margin-right: 5px;
+}
+
+.employees-search-input {
+    width: 100%;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    background-color: white;
+}
+
+.employees-search-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(73, 136, 196, 0.15);
+}
+
+@media (max-width: 768px) {
+    .employees-search-bar {
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .employees-search-field {
+        min-width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .employees-search-bar {
+        padding: 10px;
+        gap: 8px;
+    }
+
+    .employees-search-input {
+        font-size: 16px;
+        min-height: 44px;
+    }
+}
+
 .employee-mobile-row {
     display: flex;
     flex-direction: column;
@@ -110,6 +179,153 @@
 .focus-employee-meta {
     color: #4b5563;
     font-size: 0.975rem;
+}
+
+/* ========================================
+   BRANCH DROPDOWN (moved from inline styles)
+   ======================================== */
+.branch-dropdown-container {
+    position: relative;
+}
+
+.branch-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 300px;
+    overflow-y: auto;
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    margin-top: 4px;
+}
+
+.branch-dropdown-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: white;
+    transition: background-color 0.15s ease;
+}
+
+.branch-dropdown-item:hover,
+.branch-dropdown-item.active {
+    background-color: #f0f9ff;
+}
+
+.branch-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.branch-dropdown-empty {
+    padding: 12px;
+    text-align: center;
+    color: #666;
+}
+
+.clear-search-btn {
+    padding: 8px 16px;
+}
+
+/* ========================================
+   DOCUMENT WARNING / FILE INDICATOR CARDS
+   ======================================== */
+.doc-warning-card {
+    margin-bottom: 12px;
+    padding: 12px 14px;
+    background: #e7f3ff;
+    border: 1px solid #b3d9ff;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.doc-warning-header {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #0056b3;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.doc-warning-item {
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: #fff;
+    border-radius: 6px;
+    border: 1px solid #d1ecf1;
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.doc-warning-item-name {
+    font-weight: 500;
+    color: #333;
+}
+
+.doc-warning-item-date {
+    font-size: 11px;
+    color: #666;
+}
+
+.doc-warning-note {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #0056b3;
+    font-style: italic;
+}
+
+.doc-new-file-indicator {
+    margin-top: 6px;
+    padding: 6px 8px;
+    background: #d4edda;
+    border: 1px solid #28a745;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+/* ========================================
+   TABLE LOADING OVERLAY
+   ======================================== */
+.table-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    border-radius: var(--radius-xl);
+}
+
+.table-loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.table-loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid var(--primary-light);
+    border-top: 4px solid var(--primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
 }
 
 /* Loading spinner animation */

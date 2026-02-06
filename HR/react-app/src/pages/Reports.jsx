@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
@@ -8,6 +8,8 @@ import { DATA_COMPLETION_STATUS, getDocumentTypeLabel, DOCUMENT_TYPE_LABELS } fr
 import { formatDate } from '../utils/dateConverters';
 import { translateValue } from '../utils/translations';
 import './Reports.css';
+
+const PREVIEW_PAGE_SIZE = 50;
 
 const availableFields = [
     { value: 'employee_id_number', label: 'رقم الموظف' },
@@ -947,7 +949,6 @@ const Reports = () => {
                                     setCurrentBranchId(null);
                                     setSelectedBranchId(null);
                                     setSearchParams({});
-                                    setIsPasswordVerified(true);
                                 }}
                             >
                                 تحديد الكل
@@ -957,7 +958,6 @@ const Reports = () => {
                                 onClick={() => {
                                     setSelectAllBranches(false);
                                     setSelectedBranchIds([]);
-                                    setIsPasswordVerified(true);
                                     setSearchParams({});
                                 }}
                             >
@@ -994,7 +994,6 @@ const Reports = () => {
                                                 setSelectedBranchIds([...selectedBranchIds, branch.id]);
                                             }
                                             setSelectAllBranches(false);
-                                            setIsPasswordVerified(true);
                                             setSearchParams({});
                                         }}
                                     >
@@ -1122,7 +1121,6 @@ const Reports = () => {
                                                         setSelectedBranchId(b.id);
                                                         setShowBranchesDropdown(false);
                                                         setBranchSearchTerm('');
-                                                        setIsPasswordVerified(true);
                                                     }}
                                                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedBranchId(b.id); setShowBranchesDropdown(false); setBranchSearchTerm(''); } }}
                                                 >
@@ -1403,17 +1401,16 @@ const Reports = () => {
                 </div>
 
                 {/* Document Selection - Dropdown Style */}
-                <div style={{ marginTop: 'var(--spacing-sm)', marginBottom: 'var(--spacing-sm)', position: 'relative' }}>
-                    <h3 style={{ marginBottom: 'var(--spacing-xs)', fontSize: 'var(--font-size-lg)', fontWeight: 600 }}>المستندات المرفقة (اختياري)</h3>
-                    <p style={{ marginBottom: 'var(--spacing-xs)', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
+                <div className="documents-section">
+                    <h3 className="documents-section-title">المستندات المرفقة (اختياري)</h3>
+                    <p className="documents-section-desc">
                         يمكنك اختيار مستندات الموظفين لإدراجها في التقرير. عند اختيار المستندات، سيتم إنشاء تقرير لكل موظف على حدة مع بياناته ومستنداته.
                     </p>
                     <div style={{ position: 'relative' }}>
                         <button
                             ref={documentsToggleRef}
                             type="button"
-                            className="documents-toggle btn btn-secondary"
-                            style={{ width: '100%', padding: '0.65rem 0.9rem', borderRadius: 'var(--radius-lg)', background: 'var(--bg-secondary)', border: '2px solid var(--border)', textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 'var(--font-size-base)', fontWeight: 500, color: 'var(--text)', cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: 'var(--shadow-sm)' }}
+                            className="documents-toggle"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setShowDocumentsDropdown(prev => {
@@ -1428,25 +1425,13 @@ const Reports = () => {
                             }}
                             aria-haspopup="true"
                             aria-expanded={showDocumentsDropdown}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.borderColor = 'var(--primary)';
-                                e.currentTarget.style.background = 'var(--bg)';
-                                e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-                                e.currentTarget.style.transform = 'translateY(-1px)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.borderColor = 'var(--border)';
-                                e.currentTarget.style.background = 'var(--bg-secondary)';
-                                e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
-                                e.currentTarget.style.transform = 'translateY(0)';
-                            }}
                         >
                             المستندات: {selectedDocuments.length} محددة ▾
                         </button>
 
                         {showDocumentsDropdown && (
-                            <div ref={documentsDropdownRef} className="documents-dropdown" style={{ position: 'absolute', background: 'var(--bg)', border: '2px solid var(--border)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', padding: 'var(--spacing-sm)', display: 'flex', flexDirection: 'column', animation: 'expandDown 0.3s ease-out', zIndex: 1000, top: 'calc(100% + 6px)', left: 0, right: 0, maxHeight: '360px', overflowY: 'auto' }}>
-                                <div style={{ display: 'flex', gap: 'var(--spacing-xs)', justifyContent: 'flex-start', marginBottom: 'var(--spacing-sm)', paddingBottom: 'var(--spacing-xs)', borderBottom: '1px solid var(--border-light)' }}>
+                            <div ref={documentsDropdownRef} className="documents-dropdown">
+                                <div className="documents-dropdown-actions">
                                     <button
                                         className="btn btn-link"
                                         onClick={() => {
@@ -1468,7 +1453,7 @@ const Reports = () => {
                                     </button>
                                     <button className="btn btn-link" onClick={() => setShowDocumentsDropdown(false)}>إغلاق</button>
                                 </div>
-                                <div className="fields-grid" style={{ paddingRight: '2px' }}>
+                                <div className="fields-grid">
                                     {Object.entries(DOCUMENT_TYPE_LABELS).map(([docType, label]) => (
                                         <button
                                             key={docType}
@@ -1500,7 +1485,12 @@ const Reports = () => {
                 <div className="actions-section">
                     <button className="btn btn-primary" onClick={loadPreview} disabled={previewLoading}>{previewLoading ? 'جاري التحميل...' : 'عرض المعاينة'}</button>
                     <button className="btn btn-primary" onClick={handleGeneratePdf} disabled={generating}>{generating ? 'جاري الإنشاء...' : 'توليد PDF'}</button>
-                    <button className="btn btn-primary" onClick={handleGenerateExcel} disabled={generatingExcel || selectedDocuments.length > 0}>{generatingExcel ? 'جاري الإنشاء...' : 'توليد Excel'}</button>
+                    <div className="excel-btn-wrapper">
+                        <button className="btn btn-primary" onClick={handleGenerateExcel} disabled={generatingExcel || selectedDocuments.length > 0}>{generatingExcel ? 'جاري الإنشاء...' : 'توليد Excel'}</button>
+                        {selectedDocuments.length > 0 && (
+                            <span className="excel-disabled-hint">Excel لا يدعم تصدير المستندات - استخدم PDF</span>
+                        )}
+                    </div>
                 </div>
 
                 <div className="preview-section">
@@ -1517,6 +1507,11 @@ const Reports = () => {
                                     <span>مكتمل: {employees.filter(e => e.data_completion_status === 'complete').length}</span>
                                     <span>غير مكتمل: {employees.filter(e => e.data_completion_status !== 'complete').length}</span>
                                 </div>
+                            </div>
+                        )}
+                        {employees.length > PREVIEW_PAGE_SIZE && (
+                            <div className="preview-pagination-hint">
+                                يتم عرض {PREVIEW_PAGE_SIZE} سجل في المعاينة من أصل {employees.length} — التقرير سيشمل جميع البيانات
                             </div>
                         )}
                     </div>
@@ -1543,7 +1538,7 @@ const Reports = () => {
                                     {employees.length === 0 ? (
                                         <tr><td colSpan={selectedFields.length} className="empty-state" style={{ cursor: 'default' }}>لا توجد بيانات للعرض</td></tr>
                                     ) : (
-                                        employees.map(emp => {
+                                        employees.slice(0, PREVIEW_PAGE_SIZE).map(emp => {
                                             const getDisplayValue = (field) => {
                                                 let value = emp[field];
 

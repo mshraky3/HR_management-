@@ -1460,63 +1460,24 @@ const Employees = () => {
     if (!existing || existing.length === 0) return null;
 
     return (
-      <div
-        style={{
-          marginBottom: "12px",
-          padding: "12px 14px",
-          background: "#e7f3ff",
-          border: "1px solid #b3d9ff",
-          borderRadius: "8px",
-          fontSize: "13px",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-        }}
-      >
-        <div
-          style={{
-            fontWeight: "600",
-            marginBottom: "8px",
-            color: "#0056b3",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-          }}
-        >
+      <div className="doc-warning-card">
+        <div className="doc-warning-header">
           <span>📋</span>
           <span>يوجد مستند مرفوع مسبقاً</span>
         </div>
         {existing.map((doc, idx) => (
-          <div
-            key={doc.id || idx}
-            style={{
-              marginTop: "6px",
-              padding: "8px 10px",
-              background: "#fff",
-              borderRadius: "6px",
-              border: "1px solid #d1ecf1",
-              fontSize: "12px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "4px",
-            }}
-          >
-            <div style={{ fontWeight: "500", color: "#333" }}>
+          <div key={doc.id || idx} className="doc-warning-item">
+            <div className="doc-warning-item-name">
               📄 {doc.filename || doc.file_name || "مستند"}
             </div>
             {doc.uploaded_at && (
-              <span style={{ fontSize: "11px", color: "#666" }}>
+              <span className="doc-warning-item-date">
                 تم الرفع: {formatDate(doc.uploaded_at)}
               </span>
             )}
           </div>
         ))}
-        <div
-          style={{
-            marginTop: "8px",
-            fontSize: "12px",
-            color: "#0056b3",
-            fontStyle: "italic",
-          }}
-        >
+        <div className="doc-warning-note">
           ⚠️ رفع مستند جديد سيحذف المستند(ات) الموجودة
         </div>
       </div>
@@ -1527,16 +1488,7 @@ const Employees = () => {
   const renderNewFileIndicator = (file) => {
     if (!file) return null;
     return (
-      <div
-        style={{
-          marginTop: "6px",
-          padding: "6px 8px",
-          background: "#d4edda",
-          border: "1px solid #28a745",
-          borderRadius: "4px",
-          fontSize: "11px",
-        }}
-      >
+      <div className="doc-new-file-indicator">
         <strong>✓ سيتم رفع:</strong>{" "}
         {file.name || (Array.isArray(file) ? `${file.length} ملف` : "مستند")}
       </div>
@@ -2110,36 +2062,13 @@ const Employees = () => {
           </div>
 
           {isMainManager() && (
-            <div
-              style={{
-                marginBottom: "20px",
-                padding: "15px",
-                backgroundColor: "#f5f5f5",
-                borderRadius: "8px",
-                display: "flex",
-                gap: "15px",
-                flexWrap: "wrap",
-                alignItems: "flex-end",
-              }}
-            >
-              <div style={{ flex: "1", minWidth: "200px" }}>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "5px",
-                    fontWeight: "bold",
-                  }}
-                >
+            <div className="employees-search-bar">
+              <div className="employees-search-field">
+                <label className="employees-search-label">
                   البحث بالاسم:
                   {searchFilters.search_name.length > 0 &&
                     searchFilters.search_name.length < 2 && (
-                      <span
-                        style={{
-                          fontSize: "12px",
-                          color: "#f59e0b",
-                          marginRight: "5px",
-                        }}
-                      >
+                      <span className="employees-search-hint">
                         (أدخل حرفين على الأقل)
                       </span>
                     )}
@@ -2155,22 +2084,11 @@ const Employees = () => {
                     })
                   }
                   placeholder="أدخل حرفين على الأقل للبحث (مثال: محمد)"
-                  style={{
-                    width: "100%",
-                    padding: "8px",
-                    borderRadius: "4px",
-                    border: "1px solid #ddd",
-                  }}
+                  className="employees-search-input"
                 />
               </div>
-              <div style={{ flex: "1", minWidth: "200px" }}>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "5px",
-                    fontWeight: "bold",
-                  }}
-                >
+              <div className="employees-search-field">
+                <label className="employees-search-label">
                   البحث برقم الهوية/الإقامة:
                 </label>
                 <input
@@ -2184,32 +2102,15 @@ const Employees = () => {
                     })
                   }
                   placeholder="أدخل رقم الهوية أو الإقامة"
-                  style={{
-                    width: "100%",
-                    padding: "8px",
-                    borderRadius: "4px",
-                    border: "1px solid #ddd",
-                  }}
+                  className="employees-search-input"
                 />
               </div>
-              <div style={{ flex: "1", minWidth: "200px" }}>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "5px",
-                    fontWeight: "bold",
-                  }}
-                >
+              <div className="employees-search-field">
+                <label className="employees-search-label">
                   البحث برقم الهاتف:
                   {searchFilters.search_phone.length > 0 &&
                     searchFilters.search_phone.length < 2 && (
-                      <span
-                        style={{
-                          fontSize: "12px",
-                          color: "#f59e0b",
-                          marginRight: "5px",
-                        }}
-                      >
+                      <span className="employees-search-hint">
                         (أدخل حرفين على الأقل)
                       </span>
                     )}
@@ -2225,25 +2126,14 @@ const Employees = () => {
                     })
                   }
                   placeholder="أدخل حرفين على الأقل للبحث"
-                  style={{
-                    width: "100%",
-                    padding: "8px",
-                    borderRadius: "4px",
-                    border: "1px solid #ddd",
-                  }}
+                  className="employees-search-input"
                 />
               </div>
               <div
-                style={{ flex: "1", minWidth: "200px", position: "relative" }}
+                className="employees-search-field branch-dropdown-container"
                 ref={branchDropdownRef}
               >
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "5px",
-                    fontWeight: "bold",
-                  }}
-                >
+                <label className="employees-search-label">
                   فلتر الفرع:
                 </label>
                 <input
@@ -2267,41 +2157,13 @@ const Employees = () => {
                     }
                   }}
                   placeholder="ابحث عن فرع أو اختر من القائمة..."
-                  style={{
-                    width: "100%",
-                    padding: "8px",
-                    borderRadius: "4px",
-                    border: "1px solid #ddd",
-                    backgroundColor: "white",
-                  }}
+                  className="employees-search-input"
                   autoComplete="off"
                 />
                 {isBranchDropdownOpen && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "100%",
-                      left: 0,
-                      right: 0,
-                      maxHeight: "300px",
-                      overflowY: "auto",
-                      backgroundColor: "white",
-                      border: "1px solid #ddd",
-                      borderRadius: "4px",
-                      boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
-                      zIndex: 1000,
-                      marginTop: "4px",
-                    }}
-                  >
+                  <div className="branch-dropdown-menu">
                     <div
-                      style={{
-                        padding: "8px 12px",
-                        cursor: "pointer",
-                        borderBottom: "1px solid #f0f0f0",
-                        backgroundColor: !searchFilters.search_branch
-                          ? "#f0f9ff"
-                          : "white",
-                      }}
+                      className={`branch-dropdown-item${!searchFilters.search_branch ? ' active' : ''}`}
                       onClick={() => {
                         setSearchFilters({
                           ...searchFilters,
@@ -2310,13 +2172,6 @@ const Employees = () => {
                         setBranchSearchTerm("");
                         setIsBranchDropdownOpen(false);
                       }}
-                      onMouseEnter={(e) =>
-                        (e.target.style.backgroundColor = "#f0f9ff")
-                      }
-                      onMouseLeave={(e) =>
-                      (e.target.style.backgroundColor =
-                        !searchFilters.search_branch ? "#f0f9ff" : "white")
-                      }
                     >
                       جميع الفروع
                     </div>
@@ -2335,18 +2190,7 @@ const Employees = () => {
                       .map((branch) => (
                         <div
                           key={branch.id}
-                          style={{
-                            padding: "8px 12px",
-                            cursor: "pointer",
-                            borderBottom: "1px solid #f0f0f0",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            backgroundColor:
-                              searchFilters.search_branch === String(branch.id)
-                                ? "#f0f9ff"
-                                : "white",
-                          }}
+                          className={`branch-dropdown-item${searchFilters.search_branch === String(branch.id) ? ' active' : ''}`}
                           onClick={() => {
                             setSearchFilters({
                               ...searchFilters,
@@ -2355,15 +2199,6 @@ const Employees = () => {
                             setBranchSearchTerm("");
                             setIsBranchDropdownOpen(false);
                           }}
-                          onMouseEnter={(e) =>
-                            (e.target.style.backgroundColor = "#f0f9ff")
-                          }
-                          onMouseLeave={(e) =>
-                          (e.target.style.backgroundColor =
-                            searchFilters.search_branch === String(branch.id)
-                              ? "#f0f9ff"
-                              : "white")
-                          }
                         >
                           <BranchBadge branch={branch} />
                           <span>{branch.branch_name}</span>
@@ -2380,13 +2215,7 @@ const Employees = () => {
                             ?.toLowerCase()
                             .includes(branchSearchTerm.toLowerCase())),
                     ).length === 0 && (
-                        <div
-                          style={{
-                            padding: "12px",
-                            textAlign: "center",
-                            color: "#666",
-                          }}
-                        >
+                        <div className="branch-dropdown-empty">
                           لا توجد فروع مطابقة
                         </div>
                       )}
@@ -2406,8 +2235,7 @@ const Employees = () => {
                         search_branch: "",
                       })
                     }
-                    className="btn-secondary"
-                    style={{ padding: "8px 16px" }}
+                    className="btn-secondary clear-search-btn"
                   >
                     مسح البحث
                   </button>
@@ -2467,42 +2295,9 @@ const Employees = () => {
           {/* Desktop Table */}
           <div className="table-container employees-table-desktop">
             {tableLoading && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  backgroundColor: "rgba(255, 255, 255, 0.8)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  zIndex: 10,
-                  borderRadius: "var(--radius-xl)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: "12px",
-                    color: "var(--primary)",
-                    fontWeight: 600,
-                  }}
-                >
-                  <div
-                    className="table-loading-spinner"
-                    style={{
-                      width: "40px",
-                      height: "40px",
-                      border: "4px solid var(--primary-light)",
-                      borderTop: "4px solid var(--primary)",
-                      borderRadius: "50%",
-                      animation: "spin 1s linear infinite",
-                    }}
-                  ></div>
+              <div className="table-loading-overlay">
+                <div className="table-loading-content">
+                  <div className="table-loading-spinner"></div>
                   <span>جاري تحديث البيانات...</span>
                 </div>
               </div>

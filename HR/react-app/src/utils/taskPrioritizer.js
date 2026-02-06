@@ -781,48 +781,32 @@ const calculatePayrollAbsenceTask = (payrollAbsenceState) => {
 
   const { state, target_open_at, days_until_open } = payrollAbsenceState;
 
-  // If already submitted (view_only) or closed, no task needed
-  if (state === 'view_only' || state === 'closed') {
+  // Only show as a task when entry is actually open — not during countdown
+  if (state !== 'entry_open') {
     return null;
   }
 
-  // Format date helper
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  const isEntryOpen = state === 'entry_open';
-  const isCountdown = state === 'countdown' || state === 'countdown_next';
-
-  // Show task in both cases: entry_open (can submit now) and countdown (waiting)
   return {
     id: 'payroll-absence',
     type: 'payroll_absence',
     category: 'payroll',
-    priority: isEntryOpen ? 'critical' : 'must_do',
-    title: isEntryOpen ? 'تسجيل غياب الموظفين' : 'تسجيل غياب الموظفين (قريباً)',
-    description: isEntryOpen
-      ? 'التسجيل مفتوح الآن! يجب تسجيل غياب الموظفين لهذا الشهر'
-      : `سيفتح التسجيل في ${formatDate(target_open_at)} (بعد ${days_until_open || 0} يوم)`,
+    priority: 'critical',
+    title: 'تسجيل غياب الموظفين',
+    description: 'التسجيل مفتوح الآن! يجب تسجيل غياب الموظفين لهذا الشهر',
     totalItems: 1,
     completedItems: 0,
     remainingItems: 1,
     progress: 0,
     actionUrl: '#payroll-absence',
-    actionLabel: isEntryOpen ? 'تسجيل الغياب' : 'عرض التفاصيل',
-    urgency: isEntryOpen ? 'due_soon' : 'due_later',
+    actionLabel: 'تسجيل الغياب',
+    urgency: 'due_soon',
     estimatedTime: '15 min',
     dependencies: [],
     hasInlineEditor: true,
     deadline: target_open_at,
     daysUntilDeadline: days_until_open || 0,
-    isWaiting: isCountdown,
-    isEntryOpen
+    isWaiting: false,
+    isEntryOpen: true
   };
 };
 
@@ -843,19 +827,10 @@ const calculatePriorityScore = (task) => {
     responses: 1000        // Notifications - very last
   };
 
-  // Special cases for payroll absence:
-  // 1. When entry_open: gets ABSOLUTE HIGHEST priority (above everything - temporary and most important)
-  // 2. When countdown/waiting: gets normal priority (visible but not urgent)
-  if (task.type === 'payroll_absence') {
-    if (task.isEntryOpen) {
-      // Entry is open - ABSOLUTE HIGHEST priority (temporary window, most important task)
-      score += 50000; // Way above everything - this is the most critical task when open
-    } else if (task.isWaiting) {
-      // Waiting for entry to open - show but with lower priority
-      score += 2000; // Below documents (5000) but above notifications (1000)
-    } else {
-      score += categoryOrder[task.category] || 0;
-    }
+  // Special case for payroll absence:
+  // When entry_open: gets ABSOLUTE HIGHEST priority (above everything - temporary and most important)
+  if (task.type === 'payroll_absence' && task.isEntryOpen) {
+    score += 50000; // Way above everything - this is the most critical task when open
   } else {
     score += categoryOrder[task.category] || 0;
   }
