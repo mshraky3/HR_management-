@@ -19,7 +19,7 @@ import { validateDateFields } from "../middleware/dateValidation.js";
 import { Document } from "../models/Document.js";
 import { sql } from "../db-helpers.js";
 import { log } from "../utils/logger.js";
-import { clearByPrefix } from "../utils/simpleCache.js";
+import { clearByPrefix, getCache, setCache } from "../utils/simpleCache.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -847,6 +847,19 @@ router.get("/paginated", async (req, res) => {
  */
 router.get("/statistics", async (req, res) => {
   try {
+    // Build cache key from query params and user context
+    const cacheKeyParts = ['stats', req.user.role, req.user.branch_id || 'all'];
+    if (req.query.branch_id) {
+      cacheKeyParts.push(Array.isArray(req.query.branch_id) ? req.query.branch_id.sort().join(',') : req.query.branch_id);
+    }
+    const cacheKey = cacheKeyParts.join(':');
+
+    // Check cache first (1 minute TTL for statistics - they don't change frequently)
+    const cachedStats = getCache(cacheKey);
+    if (cachedStats) {
+      return res.json(cachedStats);
+    }
+
     // Determine branch filter
     let branchId = null;
     let branchIds = null;
@@ -1553,7 +1566,7 @@ router.get("/statistics", async (req, res) => {
       };
     });
 
-    res.json({
+    const response = {
       success: true,
       data: {
         overview: {
@@ -1754,7 +1767,13 @@ router.get("/statistics", async (req, res) => {
           }
           : {}),
       },
-    });
+    };
+
+    // Cache the response for 1 minute (60000ms)
+    // Statistics don't change frequently and are expensive to compute
+    setCache(cacheKey, response, 60000);
+
+    res.json(response);
   } catch (error) {
     log.error("Error fetching employee statistics", { error: error.message });
     res.status(500).json({

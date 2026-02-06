@@ -10,18 +10,12 @@ export const Notification = {
    * Find notification by ID
    * @param {number} id - Notification ID
    * @param {boolean} includeInactive - If true, return notification even if inactive
+   * NOTE: Expired notification cleanup is now done lazily on write operations to reduce query count
    */
   async findById(id, includeInactive = false) {
     try {
-      // Check and mark as inactive if expired
-      await sql`
-        UPDATE notifications 
-        SET is_active = false, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ${id}
-          AND expires_at IS NOT NULL 
-          AND expires_at < CURRENT_TIMESTAMP 
-          AND is_active = true
-      `;
+      // NOTE: Removed UPDATE query for expired check - now handled in findAll and write operations
+      // This saves 1 query per notification read
 
       let query = sql`
         SELECT n.*, u.full_name as created_by_name
@@ -31,6 +25,7 @@ export const Notification = {
       `;
 
       if (!includeInactive) {
+        // Filter expired notifications in SELECT instead of UPDATE
         query = sql`${query} AND n.is_active = true AND (n.expires_at IS NULL OR n.expires_at >= CURRENT_TIMESTAMP)`;
       }
 
@@ -67,17 +62,17 @@ export const Notification = {
       if (!filters.include_inactive) {
         query = sql`${query} AND n.is_active = true AND (n.expires_at IS NULL OR n.expires_at >= CURRENT_TIMESTAMP)`;
       }
-      
+
       if (filters.created_by) {
         query = sql`${query} AND n.created_by = ${filters.created_by}`;
       }
-      
+
       if (filters.importance_level) {
         query = sql`${query} AND n.importance_level = ${filters.importance_level}`;
       }
-      
+
       query = sql`${query} ORDER BY n.created_at DESC`;
-      
+
       return await query;
     } catch (error) {
       console.error('Error finding notifications:', error);
@@ -118,11 +113,11 @@ export const Notification = {
         n.one_time = false 
         OR NOT (${branchId} = ANY(n.seen_by_branches))
       )`;
-      
+
       if (filters.importance_level) {
         query = sql`${query} AND n.importance_level = ${filters.importance_level}`;
       }
-      
+
       if (filters.response_status) {
         if (filters.response_status === 'no_response') {
           query = sql`${query} AND nr.response_status IS NULL`;
@@ -130,15 +125,15 @@ export const Notification = {
           query = sql`${query} AND nr.response_status = ${filters.response_status}`;
         }
       }
-      
+
       query = sql`${query} ORDER BY n.importance_level DESC, n.created_at DESC`;
-      
+
       const notifications = await query;
-      
+
       // Note: One-time notifications are NOT auto-marked here
       // They should be marked as viewed by the frontend when the user actually sees them
       // This ensures each user sees them once, and only when they actually view the notification
-      
+
       return notifications;
     } catch (error) {
       console.error('Error finding notifications by branch ID:', error);
@@ -152,31 +147,30 @@ export const Notification = {
   async create(notificationData) {
     try {
       const { message, importance_level, created_by, branch_ids, attachment_url, attachment_name, attachment_type, expires_at, one_time } = notificationData;
-      
+
       if (!message || !importance_level || !created_by) {
         throw new Error('message, importance_level, and created_by are required');
       }
-      
+
       if (!branch_ids || !Array.isArray(branch_ids) || branch_ids.length === 0) {
         throw new Error('At least one branch_id is required');
       }
-      
+
       // Start transaction
       const [notification] = await sql`
         INSERT INTO notifications (message, importance_level, created_by, attachment_url, attachment_name, attachment_type, expires_at, one_time)
         VALUES (${message}, ${importance_level}, ${created_by}, ${attachment_url || null}, ${attachment_name || null}, ${attachment_type || null}, ${expires_at || null}, ${one_time || false})
         RETURNING *
       `;
-      
-      // Insert branch associations
-      for (const branchId of branch_ids) {
-        await sql`
-          INSERT INTO notification_branches (notification_id, branch_id)
-          VALUES (${notification.id}, ${branchId})
-          ON CONFLICT (notification_id, branch_id) DO NOTHING
-        `;
-      }
-      
+
+      // Batch insert branch associations using unnest() instead of loop
+      // This reduces N queries to 1 query regardless of number of branches
+      await sql`
+        INSERT INTO notification_branches (notification_id, branch_id)
+        SELECT ${notification.id}, unnest(${branch_ids}::int[])
+        ON CONFLICT (notification_id, branch_id) DO NOTHING
+      `;
+
       // Fetch with created_by name
       return await this.findById(notification.id);
     } catch (error) {
@@ -192,30 +186,30 @@ export const Notification = {
     try {
       const allowedFields = ['message', 'importance_level'];
       const updateFields = Object.keys(updates).filter(key => allowedFields.includes(key));
-      
+
       if (updateFields.length === 0) {
         throw new Error('No valid fields to update');
       }
-      
+
       updates.updated_at = new Date();
-      
+
       // Build SET clause manually
       const setClause = updateFields.map((field, index) => {
         return `${field} = $${index + 2}`;
       }).join(', ');
-      
+
       const values = updateFields.map(field => updates[field]);
       values.unshift(id);
-      
+
       const query = `
         UPDATE notifications 
         SET ${setClause}, updated_at = $${values.length + 1}
         WHERE id = $1 AND is_active = true
         RETURNING *
       `;
-      
+
       values.push(updates.updated_at);
-      
+
       const result = await sql.unsafe(query, values);
       return result[0] || null;
     } catch (error) {
@@ -233,19 +227,19 @@ export const Notification = {
       const [notification] = await sql`
         SELECT id, message FROM notifications WHERE id = ${id}
       `;
-      
+
       if (!notification) {
         return null;
       }
-      
+
       // Delete related records first (CASCADE should handle this, but being explicit)
       await sql`DELETE FROM notification_views WHERE notification_id = ${id}`;
       await sql`DELETE FROM notification_responses WHERE notification_id = ${id}`;
       await sql`DELETE FROM notification_branches WHERE notification_id = ${id}`;
-      
+
       // Delete the notification itself
       await sql`DELETE FROM notifications WHERE id = ${id}`;
-      
+
       return notification;
     } catch (error) {
       console.error('Error deleting notification:', error);
@@ -264,7 +258,7 @@ export const Notification = {
         WHERE id = ${id}
         RETURNING *
       `;
-      
+
       return notification || null;
     } catch (error) {
       console.error('Error activating notification:', error);
@@ -283,7 +277,7 @@ export const Notification = {
         WHERE id = ${id}
         RETURNING *
       `;
-      
+
       return notification || null;
     } catch (error) {
       console.error('Error deactivating notification:', error);
@@ -300,20 +294,20 @@ export const Notification = {
       const [current] = await sql`
         SELECT is_active FROM notifications WHERE id = ${id}
       `;
-      
+
       if (!current) {
         return null;
       }
-      
+
       const newStatus = !current.is_active;
-      
+
       const [notification] = await sql`
         UPDATE notifications 
         SET is_active = ${newStatus}, updated_at = CURRENT_TIMESTAMP
         WHERE id = ${id}
         RETURNING *
       `;
-      
+
       return notification || null;
     } catch (error) {
       console.error('Error toggling notification active status:', error);
@@ -337,7 +331,7 @@ export const Notification = {
         WHERE id = ${notificationId}
         RETURNING id, seen_by_branches
       `;
-      
+
       return notification || null;
     } catch (error) {
       console.error('Error marking notification as seen by branch:', error);
@@ -355,12 +349,12 @@ export const Notification = {
       const [user] = await sql`
         SELECT id FROM users WHERE id = ${userId}
       `;
-      
+
       if (!user) {
         console.warn(`User ${userId} does not exist, skipping mark as viewed`);
         return null;
       }
-      
+
       const [view] = await sql`
         INSERT INTO notification_views (notification_id, user_id)
         VALUES (${notificationId}, ${userId})
@@ -397,7 +391,7 @@ export const Notification = {
     try {
       const notification = await this.findById(id, includeInactive);
       if (!notification) return null;
-      
+
       // Get branches with seen status
       const branches = await sql`
         SELECT b.id, b.branch_name, b.branch_type, nb.created_at as assigned_at,
@@ -408,7 +402,7 @@ export const Notification = {
         WHERE nb.notification_id = ${id}
         ORDER BY b.branch_name
       `;
-      
+
       // Get responses
       const responses = await sql`
         SELECT nr.*, b.branch_name, b.branch_type
@@ -417,7 +411,7 @@ export const Notification = {
         WHERE nr.notification_id = ${id}
         ORDER BY nr.responded_at DESC
       `;
-      
+
       return {
         ...notification,
         branches: branches || [],

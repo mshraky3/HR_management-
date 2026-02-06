@@ -5,22 +5,48 @@
 
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
+import { getCache, setCache, clearByPrefix } from '../utils/simpleCache.js';
+
+// Cache TTL constants (in milliseconds)
+const BRANCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes for individual branches
+const BRANCHES_LIST_CACHE_TTL = 2 * 60 * 1000; // 2 minutes for branch lists
 
 export const Branch = {
   /**
-   * Find branch by ID
+   * Find branch by ID (with caching)
    */
   async findById(id) {
     try {
+      // Check cache first
+      const cacheKey = `branch:${id}`;
+      const cached = getCache(cacheKey);
+      if (cached !== null) {
+        return cached;
+      }
+
       const [branch] = await sql`
         SELECT * FROM branches 
         WHERE id = ${id} AND is_active = true
       `;
-      return branch || null;
+
+      const result = branch || null;
+      // Cache the result (even null to prevent repeated queries for non-existent branches)
+      setCache(cacheKey, result, BRANCH_CACHE_TTL);
+      return result;
     } catch (error) {
       log.error('Error finding branch by ID', { error: error.message });
       throw error;
     }
+  },
+
+  /**
+   * Clear branch cache (call after updates)
+   */
+  clearCache(id = null) {
+    if (id) {
+      clearByPrefix(`branch:${id}`);
+    }
+    clearByPrefix('branches:list');
   },
 
   /**
@@ -67,10 +93,17 @@ export const Branch = {
   },
 
   /**
-   * Get all branches (with optional filters)
+   * Get all branches (with optional filters and caching)
    */
   async findAll(filters = {}) {
     try {
+      // Create cache key based on filters
+      const cacheKey = `branches:list:${JSON.stringify(filters)}`;
+      const cached = getCache(cacheKey);
+      if (cached !== null) {
+        return cached;
+      }
+
       let query = sql`SELECT * FROM branches WHERE 1=1`;
 
       if (filters.branch_type) {
@@ -89,7 +122,10 @@ export const Branch = {
 
       query = sql`${query} ORDER BY created_at DESC`;
 
-      return await query;
+      const result = await query;
+      // Cache the result
+      setCache(cacheKey, result, BRANCHES_LIST_CACHE_TTL);
+      return result;
     } catch (error) {
       log.error('Error finding branches', { error: error.message });
       throw error;
@@ -175,6 +211,8 @@ export const Branch = {
       values.push(new Date());
 
       const result = await sql.unsafe(query, values);
+      // Clear cache after update
+      this.clearCache(id);
       return result[0] || null;
     } catch (error) {
       log.error('Error updating branch', { error: error.message });
@@ -194,6 +232,8 @@ export const Branch = {
         RETURNING id, branch_name, is_active
       `;
 
+      // Clear cache after deletion
+      this.clearCache(id);
       return branch;
     } catch (error) {
       log.error('Error soft deleting branch', { error: error.message });

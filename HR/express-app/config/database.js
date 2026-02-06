@@ -19,21 +19,23 @@ if (process.env.DATABASE_URL) {
   sql = postgres(process.env.DATABASE_URL, {
     ssl:
       process.env.DATABASE_SSL === "true" ||
-      process.env.DATABASE_SSL === "require"
+        process.env.DATABASE_SSL === "require"
         ? "require"
         : false,
-    max: parseInt(process.env.DB_POOL_MAX || "25", 10),
-    idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "30", 10),
+    // Reduced default pool size for serverless (Vercel) compatibility
+    // Neon free tier: 10 connections, Vercel serverless: best with 5-10
+    max: parseInt(process.env.DB_POOL_MAX || "8", 10),
+    idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "20", 10),
     connect_timeout: 10,
     max_lifetime: 60 * 30,
     transform: {
       undefined: null,
     },
-    onnotice: () => {},
+    onnotice: () => { },
     debug:
       process.env.LOG_DB_QUERIES === "true"
         ? (connection, query) =>
-            log.debug("DB Query", { query: query?.substring?.(0, 100) })
+          log.debug("DB Query", { query: query?.substring?.(0, 100) })
         : undefined,
   });
 } else {
@@ -63,18 +65,19 @@ if (process.env.DATABASE_URL) {
     username: process.env.DATABASE_USER || "",
     password: process.env.DATABASE_PASSWORD || "",
     ssl: "require",
-    max: parseInt(process.env.DB_POOL_MAX || "25", 10),
-    idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "30", 10),
+    // Reduced default pool size for serverless (Vercel) compatibility
+    max: parseInt(process.env.DB_POOL_MAX || "8", 10),
+    idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "20", 10),
     connect_timeout: 10,
     max_lifetime: 60 * 30,
     transform: {
       undefined: null,
     },
-    onnotice: () => {},
+    onnotice: () => { },
     debug:
       process.env.LOG_DB_QUERIES === "true"
         ? (connection, query) =>
-            log.debug("DB Query", { query: query?.substring?.(0, 100) })
+          log.debug("DB Query", { query: query?.substring?.(0, 100) })
         : undefined,
   });
 }

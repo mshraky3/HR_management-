@@ -12,6 +12,8 @@ export const BusTransportation = {
    */
   async findById(id) {
     try {
+      // Optimized: Single query with all JOINs instead of 6 separate queries
+      // This reduces database round-trips significantly (especially important for Vercel/serverless)
       const [bus] = await sql`
         SELECT 
           bt.*,
@@ -21,44 +23,41 @@ export const BusTransportation = {
           t.academic_year_label,
           t.term_number,
           t.start_date as term_start_date,
-          t.end_date as term_end_date
+          t.end_date as term_end_date,
+          -- Registration data as JSON
+          row_to_json(brd.*) as registration_data,
+          -- Driver license data as JSON
+          row_to_json(dld.*) as driver_license_data,
+          -- Bus details as JSON
+          row_to_json(bd.*) as details_data
         FROM bus_transportation bt
         INNER JOIN branches b ON bt.branch_id = b.id
         INNER JOIN terms t ON bt.term_id = t.id
+        LEFT JOIN bus_registration_data brd ON brd.bus_id = bt.id
+        LEFT JOIN driver_license_data dld ON dld.bus_id = bt.id
+        LEFT JOIN bus_details bd ON bd.bus_id = bt.id
         WHERE bt.id = ${id}
       `;
-      
+
       if (!bus) {
         return null;
       }
 
-      // Get related data
-      const [registration] = await sql`
-        SELECT * FROM bus_registration_data WHERE bus_id = ${id}
-      `;
-      
-      const [driverLicense] = await sql`
-        SELECT * FROM driver_license_data WHERE bus_id = ${id}
-      `;
-      
-      const licensePlates = await sql`
-        SELECT * FROM license_plate_data WHERE bus_id = ${id} ORDER BY is_primary DESC, created_at ASC
-      `;
-      
-      const [details] = await sql`
-        SELECT * FROM bus_details WHERE bus_id = ${id}
-      `;
-      
-      const students = await sql`
-        SELECT * FROM bus_students WHERE bus_id = ${id} ORDER BY created_at ASC
-      `;
+      // Fetch license plates and students in parallel (these are arrays, can't be JOINed without aggregation)
+      const [licensePlates, students] = await Promise.all([
+        sql`SELECT * FROM license_plate_data WHERE bus_id = ${id} ORDER BY is_primary DESC, created_at ASC`,
+        sql`SELECT * FROM bus_students WHERE bus_id = ${id} ORDER BY created_at ASC`
+      ]);
+
+      // Extract embedded JSON data
+      const { registration_data, driver_license_data, details_data, ...busData } = bus;
 
       return {
-        ...bus,
-        registration: registration || null,
-        driver_license: driverLicense || null,
+        ...busData,
+        registration: registration_data && registration_data.id ? registration_data : null,
+        driver_license: driver_license_data && driver_license_data.id ? driver_license_data : null,
         license_plates: licensePlates || [],
-        details: details || null,
+        details: details_data && details_data.id ? details_data : null,
         students: students || []
       };
     } catch (error) {
@@ -297,17 +296,17 @@ export const BusTransportation = {
   async create(busData) {
     try {
       const { branch_id, term_id, bus_number, created_by } = busData;
-      
+
       if (!term_id) {
         throw new Error('term_id is required');
       }
-      
+
       const [bus] = await sql`
         INSERT INTO bus_transportation (branch_id, term_id, bus_number, created_by, updated_by)
         VALUES (${branch_id}, ${term_id}, ${bus_number}, ${created_by || null}, ${created_by || null})
         RETURNING *
       `;
-      
+
       return bus;
     } catch (error) {
       log.error('Error creating bus', { error: error.message });
@@ -329,39 +328,39 @@ export const BusTransportation = {
       ];
       const updateFields = [];
       const updateValues = [];
-      
+
       for (const field of allowedFields) {
         if (updates[field] !== undefined) {
           updateFields.push(field);
           updateValues.push(updates[field]);
         }
       }
-      
+
       if (updates.updated_by !== undefined) {
         updateFields.push('updated_by');
         updateValues.push(updates.updated_by);
       }
-      
+
       if (updateFields.length === 0) {
         throw new Error('No valid fields to update');
       }
-      
+
       const setClause = updateFields.map((field, index) => {
         return `${field} = $${index + 2}`;
       }).join(', ');
-      
+
       const values = [...updateValues];
       values.unshift(id);
-      
+
       const query = `
         UPDATE bus_transportation 
         SET ${setClause}, updated_at = $${values.length + 1}
         WHERE id = $1
         RETURNING *
       `;
-      
+
       values.push(new Date());
-      
+
       const result = await sql.unsafe(query, values);
       return result[0] || null;
     } catch (error) {
@@ -380,7 +379,7 @@ export const BusTransportation = {
         WHERE id = ${id}
         RETURNING id, bus_number, term_id
       `;
-      
+
       return bus;
     } catch (error) {
       log.error('Error deleting bus', { error: error.message });
