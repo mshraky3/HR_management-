@@ -1032,7 +1032,6 @@ const Employees = () => {
 
       // Parse salary fields - set to 0 if empty instead of null
       const salaryFields = [
-        "salary",
         "base_salary",
         "housing_allowance",
         "transportation_allowance",
