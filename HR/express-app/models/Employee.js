@@ -509,7 +509,7 @@ export const Employee = {
         'religion', 'marital_status', 'educational_qualification', 'specialization',
         'bank_iban', 'bank_name', 'email', 'phone_number', 'national_address', 'contract_type',
         'contract_start_date_hijri', 'contract_start_date_gregorian', 'contract_end_date_hijri', 'contract_end_date_gregorian',
-        'years_of_experience_in_same_institution', 'years_of_experience_in_company', 'salary',
+        'years_of_experience_in_same_institution', 'years_of_experience_in_company',
         'base_salary', 'housing_allowance', 'transportation_allowance',
         'end_of_service_allowance', 'annual_leave_allowance', 'other_allowances',
         'graduation_year', 'university_gpa',
@@ -530,7 +530,7 @@ export const Employee = {
       console.log('[EMPLOYEE MODEL] Executing UPDATE query...');
 
       // Ensure salary fields are 0 instead of null
-      const salaryFields = ['salary', 'base_salary', 'housing_allowance', 'transportation_allowance',
+      const salaryFields = ['base_salary', 'housing_allowance', 'transportation_allowance',
         'end_of_service_allowance', 'annual_leave_allowance', 'other_allowances'];
 
       salaryFields.forEach(field => {
@@ -1106,7 +1106,7 @@ export const Employee = {
         'contract_start_date_hijri', 'contract_start_date_gregorian',
         'contract_end_date_hijri', 'contract_end_date_gregorian',
         'years_of_experience_in_same_institution', 'years_of_experience_in_company',
-        'salary', 'base_salary',
+        'base_salary',
         'housing_allowance', 'transportation_allowance',
         'end_of_service_allowance', 'annual_leave_allowance',
         'other_allowances',
