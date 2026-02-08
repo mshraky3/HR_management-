@@ -3,7 +3,7 @@
  * Provides toast notification functionality across the app
  */
 
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
 
 // Ensure a single context instance even if Vite loads this module twice
 // (e.g. different dev query strings like `?v=dev` causing duplicate module ids).
@@ -30,20 +30,20 @@ export const useNotification = () => {
 export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
 
-  const showNotification = useCallback((message, type = "info") => {
+  const showNotification = useCallback((message, type = "info", duration = 5000) => {
     const id = Date.now() + Math.random();
     const notification = {
       id,
       message,
-      type, // 'success', 'error', 'warning', 'info'
+      type, // 'success', 'error', 'warning', 'info', 'server-error'
     };
 
     setNotifications((prev) => [...prev, notification]);
 
-    // Auto remove after 5 seconds
+    // Auto remove after duration
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
-    }, 5000);
+    }, duration);
 
     return id;
   }, []);
@@ -76,9 +76,30 @@ export const NotificationProvider = ({ children }) => {
     [showNotification],
   );
 
+  // Special notification for server errors (500) - longer duration, friendlier message
+  const showServerError = useCallback(
+    (originalMessage) => {
+      const friendlyMessage = "حدث خطأ في النظام. تم إرسال تقرير تلقائي للإدارة وسيتم حل المشكلة خلال ٢-٣ ساعات. يرجى المحاولة لاحقاً.";
+      return showNotification(friendlyMessage, "server-error", 12000); // 12 seconds
+    },
+    [showNotification],
+  );
+
   const removeNotification = useCallback((id) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   }, []);
+
+  // Expose showServerError globally for api.js to use
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__showServerError = showServerError;
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete window.__showServerError;
+      }
+    };
+  }, [showServerError]);
 
   const value = {
     notifications,
@@ -86,6 +107,7 @@ export const NotificationProvider = ({ children }) => {
     showError,
     showWarning,
     showInfo,
+    showServerError,
     removeNotification,
   };
 
@@ -112,6 +134,7 @@ export const NotificationProvider = ({ children }) => {
                   />
                 )}
                 {notification.type === "info" && "ℹ"}
+                {notification.type === "server-error" && "⚠️"}
               </span>
               <span className="notification-message">
                 {notification.message}

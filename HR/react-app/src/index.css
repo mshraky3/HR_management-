@@ -264,6 +264,25 @@ label {
   background: linear-gradient(to left, #BDE8F5 0%, #fff 20%);
 }
 
+.notification-server-error {
+  border-right-color: #dc2626;
+  background: linear-gradient(to left, #fef2f2 0%, #fff8f8 50%, #fff 100%);
+  min-width: 350px;
+  padding: 16px 20px;
+  border-right-width: 6px;
+  box-shadow: 0 8px 25px rgba(220, 38, 38, 0.2);
+}
+
+.notification-server-error .notification-message {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #991b1b;
+}
+
+.notification-server-error .notification-icon {
+  font-size: 24px;
+}
+
 .notification-content {
   display: flex;
   align-items: center;

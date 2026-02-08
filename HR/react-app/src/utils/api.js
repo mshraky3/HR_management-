@@ -394,6 +394,11 @@ api.interceptors.response.use(
     // Report server errors (500+) that aren't backend connection issues
     if (error.response?.status >= 500) {
       reportApiError(error, config);
+
+      // Show friendly server error notification to user
+      if (window.__showServerError) {
+        window.__showServerError(error.message);
+      }
     }
 
     // Only redirect to login for authentication-related 401 errors

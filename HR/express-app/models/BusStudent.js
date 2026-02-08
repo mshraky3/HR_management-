@@ -258,7 +258,7 @@ export const BusStudent = {
           LEFT JOIN (
             SELECT bus_id, plate_number
             FROM license_plate_data
-            WHERE plate_type = 'primary'
+            WHERE is_primary = true
           ) lpd ON bt.id = lpd.bus_id
           WHERE LOWER(TRIM(bs.student_full_name)) = ${normalizedName}
             AND bs.contact_mobile_number = ${phoneNumber}
@@ -276,7 +276,7 @@ export const BusStudent = {
           LEFT JOIN (
             SELECT bus_id, plate_number
             FROM license_plate_data
-            WHERE plate_type = 'primary'
+            WHERE is_primary = true
           ) lpd ON bt.id = lpd.bus_id
           WHERE LOWER(TRIM(bs.student_full_name)) = ${normalizedName}
             AND bs.contact_mobile_number = ${phoneNumber}
@@ -293,7 +293,7 @@ export const BusStudent = {
           LEFT JOIN (
             SELECT bus_id, plate_number
             FROM license_plate_data
-            WHERE plate_type = 'primary'
+            WHERE is_primary = true
           ) lpd ON bt.id = lpd.bus_id
           WHERE LOWER(TRIM(bs.student_full_name)) = ${normalizedName}
             AND bs.contact_mobile_number = ${phoneNumber}
