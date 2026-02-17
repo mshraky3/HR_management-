@@ -347,9 +347,13 @@ export const Employee = {
       // Calculate offset
       const offset = (page - 1) * pageSize;
 
+      // Exclude employees whose branch has been deactivated
+      conditions.push(`(b.is_active = true OR b.is_active IS NULL)`);
+
       // Execute count and data queries in parallel
       const countQuery = `
         SELECT COUNT(DISTINCT e.id) as total FROM employees e
+        LEFT JOIN branches b ON b.id = e.branch_id
         ${shouldJoinBranches ? 'LEFT JOIN employee_branches eb ON eb.employee_id = e.id' : ''}
         WHERE ${whereClause}
       `;
@@ -359,6 +363,7 @@ export const Employee = {
                e.data_completion_status, e.status, e.created_at,
                TRIM(COALESCE(e.first_name, '') || ' ' || COALESCE(e.second_name, '') || ' ' || COALESCE(e.third_name, '') || ' ' || COALESCE(e.fourth_name, '')) AS full_name
         FROM employees e
+        LEFT JOIN branches b ON b.id = e.branch_id
         ${shouldJoinBranches ? 'LEFT JOIN employee_branches eb ON eb.employee_id = e.id' : ''}
         WHERE ${whereClause} 
         ORDER BY full_name ASC 
@@ -698,8 +703,8 @@ export const Employee = {
       const params = [];
       let paramIndex = 1;
 
-      // Exclude active and pending (pending are not archived yet)
-      conditions.push("e.status NOT IN ('active', 'pending')");
+      // Show archived employees OR employees in deactivated branches
+      conditions.push("(e.status NOT IN ('active', 'pending') OR b.is_active = false)");
 
       if (filters.branch_id) {
         if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
@@ -773,6 +778,7 @@ export const Employee = {
       const countQuery = `
         SELECT COUNT(*) as total
         FROM employees e
+        LEFT JOIN branches b ON e.branch_id = b.id
         WHERE ${whereClause}
       `;
       const countResult = await sql.unsafe(countQuery, params);
@@ -783,7 +789,8 @@ export const Employee = {
         SELECT 
           e.*,
           b.branch_name,
-          b.branch_type
+          b.branch_type,
+          b.is_active AS branch_is_active
         FROM employees e
         LEFT JOIN branches b ON e.branch_id = b.id
         WHERE ${whereClause}
@@ -937,7 +944,7 @@ export const Employee = {
    * Link employee to an additional branch
    * @param {number} employeeId - Employee ID
    * @param {number} branchId - Branch ID to link
-   * @param {number} addedBy - User/branch ID who added the link
+   * @param {number} addedBy - Branch ID who added the link (references branches.id)
    * @returns {Promise<Object>} - The created employee_branches record
    */
   async linkToBranch(employeeId, branchId, addedBy = null) {
@@ -969,7 +976,105 @@ export const Employee = {
 
       return link;
     } catch (error) {
-      log.error('Error linking employee to branch', { error: error.message });
+      // Handle unique constraint violation (employee already linked to branch)
+      if (error.code === '23505') {
+        log.warn('Employee already linked to branch (unique constraint)', { employeeId, branchId });
+        const [existing] = await sql`
+          SELECT * FROM employee_branches
+          WHERE employee_id = ${employeeId} AND branch_id = ${branchId}
+        `;
+        return existing;
+      }
+      log.error('Error linking employee to branch', { error: error.message, employeeId, branchId, addedBy });
+      throw error;
+    }
+  },
+
+  /**
+   * Transfer employee to a different primary branch
+   * Updates employees.branch_id and syncs employee_branches is_primary flags
+   */
+  async transferToBranch(employeeId, newBranchId, transferredBy) {
+    try {
+      // Get old branch_id
+      const [emp] = await sql`SELECT branch_id FROM employees WHERE id = ${employeeId}`;
+      if (!emp) throw new Error('Employee not found');
+      const oldBranchId = emp.branch_id;
+
+      // Update the main branch_id
+      await sql`
+        UPDATE employees
+        SET branch_id = ${newBranchId}, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ${employeeId}
+      `;
+
+      // Remove old primary flag
+      await sql`
+        UPDATE employee_branches SET is_primary = false
+        WHERE employee_id = ${employeeId} AND is_primary = true
+      `;
+
+      // Upsert the new branch link and set as primary
+      await sql`
+        INSERT INTO employee_branches (employee_id, branch_id, is_primary, added_by)
+        VALUES (${employeeId}, ${newBranchId}, true, ${transferredBy})
+        ON CONFLICT (employee_id, branch_id) DO UPDATE SET is_primary = true
+      `;
+
+      log.info('Employee transferred', { employeeId, oldBranchId, newBranchId, transferredBy });
+      return await this.findById(employeeId);
+    } catch (error) {
+      log.error('Error transferring employee', { error: error.message, employeeId, newBranchId });
+      throw error;
+    }
+  },
+
+  /**
+   * Unlink employee from a secondary branch
+   * Cannot unlink the primary branch — must transfer first
+   */
+  async unlinkFromBranch(employeeId, branchId) {
+    try {
+      // Check if this is the primary branch
+      const [link] = await sql`
+        SELECT is_primary FROM employee_branches
+        WHERE employee_id = ${employeeId} AND branch_id = ${branchId}
+      `;
+      if (!link) {
+        throw new Error('الموظف غير مرتبط بهذا الفرع');
+      }
+      if (link.is_primary) {
+        throw new Error('لا يمكن إلغاء ربط الفرع الأساسي. يجب نقل الموظف أولاً');
+      }
+
+      await sql`
+        DELETE FROM employee_branches
+        WHERE employee_id = ${employeeId} AND branch_id = ${branchId}
+      `;
+
+      log.info('Employee unlinked from branch', { employeeId, branchId });
+      return true;
+    } catch (error) {
+      log.error('Error unlinking employee from branch', { error: error.message, employeeId, branchId });
+      throw error;
+    }
+  },
+
+  /**
+   * Get all branches linked to an employee with branch details
+   */
+  async getLinkedBranches(employeeId) {
+    try {
+      const branches = await sql`
+        SELECT eb.*, b.branch_name, b.branch_type, b.is_active
+        FROM employee_branches eb
+        JOIN branches b ON eb.branch_id = b.id
+        WHERE eb.employee_id = ${employeeId}
+        ORDER BY eb.is_primary DESC, eb.added_at ASC
+      `;
+      return branches;
+    } catch (error) {
+      log.error('Error getting linked branches', { error: error.message, employeeId });
       throw error;
     }
   },

@@ -2582,11 +2582,11 @@ router.post("/link-to-branch", async (req, res) => {
     }
 
     // Determine the branch to link to
-    let targetBranchId = req.body.branch_id;
+    let targetBranchId = req.body.branch_id ? parseInt(req.body.branch_id) : null;
 
     // For branch managers, force to their branch
     if (req.user.role === "branch_manager") {
-      targetBranchId = req.user.branch_id;
+      targetBranchId = parseInt(req.user.branch_id);
     }
 
     if (!targetBranchId) {
@@ -2624,8 +2624,8 @@ router.post("/link-to-branch", async (req, res) => {
       });
     }
 
-    // Link the employee to the new branch
-    await Employee.linkToBranch(existingEmployee.id, targetBranchId, req.user.id);
+    // Link the employee to the new branch (added_by references branches.id)
+    await Employee.linkToBranch(existingEmployee.id, targetBranchId, req.user.branch_id);
 
     // Reload employee with updated branch info
     const updatedEmployee = await Employee.findById(existingEmployee.id);
@@ -2789,7 +2789,7 @@ router.post(
       // Set created_by to branch_id (never null)
       // For branch managers: use their branch_id
       // For main managers: use the employee's branch_id
-      let createdByBranchId = req.body.branch_id;
+      let createdByBranchId = req.body.branch_id ? parseInt(req.body.branch_id) : null;
       console.log(
         "[EMPLOYEE CREATE] Initial createdByBranchId:",
         createdByBranchId,
@@ -2797,7 +2797,7 @@ router.post(
 
       // If branch manager, force to their branch_id
       if (req.user.role === "branch_manager" && req.user.branch_id) {
-        createdByBranchId = req.user.branch_id;
+        createdByBranchId = parseInt(req.user.branch_id);
         console.log(
           "[EMPLOYEE CREATE] Updated createdByBranchId for branch manager:",
           createdByBranchId,
@@ -2862,8 +2862,8 @@ router.post(
             }
           }
 
-          // Check if already linked to the target branch
-          const isAlreadyLinked = existingBranches.some(b => b.id === createdByBranchId);
+          // Check if already linked to the target branch (parseInt for safe comparison)
+          const isAlreadyLinked = existingBranches.some(b => Number(b.id) === Number(createdByBranchId));
 
           if (isAlreadyLinked) {
             console.log("[EMPLOYEE CREATE] Employee already exists in this branch");
@@ -2924,7 +2924,7 @@ router.post(
             }
           }
 
-          const isAlreadyLinked = existingBranches.some(b => b.branch_id === createdByBranchId || b.id === createdByBranchId);
+          const isAlreadyLinked = existingBranches.some(b => Number(b.branch_id) === Number(createdByBranchId) || Number(b.id) === Number(createdByBranchId));
 
           if (isAlreadyLinked) {
             return res.status(409).json({
@@ -2980,7 +2980,7 @@ router.post(
             await Employee.linkToBranch(
               existingEmployeeId,
               linkBranchId,
-              req.user.id,
+              createdByBranchId,
             );
             const updatedEmployee = await Employee.findById(existingEmployeeId);
             clearByPrefix(`dashboard:summary:${linkBranchId}`);
@@ -3038,7 +3038,7 @@ router.post(
         await Employee.linkToBranch(
           employee.id,
           createdByBranchId,
-          req.user.id,
+          req.user.branch_id,
         );
         console.log("[EMPLOYEE CREATE] Successfully linked employee to branch");
       } catch (linkError) {
@@ -3403,13 +3403,16 @@ router.delete("/:id", async (req, res) => {
       });
     }
 
-    // Archive employee by setting status to 'other' with deactivation reason
+    // Get deletion reason from request body
+    const reason = req.body?.reason || "تم إلغاء التفعيل";
+
+    // Archive employee by setting status to 'other' with deletion reason
     // Use employee's branch_id as statusChangedBy
     const updatedEmployee = await Employee.updateStatus(
       employeeId,
       "other",
       employee.branch_id,
-      "تم إلغاء التفعيل",
+      reason,
     );
 
     // Invalidate dashboard & branch statistics caches for this branch
@@ -3781,18 +3784,25 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
       rawGender.includes("female") ||
       rawGender.includes("femme");
 
-    // Calculate total salary from base_salary + other_allowances
+    // Calculate total salary from all components
     const baseSalaryValue = parseFloat(certificate_data?.basic_salary || employee.base_salary || 0);
+    const housingAllowanceValue = parseFloat(certificate_data?.housing_allowance || employee.housing_allowance || 0);
+    const transportationAllowanceValue = parseFloat(certificate_data?.transportation_allowance || employee.transportation_allowance || 0);
+    const annualLeaveAllowanceValue = parseFloat(certificate_data?.annual_leave_allowance || employee.annual_leave_allowance || 0);
+    const endOfServiceAllowanceValue = parseFloat(certificate_data?.end_of_service_allowance || employee.end_of_service_allowance || 0);
     const otherAllowancesValue = parseFloat(certificate_data?.other_allowances || employee.other_allowances || 0);
-    const employeeSalary = baseSalaryValue + otherAllowancesValue;
+    const employeeSalary = baseSalaryValue + housingAllowanceValue + transportationAllowanceValue + annualLeaveAllowanceValue + endOfServiceAllowanceValue + otherAllowancesValue;
 
     const basicSalary = certificate_data?.basic_salary || "";
     const housingAllowance = certificate_data?.housing_allowance || "";
     const transportationAllowance =
       certificate_data?.transportation_allowance || "";
+    const annualLeaveAllowance = certificate_data?.annual_leave_allowance || "";
+    const endOfServiceAllowance = certificate_data?.end_of_service_allowance || "";
     const otherAllowances = certificate_data?.other_allowances || "";
     const recipient = certificate_data?.recipient || "الي من يهمه الامر";
     const employer = certificate_data?.employer || "شركة الرعاية المتناهية";
+    const customTitle = certificate_data?.custom_title || null;
 
     // Format date to English format (dd-mm-yyyy) - no "م" for table
     const formatDateEnglish = (gregorianDate) => {
@@ -3933,11 +3943,12 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     // Create certificate content using pdfmake with table layout
     const certificateContent = [];
 
-    // Title - different for each certificate type
-    const titleText =
+    // Title - use custom title if provided, otherwise default per type
+    const defaultTitle =
       certificate_type === "salary" ? "خطاب تعريف راتب" :
         certificate_type === "specialties" ? "تعريف هيئة التخصصات" :
           "شهادة خبرة";
+    const titleText = customTitle || defaultTitle;
     certificateContent.push({
       text: titleText,
       style: "certificateTitle",
@@ -4318,100 +4329,66 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
       certificateContent.push({
         text: "تفاصيل الراتب",
         style: "sectionTitle",
+        fontSize: 13,
         alignment: "right",
-        margin: [40, 15, 40, 10],
+        margin: [40, 8, 40, 5],
         bold: true,
       });
 
       const salaryTableBody = [];
 
+      // Helper to create a salary row with compact font
+      const salaryRow = (label, value, isBold = false) => [
+        {
+          text: label,
+          fontSize: 11,
+          bold: true,
+          color: "#000000",
+          alignment: "right",
+          border: [true, true, true, true],
+        },
+        {
+          text: value,
+          fontSize: 11,
+          bold: isBold,
+          color: "#000000",
+          alignment: "right",
+          border: [true, true, true, true],
+        },
+      ];
+
       // Add basic salary row if provided
       if (basicSalary) {
-        salaryTableBody.push([
-          {
-            text: "الراتب الأساسي:",
-            style: "infoLabel",
-            alignment: "right",
-            border: [true, true, true, true],
-          },
-          {
-            text: `﷼ ${basicSalary}`,
-            style: "infoValue",
-            alignment: "right",
-            border: [true, true, true, true],
-          },
-        ]);
+        salaryTableBody.push(salaryRow("الراتب الأساسي:", `﷼ ${basicSalary}`));
       }
 
       // Add housing allowance row if provided
       if (housingAllowance) {
-        salaryTableBody.push([
-          {
-            text: "بدل السكن:",
-            style: "infoLabel",
-            alignment: "right",
-            border: [true, true, true, true],
-          },
-          {
-            text: `﷼ ${housingAllowance}`,
-            style: "infoValue",
-            alignment: "right",
-            border: [true, true, true, true],
-          },
-        ]);
+        salaryTableBody.push(salaryRow("بدل السكن:", `﷼ ${housingAllowance}`));
       }
 
       // Add transportation allowance row if provided
       if (transportationAllowance) {
-        salaryTableBody.push([
-          {
-            text: "بدل النقل:",
-            style: "infoLabel",
-            alignment: "right",
-            border: [true, true, true, true],
-          },
-          {
-            text: `﷼ ${transportationAllowance}`,
-            style: "infoValue",
-            alignment: "right",
-            border: [true, true, true, true],
-          },
-        ]);
+        salaryTableBody.push(salaryRow("بدل النقل:", `﷼ ${transportationAllowance}`));
+      }
+
+      // Add annual leave allowance row if provided
+      if (annualLeaveAllowance) {
+        salaryTableBody.push(salaryRow("بدل الإجازة السنوية:", `﷼ ${annualLeaveAllowance}`));
+      }
+
+      // Add end of service allowance row if provided
+      if (endOfServiceAllowance) {
+        salaryTableBody.push(salaryRow("بدل نهاية الخدمة:", `﷼ ${endOfServiceAllowance}`));
       }
 
       // Add other allowances row if provided
       if (otherAllowances) {
-        salaryTableBody.push([
-          {
-            text: "بدلات أخرى:",
-            style: "infoLabel",
-            alignment: "right",
-            border: [true, true, true, true],
-          },
-          {
-            text: `﷼ ${otherAllowances}`,
-            style: "infoValue",
-            alignment: "right",
-            border: [true, true, true, true],
-          },
-        ]);
+        salaryTableBody.push(salaryRow("بدلات أخرى:", `﷼ ${otherAllowances}`));
       }
 
       // Add total salary row
-      salaryTableBody.push([
-        {
-          text: "الراتب الإجمالي:",
-          style: "infoLabelBold",
-          alignment: "right",
-          border: [true, true, true, true],
-        },
-        {
-          text: employeeSalary ? `﷼ ${employeeSalary}` : "غير محدد",
-          style: "infoValueBold",
-          alignment: "right",
-          border: [true, true, true, true],
-        },
-      ]);
+      salaryTableBody.push(salaryRow("الراتب الإجمالي:", employeeSalary ? `﷼ ${employeeSalary}` : "غير محدد", true));
 
       const salaryTable = {
         table: {
@@ -4419,17 +4396,16 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
           body: salaryTableBody,
         },
         layout: {
-          paddingLeft: () => 6,
-          paddingRight: () => 6,
-          paddingTop: (i) => (i === 0 ? 6 : 4),
-          paddingBottom: (i, node) =>
-            i === node.table.body.length - 1 ? 6 : 4,
-          hLineWidth: () => 1,
-          vLineWidth: () => 1,
+          paddingLeft: () => 3,
+          paddingRight: () => 3,
+          paddingTop: () => 1,
+          paddingBottom: () => 1,
+          hLineWidth: () => 0.5,
+          vLineWidth: () => 0.5,
           hLineColor: () => "#000000",
           vLineColor: () => "#000000",
         },
-        margin: [40, 0, 40, 15],
+        margin: [40, 0, 40, 8],
       };
 
       certificateContent.push(salaryTable);
@@ -4741,6 +4717,125 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
         error: error.message,
       });
     }
+  }
+});
+
+// ============================================================
+// Employee Transfer & Multi-Branch Routes (Main Manager Only)
+// ============================================================
+
+// Transfer employee to another branch
+router.put("/:id/transfer", async (req, res) => {
+  try {
+    // Only main managers can transfer
+    if (req.user.role !== 'main_manager') {
+      return res.status(403).json({ success: false, message: 'غير مصرح لك بنقل الموظفين' });
+    }
+
+    const { Employee } = await import("../models/Employee.js");
+    const { Branch } = await import("../models/Branch.js");
+    const employeeId = parseInt(req.params.id);
+    const { target_branch_id } = req.body;
+
+    if (!target_branch_id) {
+      return res.status(400).json({ success: false, message: 'يجب تحديد الفرع المستهدف' });
+    }
+
+    // Check employee exists
+    const employee = await Employee.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ success: false, message: 'الموظف غير موجود' });
+    }
+
+    // Check target branch is active
+    const targetBranch = await Branch.findById(parseInt(target_branch_id));
+    if (!targetBranch) {
+      return res.status(404).json({ success: false, message: 'الفرع المستهدف غير موجود أو محذوف' });
+    }
+
+    // Can't transfer to same branch
+    if (employee.branch_id === parseInt(target_branch_id)) {
+      return res.status(400).json({ success: false, message: 'الموظف موجود بالفعل في هذا الفرع' });
+    }
+
+    const updatedEmployee = await Employee.transferToBranch(
+      employeeId,
+      parseInt(target_branch_id),
+      req.user.branch_id || req.user.id
+    );
+
+    // Clear caches
+    const { clearByPrefix } = await import("../utils/simpleCache.js");
+    clearByPrefix(`dashboard:summary:${employee.branch_id}`);
+    clearByPrefix(`dashboard:summary:${target_branch_id}`);
+    clearByPrefix("branch-statistics");
+
+    res.json({
+      success: true,
+      message: `تم نقل الموظف "${employee.first_name} ${employee.second_name}" إلى فرع "${targetBranch.branch_name}" بنجاح`,
+      data: updatedEmployee
+    });
+  } catch (error) {
+    log.error("Error transferring employee", { error: error.message });
+    res.status(500).json({ success: false, message: 'فشل نقل الموظف', error: error.message });
+  }
+});
+
+// Get all branches linked to an employee
+router.get("/:id/branches", async (req, res) => {
+  try {
+    const { Employee } = await import("../models/Employee.js");
+    const employeeId = parseInt(req.params.id);
+
+    const employee = await Employee.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ success: false, message: 'الموظف غير موجود' });
+    }
+
+    const branches = await Employee.getLinkedBranches(employeeId);
+
+    res.json({
+      success: true,
+      data: branches
+    });
+  } catch (error) {
+    log.error("Error getting employee branches", { error: error.message });
+    res.status(500).json({ success: false, message: 'فشل جلب فروع الموظف', error: error.message });
+  }
+});
+
+// Unlink employee from a secondary branch
+router.delete("/:id/branches/:branchId", async (req, res) => {
+  try {
+    // Only main managers can unlink
+    if (req.user.role !== 'main_manager') {
+      return res.status(403).json({ success: false, message: 'غير مصرح لك بإلغاء ربط الموظفين' });
+    }
+
+    const { Employee } = await import("../models/Employee.js");
+    const employeeId = parseInt(req.params.id);
+    const branchId = parseInt(req.params.branchId);
+
+    const employee = await Employee.findById(employeeId);
+    if (!employee) {
+      return res.status(404).json({ success: false, message: 'الموظف غير موجود' });
+    }
+
+    await Employee.unlinkFromBranch(employeeId, branchId);
+
+    // Clear caches
+    const { clearByPrefix } = await import("../utils/simpleCache.js");
+    clearByPrefix(`dashboard:summary:${branchId}`);
+    clearByPrefix("branch-statistics");
+
+    res.json({
+      success: true,
+      message: 'تم إلغاء ربط الموظف بالفرع بنجاح'
+    });
+  } catch (error) {
+    log.error("Error unlinking employee from branch", { error: error.message });
+    const statusCode = error.message.includes('لا يمكن') || error.message.includes('غير مرتبط') ? 400 : 500;
+    res.status(statusCode).json({ success: false, message: error.message });
   }
 });
 

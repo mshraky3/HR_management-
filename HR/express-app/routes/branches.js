@@ -260,13 +260,15 @@ router.put('/:id',
 );
 
 // Soft delete branch (main manager only)
+// Also archives all employees in the branch with reason "تم حذف الفرع"
 router.delete('/:id',
   authenticate,
   requireMainManager,
   async (req, res) => {
     try {
       const { Branch } = await import('../models/Branch.js');
-      const branch = await Branch.softDelete(parseInt(req.params.id));
+      const branchId = parseInt(req.params.id);
+      const branch = await Branch.softDelete(branchId);
       
       if (!branch) {
         return res.status(404).json({
@@ -274,8 +276,28 @@ router.delete('/:id',
           message: 'Branch not found'
         });
       }
-      
-      res.json({ success: true, message: 'Branch deactivated successfully', data: branch });
+
+      // Archive all employees in this branch (regardless of current status)
+      const sql = (await import('../config/database.js')).default;
+      const archivedEmployees = await sql`
+        UPDATE employees
+        SET status = 'other',
+            is_active = false,
+            status_changed_at = CURRENT_TIMESTAMP,
+            status_changed_by = ${branchId},
+            status_change_reason = 'تم حذف الفرع',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE branch_id = ${branchId}
+          AND (status IN ('active', 'pending') OR is_active = true)
+        RETURNING id
+      `;
+
+      res.json({
+        success: true,
+        message: 'Branch deactivated successfully',
+        data: branch,
+        archivedEmployeesCount: archivedEmployees.length
+      });
     } catch (error) {
       res.status(500).json({
         success: false,

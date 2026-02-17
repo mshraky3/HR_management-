@@ -175,7 +175,7 @@ export async function initializeDatabase() {
       branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
       is_primary BOOLEAN DEFAULT FALSE,
       added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      added_by INTEGER,
+      added_by INTEGER REFERENCES branches(id) ON DELETE SET NULL,
       UNIQUE (employee_id, branch_id)
     `);
     await executeQuery(
@@ -1597,6 +1597,28 @@ export async function initializeDatabase() {
     } catch (error) {
       console.error('Error removing salary column:', error.message);
       // Don't throw - allow database to continue initializing
+    }
+
+    // Fix orphaned employees: archive any active/pending employees in deactivated branches
+    try {
+      const orphaned = await sql`
+        UPDATE employees e
+        SET status = 'other',
+            is_active = false,
+            status_changed_at = CURRENT_TIMESTAMP,
+            status_change_reason = 'تم حذف الفرع',
+            updated_at = CURRENT_TIMESTAMP
+        FROM branches b
+        WHERE e.branch_id = b.id
+          AND b.is_active = false
+          AND (e.status IN ('active', 'pending') OR e.is_active = true)
+        RETURNING e.id
+      `;
+      if (orphaned.length > 0) {
+        console.log(`[Migration] Archived ${orphaned.length} orphaned employees from deactivated branches`);
+      }
+    } catch (error) {
+      console.error('Error fixing orphaned employees:', error.message);
     }
 
     return { success: true, message: 'Database initialization completed successfully' };

@@ -30,7 +30,7 @@ Caused by: Error: ECONNREFUSED 127.0.0.1:5432
     },
     responseData: {
         success: false,
-        message: 'حدث خطأ في النظام ',
+        message: 'حدث خطأ في قاعدة البيانات',
         errorCode: 'DB_CONNECTION_FAILED'
     },
     additionalInfo: {
