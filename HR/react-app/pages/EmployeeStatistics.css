@@ -1,0 +1,436 @@
+/**
+ * Employee Statistics Page Styles
+ */
+
+.employee-statistics-page {
+    padding: 2rem;
+    background: #f8fafc;
+    min-height: 100vh;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.page-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary, #1e293b);
+    margin: 0;
+    background: linear-gradient(135deg, #4988c4 0%, #667eea 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-shrink: 0;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    user-select: none;
+    flex-direction: row;
+    white-space: nowrap;
+}
+
+.toggle-switch input {
+    display: none;
+}
+
+.toggle-slider {
+    position: relative;
+    width: 50px;
+    height: 26px;
+    background: #cbd5e1;
+    border-radius: 26px;
+    transition: background 0.3s ease;
+    flex-shrink: 0;
+    display: inline-block;
+}
+
+.toggle-slider::before {
+    content: "";
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: white;
+    top: 3px;
+    right: 3px;
+    transition: transform 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background: linear-gradient(135deg, #4988c4 0%, #667eea 100%);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(-24px);
+}
+
+.toggle-label {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary, #1e293b);
+    white-space: nowrap;
+    line-height: 1.5;
+    display: inline-block;
+}
+
+/* Statistics Cards Grid */
+.stats-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 2px solid transparent;
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 4px;
+    height: 100%;
+    background: linear-gradient(180deg, #4988c4 0%, #667eea 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    border-color: rgba(73, 136, 196, 0.2);
+}
+
+.stat-card:hover::before {
+    opacity: 1;
+}
+
+.stat-card-primary::before {
+    background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+}
+
+.stat-card-male::before {
+    background: linear-gradient(180deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.stat-card-female::before {
+    background: linear-gradient(180deg, #fa709a 0%, #fee140 100%);
+}
+
+.stat-card-salary::before {
+    background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+}
+
+.stat-card-budget::before {
+    background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+}
+
+.stat-card-completion::before {
+    background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%);
+}
+
+.stat-card-min::before {
+    background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+}
+
+.stat-card-max::before {
+    background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+}
+
+.stat-card-active::before {
+    background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+}
+
+.stat-card-pending::before {
+    background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+}
+
+.stat-card-icon {
+    font-size: 2.5rem;
+    line-height: 1;
+}
+
+.stat-card-content {
+    flex: 1;
+}
+
+.stat-card-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary, #64748b);
+    margin-bottom: 0.5rem;
+}
+
+.stat-card-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text-primary, #1e293b);
+    line-height: 1.2;
+}
+
+.stat-card-sub {
+    font-size: 0.875rem;
+    color: var(--text-secondary, #64748b);
+    margin-top: 0.25rem;
+}
+
+/* Charts Grid */
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+    gap: 2rem;
+}
+
+.chart-section {
+    background: white;
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    transition: all 0.3s ease;
+    min-height: 600px;
+    overflow: visible;
+}
+
+.chart-section-large {
+    grid-column: span 2;
+    min-height: 800px;
+}
+
+.chart-section:hover {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    transform: translateY(-2px);
+}
+
+.chart-title {
+    margin: 0 0 1.5rem 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary, #1e293b);
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid var(--border-color, #e2e8f0);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.chart-subtitle {
+    font-size: 0.875rem;
+    font-weight: 400;
+    color: var(--text-secondary, #64748b);
+}
+
+.chart-container {
+    padding: 1.5rem 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 450px;
+}
+
+/* Recharts customization for pie charts */
+.recharts-wrapper {
+    margin: 0 auto;
+}
+
+.recharts-surface {
+    overflow: visible;
+}
+
+.recharts-pie-sector {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.recharts-pie-sector:hover {
+    opacity: 0.8;
+    filter: brightness(1.1);
+}
+
+.recharts-legend-wrapper {
+    padding-top: 1rem !important;
+    width: 100% !important;
+}
+
+.recharts-legend-item {
+    margin: 0.25rem 0.5rem !important;
+    font-size: 0.875rem !important;
+    color: var(--text-primary, #1e293b) !important;
+}
+
+.recharts-legend-item-text {
+    color: var(--text-primary, #1e293b) !important;
+    font-weight: 500 !important;
+}
+
+.recharts-tooltip-wrapper {
+    z-index: 100 !important;
+    pointer-events: none;
+}
+
+.recharts-default-tooltip {
+    background: white !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    padding: 0.75rem !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+    max-width: 300px !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+}
+
+.recharts-tooltip-label {
+    color: var(--text-primary, #1e293b) !important;
+    font-weight: 600 !important;
+    margin-bottom: 0.5rem !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+    max-width: 280px !important;
+}
+
+.recharts-tooltip-item {
+    color: var(--text-secondary, #64748b) !important;
+    padding: 0.25rem 0 !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+}
+
+/* Loading and error states */
+.loading,
+.error-message {
+    text-align: center;
+    padding: 3rem;
+    font-size: 1.125rem;
+    color: var(--text-secondary, #64748b);
+}
+
+.error-message {
+    color: #ef4444;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Responsive design */
+@media (max-width: 1400px) {
+    .chart-section-large {
+        grid-column: span 1;
+        min-height: 750px;
+    }
+
+    .charts-grid {
+        grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+    }
+}
+
+@media (max-width: 1024px) {
+    .charts-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+
+    .chart-section {
+        min-height: 550px;
+    }
+
+    .chart-section-large {
+        min-height: 700px;
+    }
+
+    .chart-container {
+        min-height: 420px;
+    }
+}
+
+@media (max-width: 768px) {
+    .employee-statistics-page {
+        padding: 1rem;
+    }
+
+    .page-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .stats-cards-grid {
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+
+    .charts-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+
+    .chart-section {
+        padding: 1.25rem;
+        min-height: 500px;
+    }
+
+    .chart-section-large {
+        grid-column: span 1;
+        min-height: 650px;
+    }
+
+    .chart-container {
+        padding: 0.75rem 0;
+        min-height: 380px;
+    }
+}
+
+@media (max-width: 480px) {
+    .chart-section {
+        padding: 1rem;
+        min-height: 480px;
+    }
+
+    .chart-section-large {
+        min-height: 600px;
+    }
+
+    .chart-container {
+        min-height: 350px;
+    }
+
+    .stat-card {
+        padding: 1rem;
+    }
+
+    .stat-card-icon {
+        font-size: 2rem;
+    }
+
+    .stat-card-value {
+        font-size: 1.5rem;
+    }
+}
