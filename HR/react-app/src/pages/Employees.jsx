@@ -79,6 +79,9 @@ const Employees = () => {
   const [selectedBranchType, setSelectedBranchType] = useState(null); // 'healthcare_center' or 'school'
   const [filterIncomplete, setFilterIncomplete] = useState(false); // Filter for incomplete employees
   const [focusEmployee, setFocusEmployee] = useState(null); // Employee to highlight when navigated from other pages
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteEmployeeId, setDeleteEmployeeId] = useState(null);
+  const [deleteReason, setDeleteReason] = useState("");
   const [searchFilters, setSearchFilters] = useState({
     search_name: "",
     search_id: "",
@@ -1864,15 +1867,27 @@ const Employees = () => {
 
   const handleDelete = useCallback(
     async (id) => {
-      if (!confirm("هل أنت متأكد من رغبتك في إلغاء تفعيل هذا الموظف؟")) return;
+      setDeleteEmployeeId(id);
+      setDeleteReason("");
+      setShowDeleteModal(true);
+    },
+    [],
+  );
+
+  const confirmDelete = useCallback(
+    async () => {
+      if (!deleteReason) return;
       try {
-        await employeesAPI.delete(id);
+        await employeesAPI.delete(deleteEmployeeId, { reason: deleteReason });
+        setShowDeleteModal(false);
+        setDeleteEmployeeId(null);
+        setDeleteReason("");
         loadEmployees();
       } catch (error) {
         showError("فشل حذف الموظف");
       }
     },
-    [showError, loadEmployees],
+    [deleteEmployeeId, deleteReason, showError, loadEmployees],
   );
 
   const handleViewDetails = useCallback(
@@ -2024,6 +2039,15 @@ const Employees = () => {
           <div className="page-header">
             <h1>إدارة الموظفين</h1>
             <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              {isMainManager() && (
+                <button
+                  onClick={() => navigate("/employee-transfer")}
+                  className="btn-secondary"
+                  style={{ fontSize: "14px", padding: "8px 16px" }}
+                >
+                  نقل وربط الموظفين
+                </button>
+              )}
               <button
                 onClick={() => setFilterIncomplete(!filterIncomplete)}
                 className={filterIncomplete ? "btn-primary" : "btn-secondary"}
@@ -4514,6 +4538,51 @@ const Employees = () => {
                   )}
                 </form>
               )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Reason Modal */}
+      {showDeleteModal && (
+        <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '450px' }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: '15px', textAlign: 'right' }}>إلغاء تفعيل موظف</h3>
+            <p style={{ marginBottom: '15px', textAlign: 'right', color: '#666' }}>
+              الرجاء اختيار سبب إلغاء التفعيل:
+            </p>
+            <select
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.target.value)}
+              className="form-control"
+              style={{ marginBottom: '20px', direction: 'rtl' }}
+            >
+              <option value="">-- اختر السبب --</option>
+              <option value="استقالة">استقالة</option>
+              <option value="إنهاء عقد">إنهاء عقد</option>
+              <option value="انتهاء العقد">انتهاء العقد</option>
+              <option value="عدم تجديد">عدم تجديد</option>
+              <option value="فصل - المادة 80">فصل - المادة 80</option>
+              <option value="فصل - المادة 77">فصل - المادة 77</option>
+              <option value="نقل لفرع آخر">نقل لفرع آخر</option>
+              <option value="تكرار في النظام">تكرار في النظام</option>
+              <option value="إدخال خاطئ">إدخال خاطئ</option>
+              <option value="أخرى">أخرى</option>
+            </select>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => { setShowDeleteModal(false); setDeleteEmployeeId(null); setDeleteReason(""); }}
+              >
+                إلغاء
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={confirmDelete}
+                disabled={!deleteReason}
+              >
+                تأكيد الحذف
+              </button>
+            </div>
           </div>
         </div>
       )}

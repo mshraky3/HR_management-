@@ -364,6 +364,23 @@ const Archive = () => {
     }
   };
 
+  const handleRestoreEmployee = async (employeeId, employeeName) => {
+    if (!confirm(`هل أنت متأكد من استعادة الموظف "${employeeName}" إلى حالة نشط؟`)) return;
+    try {
+      const response = await archiveAPI.restore(employeeId, {
+        status: 'active',
+        reason: 'تم الاستعادة من الأرشيف'
+      });
+      if (response.data.success) {
+        showSuccess(response.data.message || 'تم استعادة الموظف بنجاح');
+        loadArchivedEmployees(currentPage);
+      }
+    } catch (error) {
+      console.error('Error restoring employee:', error);
+      showError(error.response?.data?.message || 'فشل استعادة الموظف');
+    }
+  };
+
   const handleUpdateStatus = async () => {
     if (!statusForm.status) {
       showWarning('يرجى اختيار حالة');
@@ -377,6 +394,11 @@ const Archive = () => {
       (statusForm.status === 'active' || statusForm.status === 'pending');
 
     if (isRestore) {
+      // Check if the employee's branch is deleted — block restore client-side
+      if (employeeDetails?.branch_is_active === false) {
+        showError('لا يمكن استعادة موظف فرعه محذوف. يجب استعادة الفرع أولاً');
+        return;
+      }
       // Use restore endpoint
       try {
         setUpdatingStatus(true);
@@ -657,7 +679,7 @@ const Archive = () => {
     resigned: 'استقالة',
     contract_ended: 'انتهاء العقد',
     non_renewal: 'عدم التجديد',
-    other: 'أخرى'
+    other: 'محذوف'
   };
 
   const statusColors = {
@@ -870,6 +892,7 @@ const Archive = () => {
                     <th>الاسم</th>
                     <th>الفرع</th>
                     <th>الحالة</th>
+                    <th>السبب</th>
                     <th>تاريخ التسجيل</th>
                     <th>تاريخ تغيير الحالة</th>
                     <th>الإجراءات</th>
@@ -891,6 +914,7 @@ const Archive = () => {
                           {statusLabels[employee.status] || employee.status}
                         </span>
                       </td>
+                      <td>{employee.status_change_reason || '-'}</td>
                       <td>
                         {employee.created_at
                           ? formatDate(employee.created_at)
@@ -903,6 +927,23 @@ const Archive = () => {
                       </td>
                       <td>
                         <div className="action-buttons">
+                          <button
+                            className="btn btn-sm btn-success"
+                            onClick={() => handleRestoreEmployee(
+                              employee.id,
+                              `${employee.first_name} ${employee.second_name} ${employee.third_name} ${employee.fourth_name}`
+                            )}
+                            style={{ 
+                              backgroundColor: employee.branch_is_active === false ? '#9e9e9e' : '#4caf50', 
+                              color: 'white', 
+                              border: 'none',
+                              cursor: employee.branch_is_active === false ? 'not-allowed' : 'pointer'
+                            }}
+                            disabled={employee.branch_is_active === false}
+                            title={employee.branch_is_active === false ? 'يجب استعادة الفرع أولاً' : 'استعادة الموظف'}
+                          >
+                            استعادة
+                          </button>
                           <button
                             className="btn btn-sm btn-primary"
                             onClick={() => handleViewEmployee(employee.id)}

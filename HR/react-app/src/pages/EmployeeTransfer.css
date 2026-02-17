@@ -1,0 +1,264 @@
+/* Employee Transfer & Multi-Branch Page Styles */
+
+.transfer-section {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e2e8f0;
+}
+
+.transfer-section-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 8px 0;
+}
+
+.transfer-section-desc {
+    font-size: 14px;
+    color: #64748b;
+    margin: 0 0 16px 0;
+}
+
+/* Filterable Branch Picker */
+.branch-picker {
+    position: relative;
+    flex: 1;
+    min-width: 240px;
+}
+
+.branch-picker-input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    background: white;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
+}
+
+.branch-picker-input:focus {
+    outline: none;
+    border-color: #4988c4;
+    box-shadow: 0 0 0 3px rgba(73, 136, 196, 0.15);
+}
+
+.branch-picker-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    left: 0;
+    margin: 4px 0 0;
+    padding: 4px 0;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    list-style: none;
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 50;
+}
+
+.branch-picker-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #334155;
+    transition: background-color 0.15s;
+}
+
+.branch-picker-item:hover {
+    background: #f0f7ff;
+}
+
+.branch-picker-item.selected {
+    background: #dbeafe;
+    color: #1d4ed8;
+    font-weight: 600;
+}
+
+.branch-picker-empty {
+    padding: 12px 16px;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 13px;
+}
+
+.transfer-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.transfer-table thead {
+    background: #f8fafc;
+    position: sticky;
+    top: 0;
+}
+
+.transfer-table th {
+    padding: 12px 16px;
+    text-align: right;
+    font-weight: 600;
+    color: #475569;
+    border-bottom: 2px solid #e2e8f0;
+    white-space: nowrap;
+}
+
+.transfer-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+}
+
+.transfer-table tbody tr:hover {
+    background: #f8fafc;
+}
+
+.transfer-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Employee Info Card */
+.transfer-employee-info {
+    border-right: 4px solid #4988c4;
+}
+
+.transfer-info-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.transfer-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 12px;
+}
+
+.transfer-info-item {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+}
+
+.transfer-info-label {
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.transfer-info-value {
+    font-size: 14px;
+    color: #1e293b;
+    font-weight: 600;
+}
+
+.transfer-primary-branch {
+    color: #4988c4;
+}
+
+/* Action Row */
+.transfer-action-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* Badges */
+.transfer-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.transfer-badge-primary {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.transfer-badge-secondary {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.status-active {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.status-pending {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+/* Hint text */
+.transfer-hint {
+    font-size: 12px;
+    color: #94a3b8;
+    font-style: italic;
+}
+
+/* Loading */
+.transfer-loading {
+    text-align: center;
+    padding: 24px;
+    color: #64748b;
+}
+
+/* Button overrides */
+.btn-sm {
+    padding: 6px 14px !important;
+    font-size: 13px !important;
+}
+
+.btn-danger {
+    background-color: #ef4444;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+.btn-danger:hover {
+    background-color: #dc2626;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .transfer-info-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .transfer-action-row {
+        flex-direction: column;
+    }
+
+    .branch-picker {
+        min-width: unset;
+        width: 100%;
+    }
+}

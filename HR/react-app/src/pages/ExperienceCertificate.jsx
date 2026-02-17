@@ -50,10 +50,25 @@ const ExperienceCertificate = () => {
     basic_salary: "",
     housing_allowance: "",
     transportation_allowance: "",
+    annual_leave_allowance: "",
+    end_of_service_allowance: "",
     other_allowances: "",
     recipient: "الي من يهمه الامر",
     employer: "شركة الرعاية المتناهية",
+    custom_title: "",
   });
+
+  // Helper to calculate total salary from all 6 components
+  const calcSalaryTotal = (data) => {
+    const total =
+      (parseFloat(data.basic_salary) || 0) +
+      (parseFloat(data.housing_allowance) || 0) +
+      (parseFloat(data.transportation_allowance) || 0) +
+      (parseFloat(data.annual_leave_allowance) || 0) +
+      (parseFloat(data.end_of_service_allowance) || 0) +
+      (parseFloat(data.other_allowances) || 0);
+    return total > 0 ? total.toString() : "";
+  };
 
   // Refs to maintain focus on search inputs
   const searchNameRef = useRef(null);
@@ -173,7 +188,20 @@ const ExperienceCertificate = () => {
   // Initialize certificate data when employee is selected
   useEffect(() => {
     if (selectedEmployee) {
-      setCertificateData({
+      const baseSal = selectedEmployee.base_salary || "";
+      const housingSal = selectedEmployee.housing_allowance || "";
+      const transSal = selectedEmployee.transportation_allowance || "";
+      const annualLeaveSal = selectedEmployee.annual_leave_allowance || "";
+      const endOfServiceSal = selectedEmployee.end_of_service_allowance || "";
+      const otherSal = selectedEmployee.other_allowances || "";
+      const total =
+        (parseFloat(baseSal) || 0) +
+        (parseFloat(housingSal) || 0) +
+        (parseFloat(transSal) || 0) +
+        (parseFloat(annualLeaveSal) || 0) +
+        (parseFloat(endOfServiceSal) || 0) +
+        (parseFloat(otherSal) || 0);
+      setCertificateData((prev) => ({
         full_name: getFullName(selectedEmployee),
         id_number: selectedEmployee.id_or_residency_number || "",
         nationality: selectedEmployee.nationality || "",
@@ -185,13 +213,17 @@ const ExperienceCertificate = () => {
         contract_end_date: selectedEmployee.contract_end_date_hijri || "",
         contract_end_date_gregorian:
           selectedEmployee.contract_end_date_gregorian || "",
-        basic_salary: "",
-        housing_allowance: "",
-        transportation_allowance: "",
-        other_allowances: "",
-        recipient: "الي من يهمه الامر",
-        employer: "شركة الرعاية المتناهية",
-      });
+        basic_salary: baseSal ? String(baseSal) : "",
+        housing_allowance: housingSal ? String(housingSal) : "",
+        transportation_allowance: transSal ? String(transSal) : "",
+        annual_leave_allowance: annualLeaveSal ? String(annualLeaveSal) : "",
+        end_of_service_allowance: endOfServiceSal ? String(endOfServiceSal) : "",
+        other_allowances: otherSal ? String(otherSal) : "",
+        salary: total > 0 ? total.toString() : "",
+        recipient: prev.recipient || "الي من يهمه الامر",
+        employer: prev.employer || "شركة الرعاية المتناهية",
+        custom_title: prev.custom_title || "",
+      }));
     }
   }, [selectedEmployee]);
 
@@ -361,9 +393,12 @@ const ExperienceCertificate = () => {
         basic_salary: dataToSend.basic_salary,
         housing_allowance: dataToSend.housing_allowance,
         transportation_allowance: dataToSend.transportation_allowance,
+        annual_leave_allowance: dataToSend.annual_leave_allowance,
+        end_of_service_allowance: dataToSend.end_of_service_allowance,
         other_allowances: dataToSend.other_allowances,
         recipient: dataToSend.recipient,
         employer: dataToSend.employer,
+        custom_title: dataToSend.custom_title || "",
       };
 
       const response = await employeesAPI.generateCertificate(
@@ -791,6 +826,31 @@ const ExperienceCertificate = () => {
             <div className="data-review-table-container">
               <table className="certificate-data-table">
                 <tbody>
+                  <tr>
+                    <td>
+                      <label>عنوان الشهادة:</label>
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        value={certificateData.custom_title}
+                        onChange={(e) =>
+                          setCertificateData({
+                            ...certificateData,
+                            custom_title: e.target.value,
+                          })
+                        }
+                        className="form-control"
+                        placeholder={
+                          certificateType === "salary"
+                            ? "خطاب تعريف راتب"
+                            : certificateType === "specialties"
+                              ? "تعريف هيئة التخصصات"
+                              : "شهادة خبرة"
+                        }
+                      />
+                    </td>
+                  </tr>
                   <tr
                     className={
                       !certificateData.full_name ? "missing-field" : ""
@@ -954,14 +1014,7 @@ const ExperienceCertificate = () => {
                                 ...certificateData,
                                 basic_salary: e.target.value,
                               };
-                              const total =
-                                (parseFloat(newData.basic_salary) || 0) +
-                                (parseFloat(newData.housing_allowance) || 0) +
-                                (parseFloat(newData.transportation_allowance) ||
-                                  0) +
-                                (parseFloat(newData.other_allowances) || 0);
-                              newData.salary =
-                                total > 0 ? total.toString() : "";
+                              newData.salary = calcSalaryTotal(newData);
                               setCertificateData(newData);
                             }}
                             className="form-control"
@@ -982,14 +1035,7 @@ const ExperienceCertificate = () => {
                                 ...certificateData,
                                 housing_allowance: e.target.value,
                               };
-                              const total =
-                                (parseFloat(newData.basic_salary) || 0) +
-                                (parseFloat(newData.housing_allowance) || 0) +
-                                (parseFloat(newData.transportation_allowance) ||
-                                  0) +
-                                (parseFloat(newData.other_allowances) || 0);
-                              newData.salary =
-                                total > 0 ? total.toString() : "";
+                              newData.salary = calcSalaryTotal(newData);
                               setCertificateData(newData);
                             }}
                             className="form-control"
@@ -1010,18 +1056,53 @@ const ExperienceCertificate = () => {
                                 ...certificateData,
                                 transportation_allowance: e.target.value,
                               };
-                              const total =
-                                (parseFloat(newData.basic_salary) || 0) +
-                                (parseFloat(newData.housing_allowance) || 0) +
-                                (parseFloat(newData.transportation_allowance) ||
-                                  0) +
-                                (parseFloat(newData.other_allowances) || 0);
-                              newData.salary =
-                                total > 0 ? total.toString() : "";
+                              newData.salary = calcSalaryTotal(newData);
                               setCertificateData(newData);
                             }}
                             className="form-control"
                             placeholder="أدخل بدل النقل"
+                          />
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <label>بدل الإجازة السنوية:</label>
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            value={certificateData.annual_leave_allowance}
+                            onChange={(e) => {
+                              const newData = {
+                                ...certificateData,
+                                annual_leave_allowance: e.target.value,
+                              };
+                              newData.salary = calcSalaryTotal(newData);
+                              setCertificateData(newData);
+                            }}
+                            className="form-control"
+                            placeholder="أدخل بدل الإجازة السنوية"
+                          />
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <label>بدل نهاية الخدمة:</label>
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            value={certificateData.end_of_service_allowance}
+                            onChange={(e) => {
+                              const newData = {
+                                ...certificateData,
+                                end_of_service_allowance: e.target.value,
+                              };
+                              newData.salary = calcSalaryTotal(newData);
+                              setCertificateData(newData);
+                            }}
+                            className="form-control"
+                            placeholder="أدخل بدل نهاية الخدمة"
                           />
                         </td>
                       </tr>
@@ -1038,14 +1119,7 @@ const ExperienceCertificate = () => {
                                 ...certificateData,
                                 other_allowances: e.target.value,
                               };
-                              const total =
-                                (parseFloat(newData.basic_salary) || 0) +
-                                (parseFloat(newData.housing_allowance) || 0) +
-                                (parseFloat(newData.transportation_allowance) ||
-                                  0) +
-                                (parseFloat(newData.other_allowances) || 0);
-                              newData.salary =
-                                total > 0 ? total.toString() : "";
+                              newData.salary = calcSalaryTotal(newData);
                               setCertificateData(newData);
                             }}
                             className="form-control"
@@ -1163,6 +1237,31 @@ const ExperienceCertificate = () => {
             <div className="modal-body">
               <table className="certificate-edit-table">
                 <tbody>
+                  <tr>
+                    <td>
+                      <label>عنوان الشهادة:</label>
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        value={certificateData.custom_title}
+                        onChange={(e) =>
+                          setCertificateData({
+                            ...certificateData,
+                            custom_title: e.target.value,
+                          })
+                        }
+                        className="form-control"
+                        placeholder={
+                          certificateType === "salary"
+                            ? "خطاب تعريف راتب"
+                            : certificateType === "specialties"
+                              ? "تعريف هيئة التخصصات"
+                              : "شهادة خبرة"
+                        }
+                      />
+                    </td>
+                  </tr>
                   <tr>
                     <td>
                       <label>الاسم الكامل:</label>
@@ -1294,14 +1393,7 @@ const ExperienceCertificate = () => {
                                 ...certificateData,
                                 basic_salary: e.target.value,
                               };
-                              const total =
-                                (parseFloat(newData.basic_salary) || 0) +
-                                (parseFloat(newData.housing_allowance) || 0) +
-                                (parseFloat(newData.transportation_allowance) ||
-                                  0) +
-                                (parseFloat(newData.other_allowances) || 0);
-                              newData.salary =
-                                total > 0 ? total.toString() : "";
+                              newData.salary = calcSalaryTotal(newData);
                               setCertificateData(newData);
                             }}
                             className="form-control"
@@ -1321,14 +1413,7 @@ const ExperienceCertificate = () => {
                                 ...certificateData,
                                 housing_allowance: e.target.value,
                               };
-                              const total =
-                                (parseFloat(newData.basic_salary) || 0) +
-                                (parseFloat(newData.housing_allowance) || 0) +
-                                (parseFloat(newData.transportation_allowance) ||
-                                  0) +
-                                (parseFloat(newData.other_allowances) || 0);
-                              newData.salary =
-                                total > 0 ? total.toString() : "";
+                              newData.salary = calcSalaryTotal(newData);
                               setCertificateData(newData);
                             }}
                             className="form-control"
@@ -1348,14 +1433,47 @@ const ExperienceCertificate = () => {
                                 ...certificateData,
                                 transportation_allowance: e.target.value,
                               };
-                              const total =
-                                (parseFloat(newData.basic_salary) || 0) +
-                                (parseFloat(newData.housing_allowance) || 0) +
-                                (parseFloat(newData.transportation_allowance) ||
-                                  0) +
-                                (parseFloat(newData.other_allowances) || 0);
-                              newData.salary =
-                                total > 0 ? total.toString() : "";
+                              newData.salary = calcSalaryTotal(newData);
+                              setCertificateData(newData);
+                            }}
+                            className="form-control"
+                          />
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <label>بدل الإجازة السنوية:</label>
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            value={certificateData.annual_leave_allowance}
+                            onChange={(e) => {
+                              const newData = {
+                                ...certificateData,
+                                annual_leave_allowance: e.target.value,
+                              };
+                              newData.salary = calcSalaryTotal(newData);
+                              setCertificateData(newData);
+                            }}
+                            className="form-control"
+                          />
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <label>بدل نهاية الخدمة:</label>
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            value={certificateData.end_of_service_allowance}
+                            onChange={(e) => {
+                              const newData = {
+                                ...certificateData,
+                                end_of_service_allowance: e.target.value,
+                              };
+                              newData.salary = calcSalaryTotal(newData);
                               setCertificateData(newData);
                             }}
                             className="form-control"
@@ -1375,14 +1493,7 @@ const ExperienceCertificate = () => {
                                 ...certificateData,
                                 other_allowances: e.target.value,
                               };
-                              const total =
-                                (parseFloat(newData.basic_salary) || 0) +
-                                (parseFloat(newData.housing_allowance) || 0) +
-                                (parseFloat(newData.transportation_allowance) ||
-                                  0) +
-                                (parseFloat(newData.other_allowances) || 0);
-                              newData.salary =
-                                total > 0 ? total.toString() : "";
+                              newData.salary = calcSalaryTotal(newData);
                               setCertificateData(newData);
                             }}
                             className="form-control"

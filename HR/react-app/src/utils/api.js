@@ -495,14 +495,23 @@ export const employeesAPI = {
   linkToBranch: (data) =>
     api.post('/api/employees/link-to-branch', data),
 
+  transfer: (id, data) =>
+    api.put(`/api/employees/${id}/transfer`, data),
+
+  getLinkedBranches: (id) =>
+    api.get(`/api/employees/${id}/branches`),
+
+  unlinkFromBranch: (employeeId, branchId) =>
+    api.delete(`/api/employees/${employeeId}/branches/${branchId}`),
+
   create: (data) =>
     api.post('/api/employees', data),
 
   update: (id, data) =>
     api.put(`/api/employees/${id}`, data),
 
-  delete: (id) =>
-    api.delete(`/api/employees/${id}`),
+  delete: (id, data = {}) =>
+    api.delete(`/api/employees/${id}`, { data }),
 
   getDocuments: (id, filters = {}) =>
     api.get(`/api/employees/${id}/documents`, { params: filters }),

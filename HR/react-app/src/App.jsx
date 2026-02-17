@@ -93,6 +93,7 @@ const BusTransportationReport = lazy(() => import("./pages/BusTransportationRepo
 const ExperienceCertificate = lazy(
   () => import("./pages/ExperienceCertificate"),
 );
+const EmployeeTransfer = lazy(() => import("./pages/EmployeeTransfer"));
 const BusTransportation = lazy(() => import("./pages/BusTransportation.jsx"));
 const Suggestions = lazy(() => import("./pages/Suggestions"));
 
@@ -167,6 +168,16 @@ const AppContent = () => {
               <RoleBasedLayout>
                 <EmployeeDetails />
               </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/employee-transfer"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <EmployeeTransfer />
+              </Layout>
             </ProtectedRoute>
           }
         />
