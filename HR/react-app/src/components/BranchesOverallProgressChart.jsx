@@ -7,7 +7,7 @@ const BranchesOverallProgressChart = ({
     statistics = [],
     documentsList = [],
     branchDocumentsMap = null,
-    title = 'التقدم الإجمالي لجميع الفروع'
+    title = 'التقدم الإجمالي لكل الفروع'
 }) => {
     // Build documents map if not provided
     const documentsByBranch = useMemo(() => {
