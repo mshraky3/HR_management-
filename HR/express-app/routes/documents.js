@@ -54,7 +54,7 @@ router.get('/', async (req, res) => {
 
     if (req.query.employee_id && req.query.employee_id !== 'null' && req.query.employee_id !== '') {
       const employeeId = parseInt(req.query.employee_id);
-      
+
       // Check branch access
       const employee = await Employee.findById(employeeId);
       if (!employee) {
@@ -74,8 +74,8 @@ router.get('/', async (req, res) => {
       documents = await Document.findByEmployeeId(employeeId, filters);
     } else if (req.query.search) {
       // Search by filename
-      const employeeId = req.query.employee_id && req.query.employee_id !== 'null' && req.query.employee_id !== '' 
-        ? parseInt(req.query.employee_id) 
+      const employeeId = req.query.employee_id && req.query.employee_id !== 'null' && req.query.employee_id !== ''
+        ? parseInt(req.query.employee_id)
         : null;
       documents = await Document.searchByFilename(req.query.search, employeeId);
     } else if (req.query.expiring === 'true' || req.query.expiring === true) {
@@ -84,8 +84,8 @@ router.get('/', async (req, res) => {
       documents = await Document.findExpiring(days);
     } else if (req.query.unverified === 'true') {
       // Get unverified documents
-      const employeeId = req.query.employee_id && req.query.employee_id !== 'null' && req.query.employee_id !== '' 
-        ? parseInt(req.query.employee_id) 
+      const employeeId = req.query.employee_id && req.query.employee_id !== 'null' && req.query.employee_id !== ''
+        ? parseInt(req.query.employee_id)
         : null;
       documents = await Document.findUnverified(employeeId);
     } else {
@@ -163,18 +163,18 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     try {
       const { validateDocumentType } = await import('../utils/employeeHelpers.js');
       const sql = (await import('../config/database.js')).default;
-      
+
       // Get branch type
       const [branch] = await sql`
         SELECT branch_type FROM branches WHERE id = ${employee.branch_id}
       `;
-      
+
       const validation = validateDocumentType(document_type, {
         nationality: employee.nationality,
         job_title: employee.job_title,
         branch_type: branch?.branch_type || null
       });
-      
+
       // Silently accept even if not allowed (UI prevents this, but we don't want to break anything)
       // Just log for debugging
       if (!validation.allowed) {
@@ -211,7 +211,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
         console.error('Error verifying user:', error);
       }
     }
-    
+
     // If user not found, find first active user as fallback (usually main manager)
     if (!uploadedById) {
       try {
@@ -234,7 +234,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
         console.error('Error finding fallback user:', error);
       }
     }
-    
+
     // If still no valid user found, throw error
     if (!uploadedById) {
       return res.status(500).json({
@@ -242,7 +242,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
         message: 'لم يتم العثور على مستخدم صالح لحقل uploaded_by. يرجى التأكد من وجود مستخدم واحد على الأقل في النظام.'
       });
     }
-    
+
     // Fix filename encoding for Arabic characters
     // Multer may receive filename in wrong encoding, so we need to decode it properly
     let fileName = req.file.originalname;
@@ -259,7 +259,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       console.warn('Error fixing filename encoding:', error);
       // If decoding fails, use original filename
     }
-    
+
     // Archive (deactivate) old documents of the same type for this employee
     // This ensures only the latest document is active, while old ones are archived
     // Note: For multi-file document types (like experience_certificate, additional_courses),
@@ -270,7 +270,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       'speech_therapy_course', 'physical_therapy_course', 'medical_disclosure_form',
       'speech_therapy_70_hours_course', 'therapy_40_hours_course', 'medical_insurance'
     ];
-    
+
     if (singleFileDocumentTypes.includes(document_type)) {
       try {
         // Archive old documents of this type BEFORE creating the new one
@@ -328,7 +328,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
 router.get('/:id/download', async (req, res) => {
   try {
     const document = await Document.findById(parseInt(req.params.id));
-    
+
     if (!document) {
       return res.status(404).json({
         success: false,
@@ -338,6 +338,12 @@ router.get('/:id/download', async (req, res) => {
 
     // Check branch access
     const employee = await Employee.findById(document.employee_id);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'الموظف المرتبط بهذا المستند غير موجود'
+      });
+    }
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
@@ -381,7 +387,7 @@ router.get('/:id/download', async (req, res) => {
       }
       filePath = path.join(__dirname, '..', relativePath);
     }
-    
+
     if (!fs.existsSync(filePath)) {
       const altPath = document.file_path.replace(/^express-app\//, '');
       const altFilePath = path.join(__dirname, '..', altPath);
@@ -416,7 +422,7 @@ router.get('/:id/download', async (req, res) => {
 router.get('/:id/preview', async (req, res) => {
   try {
     const document = await Document.findById(parseInt(req.params.id));
-    
+
     if (!document) {
       return res.status(404).json({
         success: false,
@@ -426,6 +432,12 @@ router.get('/:id/preview', async (req, res) => {
 
     // Check branch access
     const employee = await Employee.findById(document.employee_id);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'الموظف المرتبط بهذا المستند غير موجود'
+      });
+    }
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
@@ -470,7 +482,7 @@ router.get('/:id/preview', async (req, res) => {
           }
           filePath = path.join(__dirname, '..', relativePath);
         }
-        
+
         if (fs.existsSync(filePath)) {
           res.setHeader('Content-Type', document.mime_type);
           res.sendFile(path.resolve(filePath));
@@ -496,8 +508,8 @@ router.get('/:id/preview', async (req, res) => {
         file_name: document.file_name,
         mime_type: document.mime_type,
         download_url: `/api/documents/${document.id}/download`,
-        file_url: document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) 
-          ? document.file_path 
+        file_url: document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))
+          ? document.file_path
           : null
       }
     });
@@ -520,7 +532,7 @@ router.get('/:id/preview', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const document = await Document.findById(parseInt(req.params.id));
-    
+
     if (!document) {
       return res.status(404).json({
         success: false,
@@ -562,7 +574,7 @@ router.get('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const document = await Document.findById(parseInt(req.params.id));
-    
+
     if (!document) {
       return res.status(404).json({
         success: false,
@@ -572,6 +584,12 @@ router.put('/:id', async (req, res) => {
 
     // Check branch access
     const employee = await Employee.findById(document.employee_id);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'الموظف المرتبط بهذا المستند غير موجود'
+      });
+    }
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
@@ -584,7 +602,7 @@ router.put('/:id', async (req, res) => {
     if (req.body.expiry_date !== undefined) updates.expiry_date = req.body.expiry_date;
 
     const updatedDocument = await Document.update(parseInt(req.params.id), updates);
-    
+
     res.json({
       success: true,
       message: 'Document updated successfully',
@@ -607,7 +625,7 @@ router.put('/:id', async (req, res) => {
 router.post('/:id/verify', async (req, res) => {
   try {
     const document = await Document.findById(parseInt(req.params.id));
-    
+
     if (!document) {
       return res.status(404).json({
         success: false,
@@ -640,9 +658,9 @@ router.post('/:id/verify', async (req, res) => {
         console.error('Error verifying user:', error);
       }
     }
-    
+
     const verifiedDocument = await Document.verify(parseInt(req.params.id), verifiedByUserId);
-    
+
     res.json({
       success: true,
       message: 'تم التحقق من المستند بنجاح',
@@ -665,7 +683,7 @@ router.post('/:id/verify', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const document = await Document.findById(parseInt(req.params.id));
-    
+
     if (!document) {
       return res.status(404).json({
         success: false,
@@ -675,6 +693,12 @@ router.delete('/:id', async (req, res) => {
 
     // Check branch access
     const employee = await Employee.findById(document.employee_id);
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'الموظف المرتبط بهذا المستند غير موجود'
+      });
+    }
     if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
       return res.status(403).json({
         success: false,
@@ -691,12 +715,12 @@ router.delete('/:id', async (req, res) => {
     }
 
     const deletedDocument = await Document.softDelete(parseInt(req.params.id));
-    
+
     // Delete physical file from Blob Storage if requested
     if (req.query.deleteFile === 'true') {
       await deleteFromBlob(document.file_path);
     }
-    
+
     // Update employee completion status after document deletion
     try {
       const { updateEmployeeCompletionStatus } = await import('../utils/employeeDataCompletion.js');
@@ -705,7 +729,7 @@ router.delete('/:id', async (req, res) => {
       console.error('Error updating completion status after document deletion:', completionError);
       // Don't fail the deletion if completion status update fails
     }
-    
+
     res.json({
       success: true,
       message: 'تم حذف المستند بنجاح',
