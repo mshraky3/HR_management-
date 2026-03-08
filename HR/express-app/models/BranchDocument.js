@@ -191,6 +191,7 @@ export const BranchDocument = {
           expiry_date_hijri = ${updateData.expiry_date_hijri !== undefined ? updateData.expiry_date_hijri : sql`expiry_date_hijri`},
           iban_number = ${updateData.iban_number !== undefined ? updateData.iban_number : sql`iban_number`},
           bank_name = ${updateData.bank_name !== undefined ? updateData.bank_name : sql`bank_name`},
+          file_path = ${updateData.file_path !== undefined ? updateData.file_path : sql`file_path`},
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ${id} AND is_active = true
         RETURNING *

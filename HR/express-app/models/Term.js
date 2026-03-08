@@ -63,10 +63,14 @@ export const Term = {
 
   /**
    * Get current term for a branch type
+   * First tries to find a term where today falls within start_date/end_date.
+   * If none found (gap between terms), falls back to the next upcoming term.
    */
   async getCurrentTerm(branchType) {
     try {
       const now = new Date();
+      
+      // 1. Try exact date match
       const [term] = await sql`
         SELECT * FROM terms
         WHERE branch_type = ${branchType}
@@ -76,7 +80,29 @@ export const Term = {
         ORDER BY academic_year_start DESC, term_number DESC, start_date DESC
         LIMIT 1
       `;
-      return term || null;
+      if (term) return term;
+      
+      // 2. Fallback: next upcoming term (gap between terms resolves to future)
+      const [upcoming] = await sql`
+        SELECT * FROM terms
+        WHERE branch_type = ${branchType}
+        AND is_active = true
+        AND start_date > ${now}
+        ORDER BY start_date ASC
+        LIMIT 1
+      `;
+      if (upcoming) return upcoming;
+      
+      // 3. Last resort: most recent past term
+      const [recent] = await sql`
+        SELECT * FROM terms
+        WHERE branch_type = ${branchType}
+        AND is_active = true
+        AND end_date < ${now}
+        ORDER BY end_date DESC
+        LIMIT 1
+      `;
+      return recent || null;
     } catch (error) {
       console.error('Error finding current term:', error);
       throw error;

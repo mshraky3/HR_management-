@@ -1577,6 +1577,62 @@ export async function initializeDatabase() {
       // Don't throw - allow database to continue initializing
     }
 
+    // ==========================================
+    // Create beneficiaries table (for healthcare center branches)
+    // ==========================================
+    await createTable('beneficiaries', `
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+      term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE RESTRICT,
+      sequence_number INTEGER NOT NULL,
+      beneficiary_number VARCHAR(6) NOT NULL,
+      enrollment_period VARCHAR(20) NOT NULL CHECK (enrollment_period IN ('صباحية', 'مسائية')),
+      beneficiary_name VARCHAR(255) NOT NULL,
+      civil_id VARCHAR(20) NOT NULL,
+      contact_number VARCHAR(20) NOT NULL,
+      gender VARCHAR(10) NOT NULL CHECK (gender IN ('ذكر', 'أنثى')),
+      age INTEGER NOT NULL CHECK (age BETWEEN 1 AND 50),
+      speech_therapy BOOLEAN NOT NULL DEFAULT false,
+      physical_therapy BOOLEAN NOT NULL DEFAULT false,
+      occupational_therapy BOOLEAN NOT NULL DEFAULT false,
+      autism_therapy BOOLEAN NOT NULL DEFAULT false,
+      transport_service BOOLEAN NOT NULL DEFAULT false,
+      is_archived BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(branch_id, term_id, civil_id)
+    `);
+
+    // Create indexes for beneficiaries
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_beneficiaries_branch_term ON beneficiaries(branch_id, term_id)',
+      'Created index on beneficiaries(branch_id, term_id)'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_beneficiaries_archived ON beneficiaries(is_archived)',
+      'Created index on beneficiaries(is_archived)'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_beneficiaries_term ON beneficiaries(term_id)',
+      'Created index on beneficiaries(term_id)'
+    );
+
+    // Migration: Add beneficiary_number column to beneficiaries table
+    try {
+      const checkBeneficiaryNumber = await sql`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'beneficiaries' AND column_name = 'beneficiary_number'
+      `;
+      if (checkBeneficiaryNumber.length === 0) {
+        await sql`ALTER TABLE beneficiaries ADD COLUMN beneficiary_number VARCHAR(6) NOT NULL DEFAULT '000000'`;
+        await sql`ALTER TABLE beneficiaries ALTER COLUMN beneficiary_number DROP DEFAULT`;
+        log.info('Added beneficiary_number column to beneficiaries table');
+      }
+    } catch (error) {
+      log.info('beneficiary_number column migration skipped or already exists');
+    }
+
     // Migration: Remove old 'salary' field from employees table
     // Salary is now calculated as base_salary + other_allowances
     try {

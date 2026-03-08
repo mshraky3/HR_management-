@@ -31,21 +31,21 @@ export const Document = {
         SELECT * FROM employee_documents 
         WHERE employee_id = ${employeeId} AND is_active = true
       `;
-      
+
       if (filters.document_type) {
         query = sql`${query} AND document_type = ${filters.document_type}`;
       }
-      
+
       if (filters.mime_type) {
         query = sql`${query} AND mime_type = ${filters.mime_type}`;
       }
-      
+
       if (filters.is_verified !== undefined) {
         query = sql`${query} AND is_verified = ${filters.is_verified}`;
       }
-      
+
       query = sql`${query} ORDER BY uploaded_at DESC`;
-      
+
       return await query;
     } catch (error) {
       console.error('Error finding documents by employee ID:', error);
@@ -62,13 +62,13 @@ export const Document = {
         SELECT * FROM employee_documents 
         WHERE file_name ILIKE ${'%' + searchTerm + '%'} AND is_active = true
       `;
-      
+
       if (employeeId) {
         query = sql`${query} AND employee_id = ${employeeId}`;
       }
-      
+
       query = sql`${query} ORDER BY uploaded_at DESC`;
-      
+
       return await query;
     } catch (error) {
       console.error('Error searching documents:', error);
@@ -88,7 +88,7 @@ export const Document = {
         AND is_active = true
         ORDER BY expiry_date ASC
       `;
-      
+
       return result;
     } catch (error) {
       console.error('Error finding expiring documents:', error);
@@ -105,13 +105,13 @@ export const Document = {
         SELECT * FROM employee_documents 
         WHERE is_verified = false AND is_active = true
       `;
-      
+
       if (employeeId) {
         query = sql`${query} AND employee_id = ${employeeId}`;
       }
-      
+
       query = sql`${query} ORDER BY uploaded_at DESC`;
-      
+
       return await query;
     } catch (error) {
       console.error('Error finding unverified documents:', error);
@@ -129,21 +129,21 @@ export const Document = {
         INNER JOIN employees e ON ed.employee_id = e.id
         WHERE e.branch_id = ${branchId} AND ed.is_active = true AND e.is_active = true
       `;
-      
+
       if (filters.document_type) {
         query = sql`${query} AND ed.document_type = ${filters.document_type}`;
       }
-      
+
       if (filters.mime_type) {
         query = sql`${query} AND ed.mime_type = ${filters.mime_type}`;
       }
-      
+
       if (filters.is_verified !== undefined) {
         query = sql`${query} AND ed.is_verified = ${filters.is_verified}`;
       }
-      
+
       query = sql`${query} ORDER BY ed.uploaded_at DESC`;
-      
+
       return await query;
     } catch (error) {
       console.error('Error finding documents by branch ID:', error);
@@ -160,7 +160,7 @@ export const Document = {
         employee_id, document_type, file_name, file_path, file_size,
         mime_type, file_extension, thumbnail_path, description, expiry_date, uploaded_by
       } = documentData;
-      
+
       const [document] = await sql`
         INSERT INTO employee_documents (
           employee_id, document_type, file_name, file_path, file_size,
@@ -173,7 +173,7 @@ export const Document = {
         )
         RETURNING *
       `;
-      
+
       return document;
     } catch (error) {
       console.error('Error creating document:', error);
@@ -186,32 +186,32 @@ export const Document = {
    */
   async update(id, updates) {
     try {
-      const allowedFields = ['description', 'expiry_date', 'is_verified', 'verified_by', 'thumbnail_path'];
+      const allowedFields = ['description', 'expiry_date', 'is_verified', 'verified_by', 'thumbnail_path', 'file_path'];
       const updateFields = Object.keys(updates).filter(key => allowedFields.includes(key));
-      
+
       if (updateFields.length === 0) {
         throw new Error('No valid fields to update');
       }
-      
+
       updates.updated_at = new Date();
-      
+
       // Build SET clause manually
       const setClause = updateFields.map((field, index) => {
         return `${field} = $${index + 2}`;
       }).join(', ');
-      
+
       const values = updateFields.map(field => updates[field]);
       values.unshift(id);
-      
+
       const query = `
         UPDATE employee_documents 
         SET ${setClause}, updated_at = $${values.length + 1}
         WHERE id = $1
         RETURNING *
       `;
-      
+
       values.push(updates.updated_at);
-      
+
       const result = await sql.unsafe(query, values);
       return result[0] || null;
     } catch (error) {
@@ -231,7 +231,7 @@ export const Document = {
         WHERE id = ${id}
         RETURNING *
       `;
-      
+
       return document || null;
     } catch (error) {
       console.error('Error verifying document:', error);
@@ -250,7 +250,7 @@ export const Document = {
         WHERE id = ${id}
         RETURNING id, file_name, is_active
       `;
-      
+
       return document || null;
     } catch (error) {
       console.error('Error soft deleting document:', error);
@@ -271,21 +271,21 @@ export const Document = {
         LEFT JOIN branches b ON e.branch_id = b.id
         WHERE ed.is_active = false
       `;
-      
+
       if (filters.employee_id) {
         query = sql`${query} AND ed.employee_id = ${filters.employee_id}`;
       }
-      
+
       if (filters.document_type) {
         query = sql`${query} AND ed.document_type = ${filters.document_type}`;
       }
-      
+
       if (filters.branch_id) {
         query = sql`${query} AND e.branch_id = ${filters.branch_id}`;
       }
-      
+
       query = sql`${query} ORDER BY ed.updated_at DESC, ed.uploaded_at DESC`;
-      
+
       return await query;
     } catch (error) {
       console.error('Error finding archived documents:', error);
@@ -304,7 +304,7 @@ export const Document = {
         WHERE id = ${id}
         RETURNING id, file_name, file_path
       `;
-      
+
       return document || null;
     } catch (error) {
       console.error('Error permanently deleting document:', error);

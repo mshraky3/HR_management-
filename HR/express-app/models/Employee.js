@@ -747,7 +747,6 @@ export const Employee = {
         conditions.push(`e.status_changed_at <= $${paramIndex++}`);
         params.push(filters.status_change_date_to);
       }
-
       // Server-side search by name (using ILIKE for partial match on full name or individual fields)
       if (filters.search_name) {
         const namePattern = `%${filters.search_name}%`;
