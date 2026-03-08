@@ -16,13 +16,15 @@ export const TEMP_DIR = null; // Deprecated - using Blob Storage
 
 /**
  * Generate unique filename
- * Format: {YYYYMMDD_HHMMSS}_{sanitized_original_name}.{ext}
+ * Format: {YYYYMMDD_HHMMSS}_{sanitized_original_name}
+ * The sanitized name already includes the original extension
  */
 export function generateFileName(originalName) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19).replace('T', '_');
   const sanitized = originalName.replace(/[^a-zA-Z0-9.-]/g, '_');
-  const ext = path.extname(originalName);
-  return `${timestamp}_${sanitized}${ext}`;
+  // sanitized already contains the extension (e.g. "file.pdf" -> "file.pdf")
+  // so we do NOT append ext again to avoid double extensions like ".pdf.pdf"
+  return `${timestamp}_${sanitized}`;
 }
 
 /**
@@ -59,7 +61,7 @@ export function getExtensionFromMimeType(mimeType) {
  */
 export function fixFilenameEncoding(fileName) {
   if (!fileName) return fileName;
-  
+
   try {
     // Check if filename appears to be incorrectly encoded (contains Latin-1 bytes that should be UTF-8)
     // If filename contains bytes in range 0x80-0xFF but no Arabic characters, it's likely misencoded

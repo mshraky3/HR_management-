@@ -14,7 +14,7 @@ import { Document } from '../models/Document.js';
 import { Employee } from '../models/Employee.js';
 import { isValidDocumentType } from '../utils/validators.js';
 import { getExtensionFromMimeType } from '../utils/fileUpload.js';
-import { uploadToBlob, deleteFromBlob } from '../utils/blobStorage.js';
+import { uploadToBlob, deleteFromBlob, fetchBlobWithFallback, copyBlob, fixDoubleExtensionUrl } from '../utils/blobStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -359,9 +359,49 @@ router.get('/:id/download', async (req, res) => {
       });
     }
 
-    // If file_path is a URL (Blob), redirect to it
+    // If file_path is a URL (Blob), proxy the content through the backend
     if (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) {
-      return res.redirect(document.file_path);
+      try {
+        const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path);
+
+        // If a fixed URL was used, try to permanently fix the blob path
+        if (fixedUrl) {
+          try {
+            // Check if fixedUrl has double extension (blob found at doubled path)
+            // In that case, copy to the clean path and update DB with clean URL
+            const doubleExtRegex = /\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx)\.\1$/i;
+            if (doubleExtRegex.test(fixedUrl)) {
+              // fixedUrl is the doubled path where blob actually lives
+              // document.file_path is the clean path we want
+              // Copy blob from doubled path to clean path
+              const cleanUrl = fixDoubleExtensionUrl(fixedUrl);
+              if (cleanUrl) {
+                const pathname = new URL(cleanUrl).pathname.replace(/^\//, '');
+                const newBlobUrl = await copyBlob(fixedUrl, pathname);
+                await Document.update(document.id, { file_path: newBlobUrl });
+                console.log(`Auto-fixed: copied blob to clean path for document ${document.id}`);
+              }
+            } else {
+              // fixedUrl is the clean path (double extension was removed)
+              await Document.update(document.id, { file_path: fixedUrl });
+              console.log(`Auto-fixed double-extension URL for document ${document.id}`);
+            }
+          } catch (updateErr) {
+            console.warn(`Could not auto-fix URL for document ${document.id}:`, updateErr.message);
+          }
+        }
+
+        res.setHeader('Content-Type', document.mime_type || contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(document.file_name || 'document')}"`);
+        return res.send(buffer);
+      } catch (blobError) {
+        console.error(`Blob fetch failed for document ${document.id}:`, blobError.message);
+        return res.status(404).json({
+          success: false,
+          message: 'الملف غير متوفر في التخزين السحابي. قد يحتاج هذا الملف إلى إعادة الرفع.',
+          error: blobError.message
+        });
+      }
     }
 
     // Fallback for local files (backward compatibility during migration)
@@ -445,19 +485,33 @@ router.get('/:id/preview', async (req, res) => {
       });
     }
 
-    // For images, return the file directly
+    // For images, proxy the content through backend using authenticated access
     if (document.mime_type && document.mime_type.startsWith('image/')) {
-      // If file_path is a URL (Blob Storage), return it in JSON response for frontend to use
+      // If file_path is a URL (Blob Storage), fetch via authenticated fetchBlobWithFallback
       if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
-        return res.json({
-          success: true,
-          data: {
-            id: document.id,
-            file_name: document.file_name,
-            mime_type: document.mime_type,
-            file_url: document.file_path
+        try {
+          const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path);
+
+          // If a fixed URL was used, update DB for future requests
+          if (fixedUrl) {
+            try {
+              await Document.update(document.id, { file_path: fixedUrl });
+              console.log(`Auto-fixed preview URL for document ${document.id}`);
+            } catch (updateErr) {
+              console.warn(`Could not update fixed URL for document ${document.id}:`, updateErr.message);
+            }
           }
-        });
+
+          res.setHeader('Content-Type', document.mime_type || contentType);
+          return res.send(buffer);
+        } catch (fetchErr) {
+          console.error(`Preview fetch failed for document ${document.id}:`, fetchErr.message);
+          return res.status(404).json({
+            success: false,
+            message: 'الملف غير متوفر في التخزين السحابي. قد يحتاج هذا الملف إلى إعادة الرفع.',
+            error: fetchErr.message
+          });
+        }
       }
 
       // Fallback for local files (backward compatibility)

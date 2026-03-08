@@ -46,6 +46,39 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * GET /api/terms/current/:branchType
+ * Get current term for a branch type
+ * Accessible to all authenticated managers (main and branch)
+ * NOTE: Must be before /:id to avoid route conflict
+ */
+router.get('/current/:branchType', async (req, res) => {
+  try {
+    const { branchType } = req.params;
+    
+    if (!['school', 'healthcare_center'].includes(branchType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'نوع الفرع غير صحيح'
+      });
+    }
+    
+    const term = await Term.getCurrentTerm(branchType);
+    
+    res.json({
+      success: true,
+      data: term
+    });
+  } catch (error) {
+    console.error('Error fetching current term:', error);
+    res.status(500).json({
+      success: false,
+      message: 'فشل جلب الفصل الحالي',
+      error: error.message
+    });
+  }
+});
+
+/**
  * GET /api/terms/:id
  * Get term by ID
  * Accessible to all authenticated managers (main and branch)
@@ -400,38 +433,6 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'فشل إنشاء الفصلين الدراسيين والسنة الدراسية',
-      error: error.message
-    });
-  }
-});
-
-/**
- * GET /api/terms/current/:branchType
- * Get current term for a branch type
- * Accessible to all authenticated managers (main and branch)
- */
-router.get('/current/:branchType', async (req, res) => {
-  try {
-    const { branchType } = req.params;
-    
-    if (!['school', 'healthcare_center'].includes(branchType)) {
-      return res.status(400).json({
-        success: false,
-        message: 'نوع الفرع غير صحيح'
-      });
-    }
-    
-    const term = await Term.getCurrentTerm(branchType);
-    
-    res.json({
-      success: true,
-      data: term
-    });
-  } catch (error) {
-    console.error('Error fetching current term:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب الفصل الحالي',
       error: error.message
     });
   }

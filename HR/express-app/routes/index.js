@@ -27,6 +27,8 @@ import busTransportationReportRoutes from './bus-transportation-report.js';
 import studentsReportRoutes from './students-report.js';
 import suggestionsRoutes from './suggestions.js';
 import errorReportRoutes from './error-report.js';
+import beneficiariesRoutes from './beneficiaries.js';
+import blobRecoveryRoutes from './blob-recovery.js';
 
 const router = express.Router();
 
@@ -58,7 +60,9 @@ router.use('/bus-transportation', busTransportationRoutes);
 router.use('/bus-transportation-report', busTransportationReportRoutes);
 router.use('/students-report', studentsReportRoutes);
 router.use('/suggestions', suggestionsRoutes);
+router.use('/beneficiaries', beneficiariesRoutes);
 router.use('/error-report', errorReportRoutes);
+router.use('/blob-recovery', blobRecoveryRoutes);
 
 export default router;
 

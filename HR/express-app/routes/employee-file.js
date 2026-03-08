@@ -10,7 +10,7 @@ import { requireMainManager, requireManager } from '../middleware/authorization.
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { fetchFromBlob } from '../utils/blobStorage.js';
+import { fetchBlobWithFallback } from '../utils/blobStorage.js';
 import { PDFDocument } from 'pdf-lib';
 import { formatDate, gregorianToHijri as convertGregorianToHijri, formatHijriToString } from '../utils/dateConverter.js';
 
@@ -380,7 +380,7 @@ const loadDocumentFile = async (document) => {
 
     // If file_path is a URL (Blob Storage)
     if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
-      const result = await fetchFromBlob(document.file_path);
+      const result = await fetchBlobWithFallback(document.file_path);
       fileBuffer = result.buffer;
     } else {
       // Local file path (backward compatibility)

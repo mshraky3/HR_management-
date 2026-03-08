@@ -21,7 +21,10 @@ import {
 import {
   uploadBranchDocumentToBlob,
   deleteFromBlob,
-  fetchFromBlob,
+  fetchBlobWithFallback,
+  fetchBlobWithFallback,
+  copyBlob,
+  fixDoubleExtensionUrl,
 } from "../utils/blobStorage.js";
 import { clearByPrefix } from "../utils/simpleCache.js";
 import { formatDate } from "../utils/dateConverter.js";
@@ -519,7 +522,30 @@ router.get("/:id/download", async (req, res) => {
       document.file_path.startsWith("https://")
     ) {
       try {
-        const { buffer, contentType } = await fetchFromBlob(document.file_path);
+        const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path);
+
+        // Auto-fix double-extension URL in database
+        if (fixedUrl) {
+          try {
+            const doubleExtRegex = /\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx)\.\1$/i;
+            if (doubleExtRegex.test(fixedUrl)) {
+              // Blob found at doubled path, copy to clean path
+              const cleanUrl = fixDoubleExtensionUrl(fixedUrl);
+              if (cleanUrl) {
+                const pathname = new URL(cleanUrl).pathname.replace(/^\//, '');
+                const newBlobUrl = await copyBlob(fixedUrl, pathname);
+                await sql`UPDATE branch_documents SET file_path = ${newBlobUrl}, updated_at = CURRENT_TIMESTAMP WHERE id = ${document.id}`;
+                console.log(`Auto-fixed: copied blob to clean path for branch document ${document.id}`);
+              }
+            } else {
+              await sql`UPDATE branch_documents SET file_path = ${fixedUrl}, updated_at = CURRENT_TIMESTAMP WHERE id = ${document.id}`;
+              console.log(`Auto-fixed double-extension URL for branch document ${document.id}`);
+            }
+          } catch (updateErr) {
+            console.warn(`Could not auto-fix URL for branch document ${document.id}:`, updateErr.message);
+          }
+        }
+
         const safeFilename = sanitizeFilename(document.file_name);
         res.setHeader("Content-Type", contentType || document.mime_type);
         res.setHeader(
@@ -597,23 +623,37 @@ router.get("/:id/preview", async (req, res) => {
       });
     }
 
-    // For images, return the file directly
+    // For images, proxy the content through backend using authenticated access
     if (document.mime_type && document.mime_type.startsWith("image/")) {
-      // If file_path is a URL (Blob Storage), return it in JSON response for frontend to use
+      // If file_path is a URL (Blob Storage), fetch via authenticated fetchBlobWithFallback
       if (
         document.file_path &&
         (document.file_path.startsWith("http://") ||
           document.file_path.startsWith("https://"))
       ) {
-        return res.json({
-          success: true,
-          data: {
-            id: document.id,
-            file_name: document.file_name,
-            mime_type: document.mime_type,
-            file_url: document.file_path,
-          },
-        });
+        try {
+          const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path);
+
+          // If a fixed URL was used, update DB for future requests
+          if (fixedUrl) {
+            try {
+              await BranchDocument.update(document.id, { file_path: fixedUrl });
+              console.log(`Auto-fixed preview URL for branch document ${document.id}`);
+            } catch (updateErr) {
+              console.warn(`Could not update fixed URL for branch document ${document.id}:`, updateErr.message);
+            }
+          }
+
+          res.setHeader("Content-Type", document.mime_type || contentType);
+          return res.send(buffer);
+        } catch (fetchErr) {
+          console.error(`Preview fetch failed for branch document ${document.id}:`, fetchErr.message);
+          return res.status(404).json({
+            success: false,
+            message: "الملف غير متوفر في التخزين السحابي. قد يحتاج هذا الملف إلى إعادة الرفع.",
+            error: fetchErr.message,
+          });
+        }
       }
 
       // Fallback for local files
@@ -1105,7 +1145,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
           doc.file_path.startsWith("https://")
         ) {
           try {
-            const result = await fetchFromBlob(doc.file_path);
+            const result = await fetchBlobWithFallback(doc.file_path);
             fileBuffer = result.buffer;
           } catch (blobError) {
             console.error(
@@ -1725,7 +1765,7 @@ router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
               doc.file_path.startsWith("http://") ||
               doc.file_path.startsWith("https://")
             ) {
-              const result = await fetchFromBlob(doc.file_path);
+              const result = await fetchBlobWithFallback(doc.file_path);
               fileBuffer = result.buffer;
             } else {
               // Local file logic
@@ -2146,7 +2186,7 @@ router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
           try {
             let fileBuffer;
             if (doc.file_path.startsWith("http://") || doc.file_path.startsWith("https://")) {
-              const result = await fetchFromBlob(doc.file_path);
+              const result = await fetchBlobWithFallback(doc.file_path);
               fileBuffer = result.buffer;
             } else {
               if (process.env.VERCEL !== "1") {
