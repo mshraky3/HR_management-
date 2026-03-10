@@ -111,6 +111,7 @@ const Layout = ({ children }) => {
         { path: "/term-management", label: "إدارة الفصول" },
         { path: "/fix-missing-dates", label: "البيانات غير الدقيقة" },
         { path: "/archive", label: "الأرشيف" },
+        { path: "/beneficiaries-archive", label: "أرشيف المستفيدين" },
       ],
     },
     communication: {
@@ -196,6 +197,16 @@ const Layout = ({ children }) => {
             }}
           >
             مسيرات الرواتب
+          </Link>
+          <Link
+            to="/beneficiaries"
+            className={`nav-link ${isActive("/beneficiaries")}`}
+            onClick={() => {
+              setMobileMenuOpen(false);
+              closeDropdown();
+            }}
+          >
+            المستفيدين
           </Link>
           <Link
             to="/suggestions"
