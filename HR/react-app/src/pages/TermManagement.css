@@ -258,6 +258,63 @@
   border-top: 1px solid #eee;
 }
 
+/* Edit mode styles */
+.term-edit {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.term-edit h4 {
+  margin-bottom: 10px;
+}
+
+.edit-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.edit-field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  min-width: 55px;
+}
+
+.edit-field input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.edit-dates-row {
+  display: flex;
+  gap: 12px;
+}
+
+.edit-dates-row .edit-field {
+  flex: 1;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid #007bff;
+  color: #007bff;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.btn-outline:hover {
+  background: #007bff;
+  color: #fff;
+}
+
 /* Buttons - Using unified button system from buttons.css */
 
 /* Loading and Empty States */

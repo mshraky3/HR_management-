@@ -72,10 +72,29 @@ const TermManagement = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData(prev => {
+      const updated = { ...prev, [name]: value };
+      
+      // Auto-fill term names when year_label changes
+      if (name === 'year_label' && value.trim()) {
+        const yearLabel = value.trim();
+        const autoTerm1 = `الفصل الأول - ${yearLabel}`;
+        const autoTerm2 = `الفصل الثاني - ${yearLabel}`;
+        
+        // Only auto-fill if empty or matches previous auto-pattern
+        const prevAutoTerm1 = prev.year_label ? `الفصل الأول - ${prev.year_label.trim()}` : '';
+        const prevAutoTerm2 = prev.year_label ? `الفصل الثاني - ${prev.year_label.trim()}` : '';
+        
+        if (!prev.term1_name || prev.term1_name === prevAutoTerm1) {
+          updated.term1_name = autoTerm1;
+        }
+        if (!prev.term2_name || prev.term2_name === prevAutoTerm2) {
+          updated.term2_name = autoTerm2;
+        }
+      }
+      
+      return updated;
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -218,7 +237,7 @@ const TermManagement = () => {
                   name="year_label"
                   value={formData.year_label}
                   onChange={handleInputChange}
-                  placeholder="مثال: 1445-1446"
+                  placeholder="مثال: 2025/2026"
                   required
                 />
               </div>
@@ -234,7 +253,7 @@ const TermManagement = () => {
                     name="term1_name"
                     value={formData.term1_name}
                     onChange={handleInputChange}
-                    placeholder="مثال: الفصل الأول 1445"
+                    placeholder="مثال: الفصل الأول - 2025/2026"
                     required
                   />
                 </div>
@@ -273,7 +292,7 @@ const TermManagement = () => {
                     name="term2_name"
                     value={formData.term2_name}
                     onChange={handleInputChange}
-                    placeholder="مثال: الفصل الثاني 1445"
+                    placeholder="مثال: الفصل الثاني - 2025/2026"
                     required
                   />
                 </div>
@@ -339,6 +358,7 @@ const TermManagement = () => {
                     key={year.id}
                     year={year}
                     onComplete={handleCompleteYear}
+                    onUpdate={loadAcademicYears}
                   />
                 ))}
               </div>
@@ -357,6 +377,7 @@ const TermManagement = () => {
                     key={year.id}
                     year={year}
                     onComplete={handleCompleteYear}
+                    onUpdate={loadAcademicYears}
                   />
                 ))}
               </div>
@@ -371,7 +392,64 @@ const TermManagement = () => {
 };
 
 // Academic Year Card Component
-const AcademicYearCard = ({ year, onComplete }) => {
+const AcademicYearCard = ({ year, onComplete, onUpdate }) => {
+  const [editing, setEditing] = useState(false);
+  const [editData, setEditData] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const startEditing = () => {
+    setEditData({
+      term1_name: year.term1?.term_name || '',
+      term1_start_date: year.term1?.start_date ? year.term1.start_date.slice(0, 10) : '',
+      term1_end_date: year.term1?.end_date ? year.term1.end_date.slice(0, 10) : '',
+      term2_name: year.term2?.term_name || '',
+      term2_start_date: year.term2?.start_date ? year.term2.start_date.slice(0, 10) : '',
+      term2_end_date: year.term2?.end_date ? year.term2.end_date.slice(0, 10) : '',
+    });
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+    setEditData({});
+  };
+
+  const handleEditChange = (e) => {
+    const { name, value } = e.target;
+    setEditData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      
+      // Update term 1 if it exists
+      if (year.term1) {
+        await termsAPI.update(year.term1.id, {
+          term_name: editData.term1_name.trim(),
+          start_date: editData.term1_start_date,
+          end_date: editData.term1_end_date,
+        });
+      }
+      
+      // Update term 2 if it exists
+      if (year.term2) {
+        await termsAPI.update(year.term2.id, {
+          term_name: editData.term2_name.trim(),
+          start_date: editData.term2_start_date,
+          end_date: editData.term2_end_date,
+        });
+      }
+      
+      setEditing(false);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error saving term edits:', error);
+      alert(error.response?.data?.message || 'فشل حفظ التعديلات');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className={`academic-year-card ${year.is_current ? 'current' : ''} ${year.is_completed ? 'completed' : ''}`}>
@@ -395,31 +473,92 @@ const AcademicYearCard = ({ year, onComplete }) => {
           </div>
         </div>
         
-        {year.term1 && (
-          <div className="term-info">
-            <h4>الفصل الأول: {year.term1.term_name}</h4>
-            <p>{formatDate(year.term1.start_date)} - {formatDate(year.term1.end_date)}</p>
-          </div>
-        )}
-        
-        {year.term2 && (
-          <div className="term-info">
-            <h4>الفصل الثاني: {year.term2.term_name}</h4>
-            <p>{formatDate(year.term2.start_date)} - {formatDate(year.term2.end_date)}</p>
-          </div>
+        {editing ? (
+          <>
+            {year.term1 && (
+              <div className="term-info term-edit">
+                <h4>الفصل الأول</h4>
+                <div className="edit-field">
+                  <label>الاسم:</label>
+                  <input type="text" name="term1_name" value={editData.term1_name} onChange={handleEditChange} />
+                </div>
+                <div className="edit-dates-row">
+                  <div className="edit-field">
+                    <label>البداية:</label>
+                    <input type="date" name="term1_start_date" value={editData.term1_start_date} onChange={handleEditChange} />
+                  </div>
+                  <div className="edit-field">
+                    <label>النهاية:</label>
+                    <input type="date" name="term1_end_date" value={editData.term1_end_date} onChange={handleEditChange} />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {year.term2 && (
+              <div className="term-info term-edit">
+                <h4>الفصل الثاني</h4>
+                <div className="edit-field">
+                  <label>الاسم:</label>
+                  <input type="text" name="term2_name" value={editData.term2_name} onChange={handleEditChange} />
+                </div>
+                <div className="edit-dates-row">
+                  <div className="edit-field">
+                    <label>البداية:</label>
+                    <input type="date" name="term2_start_date" value={editData.term2_start_date} onChange={handleEditChange} />
+                  </div>
+                  <div className="edit-field">
+                    <label>النهاية:</label>
+                    <input type="date" name="term2_end_date" value={editData.term2_end_date} onChange={handleEditChange} />
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {year.term1 && (
+              <div className="term-info">
+                <h4>الفصل الأول: {year.term1.term_name}</h4>
+                <p>{formatDate(year.term1.start_date)} - {formatDate(year.term1.end_date)}</p>
+              </div>
+            )}
+            
+            {year.term2 && (
+              <div className="term-info">
+                <h4>الفصل الثاني: {year.term2.term_name}</h4>
+                <p>{formatDate(year.term2.start_date)} - {formatDate(year.term2.end_date)}</p>
+              </div>
+            )}
+          </>
         )}
       </div>
       
-      {!year.is_completed && (
-        <div className="card-actions">
-          <button
-            className="btn btn-warning btn-sm"
-            onClick={() => onComplete(year.id)}
-          >
-            إتمام السنة
-          </button>
-        </div>
-      )}
+      <div className="card-actions">
+        {editing ? (
+          <>
+            <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+              {saving ? 'جاري الحفظ...' : 'حفظ'}
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={cancelEditing} disabled={saving}>
+              إلغاء
+            </button>
+          </>
+        ) : (
+          <>
+            {!year.is_completed && (
+              <>
+                <button className="btn btn-outline btn-sm" onClick={startEditing}>
+                  تعديل
+                </button>
+                <button className="btn btn-warning btn-sm" onClick={() => onComplete(year.id)}>
+                  إتمام السنة
+                </button>
+              </>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 };

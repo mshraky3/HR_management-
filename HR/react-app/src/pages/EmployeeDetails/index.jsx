@@ -122,13 +122,8 @@ const EmployeeDetails = () => {
       setPreviewDocument(document);
 
       if (document.mime_type && document.mime_type.startsWith('image/')) {
-        if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
-          setPreviewUrl(document.file_path);
-          setPreviewLoading(null);
-          return;
-        }
-
         try {
+          // Always proxy through backend to use authenticated blob access
           const response = await documentsAPI.download(document.id);
           if (response.data instanceof Blob) {
             const blobUrl = URL.createObjectURL(response.data);

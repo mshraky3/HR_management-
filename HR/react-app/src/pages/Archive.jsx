@@ -488,31 +488,8 @@ const Archive = () => {
     try {
       setPreviewDocument(doc);
 
-      // If it's an image and file_path is a URL (Blob Storage), use it directly
-      if (doc.mime_type?.startsWith('image/') && doc.file_path &&
-        (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://'))) {
-        setPreviewUrl(doc.file_path);
-        return;
-      }
-
-      // For other cases, try the preview endpoint
+      // Always proxy through backend download endpoint for authenticated blob access
       try {
-        const response = await documentsAPI.preview(doc.id);
-
-        // If response is a redirect or URL, use it directly
-        if (response.data && typeof response.data === 'string' &&
-          (response.data.startsWith('http://') || response.data.startsWith('https://'))) {
-          setPreviewUrl(response.data);
-          return;
-        }
-
-        // If response has file_url, use it
-        if (response.data?.file_url) {
-          setPreviewUrl(response.data.file_url);
-          return;
-        }
-
-        // Otherwise, try to get blob from download endpoint
         const downloadResponse = await documentsAPI.download(doc.id);
         if (downloadResponse.data instanceof Blob) {
           const url = window.URL.createObjectURL(downloadResponse.data);
@@ -521,14 +498,8 @@ const Archive = () => {
           throw new Error('Invalid response format');
         }
       } catch (previewError) {
-        // Fallback to download endpoint
-        const downloadResponse = await documentsAPI.download(doc.id);
-        if (downloadResponse.data instanceof Blob) {
-          const url = window.URL.createObjectURL(downloadResponse.data);
-          setPreviewUrl(url);
-        } else {
-          throw previewError;
-        }
+        console.error('Error loading preview:', previewError);
+        throw previewError;
       }
     } catch (error) {
       console.error('Error previewing document:', error);
@@ -561,31 +532,8 @@ const Archive = () => {
     try {
       setPreviewDocument(doc);
 
-      // If it's an image and file_path is a URL (Blob Storage), use it directly
-      if (doc.mime_type?.startsWith('image/') && doc.file_path &&
-        (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://'))) {
-        setPreviewUrl(doc.file_path);
-        return;
-      }
-
-      // For other cases, try the preview endpoint
+      // Always proxy through backend download endpoint for authenticated blob access
       try {
-        const response = await branchDocumentsAPI.preview(doc.id);
-
-        // If response is a redirect or URL, use it directly
-        if (response.data && typeof response.data === 'string' &&
-          (response.data.startsWith('http://') || response.data.startsWith('https://'))) {
-          setPreviewUrl(response.data);
-          return;
-        }
-
-        // If response has file_url, use it
-        if (response.data?.file_url) {
-          setPreviewUrl(response.data.file_url);
-          return;
-        }
-
-        // Otherwise, try to get blob from download endpoint
         const downloadResponse = await branchDocumentsAPI.download(doc.id);
         if (downloadResponse.data instanceof Blob) {
           const url = window.URL.createObjectURL(downloadResponse.data);
@@ -594,14 +542,8 @@ const Archive = () => {
           throw new Error('Invalid response format');
         }
       } catch (previewError) {
-        // Fallback to download endpoint
-        const downloadResponse = await branchDocumentsAPI.download(doc.id);
-        if (downloadResponse.data instanceof Blob) {
-          const url = window.URL.createObjectURL(downloadResponse.data);
-          setPreviewUrl(url);
-        } else {
-          throw previewError;
-        }
+        console.error('Error loading branch doc preview:', previewError);
+        throw previewError;
       }
     } catch (error) {
       console.error('Error previewing document:', error);
@@ -812,7 +754,7 @@ const Archive = () => {
                   type="text"
                   value={filters.academic_year}
                   onChange={(e) => setFilters(prev => ({ ...prev, academic_year: e.target.value }))}
-                  placeholder="مثال: 1445-1446"
+                  placeholder="مثال: 2025/2026"
                 />
               </div>
               <div className="filter-group">
@@ -933,9 +875,9 @@ const Archive = () => {
                               employee.id,
                               `${employee.first_name} ${employee.second_name} ${employee.third_name} ${employee.fourth_name}`
                             )}
-                            style={{ 
-                              backgroundColor: employee.branch_is_active === false ? '#9e9e9e' : '#4caf50', 
-                              color: 'white', 
+                            style={{
+                              backgroundColor: employee.branch_is_active === false ? '#9e9e9e' : '#4caf50',
+                              color: 'white',
                               border: 'none',
                               cursor: employee.branch_is_active === false ? 'not-allowed' : 'pointer'
                             }}

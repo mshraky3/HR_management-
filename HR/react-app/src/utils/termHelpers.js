@@ -7,10 +7,12 @@ import { getBranchTypeLabel } from './employeeHelpers.js';
 
 /**
  * Format term for display in dropdowns and UI
+ * Term names now include the year (e.g., "الفصل الأول - 2025/2026")
+ * so we use term_name directly instead of appending academic_year_label.
  * @param {Object} term - Term object
  * @param {Object} options - Formatting options
  * @param {boolean} options.showBranchType - Show branch type label (default: true for main managers)
- * @param {boolean} options.shortFormat - Use short format without term name (default: false)
+ * @param {boolean} options.shortFormat - Use short format showing only year label (default: false)
  * @returns {string} - Formatted term string
  */
 export const formatTermDisplay = (term, options = {}) => {
@@ -23,7 +25,8 @@ export const formatTermDisplay = (term, options = {}) => {
   if (shortFormat) {
     display = term.academic_year_label || '';
   } else {
-    display = `${term.term_name || ''} - ${term.academic_year_label || ''}`.trim();
+    // term_name already includes year info (e.g., "الفصل الأول - 2025/2026")
+    display = term.term_name || term.academic_year_label || '';
   }
   
   if (showBranchType && term.branch_type) {

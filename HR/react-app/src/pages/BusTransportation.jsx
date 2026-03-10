@@ -1326,7 +1326,7 @@ const BusTransportation = () => {
                     <div className="bus-info-item">
                       <span className="info-label">الفصل الدراسي:</span>
                       <span className="info-value">
-                        {bus.term_name} - {bus.academic_year_label}
+                        {bus.term_name}
                       </span>
                     </div>
                   )}
@@ -2646,9 +2646,9 @@ const BusFormModal = ({
                       }}
                     >
                       {currentTerm
-                        ? `${currentTerm.term_name} - ${currentTerm.academic_year_label}`
+                        ? currentTerm.term_name
                         : bus?.term_name
-                          ? `${bus.term_name} - ${bus.academic_year_label}`
+                          ? bus.term_name
                           : "الفصل الحالي"}
                     </div>
                   ) : (

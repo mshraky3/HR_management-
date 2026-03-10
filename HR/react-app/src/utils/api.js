@@ -1094,6 +1094,48 @@ export const busTransportationReportAPI = {
     }),
 };
 
+// Beneficiaries API (المستفيدين)
+export const beneficiariesAPI = {
+  getAll: (params = {}) =>
+    api.get('/api/beneficiaries', { params }),
+
+  getById: (id) =>
+    api.get(`/api/beneficiaries/${id}`),
+
+  create: (data) =>
+    api.post('/api/beneficiaries', data),
+
+  update: (id, data) =>
+    api.put(`/api/beneficiaries/${id}`, data),
+
+  delete: (id) =>
+    api.delete(`/api/beneficiaries/${id}`),
+
+  getStats: (params = {}) =>
+    api.get('/api/beneficiaries/stats', { params }),
+
+  getBranchStats: (params = {}) =>
+    api.get('/api/beneficiaries/stats/branch', { params }),
+
+  getSubmissionStatus: (params = {}) =>
+    api.get('/api/beneficiaries/submission-status', { params }),
+
+  getActiveTerm: () =>
+    api.get('/api/beneficiaries/active-term'),
+
+  getTermsWithData: () =>
+    api.get('/api/beneficiaries/terms'),
+
+  exportExcel: (params = {}) =>
+    api.get('/api/beneficiaries/export', { params, responseType: 'blob' }),
+
+  getArchive: (params = {}) =>
+    api.get('/api/beneficiaries/archive', { params }),
+
+  archiveTerm: (termId) =>
+    api.post(`/api/beneficiaries/archive/${termId}`),
+};
+
 // Suggestions API
 export const suggestionsAPI = {
   // Get options (importance levels, status options)

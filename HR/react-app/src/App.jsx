@@ -96,6 +96,8 @@ const ExperienceCertificate = lazy(
 const EmployeeTransfer = lazy(() => import("./pages/EmployeeTransfer"));
 const BusTransportation = lazy(() => import("./pages/BusTransportation.jsx"));
 const Suggestions = lazy(() => import("./pages/Suggestions"));
+const Beneficiaries = lazy(() => import("./pages/Beneficiaries"));
+const BeneficiariesArchive = lazy(() => import("./pages/BeneficiariesArchive"));
 
 // Wrapper component to choose layout based on role
 const RoleBasedLayout = ({ children }) => {
@@ -398,6 +400,26 @@ const AppContent = () => {
               <RoleBasedLayout>
                 <Suggestions />
               </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/beneficiaries"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <Beneficiaries />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/beneficiaries-archive"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <BeneficiariesArchive />
+              </Layout>
             </ProtectedRoute>
           }
         />
