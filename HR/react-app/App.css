@@ -1,0 +1,397 @@
+/* App-level styles */
+/* Note: buttons.css and containers.css are now loaded in main.jsx
+ * to prevent FOUC (Flash of Unstyled Content) when lazy-loading pages
+ * This ensures critical CSS is loaded immediately before any components render
+ */
+
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Utility Classes */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--spacing-md);
+}
+
+@media (max-width: 640px) {
+  .container {
+    padding: 0 var(--spacing-sm);
+  }
+}
+
+/* Loading States */
+.loading {
+  text-align: center;
+  padding: var(--spacing-xl);
+  color: var(--text-light);
+}
+
+/* Notification Banner (page-level) */
+.notification-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 12px 0 16px;
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+}
+
+.notification-banner .btn {
+  white-space: nowrap;
+}
+
+/* Spinner */
+.spinner {
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.spinner-large {
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top: 4px solid white;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Button disabled state */
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+button:disabled::before {
+  display: none !important;
+}
+
+/* Error Messages - Modern Design */
+.error-message {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  color: var(--danger);
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-lg);
+  border: 2px solid #fecaca;
+  margin-bottom: var(--spacing-md);
+  box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.1);
+  font-weight: 500;
+}
+
+/* Success Messages - Modern Design */
+.success-message {
+  background: linear-gradient(135deg, #f0fdf4 0%, #d1fae5 100%);
+  color: var(--success);
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-lg);
+  border: 2px solid #bbf7d0;
+  margin-bottom: var(--spacing-md);
+  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.1);
+  font-weight: 500;
+}
+
+/* Empty States */
+.empty-state {
+  text-align: center;
+  padding: var(--spacing-xl);
+  color: var(--text-light);
+}
+
+/* Cards - Modern Design */
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl);
+  box-shadow: var(--shadow-md);
+  transition: all var(--transition-base);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%);
+  transition: width var(--transition-base);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-xl);
+  transform: translateY(-2px);
+  border-color: var(--primary);
+}
+
+.card:hover::before {
+  width: 100%;
+  opacity: 0.05;
+}
+
+/* Responsive Grid */
+.grid {
+  display: grid;
+  gap: var(--spacing-md);
+}
+
+.grid-1 {
+  grid-template-columns: repeat(1, 1fr);
+}
+
+.grid-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.grid-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 1024px) {
+  .grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+
+  .grid-4,
+  .grid-3,
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Mobile-specific styles (smartphones only) - max-width: 480px */
+@media (max-width: 480px) {
+  .container {
+    padding: 0 var(--spacing-xs);
+  }
+
+  .card {
+    padding: var(--spacing-md);
+    border-radius: var(--radius-lg);
+  }
+
+  .error-message,
+  .success-message {
+    padding: var(--spacing-sm);
+    font-size: var(--font-size-sm);
+  }
+
+  .empty-state {
+    padding: var(--spacing-lg);
+    font-size: var(--font-size-sm);
+  }
+}
+
+/* Flex Utilities */
+.flex {
+  display: flex;
+}
+
+/* ============================================
+   GLOBAL MOBILE RESPONSIVE FIX
+   Ensures content fits screen width
+   ============================================ */
+@media (max-width: 480px) {
+
+  html,
+  body,
+  #root {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+    position: relative;
+  }
+
+  body {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  * {
+    max-width: 100%;
+  }
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.flex-wrap {
+  flex-wrap: wrap;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.gap-sm {
+  gap: var(--spacing-sm);
+}
+
+.gap-md {
+  gap: var(--spacing-md);
+}
+
+.gap-lg {
+  gap: var(--spacing-lg);
+}
+
+/* Spacing Utilities */
+.mt-sm {
+  margin-top: var(--spacing-sm);
+}
+
+.mt-md {
+  margin-top: var(--spacing-md);
+}
+
+.mt-lg {
+  margin-top: var(--spacing-lg);
+}
+
+.mb-sm {
+  margin-bottom: var(--spacing-sm);
+}
+
+.mb-md {
+  margin-bottom: var(--spacing-md);
+}
+
+.mb-lg {
+  margin-bottom: var(--spacing-lg);
+}
+
+.p-sm {
+  padding: var(--spacing-sm);
+}
+
+.p-md {
+  padding: var(--spacing-md);
+}
+
+.p-lg {
+  padding: var(--spacing-lg);
+}
+
+/* ============================================
+   GLOBAL RESPONSIVE TABLE UTILITIES
+   Convert tables to cards on mobile (480px)
+   ============================================ */
+
+/* Add class "responsive-table" to any table for mobile card conversion */
+@media (max-width: 480px) {
+  .responsive-table thead {
+    display: none;
+  }
+
+  .responsive-table,
+  .responsive-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .responsive-table tbody tr {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg, #fff);
+    border: 1px solid var(--border-light, #e5e7eb);
+    border-radius: var(--radius-md, 8px);
+    padding: var(--spacing-sm, 12px);
+    margin-bottom: var(--spacing-sm, 8px);
+    gap: var(--spacing-xs, 6px);
+  }
+
+  .responsive-table tbody tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .responsive-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border: none !important;
+    padding: 4px 0 !important;
+    text-align: left;
+    font-size: var(--font-size-sm, 13px);
+  }
+
+  .responsive-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-light, #6b7280);
+    font-size: var(--font-size-xs, 12px);
+    flex-shrink: 0;
+    margin-left: var(--spacing-sm, 8px);
+  }
+
+  /* First cell styling - prominent name/title */
+  .responsive-table td:first-child {
+    font-weight: 600;
+    font-size: var(--font-size-base, 14px);
+    color: var(--text, #1f2937);
+    border-bottom: 1px solid var(--border-light, #e5e7eb) !important;
+    padding-bottom: var(--spacing-sm, 8px) !important;
+    margin-bottom: 4px;
+  }
+
+  .responsive-table td:first-child::before {
+    display: none;
+  }
+
+  /* Actions cell - full width button */
+  .responsive-table td:last-child .btn,
+  .responsive-table td[data-label*="إجراء"] .btn,
+  .responsive-table td[data-label*="action"] .btn {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+  }
+
+  /* Table wrapper scrolling disabled on mobile when using cards */
+  .responsive-table-wrapper {
+    overflow-x: visible;
+  }
+}
