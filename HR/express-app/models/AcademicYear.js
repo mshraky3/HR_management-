@@ -41,23 +41,23 @@ export const AcademicYear = {
         LEFT JOIN terms t2 ON ay.term2_id = t2.id
         WHERE 1=1
       `;
-      
+
       if (filters.branch_type) {
         query = sql`${query} AND ay.branch_type = ${filters.branch_type}`;
       }
-      
+
       if (filters.is_current !== undefined) {
         query = sql`${query} AND ay.is_current = ${filters.is_current}`;
       }
-      
+
       if (filters.is_completed !== undefined) {
         query = sql`${query} AND ay.is_completed = ${filters.is_completed}`;
       }
-      
+
       query = sql`${query} ORDER BY ay.branch_type, ay.year_start DESC`;
-      
+
       const years = await query;
-      
+
       // Format the results to include term objects
       return years.map(year => ({
         ...year,
@@ -85,7 +85,8 @@ export const AcademicYear = {
    */
   async getCurrentYear(branchType) {
     try {
-      const [year] = await sql`
+      // 1. Try flag-based lookup
+      const [flagged] = await sql`
         SELECT ay.*, 
                t1.term_name as term1_name, t1.start_date as term1_start, t1.end_date as term1_end,
                t2.term_name as term2_name, t2.start_date as term2_start, t2.end_date as term2_end
@@ -96,7 +97,25 @@ export const AcademicYear = {
         AND ay.is_current = true
         LIMIT 1
       `;
-      return year || null;
+      if (flagged) return flagged;
+
+      // 2. Fallback: find year where today falls within year_start..year_end
+      const now = new Date();
+      const [byDate] = await sql`
+        SELECT ay.*, 
+               t1.term_name as term1_name, t1.start_date as term1_start, t1.end_date as term1_end,
+               t2.term_name as term2_name, t2.start_date as term2_start, t2.end_date as term2_end
+        FROM academic_years ay
+        LEFT JOIN terms t1 ON ay.term1_id = t1.id
+        LEFT JOIN terms t2 ON ay.term2_id = t2.id
+        WHERE ay.branch_type = ${branchType}
+        AND ay.year_start <= ${now}
+        AND ay.year_end >= ${now}
+        AND ay.is_completed = false
+        ORDER BY ay.year_start DESC
+        LIMIT 1
+      `;
+      return byDate || null;
     } catch (error) {
       console.error('Error finding current academic year:', error);
       throw error;
@@ -136,29 +155,29 @@ export const AcademicYear = {
       const {
         branch_type, year_label, year_start, year_end, term1_id, term2_id
       } = yearData;
-      
+
       // Validate dates
       if (new Date(year_start) > new Date(year_end)) {
         throw new Error('Year start must be before or equal to year end');
       }
-      
+
       // Check if year label already exists for this branch type
       const existing = await sql`
         SELECT * FROM academic_years
         WHERE branch_type = ${branch_type} AND year_label = ${year_label}
       `;
-      
+
       if (existing.length > 0) {
         throw new Error('Academic year label already exists for this branch type');
       }
-      
+
       // Set other years as not current
       await sql`
         UPDATE academic_years
         SET is_current = false
         WHERE branch_type = ${branch_type} AND is_current = true
       `;
-      
+
       const [year] = await sql`
         INSERT INTO academic_years (
           branch_type, year_label, year_start, year_end, term1_id, term2_id, is_current
@@ -169,7 +188,7 @@ export const AcademicYear = {
         )
         RETURNING *
       `;
-      
+
       return year;
     } catch (error) {
       console.error('Error creating academic year:', error);
@@ -187,11 +206,11 @@ export const AcademicYear = {
         'is_current', 'is_completed'
       ];
       const updateFields = Object.keys(updates).filter(key => allowedFields.includes(key));
-      
+
       if (updateFields.length === 0) {
         throw new Error('No valid fields to update');
       }
-      
+
       // If setting as current, unset other current years for same branch type
       if (updates.is_current === true) {
         const year = await this.findById(id);
@@ -203,22 +222,22 @@ export const AcademicYear = {
           `;
         }
       }
-      
+
       // If marking as completed, set completed_at
       if (updates.is_completed === true) {
         updates.completed_at = new Date();
       }
-      
+
       updates.updated_at = new Date();
-      
+
       // Build SET clause manually
       const setClause = updateFields.map((field, index) => {
         return `${field} = $${index + 2}`;
       }).join(', ');
-      
+
       const values = updateFields.map(field => updates[field]);
       values.unshift(id);
-      
+
       const query = `
         UPDATE academic_years 
         SET ${setClause}, updated_at = $${values.length + 1}
@@ -226,12 +245,12 @@ export const AcademicYear = {
         WHERE id = $1
         RETURNING *
       `;
-      
+
       values.push(updates.updated_at);
       if (updates.completed_at) {
         values.push(updates.completed_at);
       }
-      
+
       const result = await sql.unsafe(query, values);
       return result[0] || null;
     } catch (error) {
@@ -249,11 +268,11 @@ export const AcademicYear = {
       if (!year) {
         throw new Error('Academic year not found');
       }
-      
+
       if (year.branch_type !== branchType) {
         throw new Error('Branch type mismatch');
       }
-      
+
       // Start transaction: Update academic year and employee statuses
       // Change all active employees in this branch type to pending
       // Note: is_active remains true for pending employees (they're not archived yet)
@@ -270,13 +289,13 @@ export const AcademicYear = {
         AND status = 'active'
         AND is_active = true
       `;
-      
+
       // Mark academic year as completed
       await this.update(yearId, {
         is_completed: true,
         is_current: false
       });
-      
+
       return {
         success: true,
         employeesUpdated: result.count || 0

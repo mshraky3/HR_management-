@@ -8,6 +8,7 @@ import { authenticate, optionalAuth } from '../middleware/auth.js';
 import { User } from '../models/User.js';
 import { Branch } from '../models/Branch.js';
 import { generateToken } from '../utils/jwt.js';
+import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
 
 const router = express.Router();
@@ -32,7 +33,7 @@ router.post('/login', async (req, res) => {
     // First, try to find user in users table
     let user;
     let isBranchLogin = false;
-    
+
     try {
       user = await User.findByUsername(username);
     } catch (dbError) {
@@ -57,7 +58,7 @@ router.post('/login', async (req, res) => {
           error: process.env.NODE_ENV === 'development' ? dbError.message : undefined
         });
       }
-      
+
       if (branch) {
         // Check branch password
         if (branch.password !== password) {
@@ -84,7 +85,8 @@ router.post('/login', async (req, res) => {
           branch_id: branch.id,
           full_name: branch.branch_name,
           email: null,
-          is_active: branch.is_active
+          is_active: branch.is_active,
+          branch_type: branch.branch_type
         };
       }
     }
@@ -127,7 +129,7 @@ router.post('/login', async (req, res) => {
         const today = new Date().toISOString().split('T')[0];
         const ipAddress = req.ip || req.connection.remoteAddress || null;
         const userAgent = req.get('user-agent') || null;
-        
+
         // Check if login already recorded for today
         const [existingLogin] = await sql`
           SELECT id FROM user_logins
@@ -135,7 +137,7 @@ router.post('/login', async (req, res) => {
           AND login_date = ${today}
           LIMIT 1
         `;
-        
+
         // Only insert if no login recorded for today
         if (!existingLogin) {
           await sql`
@@ -160,7 +162,8 @@ router.post('/login', async (req, res) => {
         role: user.role,
         branch_id: user.branch_id,
         full_name: user.full_name,
-        email: user.email
+        email: user.email,
+        branch_type: user.branch_type || null
       }
     });
   } catch (error) {
@@ -168,8 +171,8 @@ router.post('/login', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'فشل تسجيل الدخول',
-      error: process.env.NODE_ENV === 'production' 
-        ? 'خطأ داخلي في الخادم. يرجى التحقق من سجلات الخادم.' 
+      error: process.env.NODE_ENV === 'production'
+        ? 'خطأ داخلي في الخادم. يرجى التحقق من سجلات الخادم.'
         : error.message
     });
   }
@@ -183,8 +186,29 @@ router.post('/login', async (req, res) => {
 router.get('/me', authenticate, async (req, res) => {
   try {
     // Get full user details from database
-    const user = await User.findById(req.user.id);
-    
+    let user = await User.findById(req.user.id);
+
+    if (!user && req.user.role === 'branch_manager') {
+      // Branch managers login via branches table - look up branch directly
+      const [branch] = await sql`
+        SELECT id, username, branch_name, branch_type, is_active
+        FROM branches WHERE id = ${req.user.branch_id || req.user.id}
+      `;
+      if (branch) {
+        user = {
+          id: branch.id,
+          username: branch.username,
+          role: 'branch_manager',
+          branch_id: branch.id,
+          full_name: branch.branch_name,
+          email: null,
+          is_active: branch.is_active,
+          branch_type: branch.branch_type,
+          created_at: null
+        };
+      }
+    }
+
     if (!user) {
       // Treat missing DB user as invalid/expired token so frontend can re-login cleanly
       return res.status(401).json({
@@ -204,7 +228,8 @@ router.get('/me', authenticate, async (req, res) => {
         full_name: user.full_name,
         email: user.email,
         is_active: user.is_active,
-        created_at: user.created_at
+        created_at: user.created_at,
+        branch_type: user.branch_type || null
       }
     });
   } catch (error) {

@@ -412,6 +412,66 @@ const Beneficiary = {
             log.error('Error getting terms with data:', error);
             throw error;
         }
+    },
+
+    /**
+     * Copy beneficiaries from one term to another for a specific branch
+     * Skips records whose civil_id already exists in the target term+branch
+     */
+    async copyFromTerm(sourceTermId, targetTermId, branchId) {
+        try {
+            // Get source beneficiaries
+            const sourceRows = await sql`
+                SELECT * FROM beneficiaries
+                WHERE term_id = ${sourceTermId} AND branch_id = ${branchId}
+                ORDER BY sequence_number
+            `;
+
+            if (sourceRows.length === 0) {
+                return { copied: 0, skipped: 0 };
+            }
+
+            // Get existing civil_ids in target to skip duplicates
+            const existing = await sql`
+                SELECT civil_id FROM beneficiaries
+                WHERE term_id = ${targetTermId} AND branch_id = ${branchId}
+            `;
+            const existingCivilIds = new Set(existing.map(r => r.civil_id));
+
+            const toCopy = sourceRows.filter(r => !existingCivilIds.has(r.civil_id));
+            const skipped = sourceRows.length - toCopy.length;
+
+            if (toCopy.length === 0) {
+                return { copied: 0, skipped };
+            }
+
+            // Get next sequence number
+            let nextSeq = await this.getNextSequenceNumber(branchId, targetTermId);
+
+            // Insert in transaction
+            await sql.begin(async tx => {
+                for (const row of toCopy) {
+                    await tx`
+                        INSERT INTO beneficiaries (
+                            branch_id, term_id, sequence_number, beneficiary_number, enrollment_period,
+                            beneficiary_name, civil_id, contact_number, gender, age,
+                            speech_therapy, physical_therapy, occupational_therapy,
+                            autism_therapy, transport_service
+                        ) VALUES (
+                            ${branchId}, ${targetTermId}, ${nextSeq++}, ${row.beneficiary_number}, ${row.enrollment_period},
+                            ${row.beneficiary_name}, ${row.civil_id}, ${row.contact_number}, ${row.gender}, ${row.age},
+                            ${row.speech_therapy}, ${row.physical_therapy}, ${row.occupational_therapy},
+                            ${row.autism_therapy}, ${row.transport_service}
+                        )
+                    `;
+                }
+            });
+
+            return { copied: toCopy.length, skipped };
+        } catch (error) {
+            log.error('Error copying beneficiaries from term:', error);
+            throw error;
+        }
     }
 };
 

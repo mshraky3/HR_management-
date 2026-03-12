@@ -8,6 +8,8 @@ import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { requireMainManager, requireManager, checkBranchAccess } from '../middleware/authorization.js';
 import Beneficiary from '../models/Beneficiary.js';
+import { BusTransportation } from '../models/BusTransportation.js';
+import { BusStudent } from '../models/BusStudent.js';
 import sql from '../config/database.js';
 import log from '../utils/logger.js';
 
@@ -134,14 +136,44 @@ router.get('/terms', requireMainManager, async (req, res) => {
  */
 router.get('/active-term', async (req, res) => {
     try {
-        const [term] = await sql`
+        const now = new Date();
+
+        // 1. Try exact date match: today within start_date..end_date
+        let [term] = await sql`
       SELECT t.*, ay.year_label, ay.is_current as year_is_current
       FROM terms t
       LEFT JOIN academic_years ay ON t.academic_year_label = ay.year_label AND ay.branch_type = 'healthcare_center'
       WHERE t.branch_type = 'healthcare_center' AND t.is_active = true
-      ORDER BY t.created_at DESC
+      AND t.start_date <= ${now} AND t.end_date >= ${now}
+      ORDER BY t.start_date DESC
       LIMIT 1
     `;
+
+        // 2. Fallback: next upcoming term
+        if (!term) {
+            [term] = await sql`
+        SELECT t.*, ay.year_label, ay.is_current as year_is_current
+        FROM terms t
+        LEFT JOIN academic_years ay ON t.academic_year_label = ay.year_label AND ay.branch_type = 'healthcare_center'
+        WHERE t.branch_type = 'healthcare_center' AND t.is_active = true
+        AND t.start_date > ${now}
+        ORDER BY t.start_date ASC
+        LIMIT 1
+      `;
+        }
+
+        // 3. Last resort: most recent past term
+        if (!term) {
+            [term] = await sql`
+        SELECT t.*, ay.year_label, ay.is_current as year_is_current
+        FROM terms t
+        LEFT JOIN academic_years ay ON t.academic_year_label = ay.year_label AND ay.branch_type = 'healthcare_center'
+        WHERE t.branch_type = 'healthcare_center' AND t.is_active = true
+        AND t.end_date < ${now}
+        ORDER BY t.end_date DESC
+        LIMIT 1
+      `;
+        }
 
         if (!term) {
             return res.json({ success: true, data: null, message: 'لا يوجد فصل دراسي نشط حالياً' });
@@ -279,6 +311,276 @@ router.get('/archive', requireMainManager, async (req, res) => {
     } catch (error) {
         log.error('Error fetching archived beneficiaries:', error);
         res.status(500).json({ success: false, message: 'فشل في جلب الأرشيف' });
+    }
+});
+
+/**
+ * POST /api/beneficiaries/copy-from-term
+ * Copy beneficiaries from a previous term to the active term
+ * Branch managers copy for their own branch, main manager can specify branch_id
+ */
+router.post('/copy-from-term', requireManager, async (req, res) => {
+    try {
+        const { source_term_id, branch_id: reqBranchId } = req.body;
+
+        if (!source_term_id) {
+            return res.status(400).json({ success: false, message: 'يرجى تحديد الفصل المصدر' });
+        }
+
+        // Determine branch
+        const branchId = req.user.role === 'main_manager' && reqBranchId
+            ? reqBranchId
+            : req.user.branch_id;
+
+        if (!branchId) {
+            return res.status(400).json({ success: false, message: 'يرجى تحديد الفرع' });
+        }
+
+        // Get active term for healthcare_center
+        const activeTerm = await sql`
+            SELECT * FROM terms
+            WHERE branch_type = 'healthcare_center'
+            AND is_active = true
+            AND start_date <= NOW() AND end_date >= NOW()
+            ORDER BY start_date DESC LIMIT 1
+        `;
+
+        let targetTermId;
+        if (activeTerm.length > 0) {
+            targetTermId = activeTerm[0].id;
+        } else {
+            // Fallback to next upcoming term
+            const upcoming = await sql`
+                SELECT * FROM terms
+                WHERE branch_type = 'healthcare_center'
+                AND is_active = true AND start_date > NOW()
+                ORDER BY start_date ASC LIMIT 1
+            `;
+            if (upcoming.length > 0) {
+                targetTermId = upcoming[0].id;
+            } else {
+                return res.status(400).json({ success: false, message: 'لا يوجد فصل دراسي نشط حالياً' });
+            }
+        }
+
+        if (parseInt(source_term_id) === targetTermId) {
+            return res.status(400).json({ success: false, message: 'لا يمكن النسخ من نفس الفصل الحالي' });
+        }
+
+        const result = await Beneficiary.copyFromTerm(parseInt(source_term_id), targetTermId, parseInt(branchId));
+
+        res.json({
+            success: true,
+            message: `تم نسخ ${result.copied} مستفيد بنجاح${result.skipped > 0 ? ` (تم تخطي ${result.skipped} مكرر)` : ''}`,
+            data: result
+        });
+    } catch (error) {
+        log.error('Error copying beneficiaries from term:', error);
+        res.status(500).json({ success: false, message: 'فشل في نسخ المستفيدين' });
+    }
+});
+
+/**
+ * GET /api/beneficiaries/bus-students
+ * List bus students that can be imported as beneficiaries
+ * Only shows students not already linked (by name match)
+ */
+router.get('/bus-students', requireManager, async (req, res) => {
+    try {
+        const branchId = req.user.role === 'branch_manager' ? req.user.branch_id : req.query.branch_id;
+        if (!branchId) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
+        }
+
+        // Verify branch is a healthcare center
+        const [branch] = await sql`SELECT branch_type FROM branches WHERE id = ${branchId}`;
+        if (!branch || branch.branch_type !== 'healthcare_center') {
+            return res.status(400).json({ success: false, message: 'هذه الخدمة متاحة فقط لمراكز الرعاية الصحية' });
+        }
+
+        // Get active term for healthcare_center
+        let termId = req.query.term_id;
+        if (!termId) {
+            const now = new Date();
+            let [term] = await sql`
+                SELECT id FROM terms
+                WHERE branch_type = 'healthcare_center' AND is_active = true
+                AND start_date <= ${now} AND end_date >= ${now}
+                ORDER BY start_date DESC LIMIT 1
+            `;
+            if (!term) {
+                [term] = await sql`
+                    SELECT id FROM terms
+                    WHERE branch_type = 'healthcare_center' AND is_active = true
+                    AND start_date > ${now}
+                    ORDER BY start_date ASC LIMIT 1
+                `;
+            }
+            if (!term) {
+                return res.json({ success: true, data: [] });
+            }
+            termId = term.id;
+        }
+
+        // Get all buses for this branch+term
+        const buses = await BusTransportation.findByBranchAndTerm(branchId, termId);
+        if (!buses || buses.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const busIds = buses.map(b => b.id);
+        const students = await BusStudent.findByBusIds(busIds, { term_id: termId });
+
+        if (!students || students.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+
+        // Get existing beneficiary names for this branch+term
+        const existingBeneficiaries = await sql`
+            SELECT LOWER(TRIM(beneficiary_name)) as name
+            FROM beneficiaries
+            WHERE branch_id = ${branchId} AND term_id = ${termId} AND is_archived = false
+        `;
+        const existingNames = new Set(existingBeneficiaries.map(b => b.name));
+
+        // Build bus_number lookup
+        const busNumberMap = {};
+        for (const bus of buses) {
+            busNumberMap[bus.id] = bus.bus_number;
+        }
+
+        // Filter out students already imported
+        const importable = students
+            .filter(s => !existingNames.has(s.student_full_name?.trim().toLowerCase()))
+            .map(s => ({
+                id: s.id,
+                student_full_name: s.student_full_name,
+                contact_mobile_number: s.contact_mobile_number,
+                address: s.address,
+                bus_id: s.bus_id,
+                bus_number: busNumberMap[s.bus_id] || null
+            }));
+
+        res.json({ success: true, data: importable });
+    } catch (error) {
+        log.error('Error fetching importable bus students:', error);
+        res.status(500).json({ success: false, message: 'فشل في جلب بيانات طلاب الباص' });
+    }
+});
+
+/**
+ * GET /api/beneficiaries/available-buses
+ * List buses at the branch for bus assignment
+ */
+router.get('/available-buses', requireManager, async (req, res) => {
+    try {
+        const branchId = req.user.role === 'branch_manager' ? req.user.branch_id : req.query.branch_id;
+        if (!branchId) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
+        }
+
+        // Verify branch is a healthcare center
+        const [branch] = await sql`SELECT branch_type FROM branches WHERE id = ${branchId}`;
+        if (!branch || branch.branch_type !== 'healthcare_center') {
+            return res.status(400).json({ success: false, message: 'هذه الخدمة متاحة فقط لمراكز الرعاية الصحية' });
+        }
+
+        let termId = req.query.term_id;
+        if (!termId) {
+            const now = new Date();
+            let [term] = await sql`
+                SELECT id FROM terms
+                WHERE branch_type = 'healthcare_center' AND is_active = true
+                AND start_date <= ${now} AND end_date >= ${now}
+                ORDER BY start_date DESC LIMIT 1
+            `;
+            if (!term) {
+                [term] = await sql`
+                    SELECT id FROM terms
+                    WHERE branch_type = 'healthcare_center' AND is_active = true
+                    AND start_date > ${now}
+                    ORDER BY start_date ASC LIMIT 1
+                `;
+            }
+            if (!term) {
+                return res.json({ success: true, data: [] });
+            }
+            termId = term.id;
+        }
+
+        const buses = await BusTransportation.findByBranchAndTerm(branchId, termId);
+        if (!buses || buses.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const result = buses.map(bus => ({
+            id: bus.id,
+            bus_number: bus.bus_number,
+            driver_full_name: bus.driver_full_name || null,
+            number_of_seats: bus.number_of_seats ? parseInt(bus.number_of_seats) : null,
+            student_count: bus.student_count ? parseInt(bus.student_count) : 0,
+            primary_plate: bus.primary_plate || null
+        }));
+
+        res.json({ success: true, data: result });
+    } catch (error) {
+        log.error('Error fetching available buses:', error);
+        res.status(500).json({ success: false, message: 'فشل في جلب بيانات الباصات' });
+    }
+});
+
+/**
+ * POST /api/beneficiaries/:id/assign-bus
+ * Assign a beneficiary to a bus (creates a bus_student record)
+ */
+router.post('/:id/assign-bus', requireManager, async (req, res) => {
+    try {
+        const { bus_id } = req.body;
+        if (!bus_id) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد الباص' });
+        }
+
+        const beneficiary = await Beneficiary.findById(req.params.id);
+        if (!beneficiary) {
+            return res.status(404).json({ success: false, message: 'المستفيد غير موجود' });
+        }
+
+        // Branch managers can only assign their own branch
+        if (req.user.role === 'branch_manager' && beneficiary.branch_id !== req.user.branch_id) {
+            return res.status(403).json({ success: false, message: 'غير مصرح بهذا الإجراء' });
+        }
+
+        if (!beneficiary.transport_service) {
+            return res.status(400).json({ success: false, message: 'خدمة النقل غير مفعلة لهذا المستفيد' });
+        }
+
+        // Check if already assigned to this bus by name
+        const normalizedName = beneficiary.beneficiary_name?.trim().toLowerCase();
+        const [existing] = await sql`
+            SELECT bs.id FROM bus_students bs
+            INNER JOIN bus_transportation bt ON bs.bus_id = bt.id
+            WHERE LOWER(TRIM(bs.student_full_name)) = ${normalizedName}
+            AND bt.branch_id = ${beneficiary.branch_id}
+            AND bs.term_id = ${beneficiary.term_id}
+        `;
+        if (existing) {
+            return res.status(400).json({ success: false, message: 'المستفيد مسجل بالفعل في باص' });
+        }
+
+        // Create bus student record
+        const student = await BusStudent.create({
+            bus_id: parseInt(bus_id),
+            term_id: beneficiary.term_id,
+            student_full_name: beneficiary.beneficiary_name,
+            contact_mobile_number: beneficiary.contact_number || '',
+            address: '',
+            created_by: req.user.id
+        });
+
+        res.status(201).json({ success: true, data: student, message: 'تم تسجيل المستفيد في الباص بنجاح' });
+    } catch (error) {
+        log.error('Error assigning beneficiary to bus:', error);
+        res.status(500).json({ success: false, message: 'فشل في تسجيل المستفيد في الباص' });
     }
 });
 
