@@ -120,13 +120,15 @@ const BranchManagerLayout = ({ children }) => {
             >
               الباصات
             </Link>
-            <Link
-              to="/beneficiaries"
-              className={`nav-link ${isActive("/beneficiaries")}`}
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              المستفيدين
-            </Link>
+            {user?.branch_type === 'healthcare_center' && (
+              <Link
+                to="/beneficiaries"
+                className={`nav-link ${isActive("/beneficiaries")}`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                المستفيدين
+              </Link>
+            )}
             <Link
               to="/suggestions"
               className={`nav-link ${isActive("/suggestions")}`}
