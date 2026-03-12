@@ -1,0 +1,430 @@
+/* Missing Employee Data Section - No Hover/Scale Effects */
+.missing-data-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-sm, 0 10px 30px rgba(0, 0, 0, 0.04));
+    transition: none;
+    transform: none;
+}
+
+.missing-data-card:hover {
+    box-shadow: var(--shadow-sm, 0 10px 30px rgba(0, 0, 0, 0.04));
+    transform: none;
+    border-color: #e5e7eb;
+    scale: 1;
+}
+
+.missing-data-card h2 {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+}
+
+.missing-data-table-wrapper {
+    overflow-x: auto;
+    transition: none;
+    transform: none;
+    position: relative;
+}
+
+.missing-data-table-wrapper:hover {
+    transform: none;
+    scale: 1;
+}
+
+.missing-data-table {
+    width: 100%;
+    border-collapse: collapse;
+    transition: none;
+    transform: none;
+    overflow: visible;
+}
+
+.missing-data-table:hover {
+    transform: none;
+    scale: 1;
+}
+
+.missing-data-table th,
+.missing-data-table td {
+    border: 1px solid #e5e7eb;
+    padding: 8px;
+    text-align: right;
+    vertical-align: top;
+    transition: none;
+    transform: none;
+    position: relative;
+    overflow: visible;
+}
+
+.missing-data-table th {
+    background: #f5f6f8;
+}
+
+.missing-data-table th:hover {
+    background: #f5f6f8;
+    transform: none;
+    scale: 1;
+}
+
+.missing-data-table td:hover {
+    transform: none;
+    scale: 1;
+}
+
+.missing-data-table tbody tr {
+    transition: none;
+    transform: none;
+    overflow: visible;
+}
+
+.text-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.text-input.input-error {
+    border-color: #dc2626;
+    background: #fef2f2;
+}
+
+.missing-data-table tbody tr:hover {
+    background: transparent;
+    background-color: transparent;
+    transform: none;
+    scale: 1;
+}
+
+.subtext {
+    color: #6b7280;
+    font-size: 12px;
+}
+
+.qual-upload {
+    display: flex !important;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    width: 100%;
+    max-width: 220px;
+}
+
+/* Hide default file input */
+.qual-upload .file-upload-input {
+    position: absolute;
+    width: 0;
+    height: 0;
+    opacity: 0;
+    overflow: hidden;
+    z-index: -1;
+}
+
+/* Eye-catching file upload label/button */
+.qual-upload .file-upload-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    border: 2px solid var(--primary, #4988c4);
+    border-radius: var(--radius-md, 8px);
+    background: linear-gradient(
+        135deg,
+        rgba(73, 136, 196, 0.1) 0%,
+        rgba(73, 136, 196, 0.05) 100%
+    );
+    color: var(--primary, #4988c4);
+    font-size: var(--font-size-sm, 14px);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease !important;
+    text-align: center;
+    min-width: 180px;
+    box-shadow: 0 2px 8px rgba(73, 136, 196, 0.2);
+}
+
+.qual-upload .file-upload-label:hover {
+    background: linear-gradient(
+        135deg,
+        rgba(73, 136, 196, 0.15) 0%,
+        rgba(73, 136, 196, 0.1) 100%
+    ) !important;
+    border-color: var(--primary-hover, #3a6fa0) !important;
+    box-shadow: 0 4px 12px rgba(73, 136, 196, 0.3) !important;
+    transform: none !important;
+    scale: 1 !important;
+}
+
+.qual-upload .file-upload-label:active {
+    background: linear-gradient(
+        135deg,
+        rgba(73, 136, 196, 0.2) 0%,
+        rgba(73, 136, 196, 0.15) 100%
+    ) !important;
+    transform: translateY(1px) !important;
+    scale: 1 !important;
+}
+
+.qual-upload .file-upload-label svg {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+}
+
+/* Employee save button */
+.employee-save-btn {
+    min-width: 100px;
+    padding: 0.5rem 1rem;
+    font-size: var(--font-size-sm, 14px);
+    white-space: nowrap;
+}
+
+.employee-save-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.missing-data-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 12px;
+    transition: none;
+    transform: none;
+}
+
+.missing-data-actions:hover {
+    transform: none;
+    scale: 1;
+}
+
+/* Disable ALL hover, scale, and transform effects for ALL elements within this component */
+.missing-data-card * {
+    transition: none !important;
+}
+
+.missing-data-card *:hover {
+    transform: none !important;
+    scale: 1 !important;
+}
+
+/* Specific overrides for buttons */
+.missing-data-card .btn,
+.missing-data-card .btn-primary,
+.missing-data-card .btn-secondary,
+.missing-data-card .btn-success,
+.missing-data-card .btn-danger,
+.missing-data-card .btn-warning {
+    transition: none !important;
+    transform: none !important;
+}
+
+.missing-data-card .btn:hover,
+.missing-data-card .btn-primary:hover,
+.missing-data-card .btn-secondary:hover,
+.missing-data-card .btn-success:hover,
+.missing-data-card .btn-danger:hover,
+.missing-data-card .btn-warning:hover {
+    transform: none !important;
+    scale: 1 !important;
+    box-shadow: inherit !important;
+}
+
+.missing-data-card .btn:active,
+.missing-data-card .btn-primary:active,
+.missing-data-card .btn-secondary:active {
+    transform: none !important;
+    scale: 1 !important;
+}
+
+/* Specific overrides for badges */
+.missing-data-card .badge,
+.missing-data-card .badge-warning,
+.missing-data-card .badge-success {
+    transition: none !important;
+    transform: none !important;
+}
+
+.missing-data-card .badge:hover,
+.missing-data-card .badge-warning:hover,
+.missing-data-card .badge-success:hover {
+    transform: none !important;
+    scale: 1 !important;
+}
+
+/* Specific overrides for form elements and date pickers */
+.missing-data-card input,
+.missing-data-card select,
+.missing-data-card textarea,
+.missing-data-card button,
+.missing-data-card [class*="date-picker"],
+.missing-data-card [class*="DatePicker"],
+.missing-data-card [class*="unified"] {
+    transition: none !important;
+    transform: none !important;
+}
+
+.missing-data-card input:hover,
+.missing-data-card select:hover,
+.missing-data-card textarea:hover,
+.missing-data-card button:hover,
+.missing-data-card [class*="date-picker"]:hover,
+.missing-data-card [class*="DatePicker"]:hover,
+.missing-data-card [class*="unified"]:hover {
+    transform: none !important;
+    scale: 1 !important;
+}
+
+.missing-data-card input:focus,
+.missing-data-card select:focus,
+.missing-data-card textarea:focus {
+    transform: none !important;
+    scale: 1 !important;
+}
+
+/* Date Input Wrapper - for popup positioning */
+.date-input-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+/* Date Format Popup - Exception to no-animation rule */
+.date-format-popup {
+    position: absolute;
+    top: -120px;
+    right: 0;
+    z-index: 1000;
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    border: 2px solid #f39c12;
+    border-radius: 12px;
+    padding: 16px 20px;
+    box-shadow: 0 8px 24px rgba(243, 156, 18, 0.4);
+    min-width: 220px;
+    animation: formatPopupBounce 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    pointer-events: none;
+}
+
+.format-popup-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: center;
+}
+
+.format-popup-icon {
+    font-size: 32px;
+    margin-bottom: 4px;
+    animation: formatPopupIconPulse 1.5s infinite;
+}
+
+.format-popup-title {
+    font-weight: 700;
+    color: #d68910;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.format-popup-example {
+    font-size: 32px;
+    font-weight: 900;
+    font-family: "Courier New", monospace;
+    letter-spacing: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.format-popup-example .format-number {
+    color: #e67e22;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.format-popup-example .format-slash {
+    color: #d68910;
+    font-size: 40px;
+    font-weight: 900;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+    animation: formatSlashPulse 1.5s infinite;
+    padding: 0 2px;
+}
+
+.format-popup-description {
+    font-size: 12px;
+    color: #856404;
+    margin-top: 4px;
+}
+
+.format-popup-arrow {
+    position: absolute;
+    bottom: -10px;
+    right: 30px;
+    width: 0;
+    height: 0;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-top: 10px solid #f39c12;
+}
+
+/* Popup Animations - Exception to no-animation rule */
+@keyframes formatPopupBounce {
+    0% {
+        opacity: 0;
+        transform: translateY(10px) scale(0.8);
+    }
+    50% {
+        transform: translateY(-5px) scale(1.05);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes formatPopupIconPulse {
+    0%,
+    100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+@keyframes formatSlashPulse {
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.3);
+        opacity: 0.9;
+    }
+}
+
+/* Disable any animation or transition effects for other elements */
+@keyframes noAnimation {
+    from {
+        transform: none;
+    }
+    to {
+        transform: none;
+    }
+}
+
+.missing-data-card,
+.missing-data-card * {
+    animation: none !important;
+}
+
+/* Exception for format popup animations */
+.missing-data-card .date-format-popup,
+.missing-data-card .date-format-popup * {
+    animation: initial !important;
+}
