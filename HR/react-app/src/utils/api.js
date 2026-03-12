@@ -1134,6 +1134,18 @@ export const beneficiariesAPI = {
 
   archiveTerm: (termId) =>
     api.post(`/api/beneficiaries/archive/${termId}`),
+
+  copyFromTerm: (data) =>
+    api.post('/api/beneficiaries/copy-from-term', data),
+
+  getBusStudents: (params = {}) =>
+    api.get('/api/beneficiaries/bus-students', { params }),
+
+  getAvailableBuses: (params = {}) =>
+    api.get('/api/beneficiaries/available-buses', { params }),
+
+  assignToBus: (id, data) =>
+    api.post(`/api/beneficiaries/${id}/assign-bus`, data),
 };
 
 // Suggestions API
