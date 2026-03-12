@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { beneficiariesAPI, branchesAPI, termsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
@@ -25,6 +26,14 @@ const AGE_OPTIONS = Array.from({ length: 50 }, (_, i) => i + 1);
 const Beneficiaries = () => {
     const { isMainManager, user } = useAuth();
     const { showError, showSuccess, showWarning } = useNotification();
+    const navigate = useNavigate();
+
+    // School branches should not access this page
+    useEffect(() => {
+        if (user?.branch_type === 'school') {
+            navigate('/dashboard', { replace: true });
+        }
+    }, [user?.branch_type, navigate]);
 
     // Data state
     const [beneficiaries, setBeneficiaries] = useState([]);
@@ -66,6 +75,28 @@ const Beneficiaries = () => {
 
     // Stats view toggle
     const [showStats, setShowStats] = useState(false);
+
+    // Copy from previous term state
+    const [showCopyModal, setShowCopyModal] = useState(false);
+    const [copySourceTerm, setCopySourceTerm] = useState('');
+    const [copying, setCopying] = useState(false);
+    const [availableCopyTerms, setAvailableCopyTerms] = useState([]);
+
+    // Search state
+    const [searchQuery, setSearchQuery] = useState('');
+
+    // Import from bus state
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [busStudents, setBusStudents] = useState([]);
+    const [loadingBusStudents, setLoadingBusStudents] = useState(false);
+    const [importedFromBus, setImportedFromBus] = useState(false);
+
+    // Bus assignment state
+    const [showBusAssignModal, setShowBusAssignModal] = useState(false);
+    const [availableBuses, setAvailableBuses] = useState([]);
+    const [loadingBuses, setLoadingBuses] = useState(false);
+    const [assigningBeneficiaryId, setAssigningBeneficiaryId] = useState(null);
+    const [assigningBus, setAssigningBus] = useState(false);
 
     // Inline edit mode: null | 'add' | beneficiary_id
     const [inlineMode, setInlineMode] = useState(null);
@@ -312,12 +343,17 @@ const Beneficiaries = () => {
                 const res = await beneficiariesAPI.create(data);
                 if (res.data.success) {
                     showSuccess('تم إضافة المستفيد بنجاح');
+                    // If transport_service is enabled and NOT imported from bus, prompt bus assignment
+                    if (data.transport_service && res.data.data?.id && !importedFromBus) {
+                        promptBusAssignment(res.data.data.id);
+                    }
                 }
             }
 
             setShowModal(false);
             setInlineMode(null);
             resetForm();
+            setImportedFromBus(false);
             loadBeneficiaries();
             if (isMainManager()) loadStats();
             if (!isMainManager()) loadBranchStats(filters.term_id || activeTerm?.id);
@@ -382,6 +418,119 @@ const Beneficiaries = () => {
         }
     };
 
+    // Copy from previous term
+    const openCopyModal = async () => {
+        try {
+            const res = await beneficiariesAPI.getTermsWithData();
+            const termsWithData = res.data.data || res.data || [];
+            // Exclude current active term
+            const filtered = termsWithData.filter(t => activeTerm && t.id !== activeTerm.id);
+            setAvailableCopyTerms(filtered);
+            setCopySourceTerm('');
+            setShowCopyModal(true);
+        } catch {
+            showError('فشل في تحميل الفصول المتاحة للنسخ');
+        }
+    };
+
+    const handleCopyFromTerm = async () => {
+        if (!copySourceTerm) {
+            showWarning('يرجى اختيار الفصل المصدر');
+            return;
+        }
+        try {
+            setCopying(true);
+            const data = { source_term_id: copySourceTerm };
+            if (isMainManager() && filters.branch_id) {
+                data.branch_id = filters.branch_id;
+            }
+            const res = await beneficiariesAPI.copyFromTerm(data);
+            if (res.data.success) {
+                showSuccess(res.data.message);
+                setShowCopyModal(false);
+                loadBeneficiaries();
+            }
+        } catch (error) {
+            showError(error.response?.data?.message || 'فشل في نسخ المستفيدين');
+        } finally {
+            setCopying(false);
+        }
+    };
+
+    // Import from bus handlers
+    const openImportModal = async () => {
+        try {
+            setLoadingBusStudents(true);
+            setShowImportModal(true);
+            const res = await beneficiariesAPI.getBusStudents();
+            setBusStudents(res.data.data || []);
+        } catch {
+            showError('فشل في تحميل بيانات طلاب الباص');
+        } finally {
+            setLoadingBusStudents(false);
+        }
+    };
+
+    const handleImportStudent = (student) => {
+        resetForm();
+        setImportedFromBus(true);
+        setFormData(prev => ({
+            ...prev,
+            beneficiary_name: student.student_full_name || '',
+            contact_number: student.contact_mobile_number || '',
+            transport_service: true,
+        }));
+        setShowImportModal(false);
+        if (isMobile) {
+            setShowModal(true);
+        } else {
+            setInlineMode('add');
+            setTimeout(() => inlineRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+        }
+    };
+
+    // Bus assignment handlers
+    const promptBusAssignment = async (beneficiaryId) => {
+        try {
+            setLoadingBuses(true);
+            setAssigningBeneficiaryId(beneficiaryId);
+            const res = await beneficiariesAPI.getAvailableBuses();
+            const buses = res.data.data || [];
+            if (buses.length === 0) {
+                return; // No buses available, skip silently
+            }
+            setAvailableBuses(buses);
+            setShowBusAssignModal(true);
+        } catch {
+            // Don't show error — bus assignment is optional
+        } finally {
+            setLoadingBuses(false);
+        }
+    };
+
+    const handleAssignBus = async (busId) => {
+        if (!assigningBeneficiaryId || !busId) return;
+        try {
+            setAssigningBus(true);
+            const res = await beneficiariesAPI.assignToBus(assigningBeneficiaryId, { bus_id: busId });
+            if (res.data.success) {
+                showSuccess('تم تسجيل المستفيد في الباص بنجاح');
+            }
+        } catch (error) {
+            const msg = error.response?.data?.message || 'فشل في تسجيل المستفيد في الباص';
+            showError(msg);
+        } finally {
+            setAssigningBus(false);
+            setShowBusAssignModal(false);
+            setAssigningBeneficiaryId(null);
+        }
+    };
+
+    const skipBusAssignment = () => {
+        setShowBusAssignModal(false);
+        setAssigningBeneficiaryId(null);
+    };
+
     // Can the current user add/edit/delete?
     const canEdit = activeTerm && (
         !filters.term_id || filters.term_id === activeTerm.id.toString()
@@ -413,9 +562,19 @@ const Beneficiaries = () => {
                     </div>
                     <div className="header-actions">
                         {canEdit && (
-                            <button className="btn btn-primary" onClick={openAddModal}>
-                                + إضافة مستفيد
-                            </button>
+                            <>
+                                <button className="btn btn-primary" onClick={openAddModal}>
+                                    + إضافة مستفيد
+                                </button>
+                                {!isMainManager() && (
+                                    <button className="btn btn-info" onClick={openImportModal}>
+                                        🚌 استيراد من الباص
+                                    </button>
+                                )}
+                                <button className="btn btn-secondary" onClick={openCopyModal}>
+                                    نسخ من فصل سابق
+                                </button>
+                            </>
                         )}
                         {isMainManager() && filters.term_id && (
                             <>
@@ -470,7 +629,7 @@ const Beneficiaries = () => {
                                 <option value="">اختر الفصل</option>
                                 {terms.map(t => (
                                     <option key={t.id} value={t.id}>
-                                        {t.term_name} {t.is_active ? '(نشط)' : ''}
+                                        {t.term_name} {activeTerm && t.id === activeTerm.id ? '(نشط)' : ''}
                                     </option>
                                 ))}
                             </select>
@@ -702,6 +861,28 @@ const Beneficiaries = () => {
             {/* Data Table */}
             {(!isMainManager() || !showStats) && (
                 <div className="table-section">
+                    {beneficiaries.length > 0 && (
+                        <div className="search-filter" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <input
+                                type="text"
+                                placeholder="بحث بالاسم أو رقم الهوية أو رقم المستفيد..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="search-input"
+                                style={{ flex: 1, maxWidth: 350, padding: '6px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 13 }}
+                            />
+                            {searchQuery && (
+                                <span style={{ color: '#888', fontSize: 12, whiteSpace: 'nowrap' }}>
+                                    {beneficiaries.filter(b => {
+                                        const q = searchQuery.trim().toLowerCase();
+                                        return (b.beneficiary_name || '').toLowerCase().includes(q)
+                                            || (b.civil_id || '').includes(q)
+                                            || (b.beneficiary_number || '').includes(q);
+                                    }).length} نتيجة
+                                </span>
+                            )}
+                        </div>
+                    )}
                     {beneficiaries.length === 0 && inlineMode !== 'add' ? (
                         <div className="empty-state">
                             <span className="empty-icon">📋</span>
@@ -724,21 +905,21 @@ const Beneficiaries = () => {
                             <table className="data-table beneficiaries-table">
                                 <thead>
                                     <tr>
-                                        <th>التسلسل</th>
+                                        <th>#</th>
                                         {isMainManager() && <th>الفرع</th>}
-                                        <th>فترة الإلتحاق</th>
+                                        <th>الفترة</th>
                                         <th>اسم المستفيد</th>
                                         <th>رقم المستفيد</th>
                                         <th>السجل المدني</th>
-                                        <th>رقم التواصل</th>
+                                        <th>التواصل</th>
                                         <th>الجنس</th>
                                         <th>العمر</th>
-                                        <th>نطق وتخاطب</th>
-                                        <th>علاج طبيعي</th>
-                                        <th>علاج وظيفي</th>
-                                        <th>علاج توحد</th>
-                                        <th>خدمة نقل</th>
-                                        {canEdit && <th>إجراءات</th>}
+                                        <th className="service-col">نطق</th>
+                                        <th className="service-col">طبيعي</th>
+                                        <th className="service-col">وظيفي</th>
+                                        <th className="service-col">توحد</th>
+                                        <th className="service-col">نقل</th>
+                                        {canEdit && <th></th>}
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -853,7 +1034,13 @@ const Beneficiaries = () => {
                                             </td>
                                         </tr>
                                     )}
-                                    {beneficiaries.map((b) => (
+                                    {beneficiaries.filter(b => {
+                                        if (!searchQuery.trim()) return true;
+                                        const q = searchQuery.trim().toLowerCase();
+                                        return (b.beneficiary_name || '').toLowerCase().includes(q)
+                                            || (b.civil_id || '').includes(q)
+                                            || (b.beneficiary_number || '').includes(q);
+                                    }).map((b) => (
                                         inlineMode === b.id ? (
                                             /* Inline Edit Row */
                                             <tr key={b.id} className="inline-form-row" ref={inlineRowRef}>
@@ -974,27 +1161,27 @@ const Beneficiaries = () => {
                                                 <td className="number-cell">{b.age}</td>
                                                 <td>
                                                     <span className={`service-badge ${b.speech_therapy ? 'yes' : 'no'}`}>
-                                                        {b.speech_therapy ? 'نعم' : 'لا'}
+                                                        {b.speech_therapy ? '✓' : '✗'}
                                                     </span>
                                                 </td>
                                                 <td>
                                                     <span className={`service-badge ${b.physical_therapy ? 'yes' : 'no'}`}>
-                                                        {b.physical_therapy ? 'نعم' : 'لا'}
+                                                        {b.physical_therapy ? '✓' : '✗'}
                                                     </span>
                                                 </td>
                                                 <td>
                                                     <span className={`service-badge ${b.occupational_therapy ? 'yes' : 'no'}`}>
-                                                        {b.occupational_therapy ? 'نعم' : 'لا'}
+                                                        {b.occupational_therapy ? '✓' : '✗'}
                                                     </span>
                                                 </td>
                                                 <td>
                                                     <span className={`service-badge ${b.autism_therapy ? 'yes' : 'no'}`}>
-                                                        {b.autism_therapy ? 'نعم' : 'لا'}
+                                                        {b.autism_therapy ? '✓' : '✗'}
                                                     </span>
                                                 </td>
                                                 <td>
                                                     <span className={`service-badge ${b.transport_service ? 'yes' : 'no'}`}>
-                                                        {b.transport_service ? 'نعم' : 'لا'}
+                                                        {b.transport_service ? '✓' : '✗'}
                                                     </span>
                                                 </td>
                                                 {canEdit && (
@@ -1185,6 +1372,141 @@ const Beneficiaries = () => {
                                 className="btn btn-secondary"
                                 onClick={() => setDeleteConfirm({ show: false, id: null, name: '' })}
                             >
+                                إلغاء
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Import from Bus Modal */}
+            {showImportModal && (
+                <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600 }}>
+                        <div className="modal-header">
+                            <h2>استيراد من طلاب الباص</h2>
+                            <button className="modal-close" onClick={() => setShowImportModal(false)}>&times;</button>
+                        </div>
+                        <div className="modal-body" style={{ padding: '16px' }}>
+                            {loadingBusStudents ? (
+                                <div style={{ textAlign: 'center', padding: '30px' }}>
+                                    <div className="spinner-large"></div>
+                                    <p>جاري التحميل...</p>
+                                </div>
+                            ) : busStudents.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '30px', color: '#888' }}>
+                                    <p>لا يوجد طلاب باص يمكن استيرادهم</p>
+                                    <small>جميع طلاب الباص مسجلون بالفعل كمستفيدين</small>
+                                </div>
+                            ) : (
+                                <>
+                                    <p style={{ marginBottom: 12, color: '#555', fontSize: 13 }}>
+                                        اختر طالب لاستيراد بياناته كمستفيد جديد. سيتم تعبئة الاسم ورقم التواصل تلقائياً.
+                                    </p>
+                                    <div className="import-list">
+                                        {busStudents.map(s => (
+                                            <div key={s.id} className="import-item" onClick={() => handleImportStudent(s)}>
+                                                <div className="import-item-info">
+                                                    <strong>{s.student_full_name}</strong>
+                                                    <span className="import-item-details">
+                                                        {s.contact_mobile_number && `📞 ${s.contact_mobile_number}`}
+                                                        {s.bus_number && ` · باص ${s.bus_number}`}
+                                                    </span>
+                                                </div>
+                                                <button className="btn btn-sm btn-primary">استيراد</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Bus Assignment Modal */}
+            {showBusAssignModal && (
+                <div className="modal-overlay" onClick={skipBusAssignment}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
+                        <div className="modal-header">
+                            <h2>تسجيل في باص</h2>
+                            <button className="modal-close" onClick={skipBusAssignment}>&times;</button>
+                        </div>
+                        <div className="modal-body" style={{ padding: '16px' }}>
+                            <p style={{ marginBottom: 12, color: '#555', fontSize: 13 }}>
+                                المستفيد لديه خدمة نقل مفعلة. هل تريد تسجيله في أحد الباصات؟
+                            </p>
+                            {loadingBuses ? (
+                                <div style={{ textAlign: 'center', padding: '20px' }}>
+                                    <div className="spinner-large"></div>
+                                </div>
+                            ) : (
+                                <div className="bus-assign-list">
+                                    {availableBuses.map(bus => (
+                                        <div key={bus.id} className="bus-assign-item">
+                                            <div className="bus-assign-info">
+                                                <strong>باص {bus.bus_number}</strong>
+                                                <span className="bus-assign-details">
+                                                    {bus.driver_full_name && `السائق: ${bus.driver_full_name}`}
+                                                    {bus.number_of_seats && ` · المقاعد: ${bus.student_count}/${bus.number_of_seats}`}
+                                                    {!bus.number_of_seats && ` · الطلاب: ${bus.student_count}`}
+                                                </span>
+                                            </div>
+                                            <button
+                                                className="btn btn-sm btn-primary"
+                                                onClick={() => handleAssignBus(bus.id)}
+                                                disabled={assigningBus}
+                                            >
+                                                {assigningBus ? '...' : 'تسجيل'}
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn btn-secondary" onClick={skipBusAssignment} disabled={assigningBus}>
+                                تخطي
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Copy from previous term modal */}
+            {showCopyModal && (
+                <div className="modal-overlay" onClick={() => !copying && setShowCopyModal(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
+                        <div className="modal-header">
+                            <h2>نسخ المستفيدين من فصل سابق</h2>
+                            <button className="modal-close" onClick={() => !copying && setShowCopyModal(false)}>&times;</button>
+                        </div>
+                        <div className="modal-body" style={{ padding: '20px' }}>
+                            <p style={{ marginBottom: 16, color: '#555', fontSize: 14 }}>
+                                سيتم نسخ جميع المستفيدين من الفصل المختار إلى الفصل الحالي.
+                                سيتم تخطي المستفيدين المسجلين مسبقاً (بناءً على رقم الهوية).
+                            </p>
+                            <div className="form-group" style={{ marginBottom: 16 }}>
+                                <label style={{ fontWeight: 600, marginBottom: 8, display: 'block' }}>اختر الفصل المصدر</label>
+                                <select
+                                    value={copySourceTerm}
+                                    onChange={(e) => setCopySourceTerm(e.target.value)}
+                                    style={{ width: '100%', padding: '10px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
+                                >
+                                    <option value="">-- اختر الفصل --</option>
+                                    {availableCopyTerms.map(t => (
+                                        <option key={t.id} value={t.id}>
+                                            {t.term_name} ({t.beneficiary_count} مستفيد)
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn btn-primary" onClick={handleCopyFromTerm} disabled={copying || !copySourceTerm}>
+                                {copying ? 'جاري النسخ...' : 'نسخ المستفيدين'}
+                            </button>
+                            <button className="btn btn-secondary" onClick={() => setShowCopyModal(false)} disabled={copying}>
                                 إلغاء
                             </button>
                         </div>
