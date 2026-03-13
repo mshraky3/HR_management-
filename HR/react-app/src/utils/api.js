@@ -1146,6 +1146,9 @@ export const beneficiariesAPI = {
 
   assignToBus: (id, data) =>
     api.post(`/api/beneficiaries/${id}/assign-bus`, data),
+
+  getStaffingRequirements: (params = {}) =>
+    api.get('/api/beneficiaries/staffing-requirements', { params }),
 };
 
 // Suggestions API

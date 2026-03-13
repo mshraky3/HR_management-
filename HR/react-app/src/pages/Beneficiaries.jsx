@@ -4,11 +4,12 @@
  * - Main managers: View all, filter, stats, export Excel, archive
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { beneficiariesAPI, branchesAPI, termsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import SearchableSelect from '../components/SearchableSelect';
 import './Beneficiaries.css';
 
 const SERVICE_LABELS = {
@@ -44,6 +45,8 @@ const Beneficiaries = () => {
     const [stats, setStats] = useState(null);
     const [submissionStatus, setSubmissionStatus] = useState([]);
     const [branchStats, setBranchStats] = useState(null);
+    const [staffingData, setStaffingData] = useState([]);
+    const [staffingLoading, setStaffingLoading] = useState(false);
 
     // Filter state
     const [filters, setFilters] = useState({
@@ -67,14 +70,37 @@ const Beneficiaries = () => {
         occupational_therapy: false,
         autism_therapy: false,
         transport_service: false,
+        free_student: false,
+        notes: '',
     });
     const [submitting, setSubmitting] = useState(false);
 
     // Confirm delete state
     const [deleteConfirm, setDeleteConfirm] = useState({ show: false, id: null, name: '' });
 
-    // Stats view toggle
-    const [showStats, setShowStats] = useState(false);
+    // Main manager active tab: 'staffing' | 'data' | 'stats' | 'exports'
+    const [activeTab, setActiveTab] = useState('staffing');
+    const [exportColumns, setExportColumns] = useState({
+        sequence_number: true,
+        enrollment_period: true,
+        beneficiary_name: true,
+        beneficiary_number: true,
+        civil_id: true,
+        contact_number: true,
+        gender: true,
+        age: true,
+        speech_therapy: true,
+        physical_therapy: true,
+        occupational_therapy: true,
+        autism_therapy: true,
+        transport_service: true,
+        notes: true,
+        branch_name: false,
+        free_student: false,
+    });
+
+    const [staffingBranchFilter, setStaffingBranchFilter] = useState('');
+    const [staffingSearch, setStaffingSearch] = useState('');
 
     // Copy from previous term state
     const [showCopyModal, setShowCopyModal] = useState(false);
@@ -122,6 +148,7 @@ const Beneficiaries = () => {
             if (isMainManager() && filters.term_id) {
                 loadStats();
                 loadSubmissionStatus();
+                loadStaffingRequirements();
             }
         }
     }, [filters.branch_id, filters.term_id]);
@@ -160,10 +187,18 @@ const Beneficiaries = () => {
                 }
             }
 
-            // Load beneficiaries
+            // Load beneficiaries and main manager data
             if (currentTerm) {
                 await loadBeneficiariesForTerm(currentTerm.id);
-                if (!isMainManager()) {
+                if (isMainManager()) {
+                    // Load staffing/stats directly — don't rely on useEffect (race condition with loading flag)
+                    const termId = currentTerm.id.toString();
+                    Promise.all([
+                        beneficiariesAPI.getStaffingRequirements({ term_id: termId }).then(r => { if (r.data.success) setStaffingData(r.data.data); }),
+                        beneficiariesAPI.getStats({ term_id: termId }).then(r => { if (r.data.success) setStats(r.data.data); }),
+                        beneficiariesAPI.getSubmissionStatus({ term_id: termId }).then(r => { if (r.data.success) setSubmissionStatus(r.data.data || []); }),
+                    ]).catch(err => console.error('Error loading main manager data:', err));
+                } else {
                     loadBranchStats(currentTerm.id);
                 }
             }
@@ -215,6 +250,22 @@ const Beneficiaries = () => {
         }
     };
 
+    const loadStaffingRequirements = async () => {
+        try {
+            const termId = filters.term_id;
+            if (!termId) return;
+            setStaffingLoading(true);
+            const res = await beneficiariesAPI.getStaffingRequirements({ term_id: termId });
+            if (res.data.success) {
+                setStaffingData(res.data.data);
+            }
+        } catch (error) {
+            console.error('Error loading staffing requirements:', error);
+        } finally {
+            setStaffingLoading(false);
+        }
+    };
+
     const loadBranchStats = async (termId) => {
         try {
             const res = await beneficiariesAPI.getBranchStats({ term_id: termId });
@@ -254,6 +305,8 @@ const Beneficiaries = () => {
             occupational_therapy: false,
             autism_therapy: false,
             transport_service: false,
+            free_student: false,
+            notes: '',
         });
         setEditingId(null);
     };
@@ -287,6 +340,8 @@ const Beneficiaries = () => {
             occupational_therapy: beneficiary.occupational_therapy,
             autism_therapy: beneficiary.autism_therapy,
             transport_service: beneficiary.transport_service,
+            free_student: beneficiary.free_student || false,
+            notes: beneficiary.notes || '',
         });
         setEditingId(beneficiary.id);
         if (isMobile) {
@@ -301,7 +356,7 @@ const Beneficiaries = () => {
         if (e && e.preventDefault) e.preventDefault();
 
         // Validation
-        if (!formData.beneficiary_number.trim() || !/^\d{6}$/.test(formData.beneficiary_number)) {
+        if (!formData.beneficiary_number.trim() || !/^\d{6,7}$/.test(formData.beneficiary_number)) {
             return showWarning('رقم المستفيد يجب أن يكون 6 أرقام بالضبط');
         }
         if (!formData.beneficiary_name.trim()) {
@@ -355,7 +410,7 @@ const Beneficiaries = () => {
             resetForm();
             setImportedFromBus(false);
             loadBeneficiaries();
-            if (isMainManager()) loadStats();
+            if (isMainManager()) { loadStats(); loadStaffingRequirements(); }
             if (!isMainManager()) loadBranchStats(filters.term_id || activeTerm?.id);
         } catch (error) {
             const msg = error.response?.data?.message || 'فشل في حفظ البيانات';
@@ -371,7 +426,7 @@ const Beneficiaries = () => {
             showSuccess('تم حذف المستفيد بنجاح');
             setDeleteConfirm({ show: false, id: null, name: '' });
             loadBeneficiaries();
-            if (isMainManager()) loadStats();
+            if (isMainManager()) { loadStats(); loadStaffingRequirements(); }
             if (!isMainManager()) loadBranchStats(filters.term_id || activeTerm?.id);
         } catch (error) {
             const msg = error.response?.data?.message || 'فشل في حذف المستفيد';
@@ -379,10 +434,13 @@ const Beneficiaries = () => {
         }
     };
 
-    const handleExport = async () => {
+    const handleExport = async (customColumns) => {
         try {
             const params = { term_id: filters.term_id };
             if (filters.branch_id) params.branch_id = filters.branch_id;
+            // Pass selected columns
+            const cols = customColumns || Object.keys(exportColumns).filter(k => exportColumns[k]);
+            if (cols.length > 0) params.columns = cols.join(',');
 
             const res = await beneficiariesAPI.exportExcel(params);
             const blob = new Blob([res.data], {
@@ -402,6 +460,44 @@ const Beneficiaries = () => {
         }
     };
 
+    const handleStaffingExport = () => {
+        if (!staffingData.length) return;
+        const selectedId = staffingBranchFilter || staffingData[0]?.branch_id?.toString();
+        const filteredData = selectedId
+            ? staffingData.filter(b => b.branch_id.toString() === selectedId)
+            : staffingData;
+        // Build CSV rows
+        const BOM = '\uFEFF';
+        const headers = ['الفرع', 'عدد المستفيدين', 'الوظيفة', 'المطلوب', 'الموجود', 'النقص', 'الفائض', 'القاعدة'];
+        const rows = [headers.join(',')];
+        for (const branch of filteredData) {
+            for (const s of branch.staffing.filter(s => s.required > 0)) {
+                rows.push([
+                    `"${branch.branch_name}"`,
+                    branch.total_beneficiaries,
+                    `"${s.role}"`,
+                    s.required,
+                    s.current,
+                    s.deficit,
+                    s.surplus,
+                    `"${s.rule}"`
+                ].join(','));
+            }
+        }
+        const blob = new Blob([BOM + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `staffing-requirements-${filters.term_id}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        URL.revokeObjectURL(url);
+        a.remove();
+        showSuccess('تم تصدير متطلبات التوظيف بنجاح');
+    };
+
+
+
     const handleArchive = async () => {
         if (!filters.term_id) return;
         if (!window.confirm('هل أنت متأكد من أرشفة بيانات هذا الفصل؟ لن يمكن التعديل عليها بعد الأرشفة.')) return;
@@ -412,6 +508,7 @@ const Beneficiaries = () => {
                 showSuccess(res.data.message);
                 loadBeneficiaries();
                 loadStats();
+                loadStaffingRequirements();
             }
         } catch (error) {
             showError('فشل في أرشفة البيانات');
@@ -556,33 +653,21 @@ const Beneficiaries = () => {
                         <h1>المستفيدين</h1>
                         <p className="page-description">
                             {isMainManager()
-                                ? 'إدارة ومتابعة بيانات المستفيدين في مراكز الرعاية الصحية'
+                                ? 'إدارة ومتابعة بيانات المستفيدين ومتطلبات التوظيف'
                                 : 'تسجيل بيانات المستفيدين والخدمات المقدمة لهم'}
                         </p>
                     </div>
                     <div className="header-actions">
-                        {canEdit && (
+                        {canEdit && !isMainManager() && (
                             <>
                                 <button className="btn btn-primary" onClick={openAddModal}>
                                     + إضافة مستفيد
                                 </button>
-                                {!isMainManager() && (
-                                    <button className="btn btn-info" onClick={openImportModal}>
-                                        🚌 استيراد من الباص
-                                    </button>
-                                )}
+                                <button className="btn btn-info" onClick={openImportModal}>
+                                    🚌 استيراد من الباص
+                                </button>
                                 <button className="btn btn-secondary" onClick={openCopyModal}>
                                     نسخ من فصل سابق
-                                </button>
-                            </>
-                        )}
-                        {isMainManager() && filters.term_id && (
-                            <>
-                                <button className="btn btn-success" onClick={handleExport}>
-                                    📥 تصدير Excel
-                                </button>
-                                <button className="btn btn-secondary" onClick={() => setShowStats(!showStats)}>
-                                    {showStats ? '📋 عرض الجدول' : '📊 عرض الإحصائيات'}
                                 </button>
                             </>
                         )}
@@ -590,7 +675,7 @@ const Beneficiaries = () => {
                 </div>
 
                 {/* Term info */}
-                {activeTerm && (
+                {!isMainManager() && activeTerm && (
                     <div className="term-info-bar">
                         <span className="term-badge">
                             الفصل النشط: {activeTerm.term_name}
@@ -604,43 +689,73 @@ const Beneficiaries = () => {
                 )}
             </div>
 
-            {/* Filters (Main Manager) */}
+            {/* Main Manager: Filters + Tabs */}
             {isMainManager() && (
-                <div className="filters-section">
-                    <div className="filters-row">
-                        <div className="filter-group">
-                            <label>الفرع</label>
-                            <select
-                                value={filters.branch_id}
-                                onChange={(e) => setFilters(prev => ({ ...prev, branch_id: e.target.value }))}
-                            >
-                                <option value="">جميع الفروع</option>
-                                {branches.map(b => (
-                                    <option key={b.id} value={b.id}>{b.branch_name}</option>
-                                ))}
-                            </select>
+                <>
+                    <div className="mm-controls">
+                        <div className="mm-filters">
+                            <div className="filter-group">
+                                <label>الفصل الدراسي</label>
+                                <SearchableSelect
+                                    value={filters.term_id}
+                                    onChange={(val) => setFilters(prev => ({ ...prev, term_id: val }))}
+                                    placeholder="اختر الفصل"
+                                    options={[
+                                        { value: '', label: 'اختر الفصل' },
+                                        ...terms.map(t => ({ value: t.id.toString(), label: `${t.term_name} ${activeTerm && t.id === activeTerm.id ? '(نشط)' : ''}` }))
+                                    ]}
+                                />
+                            </div>
+                            {activeTab !== 'staffing' && (
+                                <div className="filter-group">
+                                    <label>الفرع</label>
+                                    <SearchableSelect
+                                        value={filters.branch_id}
+                                        onChange={(val) => setFilters(prev => ({ ...prev, branch_id: val }))}
+                                        placeholder="جميع الفروع"
+                                        options={[
+                                            { value: '', label: 'جميع الفروع' },
+                                            ...branches.map(b => ({ value: b.id.toString(), label: b.branch_name }))
+                                        ]}
+                                    />
+                                </div>
+                            )}
+                            {filters.term_id && activeTerm && filters.term_id !== activeTerm.id.toString() && (
+                                <button className="btn btn-warning btn-sm" onClick={handleArchive}>
+                                    📦 أرشفة هذا الفصل
+                                </button>
+                            )}
                         </div>
-                        <div className="filter-group">
-                            <label>الفصل الدراسي</label>
-                            <select
-                                value={filters.term_id}
-                                onChange={(e) => setFilters(prev => ({ ...prev, term_id: e.target.value }))}
-                            >
-                                <option value="">اختر الفصل</option>
-                                {terms.map(t => (
-                                    <option key={t.id} value={t.id}>
-                                        {t.term_name} {activeTerm && t.id === activeTerm.id ? '(نشط)' : ''}
-                                    </option>
-                                ))}
-                            </select>
+                        <div className="mm-tab-actions">
                         </div>
-                        {filters.term_id && activeTerm && filters.term_id !== activeTerm.id.toString() && (
-                            <button className="btn btn-warning btn-sm" onClick={handleArchive}>
-                                📦 أرشفة هذا الفصل
-                            </button>
-                        )}
                     </div>
-                </div>
+                    <div className="mm-tabs">
+                        <button
+                            className={`mm-tab ${activeTab === 'staffing' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('staffing')}
+                        >
+                            📋 متطلبات التوظيف
+                        </button>
+                        <button
+                            className={`mm-tab ${activeTab === 'data' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('data')}
+                        >
+                            📄 بيانات المستفيدين
+                        </button>
+                        <button
+                            className={`mm-tab ${activeTab === 'stats' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('stats')}
+                        >
+                            📊 الإحصائيات
+                        </button>
+                        <button
+                            className={`mm-tab ${activeTab === 'exports' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('exports')}
+                        >
+                            📥 التصدير
+                        </button>
+                    </div>
+                </>
             )}
 
             {/* Branch Manager Summary */}
@@ -670,7 +785,7 @@ const Beneficiaries = () => {
             )}
 
             {/* Main Manager Stats View */}
-            {isMainManager() && showStats && stats && (
+            {isMainManager() && activeTab === 'stats' && stats && (
                 <div className="stats-dashboard">
                     {/* Overall Stats */}
                     <div className="stats-section">
@@ -858,8 +973,298 @@ const Beneficiaries = () => {
                 </div>
             )}
 
+            {/* Staffing Requirements Section */}
+            {isMainManager() && activeTab === 'staffing' && filters.term_id && staffingData.length > 0 && (() => {
+                // Auto-select first branch if none selected
+                const selectedId = staffingBranchFilter || staffingData[0]?.branch_id?.toString();
+                const branch = staffingData.find(b => b.branch_id.toString() === selectedId);
+                const filteredBranches = staffingSearch
+                    ? staffingData.filter(b => b.branch_name.includes(staffingSearch))
+                    : staffingData;
+
+                return (
+                    <div className="staffing-section">
+                        {/* Branch picker */}
+                        <div className="sf-picker">
+                            <div className="sf-picker-search">
+                                <input
+                                    type="text"
+                                    placeholder="🔍 ابحث عن فرع..."
+                                    value={staffingSearch}
+                                    onChange={(e) => setStaffingSearch(e.target.value)}
+                                />
+                            </div>
+                            <div className="sf-picker-list">
+                                {filteredBranches.map(b => (
+                                    <button
+                                        key={b.branch_id}
+                                        className={`sf-picker-item ${b.branch_id.toString() === selectedId ? 'selected' : ''} ${b.total_deficit > 0 ? 'has-deficit' : 'all-ok'}`}
+                                        onClick={() => { setStaffingBranchFilter(b.branch_id.toString()); setStaffingSearch(''); }}
+                                    >
+                                        <span className="sf-pi-name">{b.branch_name}</span>
+                                        {b.total_deficit > 0 ? (
+                                            <span className="sf-pi-badge deficit">−{b.total_deficit}</span>
+                                        ) : (
+                                            <span className="sf-pi-badge ok">✓</span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Branch Dashboard */}
+                        {branch && (
+                            <div className="sf-dashboard">
+                                {/* Branch Header */}
+                                <div className="sf-dash-header">
+                                    <div className="sf-dash-title">
+                                        <h2>{branch.branch_name}</h2>
+                                        <span className={`sf-dash-status ${branch.total_deficit > 0 ? 'status-deficit' : 'status-ok'}`}>
+                                            {branch.total_deficit > 0 ? `⚠️ يوجد نقص ${branch.total_deficit} وظيفة` : '✅ التوظيف مكتمل'}
+                                        </span>
+                                    </div>
+                                    <div className="sf-dash-summary">
+                                        <div className="sf-sum-item">
+                                            <span className="sf-sum-num">{branch.total_required}</span>
+                                            <span className="sf-sum-label">المطلوب</span>
+                                        </div>
+                                        <div className="sf-sum-item">
+                                            <span className="sf-sum-num">{branch.total_current}</span>
+                                            <span className="sf-sum-label">الموجود</span>
+                                        </div>
+                                        <div className={`sf-sum-item ${branch.total_deficit > 0 ? 'sum-deficit' : 'sum-ok'}`}>
+                                            <span className="sf-sum-num">{branch.total_deficit}</span>
+                                            <span className="sf-sum-label">النقص</span>
+                                        </div>
+                                        {/* Progress bar */}
+                                        <div className="sf-sum-progress">
+                                            <div className="sf-progress-bar">
+                                                <div
+                                                    className={`sf-progress-fill ${branch.total_deficit > 0 ? 'fill-deficit' : 'fill-ok'}`}
+                                                    style={{ width: `${branch.total_required > 0 ? Math.min(100, ((branch.total_required - branch.total_deficit) / branch.total_required) * 100) : 100}%` }}
+                                                />
+                                            </div>
+                                            <span className="sf-progress-text">
+                                                {branch.total_required > 0 ? Math.round(((branch.total_required - branch.total_deficit) / branch.total_required) * 100) : 100}% مكتمل
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Beneficiaries breakdown */}
+                                <div className="sf-students-strip">
+                                    <div className="sf-ss-item sf-ss-total">
+                                        <span className="sf-ss-icon">👥</span>
+                                        <span className="sf-ss-num">{branch.total_beneficiaries}</span>
+                                        <span className="sf-ss-label">إجمالي</span>
+                                    </div>
+                                    <div className="sf-ss-item">
+                                        <span className="sf-ss-icon">🌅</span>
+                                        <span className="sf-ss-num">{branch.morning_count}</span>
+                                        <span className="sf-ss-label">صباحية</span>
+                                    </div>
+                                    <div className="sf-ss-item">
+                                        <span className="sf-ss-icon">🌆</span>
+                                        <span className="sf-ss-num">{branch.evening_count}</span>
+                                        <span className="sf-ss-label">مسائية</span>
+                                    </div>
+                                    <div className="sf-ss-divider" />
+                                    <div className="sf-ss-item">
+                                        <span className="sf-ss-icon">🗣️</span>
+                                        <span className="sf-ss-num">{branch.speech_therapy_count}</span>
+                                        <span className="sf-ss-label">نطق</span>
+                                    </div>
+                                    <div className="sf-ss-item">
+                                        <span className="sf-ss-icon">🦿</span>
+                                        <span className="sf-ss-num">{branch.physical_therapy_count}</span>
+                                        <span className="sf-ss-label">طبيعي</span>
+                                    </div>
+                                    <div className="sf-ss-item">
+                                        <span className="sf-ss-icon">🧩</span>
+                                        <span className="sf-ss-num">{branch.occupational_therapy_count}</span>
+                                        <span className="sf-ss-label">وظيفي</span>
+                                    </div>
+                                    <div className="sf-ss-item">
+                                        <span className="sf-ss-icon">🧠</span>
+                                        <span className="sf-ss-num">{branch.autism_therapy_count}</span>
+                                        <span className="sf-ss-label">توحد</span>
+                                    </div>
+                                    <div className="sf-ss-item">
+                                        <span className="sf-ss-icon">🚐</span>
+                                        <span className="sf-ss-num">{branch.transport_service_count}</span>
+                                        <span className="sf-ss-label">نقل</span>
+                                    </div>
+                                </div>
+
+                                {/* Role cards */}
+                                <div className="sf-roles">
+                                    {branch.staffing.filter(s => s.required > 0).map(s => (
+                                        <div className={`sf-role-card ${s.deficit > 0 ? 'rc-deficit' : s.surplus > 0 ? 'rc-surplus' : 'rc-met'}`} key={s.role}>
+                                            <div className="sf-rc-top">
+                                                <div className="sf-rc-icon">{s.icon}</div>
+                                                <div className="sf-rc-header">
+                                                    <h4 className="sf-rc-name">{s.role}</h4>
+                                                    <span className="sf-rc-rule">{s.rule}</span>
+                                                </div>
+                                                <div className="sf-rc-gauge">
+                                                    <div className="sf-gauge-ring">
+                                                        <svg viewBox="0 0 36 36" className="sf-gauge-svg">
+                                                            <path className="sf-gauge-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                                            <path className={`sf-gauge-fill ${s.deficit > 0 ? 'gauge-deficit' : 'gauge-ok'}`}
+                                                                strokeDasharray={`${s.required > 0 ? Math.min(100, (s.current / s.required) * 100) : 100}, 100`}
+                                                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                                        </svg>
+                                                        <span className="sf-gauge-text">{s.current}/{s.required}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="sf-rc-reason">{s.reason}</div>
+                                            <div className="sf-rc-footer">
+                                                <div className="sf-rc-stat">
+                                                    <span className="sf-rcs-label">المطلوب</span>
+                                                    <span className="sf-rcs-val">{s.required}</span>
+                                                </div>
+                                                <div className="sf-rc-stat">
+                                                    <span className="sf-rcs-label">الموجود</span>
+                                                    <span className="sf-rcs-val">{s.current}</span>
+                                                </div>
+                                                {s.deficit > 0 && (
+                                                    <div className="sf-rc-stat sf-rcs-deficit">
+                                                        <span className="sf-rcs-label">النقص</span>
+                                                        <span className="sf-rcs-val">{s.deficit}</span>
+                                                    </div>
+                                                )}
+                                                {s.surplus > 0 && (
+                                                    <div className="sf-rc-stat sf-rcs-surplus">
+                                                        <span className="sf-rcs-label">الفائض</span>
+                                                        <span className="sf-rcs-val">{s.surplus}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
+            )}
+            {isMainManager() && activeTab === 'staffing' && filters.term_id && staffingLoading && (
+                <div className="staffing-section">
+                    <h2>متطلبات التوظيف حسب اللائحة</h2>
+                    <div className="staffing-loading">جاري حساب متطلبات التوظيف...</div>
+                </div>
+            )}
+            {isMainManager() && activeTab === 'staffing' && filters.term_id && !staffingLoading && staffingData.length === 0 && (
+                <div className="staffing-section">
+                    <div className="empty-state">
+                        <span className="empty-icon">📋</span>
+                        <h3>لا توجد بيانات مستفيدين</h3>
+                        <p>يجب إدخال بيانات المستفيدين أولاً لحساب متطلبات التوظيف</p>
+                    </div>
+                </div>
+            )}
+            {isMainManager() && activeTab === 'staffing' && !filters.term_id && (
+                <div className="staffing-section">
+                    <div className="empty-state">
+                        <span className="empty-icon">📅</span>
+                        <h3>اختر الفصل الدراسي</h3>
+                        <p>يجب اختيار فصل دراسي لعرض متطلبات التوظيف</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Exports Tab */}
+            {isMainManager() && activeTab === 'exports' && filters.term_id && (
+                <div className="exports-tab">
+                    {/* Beneficiaries Excel Export */}
+                    <div className="export-card">
+                        <div className="export-card-header">
+                            <h3>📄 تصدير بيانات المستفيدين</h3>
+                            <p>اختر الأعمدة التي تريد تضمينها في ملف Excel</p>
+                        </div>
+                        <div className="export-columns">
+                            {[
+                                { key: 'sequence_number', label: 'التسلسل' },
+                                { key: 'branch_name', label: 'الفرع' },
+                                { key: 'enrollment_period', label: 'فترة الإلتحاق' },
+                                { key: 'beneficiary_name', label: 'اسم المستفيد' },
+                                { key: 'beneficiary_number', label: 'رقم المستفيد' },
+                                { key: 'civil_id', label: 'السجل المدني' },
+                                { key: 'contact_number', label: 'رقم التواصل' },
+                                { key: 'gender', label: 'الجنس' },
+                                { key: 'age', label: 'العمر' },
+                                { key: 'speech_therapy', label: 'نطق وتخاطب' },
+                                { key: 'physical_therapy', label: 'علاج طبيعي' },
+                                { key: 'occupational_therapy', label: 'علاج وظيفي' },
+                                { key: 'autism_therapy', label: 'علاج توحد' },
+                                { key: 'transport_service', label: 'خدمة نقل' },
+                                { key: 'free_student', label: 'طالب مجاني' },
+                                { key: 'notes', label: 'ملاحظات' },
+                            ].map(col => (
+                                <label key={col.key} className="export-col-check">
+                                    <input
+                                        type="checkbox"
+                                        checked={exportColumns[col.key]}
+                                        onChange={() => setExportColumns(prev => ({ ...prev, [col.key]: !prev[col.key] }))}
+                                    />
+                                    <span>{col.label}</span>
+                                </label>
+                            ))}
+                        </div>
+                        <div className="export-card-actions">
+                            <button
+                                className="btn btn-sm"
+                                onClick={() => setExportColumns(prev => {
+                                    const allOn = Object.values(prev).every(v => v);
+                                    const next = {};
+                                    for (const k of Object.keys(prev)) next[k] = !allOn;
+                                    return next;
+                                })}
+                            >
+                                {Object.values(exportColumns).every(v => v) ? 'إلغاء الكل' : 'تحديد الكل'}
+                            </button>
+                            <button
+                                className="btn btn-success"
+                                onClick={() => handleExport()}
+                                disabled={!Object.values(exportColumns).some(v => v)}
+                            >
+                                📥 تصدير بيانات المستفيدين
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Staffing Export */}
+                    <div className="export-card">
+                        <div className="export-card-header">
+                            <h3>📋 تصدير متطلبات التوظيف</h3>
+                            <p>تصدير قائمة الوظائف المطلوبة حسب اللائحة لكل فرع</p>
+                        </div>
+                        <div className="export-card-actions">
+                            <button
+                                className="btn btn-success"
+                                onClick={handleStaffingExport}
+                                disabled={!staffingData.length}
+                            >
+                                📥 تصدير متطلبات التوظيف
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {isMainManager() && activeTab === 'exports' && !filters.term_id && (
+                <div className="exports-tab">
+                    <div className="empty-state">
+                        <span className="empty-icon">📅</span>
+                        <h3>اختر الفصل الدراسي</h3>
+                        <p>يجب اختيار فصل دراسي لتصدير البيانات</p>
+                    </div>
+                </div>
+            )}
+
             {/* Data Table */}
-            {(!isMainManager() || !showStats) && (
+            {(!isMainManager() || activeTab === 'data') && (
                 <div className="table-section">
                     {beneficiaries.length > 0 && (
                         <div className="search-filter" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -900,7 +1305,144 @@ const Beneficiaries = () => {
                                 </button>
                             )}
                         </div>
-                    ) : (
+                    ) : (<>
+                        {/* Inline Add/Edit Form Panel */}
+                        {(inlineMode === 'add' || (inlineMode && inlineMode !== 'add')) && (
+                            <div className="inline-form-panel" ref={inlineRowRef}>
+                                <div className="inline-form-header">
+                                    <h3>{inlineMode === 'add' ? 'إضافة مستفيد جديد' : 'تعديل بيانات المستفيد'}</h3>
+                                    <button className="btn btn-sm btn-cancel" onClick={cancelInline} title="إلغاء">✕</button>
+                                </div>
+                                <div className="inline-form-grid">
+                                    <div className="inline-form-group">
+                                        <label>اسم المستفيد <span className="required">*</span></label>
+                                        <input
+                                            type="text"
+                                            value={formData.beneficiary_name}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, beneficiary_name: e.target.value }))}
+                                            placeholder="اسم المستفيد الكامل"
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <div className="inline-form-group">
+                                        <label>رقم المستفيد <span className="required">*</span></label>
+                                        <input
+                                            type="text"
+                                            value={formData.beneficiary_number}
+                                            onChange={(e) => {
+                                                const val = e.target.value.replace(/\D/g, '').slice(0, 7);
+                                                setFormData(prev => ({ ...prev, beneficiary_number: val }));
+                                            }}
+                                            placeholder="6-7 أرقام"
+                                            maxLength={7}
+                                        />
+                                    </div>
+                                    <div className="inline-form-group">
+                                        <label>السجل المدني <span className="required">*</span></label>
+                                        <input
+                                            type="text"
+                                            value={formData.civil_id}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, civil_id: e.target.value }))}
+                                            placeholder="السجل المدني"
+                                        />
+                                    </div>
+                                    <div className="inline-form-group">
+                                        <label>رقم التواصل <span className="required">*</span></label>
+                                        <input
+                                            type="text"
+                                            value={formData.contact_number}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, contact_number: e.target.value }))}
+                                            placeholder="05XXXXXXXX"
+                                        />
+                                    </div>
+                                    <div className="inline-form-group">
+                                        <label>فترة الإلتحاق <span className="required">*</span></label>
+                                        <select
+                                            value={formData.enrollment_period}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, enrollment_period: e.target.value }))}
+                                        >
+                                            {ENROLLMENT_OPTIONS.map(opt => (
+                                                <option key={opt} value={opt}>{opt}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="inline-form-group">
+                                        <label>الجنس <span className="required">*</span></label>
+                                        <select
+                                            value={formData.gender}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, gender: e.target.value }))}
+                                        >
+                                            {GENDER_OPTIONS.map(opt => (
+                                                <option key={opt} value={opt}>{opt}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="inline-form-group">
+                                        <label>العمر <span className="required">*</span></label>
+                                        <SearchableSelect
+                                            value={formData.age?.toString() || ''}
+                                            onChange={(val) => setFormData(prev => ({ ...prev, age: val }))}
+                                            placeholder="اختر العمر"
+                                            options={[
+                                                { value: '', label: 'اختر العمر' },
+                                                ...AGE_OPTIONS.map(age => ({ value: age.toString(), label: age.toString() }))
+                                            ]}
+                                        />
+                                    </div>
+                                    <div className="inline-form-group">
+                                        <label>طالب مجاني</label>
+                                        <select
+                                            value={formData.free_student ? 'true' : 'false'}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, free_student: e.target.value === 'true' }))}
+                                            className={formData.free_student ? 'select-active' : ''}
+                                        >
+                                            <option value="false">لا</option>
+                                            <option value="true">نعم</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="inline-form-services">
+                                    <label>الخدمات المقدمة</label>
+                                    <div className="inline-services-row">
+                                        {Object.entries(SERVICE_LABELS).map(([key, label]) => (
+                                            <button
+                                                key={key}
+                                                type="button"
+                                                className={`service-chip ${formData[key] ? 'active' : ''}`}
+                                                onClick={() => setFormData(prev => ({ ...prev, [key]: !prev[key] }))}
+                                            >
+                                                {label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="inline-form-notes">
+                                    <label>ملاحظات</label>
+                                    <textarea
+                                        value={formData.notes}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                                        placeholder="أدخل ملاحظات (اختياري)"
+                                        rows={2}
+                                    />
+                                </div>
+                                <div className="inline-form-actions">
+                                    <button
+                                        className="btn btn-primary"
+                                        onClick={handleSubmit}
+                                        disabled={submitting}
+                                    >
+                                        {submitting ? 'جاري الحفظ...' : inlineMode === 'add' ? '+ إضافة' : 'تحديث'}
+                                    </button>
+                                    <button
+                                        className="btn btn-secondary"
+                                        onClick={cancelInline}
+                                    >
+                                        إلغاء
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="table-wrapper">
                             <table className="data-table beneficiaries-table">
                                 <thead>
@@ -914,126 +1456,13 @@ const Beneficiaries = () => {
                                         <th>التواصل</th>
                                         <th>الجنس</th>
                                         <th>العمر</th>
-                                        <th className="service-col">نطق</th>
-                                        <th className="service-col">طبيعي</th>
-                                        <th className="service-col">وظيفي</th>
-                                        <th className="service-col">توحد</th>
-                                        <th className="service-col">نقل</th>
+                                        <th>الخدمات</th>
+                                        <th>مجاني</th>
+                                        <th>ملاحظات</th>
                                         {canEdit && <th></th>}
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {/* Inline Add Row */}
-                                    {inlineMode === 'add' && (
-                                        <tr className="inline-form-row" ref={inlineRowRef}>
-                                            <td className="number-cell">—</td>
-                                            {isMainManager() && <td>—</td>}
-                                            <td>
-                                                <select
-                                                    className="inline-input"
-                                                    value={formData.enrollment_period}
-                                                    onChange={(e) => setFormData(prev => ({ ...prev, enrollment_period: e.target.value }))}
-                                                >
-                                                    {ENROLLMENT_OPTIONS.map(opt => (
-                                                        <option key={opt} value={opt}>{opt}</option>
-                                                    ))}
-                                                </select>
-                                            </td>
-                                            <td>
-                                                <input
-                                                    className="inline-input"
-                                                    type="text"
-                                                    value={formData.beneficiary_name}
-                                                    onChange={(e) => setFormData(prev => ({ ...prev, beneficiary_name: e.target.value }))}
-                                                    placeholder="اسم المستفيد"
-                                                    autoFocus
-                                                />
-                                            </td>
-                                            <td>
-                                                <input
-                                                    className="inline-input"
-                                                    type="text"
-                                                    value={formData.beneficiary_number}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                                                        setFormData(prev => ({ ...prev, beneficiary_number: val }));
-                                                    }}
-                                                    placeholder="6 أرقام"
-                                                    maxLength={6}
-                                                />
-                                            </td>
-                                            <td>
-                                                <input
-                                                    className="inline-input"
-                                                    type="text"
-                                                    value={formData.civil_id}
-                                                    onChange={(e) => setFormData(prev => ({ ...prev, civil_id: e.target.value }))}
-                                                    placeholder="السجل المدني"
-                                                />
-                                            </td>
-                                            <td>
-                                                <input
-                                                    className="inline-input"
-                                                    type="text"
-                                                    value={formData.contact_number}
-                                                    onChange={(e) => setFormData(prev => ({ ...prev, contact_number: e.target.value }))}
-                                                    placeholder="05XXXXXXXX"
-                                                />
-                                            </td>
-                                            <td>
-                                                <select
-                                                    className="inline-input"
-                                                    value={formData.gender}
-                                                    onChange={(e) => setFormData(prev => ({ ...prev, gender: e.target.value }))}
-                                                >
-                                                    {GENDER_OPTIONS.map(opt => (
-                                                        <option key={opt} value={opt}>{opt}</option>
-                                                    ))}
-                                                </select>
-                                            </td>
-                                            <td>
-                                                <select
-                                                    className="inline-input"
-                                                    value={formData.age}
-                                                    onChange={(e) => setFormData(prev => ({ ...prev, age: e.target.value }))}
-                                                >
-                                                    <option value="">العمر</option>
-                                                    {AGE_OPTIONS.map(age => (
-                                                        <option key={age} value={age}>{age}</option>
-                                                    ))}
-                                                </select>
-                                            </td>
-                                            {Object.keys(SERVICE_LABELS).map(key => (
-                                                <td key={key}>
-                                                    <select
-                                                        className={`inline-input inline-service ${formData[key] ? 'active' : ''}`}
-                                                        value={formData[key] ? 'true' : 'false'}
-                                                        onChange={(e) => setFormData(prev => ({ ...prev, [key]: e.target.value === 'true' }))}
-                                                    >
-                                                        <option value="false">لا</option>
-                                                        <option value="true">نعم</option>
-                                                    </select>
-                                                </td>
-                                            ))}
-                                            <td className="actions-cell inline-actions">
-                                                <button
-                                                    className="btn btn-sm btn-save"
-                                                    onClick={handleSubmit}
-                                                    disabled={submitting}
-                                                    title="حفظ"
-                                                >
-                                                    {submitting ? '⏳' : '✅'}
-                                                </button>
-                                                <button
-                                                    className="btn btn-sm btn-cancel"
-                                                    onClick={cancelInline}
-                                                    title="إلغاء"
-                                                >
-                                                    ❌
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    )}
                                     {beneficiaries.filter(b => {
                                         if (!searchQuery.trim()) return true;
                                         const q = searchQuery.trim().toLowerCase();
@@ -1041,174 +1470,60 @@ const Beneficiaries = () => {
                                             || (b.civil_id || '').includes(q)
                                             || (b.beneficiary_number || '').includes(q);
                                     }).map((b) => (
-                                        inlineMode === b.id ? (
-                                            /* Inline Edit Row */
-                                            <tr key={b.id} className="inline-form-row" ref={inlineRowRef}>
-                                                <td className="number-cell">{b.sequence_number}</td>
-                                                {isMainManager() && <td className="branch-name-cell">{b.branch_name}</td>}
-                                                <td>
-                                                    <select
-                                                        className="inline-input"
-                                                        value={formData.enrollment_period}
-                                                        onChange={(e) => setFormData(prev => ({ ...prev, enrollment_period: e.target.value }))}
-                                                    >
-                                                        {ENROLLMENT_OPTIONS.map(opt => (
-                                                            <option key={opt} value={opt}>{opt}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td>
-                                                    <input
-                                                        className="inline-input"
-                                                        type="text"
-                                                        value={formData.beneficiary_name}
-                                                        onChange={(e) => setFormData(prev => ({ ...prev, beneficiary_name: e.target.value }))}
-                                                        autoFocus
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <input
-                                                        className="inline-input"
-                                                        type="text"
-                                                        value={formData.beneficiary_number}
-                                                        onChange={(e) => {
-                                                            const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                                                            setFormData(prev => ({ ...prev, beneficiary_number: val }));
-                                                        }}
-                                                        maxLength={6}
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <input
-                                                        className="inline-input"
-                                                        type="text"
-                                                        value={formData.civil_id}
-                                                        onChange={(e) => setFormData(prev => ({ ...prev, civil_id: e.target.value }))}
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <input
-                                                        className="inline-input"
-                                                        type="text"
-                                                        value={formData.contact_number}
-                                                        onChange={(e) => setFormData(prev => ({ ...prev, contact_number: e.target.value }))}
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <select
-                                                        className="inline-input"
-                                                        value={formData.gender}
-                                                        onChange={(e) => setFormData(prev => ({ ...prev, gender: e.target.value }))}
-                                                    >
-                                                        {GENDER_OPTIONS.map(opt => (
-                                                            <option key={opt} value={opt}>{opt}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td>
-                                                    <select
-                                                        className="inline-input"
-                                                        value={formData.age}
-                                                        onChange={(e) => setFormData(prev => ({ ...prev, age: e.target.value }))}
-                                                    >
-                                                        <option value="">العمر</option>
-                                                        {AGE_OPTIONS.map(age => (
-                                                            <option key={age} value={age}>{age}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                {Object.keys(SERVICE_LABELS).map(key => (
-                                                    <td key={key}>
-                                                        <select
-                                                            className={`inline-input inline-service ${formData[key] ? 'active' : ''}`}
-                                                            value={formData[key] ? 'true' : 'false'}
-                                                            onChange={(e) => setFormData(prev => ({ ...prev, [key]: e.target.value === 'true' }))}
-                                                        >
-                                                            <option value="false">لا</option>
-                                                            <option value="true">نعم</option>
-                                                        </select>
-                                                    </td>
+                                        <tr key={b.id} className={inlineMode === b.id ? 'editing-row' : ''}>
+                                            <td className="number-cell">{b.sequence_number}</td>
+                                            {isMainManager() && <td className="branch-name-cell">{b.branch_name}</td>}
+                                            <td>{b.enrollment_period}</td>
+                                            <td className="name-cell">{b.beneficiary_name}</td>
+                                            <td className="number-cell">{b.beneficiary_number}</td>
+                                            <td className="number-cell">{b.civil_id}</td>
+                                            <td className="number-cell">{b.contact_number}</td>
+                                            <td>{b.gender}</td>
+                                            <td className="number-cell">{b.age}</td>
+                                            <td className="services-cell">
+                                                {Object.entries(SERVICE_LABELS).filter(([key]) => b[key]).map(([key, label]) => (
+                                                    <span key={key} className="service-pill">{label}</span>
                                                 ))}
-                                                <td className="actions-cell inline-actions">
-                                                    <button
-                                                        className="btn btn-sm btn-save"
-                                                        onClick={handleSubmit}
-                                                        disabled={submitting}
-                                                        title="حفظ"
-                                                    >
-                                                        {submitting ? '⏳' : '✅'}
-                                                    </button>
-                                                    <button
-                                                        className="btn btn-sm btn-cancel"
-                                                        onClick={cancelInline}
-                                                        title="إلغاء"
-                                                    >
-                                                        ❌
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ) : (
-                                            /* Normal Display Row */
-                                            <tr key={b.id}>
-                                                <td className="number-cell">{b.sequence_number}</td>
-                                                {isMainManager() && <td className="branch-name-cell">{b.branch_name}</td>}
-                                                <td>{b.enrollment_period}</td>
-                                                <td className="name-cell">{b.beneficiary_name}</td>
-                                                <td className="number-cell">{b.beneficiary_number}</td>
-                                                <td className="number-cell">{b.civil_id}</td>
-                                                <td className="number-cell">{b.contact_number}</td>
-                                                <td>{b.gender}</td>
-                                                <td className="number-cell">{b.age}</td>
-                                                <td>
-                                                    <span className={`service-badge ${b.speech_therapy ? 'yes' : 'no'}`}>
-                                                        {b.speech_therapy ? '✓' : '✗'}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <span className={`service-badge ${b.physical_therapy ? 'yes' : 'no'}`}>
-                                                        {b.physical_therapy ? '✓' : '✗'}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <span className={`service-badge ${b.occupational_therapy ? 'yes' : 'no'}`}>
-                                                        {b.occupational_therapy ? '✓' : '✗'}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <span className={`service-badge ${b.autism_therapy ? 'yes' : 'no'}`}>
-                                                        {b.autism_therapy ? '✓' : '✗'}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <span className={`service-badge ${b.transport_service ? 'yes' : 'no'}`}>
-                                                        {b.transport_service ? '✓' : '✗'}
-                                                    </span>
-                                                </td>
-                                                {canEdit && (
-                                                    <td className="actions-cell">
-                                                        <button
-                                                            className="btn btn-sm btn-edit"
-                                                            onClick={() => openEditModal(b)}
-                                                            title="تعديل"
-                                                        >
-                                                            ✏️
-                                                        </button>
-                                                        <button
-                                                            className="btn btn-sm btn-delete"
-                                                            onClick={() => setDeleteConfirm({ show: true, id: b.id, name: b.beneficiary_name })}
-                                                            title="حذف"
-                                                        >
-                                                            🗑️
-                                                        </button>
-                                                    </td>
+                                                {Object.keys(SERVICE_LABELS).every(key => !b[key]) && (
+                                                    <span className="no-services">—</span>
                                                 )}
-                                            </tr>
-                                        )
+                                            </td>
+                                            <td>
+                                                {b.free_student ? (
+                                                    <span className="free-badge">مجاني</span>
+                                                ) : (
+                                                    <span className="no-services">—</span>
+                                                )}
+                                            </td>
+                                            <td className="notes-cell" title={b.notes || ''}>
+                                                {b.notes ? (
+                                                    <span className="notes-text">{b.notes}</span>
+                                                ) : '—'}
+                                            </td>
+                                            {canEdit && (
+                                                <td className="actions-cell">
+                                                    <button
+                                                        className="btn btn-sm btn-edit"
+                                                        onClick={() => openEditModal(b)}
+                                                        title="تعديل"
+                                                    >
+                                                        ✏️
+                                                    </button>
+                                                    <button
+                                                        className="btn btn-sm btn-delete"
+                                                        onClick={() => setDeleteConfirm({ show: true, id: b.id, name: b.beneficiary_name })}
+                                                        title="حذف"
+                                                    >
+                                                        🗑️
+                                                    </button>
+                                                </td>
+                                            )}
+                                        </tr>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
-                    )}
+                    </>)}
                 </div>
             )}
 
@@ -1238,11 +1553,11 @@ const Beneficiaries = () => {
                                         type="text"
                                         value={formData.beneficiary_number}
                                         onChange={(e) => {
-                                            const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                                            const val = e.target.value.replace(/\D/g, '').slice(0, 7);
                                             setFormData(prev => ({ ...prev, beneficiary_number: val }));
                                         }}
-                                        placeholder="أدخل 6 أرقام"
-                                        maxLength={6}
+                                        placeholder="أدخل 6 أو 7 أرقام"
+                                        maxLength={7}
                                         required
                                     />
                                 </div>
@@ -1292,20 +1607,19 @@ const Beneficiaries = () => {
                                 </div>
                                 <div className="form-group">
                                     <label>العمر <span className="required">*</span></label>
-                                    <select
-                                        value={formData.age}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, age: e.target.value }))}
-                                        required
-                                    >
-                                        <option value="">اختر العمر</option>
-                                        {AGE_OPTIONS.map(age => (
-                                            <option key={age} value={age}>{age}</option>
-                                        ))}
-                                    </select>
+                                    <SearchableSelect
+                                        value={formData.age?.toString() || ''}
+                                        onChange={(val) => setFormData(prev => ({ ...prev, age: val }))}
+                                        placeholder="اختر العمر"
+                                        options={[
+                                            { value: '', label: 'اختر العمر' },
+                                            ...AGE_OPTIONS.map(age => ({ value: age.toString(), label: age.toString() }))
+                                        ]}
+                                    />
                                 </div>
                             </div>
 
-                            {/* Services Section */}
+                            {/* Services Section */}}
                             <div className="services-section">
                                 <h3>الخدمات المقدمة</h3>
                                 <div className="services-grid">
@@ -1329,7 +1643,37 @@ const Beneficiaries = () => {
                                             </label>
                                         </div>
                                     ))}
+                                    <div className="service-toggle" key="free_student">
+                                        <label className="toggle-label">
+                                            <span className="toggle-text">طالب مجاني</span>
+                                            <div className="toggle-wrapper">
+                                                <select
+                                                    value={formData.free_student ? 'true' : 'false'}
+                                                    onChange={(e) => setFormData(prev => ({
+                                                        ...prev,
+                                                        free_student: e.target.value === 'true'
+                                                    }))}
+                                                    className={`service-select ${formData.free_student ? 'active' : ''}`}
+                                                >
+                                                    <option value="false">لا</option>
+                                                    <option value="true">نعم</option>
+                                                </select>
+                                            </div>
+                                        </label>
+                                    </div>
                                 </div>
+                            </div>
+
+                            {/* Notes Section */}
+                            <div className="form-group" style={{ marginTop: '1rem' }}>
+                                <label>ملاحظات</label>
+                                <textarea
+                                    value={formData.notes}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                                    placeholder="أدخل ملاحظات (اختياري)"
+                                    rows={3}
+                                    style={{ width: '100%', resize: 'vertical' }}
+                                />
                             </div>
 
                             <div className="modal-actions">
@@ -1488,18 +1832,15 @@ const Beneficiaries = () => {
                             </p>
                             <div className="form-group" style={{ marginBottom: 16 }}>
                                 <label style={{ fontWeight: 600, marginBottom: 8, display: 'block' }}>اختر الفصل المصدر</label>
-                                <select
+                                <SearchableSelect
                                     value={copySourceTerm}
-                                    onChange={(e) => setCopySourceTerm(e.target.value)}
-                                    style={{ width: '100%', padding: '10px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 }}
-                                >
-                                    <option value="">-- اختر الفصل --</option>
-                                    {availableCopyTerms.map(t => (
-                                        <option key={t.id} value={t.id}>
-                                            {t.term_name} ({t.beneficiary_count} مستفيد)
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(val) => setCopySourceTerm(val)}
+                                    placeholder="-- اختر الفصل --"
+                                    options={[
+                                        { value: '', label: '-- اختر الفصل --' },
+                                        ...availableCopyTerms.map(t => ({ value: t.id.toString(), label: `${t.term_name} (${t.beneficiary_count} مستفيد)` }))
+                                    ]}
+                                />
                             </div>
                         </div>
                         <div className="modal-actions">
