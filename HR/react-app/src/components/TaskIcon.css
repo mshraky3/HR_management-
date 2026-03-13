@@ -58,6 +58,11 @@
   color: #A855F7;
 }
 
+.task-icon.icon-beneficiary {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(2, 132, 199, 0.08) 100%);
+  color: #0EA5E9;
+}
+
 .task-icon.icon-alert {
   background: linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(220, 38, 38, 0.08) 100%);
   color: #EF4444;
@@ -82,6 +87,10 @@
 
 [data-theme="dark"] .task-icon.icon-payroll {
   background: linear-gradient(135deg, rgba(168, 85, 247, 0.18) 0%, rgba(139, 92, 246, 0.12) 100%);
+}
+
+[data-theme="dark"] .task-icon.icon-beneficiary {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.18) 0%, rgba(2, 132, 199, 0.12) 100%);
 }
 
 [data-theme="dark"] .task-icon.icon-alert {

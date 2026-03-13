@@ -25,6 +25,8 @@ const TaskIcon = ({ type, size = 'medium', className = '' }) => {
         return 'icon-bus';
       case 'payroll_absence':
         return 'icon-payroll';
+      case 'beneficiary':
+        return 'icon-beneficiary';
       case 'notification':
         return 'icon-alert';
       default:
@@ -85,6 +87,17 @@ const TaskIcon = ({ type, size = 'medium', className = '' }) => {
             <path d="M8 2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M3 10H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             <circle cx="12" cy="16" r="2" fill="currentColor" />
+          </svg>
+        );
+
+      case 'beneficiary':
+        return (
+          <svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M16 4H18C19.1 4 20 4.9 20 6V20C20 21.1 19.1 22 18 22H6C4.9 22 4 21.1 4 20V6C4 4.9 4.9 4 6 4H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <rect x="8" y="2" width="8" height="4" rx="1" fill="none" stroke="currentColor" strokeWidth="2" />
+            <path d="M12 11C13.1 11 14 10.1 14 9C14 7.9 13.1 7 12 7C10.9 7 10 7.9 10 9C10 10.1 10.9 11 12 11Z" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M8 17C8 14.79 9.79 13 12 13C14.21 13 16 14.79 16 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M9 19H15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
         );
 
