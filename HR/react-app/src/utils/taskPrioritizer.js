@@ -772,6 +772,35 @@ const calculateIBANReviewTask = (employees = []) => {
 };
 
 /**
+ * Calculate beneficiary registration task (healthcare centers only)
+ */
+const calculateBeneficiaryTask = (branchType, beneficiaryCount) => {
+  // Only for healthcare center branches
+  if (branchType !== 'healthcare_center') return null;
+
+  // If beneficiaries are already entered, no task needed
+  if (beneficiaryCount > 0) return null;
+
+  return {
+    id: 'beneficiary-registration',
+    type: 'beneficiary',
+    category: 'employees',
+    priority: 'must_do',
+    title: 'تسجيل بيانات المستفيدين',
+    description: 'لم يتم تسجيل أي مستفيد للفصل الحالي. يجب إدخال بيانات المستفيدين',
+    totalItems: 1,
+    completedItems: 0,
+    remainingItems: 1,
+    progress: 0,
+    actionUrl: '/beneficiaries',
+    actionLabel: 'تسجيل المستفيدين',
+    urgency: 'no_deadline',
+    estimatedTime: '30 min',
+    dependencies: []
+  };
+};
+
+/**
  * Calculate payroll absence task
  */
 const calculatePayrollAbsenceTask = (payrollAbsenceState) => {
@@ -877,7 +906,8 @@ export const calculateTasks = ({
   buses = [],
   missingEmployeeContractData = [],
   payrollAbsenceState = null,
-  employees = []
+  employees = [],
+  beneficiaryCount = 0
 }) => {
   const branchId = branchInfo?.id;
   if (!branchId) return [];
@@ -903,6 +933,10 @@ export const calculateTasks = ({
   // 2.7. IBAN Review Task - Employees with invalid IBAN numbers
   const ibanReviewTask = calculateIBANReviewTask(employees);
   if (ibanReviewTask) tasks.push(ibanReviewTask);
+
+  // 2.8. Beneficiary Registration Task (healthcare centers only)
+  const beneficiaryTask = calculateBeneficiaryTask(branchInfo?.branch_type, beneficiaryCount);
+  if (beneficiaryTask) tasks.push(beneficiaryTask);
 
   // 3. Employees (Must Do) - Employee related, comes before bus
   const employeeTasks = calculateEmployeeTasks(incompleteEmployees);

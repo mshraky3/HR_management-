@@ -1149,6 +1149,9 @@ export const beneficiariesAPI = {
 
   getStaffingRequirements: (params = {}) =>
     api.get('/api/beneficiaries/staffing-requirements', { params }),
+
+  getBranchCount: () =>
+    api.get('/api/beneficiaries/branch-count'),
 };
 
 // Suggestions API
