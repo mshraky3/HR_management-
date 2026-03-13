@@ -1585,7 +1585,7 @@ export async function initializeDatabase() {
       branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
       term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE RESTRICT,
       sequence_number INTEGER NOT NULL,
-      beneficiary_number VARCHAR(6) NOT NULL,
+      beneficiary_number VARCHAR(7) NOT NULL,
       enrollment_period VARCHAR(20) NOT NULL CHECK (enrollment_period IN ('صباحية', 'مسائية')),
       beneficiary_name VARCHAR(255) NOT NULL,
       civil_id VARCHAR(20) NOT NULL,
@@ -1597,6 +1597,8 @@ export async function initializeDatabase() {
       occupational_therapy BOOLEAN NOT NULL DEFAULT false,
       autism_therapy BOOLEAN NOT NULL DEFAULT false,
       transport_service BOOLEAN NOT NULL DEFAULT false,
+      free_student BOOLEAN NOT NULL DEFAULT false,
+      notes TEXT DEFAULT NULL,
       is_archived BOOLEAN NOT NULL DEFAULT false,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1625,12 +1627,48 @@ export async function initializeDatabase() {
         WHERE table_name = 'beneficiaries' AND column_name = 'beneficiary_number'
       `;
       if (checkBeneficiaryNumber.length === 0) {
-        await sql`ALTER TABLE beneficiaries ADD COLUMN beneficiary_number VARCHAR(6) NOT NULL DEFAULT '000000'`;
+        await sql`ALTER TABLE beneficiaries ADD COLUMN beneficiary_number VARCHAR(7) NOT NULL DEFAULT '000000'`;
         await sql`ALTER TABLE beneficiaries ALTER COLUMN beneficiary_number DROP DEFAULT`;
-        log.info('Added beneficiary_number column to beneficiaries table');
+        console.log('Added beneficiary_number column to beneficiaries table');
       }
     } catch (error) {
-      log.info('beneficiary_number column migration skipped or already exists');
+      console.log('beneficiary_number column migration skipped or already exists');
+    }
+
+    // Migration: Add free_student and notes columns, widen beneficiary_number to VARCHAR(7)
+    try {
+      const checkFreeStudent = await sql`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'beneficiaries' AND column_name = 'free_student'
+      `;
+      if (checkFreeStudent.length === 0) {
+        await sql`ALTER TABLE beneficiaries ADD COLUMN free_student BOOLEAN NOT NULL DEFAULT false`;
+        console.log('Added free_student column to beneficiaries table');
+      }
+    } catch (error) {
+      console.log('free_student column migration skipped or already exists');
+    }
+
+    try {
+      const checkNotes = await sql`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'beneficiaries' AND column_name = 'notes'
+      `;
+      if (checkNotes.length === 0) {
+        await sql`ALTER TABLE beneficiaries ADD COLUMN notes TEXT DEFAULT NULL`;
+        console.log('Added notes column to beneficiaries table');
+      }
+    } catch (error) {
+      console.log('notes column migration skipped or already exists');
+    }
+
+    try {
+      await sql`ALTER TABLE beneficiaries ALTER COLUMN beneficiary_number TYPE VARCHAR(7)`;
+      console.log('Widened beneficiary_number column to VARCHAR(7)');
+    } catch (error) {
+      console.log('beneficiary_number column width migration skipped');
     }
 
     // Migration: Remove old 'salary' field from employees table

@@ -17,7 +17,7 @@ import {
 } from "../middleware/validation.js";
 import { validateDateFields } from "../middleware/dateValidation.js";
 import { Document } from "../models/Document.js";
-import { sql } from "../db-helpers.js";
+import sql from "../config/database.js";
 import { log } from "../utils/logger.js";
 import { clearByPrefix, getCache, setCache } from "../utils/simpleCache.js";
 import multer from "multer";

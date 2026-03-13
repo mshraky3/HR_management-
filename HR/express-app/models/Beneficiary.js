@@ -144,12 +144,12 @@ const Beneficiary = {
           branch_id, term_id, sequence_number, beneficiary_number, enrollment_period,
           beneficiary_name, civil_id, contact_number, gender, age,
           speech_therapy, physical_therapy, occupational_therapy,
-          autism_therapy, transport_service
+          autism_therapy, transport_service, free_student, notes
         ) VALUES (
           ${data.branch_id}, ${data.term_id}, ${sequenceNumber}, ${data.beneficiary_number}, ${data.enrollment_period},
           ${data.beneficiary_name}, ${data.civil_id}, ${data.contact_number}, ${data.gender}, ${data.age},
           ${data.speech_therapy || false}, ${data.physical_therapy || false}, ${data.occupational_therapy || false},
-          ${data.autism_therapy || false}, ${data.transport_service || false}
+          ${data.autism_therapy || false}, ${data.transport_service || false}, ${data.free_student || false}, ${data.notes || null}
         ) RETURNING *
       `;
             return row;
@@ -178,6 +178,8 @@ const Beneficiary = {
           occupational_therapy = ${data.occupational_therapy || false},
           autism_therapy = ${data.autism_therapy || false},
           transport_service = ${data.transport_service || false},
+          free_student = ${data.free_student || false},
+          notes = ${data.notes || null},
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ${id}
         RETURNING *
@@ -241,7 +243,7 @@ const Beneficiary = {
           COUNT(*) FILTER (WHERE transport_service = true) as transport_service_count,
           ROUND(AVG(age), 1) as avg_age
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false
+        WHERE term_id = ${termId} AND is_archived = false AND free_student IS NOT TRUE
       `;
 
             // Per-branch breakdown
@@ -261,7 +263,7 @@ const Beneficiary = {
           COUNT(*) FILTER (WHERE b_data.transport_service = true) as transport_service_count
         FROM beneficiaries b_data
         LEFT JOIN branches br ON b_data.branch_id = br.id
-        WHERE b_data.term_id = ${termId} AND b_data.is_archived = false
+        WHERE b_data.term_id = ${termId} AND b_data.is_archived = false AND b_data.free_student IS NOT TRUE
         GROUP BY b_data.branch_id, br.branch_name
         ORDER BY br.branch_name
       `;
@@ -280,7 +282,7 @@ const Beneficiary = {
           END as age_group,
           COUNT(*) as count
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false
+        WHERE term_id = ${termId} AND is_archived = false AND free_student IS NOT TRUE
         GROUP BY age_group
         ORDER BY age_group
       `;
@@ -295,7 +297,7 @@ const Beneficiary = {
            CASE WHEN transport_service THEN 1 ELSE 0 END) as service_count,
           COUNT(*) as beneficiary_count
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false
+        WHERE term_id = ${termId} AND is_archived = false AND free_student IS NOT TRUE
         GROUP BY service_count
         ORDER BY service_count
       `;
@@ -331,7 +333,7 @@ const Beneficiary = {
           COUNT(*) FILTER (WHERE transport_service = true) as transport_service_count,
           ROUND(AVG(age), 1) as avg_age
         FROM beneficiaries
-        WHERE branch_id = ${branchId} AND term_id = ${termId} AND is_archived = false
+        WHERE branch_id = ${branchId} AND term_id = ${termId} AND is_archived = false AND free_student IS NOT TRUE
       `;
             return stats;
         } catch (error) {
@@ -373,7 +375,7 @@ const Beneficiary = {
         LEFT JOIN (
           SELECT branch_id, COUNT(*) as total
           FROM beneficiaries
-          WHERE term_id = ${termId} AND is_archived = false
+          WHERE term_id = ${termId} AND is_archived = false AND free_student IS NOT TRUE
           GROUP BY branch_id
         ) counts ON br.id = counts.branch_id
         WHERE br.branch_type = 'healthcare_center' AND br.is_active = true
@@ -456,12 +458,12 @@ const Beneficiary = {
                             branch_id, term_id, sequence_number, beneficiary_number, enrollment_period,
                             beneficiary_name, civil_id, contact_number, gender, age,
                             speech_therapy, physical_therapy, occupational_therapy,
-                            autism_therapy, transport_service
+                            autism_therapy, transport_service, free_student, notes
                         ) VALUES (
                             ${branchId}, ${targetTermId}, ${nextSeq++}, ${row.beneficiary_number}, ${row.enrollment_period},
                             ${row.beneficiary_name}, ${row.civil_id}, ${row.contact_number}, ${row.gender}, ${row.age},
                             ${row.speech_therapy}, ${row.physical_therapy}, ${row.occupational_therapy},
-                            ${row.autism_therapy}, ${row.transport_service}
+                            ${row.autism_therapy}, ${row.transport_service}, ${row.free_student || false}, ${row.notes || null}
                         )
                     `;
                 }

@@ -213,8 +213,10 @@ router.get('/export', requireMainManager, async (req, res) => {
         const worksheet = workbook.addWorksheet('المستفيدين');
         worksheet.views = [{ rightToLeft: true }];
 
-        // Define columns
-        worksheet.columns = [
+        // Parse requested columns from query (default: all except branch_name and free_student)
+        const requestedColumns = req.query.columns ? req.query.columns.split(',') : null;
+
+        const allColumns = [
             { header: 'التسلسل', key: 'sequence_number', width: 10 },
             { header: 'الفرع', key: 'branch_name', width: 25 },
             { header: 'فترة الإلتحاق', key: 'enrollment_period', width: 15 },
@@ -229,26 +231,39 @@ router.get('/export', requireMainManager, async (req, res) => {
             { header: 'علاج وظيفي', key: 'occupational_therapy', width: 12 },
             { header: 'علاج توحد', key: 'autism_therapy', width: 12 },
             { header: 'خدمة نقل', key: 'transport_service', width: 12 },
+            { header: 'طالب مجاني', key: 'free_student', width: 12 },
+            { header: 'ملاحظات', key: 'notes', width: 25 },
         ];
 
-        // Add rows
+        // Default columns exclude branch_name and free_student
+        const defaultKeys = allColumns.map(c => c.key).filter(k => k !== 'branch_name' && k !== 'free_student');
+        const activeKeys = requestedColumns || defaultKeys;
+        const validKeys = new Set(allColumns.map(c => c.key));
+
+        // Define columns
+        worksheet.columns = allColumns.filter(c => activeKeys.includes(c.key) && validKeys.has(c.key));
+
+        // Add rows — only include active columns
+        const activeKeySet = new Set(activeKeys);
         data.forEach(row => {
-            worksheet.addRow({
-                sequence_number: row.sequence_number,
-                branch_name: row.branch_name,
-                enrollment_period: row.enrollment_period,
-                beneficiary_name: row.beneficiary_name,
-                beneficiary_number: row.beneficiary_number,
-                civil_id: row.civil_id,
-                contact_number: row.contact_number,
-                gender: row.gender,
-                age: row.age,
-                speech_therapy: row.speech_therapy ? 'نعم' : 'لا',
-                physical_therapy: row.physical_therapy ? 'نعم' : 'لا',
-                occupational_therapy: row.occupational_therapy ? 'نعم' : 'لا',
-                autism_therapy: row.autism_therapy ? 'نعم' : 'لا',
-                transport_service: row.transport_service ? 'نعم' : 'لا',
-            });
+            const rowData = {};
+            if (activeKeySet.has('sequence_number')) rowData.sequence_number = row.sequence_number;
+            if (activeKeySet.has('branch_name')) rowData.branch_name = row.branch_name;
+            if (activeKeySet.has('enrollment_period')) rowData.enrollment_period = row.enrollment_period;
+            if (activeKeySet.has('beneficiary_name')) rowData.beneficiary_name = row.beneficiary_name;
+            if (activeKeySet.has('beneficiary_number')) rowData.beneficiary_number = row.beneficiary_number;
+            if (activeKeySet.has('civil_id')) rowData.civil_id = row.civil_id;
+            if (activeKeySet.has('contact_number')) rowData.contact_number = row.contact_number;
+            if (activeKeySet.has('gender')) rowData.gender = row.gender;
+            if (activeKeySet.has('age')) rowData.age = row.age;
+            if (activeKeySet.has('speech_therapy')) rowData.speech_therapy = row.speech_therapy ? 'نعم' : 'لا';
+            if (activeKeySet.has('physical_therapy')) rowData.physical_therapy = row.physical_therapy ? 'نعم' : 'لا';
+            if (activeKeySet.has('occupational_therapy')) rowData.occupational_therapy = row.occupational_therapy ? 'نعم' : 'لا';
+            if (activeKeySet.has('autism_therapy')) rowData.autism_therapy = row.autism_therapy ? 'نعم' : 'لا';
+            if (activeKeySet.has('transport_service')) rowData.transport_service = row.transport_service ? 'نعم' : 'لا';
+            if (activeKeySet.has('free_student')) rowData.free_student = row.free_student ? 'نعم' : 'لا';
+            if (activeKeySet.has('notes')) rowData.notes = row.notes || '';
+            worksheet.addRow(rowData);
         });
 
         // Style header row
@@ -377,6 +392,183 @@ router.post('/copy-from-term', requireManager, async (req, res) => {
     } catch (error) {
         log.error('Error copying beneficiaries from term:', error);
         res.status(500).json({ success: false, message: 'فشل في نسخ المستفيدين' });
+    }
+});
+
+/**
+ * GET /api/beneficiaries/staffing-requirements
+ * Compute required staff per branch based on regulatory rules and compare with actual employees
+ * Main manager only
+ */
+router.get('/staffing-requirements', requireMainManager, async (req, res) => {
+    try {
+        const { term_id } = req.query;
+        if (!term_id) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد الفصل الدراسي' });
+        }
+
+        // Query 1: Beneficiary stats per branch
+        const branchBeneficiaryStats = await sql`
+            SELECT 
+                b_data.branch_id,
+                br.branch_name,
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE b_data.enrollment_period = 'صباحية') as morning_count,
+                COUNT(*) FILTER (WHERE b_data.enrollment_period = 'مسائية') as evening_count,
+                COUNT(*) FILTER (WHERE b_data.speech_therapy = true) as speech_therapy_count,
+                COUNT(*) FILTER (WHERE b_data.physical_therapy = true) as physical_therapy_count,
+                COUNT(*) FILTER (WHERE b_data.occupational_therapy = true) as occupational_therapy_count,
+                COUNT(*) FILTER (WHERE b_data.autism_therapy = true) as autism_therapy_count,
+                COUNT(*) FILTER (WHERE b_data.transport_service = true) as transport_service_count
+            FROM beneficiaries b_data
+            LEFT JOIN branches br ON b_data.branch_id = br.id
+            WHERE b_data.term_id = ${term_id} AND b_data.is_archived = false AND b_data.free_student IS NOT TRUE
+            GROUP BY b_data.branch_id, br.branch_name
+            ORDER BY br.branch_name
+        `;
+
+        if (branchBeneficiaryStats.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+
+        // Query 2: Active employee counts per branch per job_title (healthcare centers only)
+        const branchIds = branchBeneficiaryStats.map(b => b.branch_id);
+        const employeeCounts = await sql`
+            SELECT e.branch_id, e.job_title, COUNT(*)::int as count
+            FROM employees e
+            WHERE e.status = 'active' AND e.branch_id = ANY(${branchIds})
+            GROUP BY e.branch_id, e.job_title
+        `;
+
+        // Build lookup: { branchId: { jobTitle: count } }
+        const employeeMap = {};
+        for (const row of employeeCounts) {
+            if (!employeeMap[row.branch_id]) employeeMap[row.branch_id] = {};
+            employeeMap[row.branch_id][row.job_title] = row.count;
+        }
+
+        // Staffing rules — includes detailed reason with student counts
+        const computeRequirements = (bs) => {
+            const total = parseInt(bs.total);
+            const morning = parseInt(bs.morning_count);
+            const evening = parseInt(bs.evening_count);
+            const speech = parseInt(bs.speech_therapy_count);
+            const physical = parseInt(bs.physical_therapy_count);
+            const occupational = parseInt(bs.occupational_therapy_count);
+            const autism = parseInt(bs.autism_therapy_count);
+            const transport = parseInt(bs.transport_service_count);
+            const nonAutism = total - autism;
+
+            const nursingRequired = (morning > 0 ? 1 : 0) + (evening > 0 ? 1 : 0);
+            const driverRequired = 1;
+            const companionRequired = transport > 0 ? driverRequired : 0;
+
+            return [
+                { role: 'مديرة مراكز', required: 1, rule: 'واحد لكل مركز', reason: 'وظيفة إدارية أساسية — مطلوب مديرة واحدة لكل مركز رعاية', icon: '👔' },
+                { role: 'الموارد البشرية', required: 1, rule: 'واحد لكل مركز', reason: 'وظيفة إدارية أساسية — مطلوب موظف موارد بشرية واحد لكل مركز', icon: '📋' },
+                {
+                    role: 'تمريض', required: nursingRequired, rule: 'واحد لكل فترة نشطة',
+                    reason: nursingRequired === 2
+                        ? `يوجد ${morning} مستفيد في الفترة الصباحية و ${evening} في المسائية — مطلوب ممرض/ة لكل فترة نشطة`
+                        : morning > 0 ? `يوجد ${morning} مستفيد في الفترة الصباحية — مطلوب ممرض/ة واحد/ة` : `يوجد ${evening} مستفيد في الفترة المسائية — مطلوب ممرض/ة واحد/ة`,
+                    icon: '🏥'
+                },
+                {
+                    role: 'علاج طبيعي', required: physical > 0 ? Math.ceil(physical / 20) : 0, rule: '1 لكل 20 مستفيد',
+                    reason: `${physical} مستفيد يحتاج علاج طبيعي ÷ 20 = ${Math.ceil(physical / 20)} معالج مطلوب`, students: physical, ratio: 20, icon: '🦿'
+                },
+                {
+                    role: 'علاج وظيفي', required: occupational > 0 ? Math.ceil(occupational / 25) : 0, rule: '1 لكل 25 مستفيد',
+                    reason: `${occupational} مستفيد يحتاج علاج وظيفي ÷ 25 = ${Math.ceil(occupational / 25)} معالج مطلوب`, students: occupational, ratio: 25, icon: '🧩'
+                },
+                {
+                    role: 'النطق و التخاطب', required: speech > 0 ? Math.ceil(speech / 20) : 0, rule: '1 لكل 20 مستفيد',
+                    reason: `${speech} مستفيد يحتاج نطق وتخاطب ÷ 20 = ${Math.ceil(speech / 20)} أخصائي مطلوب`, students: speech, ratio: 20, icon: '🗣️'
+                },
+                {
+                    role: 'معلم صف توحد', required: autism > 0 ? Math.ceil(autism / 5) : 0, rule: '1 لكل 5 مستفيدين',
+                    reason: `${autism} مستفيد توحد ÷ 5 = ${Math.ceil(autism / 5)} معلم صف مطلوب`, students: autism, ratio: 5, icon: '🧠'
+                },
+                {
+                    role: 'معلم صف تربية خاصة', required: nonAutism > 0 ? Math.ceil(nonAutism / 8) : 0, rule: '1 لكل 8 مستفيدين',
+                    reason: `${nonAutism} مستفيد (غير التوحد) ÷ 8 = ${Math.ceil(nonAutism / 8)} معلم تربية خاصة مطلوب`, students: nonAutism, ratio: 8, icon: '📚'
+                },
+                {
+                    role: 'اخصائي نفسي', required: total > 0 ? Math.ceil(total / 50) : 0, rule: '1 لكل 50 مستفيد',
+                    reason: `${total} مستفيد (إجمالي) ÷ 50 = ${Math.ceil(total / 50)} أخصائي نفسي مطلوب`, students: total, ratio: 50, icon: '🧘'
+                },
+                {
+                    role: 'اخصائي اجتماعي', required: total > 0 ? Math.ceil(total / 100) : 0, rule: '1 لكل 100 مستفيد',
+                    reason: `${total} مستفيد (إجمالي) ÷ 100 = ${Math.ceil(total / 100)} أخصائي اجتماعي مطلوب`, students: total, ratio: 100, icon: '🤝'
+                },
+                {
+                    role: 'مشرف فني عام', required: total > 0 ? Math.ceil(total / 100) : 0, rule: '1 لكل 100 مستفيد',
+                    reason: `${total} مستفيد (إجمالي) ÷ 100 = ${Math.ceil(total / 100)} مشرف فني مطلوب`, students: total, ratio: 100, icon: '📝'
+                },
+                {
+                    role: 'مراقب اجتماعي', required: total > 0 ? Math.ceil(total / 100) : 0, rule: '1 لكل 100 مستفيد',
+                    reason: `${total} مستفيد (إجمالي) ÷ 100 = ${Math.ceil(total / 100)} مراقب اجتماعي مطلوب`, students: total, ratio: 100, icon: '👁️'
+                },
+                {
+                    role: 'الرعاية الشخصية', required: total > 0 ? Math.ceil(total / 20) : 0, rule: '1 لكل 20 مستفيد',
+                    reason: `${total} مستفيد (إجمالي) ÷ 20 = ${Math.ceil(total / 20)} موظف رعاية شخصية مطلوب`, students: total, ratio: 20, icon: '💆'
+                },
+                { role: 'حارس امن', required: 1, rule: 'واحد لكل مركز', reason: 'وظيفة أساسية — مطلوب حارس أمن واحد لكل مركز', icon: '🛡️' },
+                { role: 'سائق', required: driverRequired, rule: 'واحد لكل مركز', reason: 'وظيفة أساسية — مطلوب سائق واحد لكل مركز', icon: '🚐' },
+                {
+                    role: 'مرافق سائق', required: companionRequired, rule: 'مع السائق إذا توفر نقل',
+                    reason: transport > 0 ? `${transport} مستفيد يستخدم خدمة النقل — مطلوب مرافق للسائق` : 'لا يوجد مستفيدين يستخدمون خدمة النقل', icon: '🚌'
+                },
+            ];
+        };
+
+        // Build response
+        const data = branchBeneficiaryStats.map(bs => {
+            const requirements = computeRequirements(bs);
+            const branchEmployees = employeeMap[bs.branch_id] || {};
+
+            const staffing = requirements.map(r => {
+                const current = branchEmployees[r.role] || 0;
+                return {
+                    role: r.role,
+                    required: r.required,
+                    current,
+                    deficit: Math.max(0, r.required - current),
+                    surplus: Math.max(0, current - r.required),
+                    rule: r.rule,
+                    reason: r.reason,
+                    icon: r.icon,
+                    students: r.students,
+                    ratio: r.ratio,
+                };
+            });
+
+            const totalRequired = staffing.reduce((sum, s) => sum + s.required, 0);
+            const totalCurrent = staffing.reduce((sum, s) => sum + s.current, 0);
+            const totalDeficit = staffing.reduce((sum, s) => sum + s.deficit, 0);
+
+            return {
+                branch_id: bs.branch_id,
+                branch_name: bs.branch_name,
+                total_beneficiaries: parseInt(bs.total),
+                morning_count: parseInt(bs.morning_count),
+                evening_count: parseInt(bs.evening_count),
+                speech_therapy_count: parseInt(bs.speech_therapy_count),
+                physical_therapy_count: parseInt(bs.physical_therapy_count),
+                occupational_therapy_count: parseInt(bs.occupational_therapy_count),
+                autism_therapy_count: parseInt(bs.autism_therapy_count),
+                transport_service_count: parseInt(bs.transport_service_count),
+                staffing,
+                total_required: totalRequired,
+                total_current: totalCurrent,
+                total_deficit: totalDeficit,
+            };
+        });
+
+        res.json({ success: true, data });
+    } catch (error) {
+        log.error('Error computing staffing requirements:', error);
+        res.status(500).json({ success: false, message: 'فشل في حساب متطلبات التوظيف' });
     }
 });
 
@@ -614,16 +806,16 @@ router.get('/:id', async (req, res) => {
 router.post('/', requireManager, async (req, res) => {
     try {
         const { beneficiary_number, enrollment_period, beneficiary_name, civil_id, contact_number, gender, age,
-            speech_therapy, physical_therapy, occupational_therapy, autism_therapy, transport_service, term_id } = req.body;
+            speech_therapy, physical_therapy, occupational_therapy, autism_therapy, transport_service, free_student, notes, term_id } = req.body;
 
         // Validate required fields
         if (!beneficiary_number || !enrollment_period || !beneficiary_name || !civil_id || !contact_number || !gender || !age) {
             return res.status(400).json({ success: false, message: 'جميع الحقول مطلوبة' });
         }
 
-        // Validate beneficiary_number is exactly 6 digits
-        if (!/^\d{6}$/.test(beneficiary_number)) {
-            return res.status(400).json({ success: false, message: 'رقم المستفيد يجب أن يكون 6 أرقام بالضبط' });
+        // Validate beneficiary_number is 6 or 7 digits
+        if (!/^\d{6,7}$/.test(beneficiary_number)) {
+            return res.status(400).json({ success: false, message: 'رقم المستفيد يجب أن يكون 6 أو 7 أرقام' });
         }
 
         // Determine branch_id
@@ -681,7 +873,9 @@ router.post('/', requireManager, async (req, res) => {
             physical_therapy: physical_therapy || false,
             occupational_therapy: occupational_therapy || false,
             autism_therapy: autism_therapy || false,
-            transport_service: transport_service || false
+            transport_service: transport_service || false,
+            free_student: free_student || false,
+            notes: notes || null
         });
 
         res.status(201).json({ success: true, data: beneficiary, message: 'تم إضافة المستفيد بنجاح' });
@@ -722,11 +916,11 @@ router.put('/:id', requireManager, async (req, res) => {
         }
 
         const { beneficiary_number, enrollment_period, beneficiary_name, civil_id, contact_number, gender, age,
-            speech_therapy, physical_therapy, occupational_therapy, autism_therapy, transport_service } = req.body;
+            speech_therapy, physical_therapy, occupational_therapy, autism_therapy, transport_service, free_student, notes } = req.body;
 
-        // Validate beneficiary_number is exactly 6 digits if provided
-        if (beneficiary_number && !/^\d{6}$/.test(beneficiary_number)) {
-            return res.status(400).json({ success: false, message: 'رقم المستفيد يجب أن يكون 6 أرقام بالضبط' });
+        // Validate beneficiary_number is 6 or 7 digits if provided
+        if (beneficiary_number && !/^\d{6,7}$/.test(beneficiary_number)) {
+            return res.status(400).json({ success: false, message: 'رقم المستفيد يجب أن يكون 6 أو 7 أرقام' });
         }
 
         // Check for duplicate civil_id if it changed
@@ -753,7 +947,9 @@ router.put('/:id', requireManager, async (req, res) => {
             physical_therapy: physical_therapy !== undefined ? physical_therapy : beneficiary.physical_therapy,
             occupational_therapy: occupational_therapy !== undefined ? occupational_therapy : beneficiary.occupational_therapy,
             autism_therapy: autism_therapy !== undefined ? autism_therapy : beneficiary.autism_therapy,
-            transport_service: transport_service !== undefined ? transport_service : beneficiary.transport_service
+            transport_service: transport_service !== undefined ? transport_service : beneficiary.transport_service,
+            free_student: free_student !== undefined ? free_student : beneficiary.free_student,
+            notes: notes !== undefined ? notes : beneficiary.notes
         });
 
         res.json({ success: true, data: updated, message: 'تم تحديث بيانات المستفيد بنجاح' });
