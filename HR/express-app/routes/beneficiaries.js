@@ -187,6 +187,60 @@ router.get('/active-term', async (req, res) => {
 });
 
 /**
+ * GET /api/beneficiaries/branch-count
+ * Get the beneficiary count for the authenticated branch manager's branch
+ * for the current active healthcare-center term
+ */
+router.get('/branch-count', async (req, res) => {
+    try {
+        const branchId = req.user.branch_id;
+        if (!branchId) {
+            return res.json({ success: true, data: { count: 0, term: null } });
+        }
+
+        const now = new Date();
+
+        // Find active healthcare term (same logic as active-term endpoint)
+        let [term] = await sql`
+          SELECT id, term_name FROM terms
+          WHERE branch_type = 'healthcare_center' AND is_active = true
+            AND start_date <= ${now} AND end_date >= ${now}
+          ORDER BY start_date DESC LIMIT 1
+        `;
+        if (!term) {
+            [term] = await sql`
+              SELECT id, term_name FROM terms
+              WHERE branch_type = 'healthcare_center' AND is_active = true
+                AND start_date > ${now}
+              ORDER BY start_date ASC LIMIT 1
+            `;
+        }
+        if (!term) {
+            [term] = await sql`
+              SELECT id, term_name FROM terms
+              WHERE branch_type = 'healthcare_center' AND is_active = true
+              ORDER BY end_date DESC LIMIT 1
+            `;
+        }
+
+        if (!term) {
+            return res.json({ success: true, data: { count: 0, term: null } });
+        }
+
+        const [row] = await sql`
+          SELECT COUNT(*)::int AS count
+          FROM beneficiaries
+          WHERE branch_id = ${branchId} AND term_id = ${term.id} AND is_archived = false
+        `;
+
+        res.json({ success: true, data: { count: row.count, term: term } });
+    } catch (error) {
+        log.error('Error fetching branch beneficiary count:', error);
+        res.status(500).json({ success: false, message: 'فشل في جلب عدد المستفيدين' });
+    }
+});
+
+/**
  * GET /api/beneficiaries/export
  * Export beneficiaries as Excel - main manager only
  */
