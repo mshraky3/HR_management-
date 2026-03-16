@@ -187,12 +187,14 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
     if (req.file) {
       try {
         const fixedFileName = fixFilenameEncoding(req.file.originalname);
-        attachmentUrl = await uploadNotificationAttachmentToBlob(
+        const uploadResult = await uploadNotificationAttachmentToBlob(
           req.file.buffer,
           fixedFileName,
           req.file.mimetype,
           notification.id
         );
+        attachmentUrl = uploadResult.url;
+        const r2AttachmentUrl = uploadResult.r2Url || null;
         attachmentName = fixedFileName;
         attachmentType = req.file.mimetype;
 
@@ -201,7 +203,8 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
           UPDATE notifications 
           SET attachment_url = ${attachmentUrl},
               attachment_name = ${attachmentName},
-              attachment_type = ${attachmentType}
+              attachment_type = ${attachmentType},
+              r2_attachment_url = ${r2AttachmentUrl}
           WHERE id = ${notification.id}
         `;
       } catch (uploadError) {

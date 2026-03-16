@@ -438,7 +438,7 @@ router.post('/:id/registration/upload', checkBranchAccess, upload.single('file')
     }
 
     // Upload to blob storage
-    const blobUrl = await uploadBusRegistrationDocument(
+    const { url: blobUrl, r2Url } = await uploadBusRegistrationDocument(
       req.file.buffer,
       req.file.originalname,
       req.file.mimetype,
@@ -452,7 +452,8 @@ router.post('/:id/registration/upload', checkBranchAccess, upload.single('file')
         ...existing,
         registration_document_url: blobUrl,
         registration_document_name: req.file.originalname,
-        registration_document_mime_type: req.file.mimetype
+        registration_document_mime_type: req.file.mimetype,
+        r2_registration_document_url: r2Url || null
       });
     } else {
       // Don't auto-create incomplete records via upload
@@ -573,7 +574,7 @@ router.post('/:id/driver-license/upload', checkBranchAccess, upload.single('file
     }
 
     // Upload to blob storage
-    const blobUrl = await uploadDriverLicenseDocument(
+    const { url: blobUrl, r2Url } = await uploadDriverLicenseDocument(
       req.file.buffer,
       req.file.originalname,
       req.file.mimetype,
@@ -587,7 +588,8 @@ router.post('/:id/driver-license/upload', checkBranchAccess, upload.single('file
         ...existing,
         license_document_url: blobUrl,
         license_document_name: req.file.originalname,
-        license_document_mime_type: req.file.mimetype
+        license_document_mime_type: req.file.mimetype,
+        r2_license_document_url: r2Url || null
       });
     } else {
       // Don't auto-create incomplete records via upload
@@ -649,7 +651,7 @@ router.post('/:id/lease-contract/upload', checkBranchAccess, upload.single('file
     }
 
     // Upload to blob storage
-    const blobUrl = await uploadBusLeaseContractDocument(
+    const { url: blobUrl, r2Url } = await uploadBusLeaseContractDocument(
       req.file.buffer,
       req.file.originalname,
       req.file.mimetype,
@@ -661,6 +663,7 @@ router.post('/:id/lease-contract/upload', checkBranchAccess, upload.single('file
       lease_contract_document_url: blobUrl,
       lease_contract_document_name: req.file.originalname,
       lease_contract_document_mime_type: req.file.mimetype,
+      r2_lease_contract_document_url: r2Url || null,
       updated_by: req.user.existsInDb ? req.user.id : null
     });
 

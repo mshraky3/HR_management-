@@ -5,12 +5,13 @@
  * Uses centralized blob storage configuration from config/blobStorage.js
  */
 
-import { put, del, head, copy, get } from '@vercel/blob';
+import { put, del, head, copy } from '@vercel/blob';
 import { generateFileName } from './fileUpload.js';
 import {
   getBlobToken,
   isBlobStorageConfigured as checkBlobStorageConfigured
 } from '../config/blobStorage.js';
+import { uploadToR2Mirror } from './dualStorage.js';
 
 /**
  * Check if Blob Storage is properly configured
@@ -81,11 +82,12 @@ export async function uploadToBlob(fileBuffer, fileName, mimeType, employeeId, d
     // Validate URL length (database column is VARCHAR(500))
     if (blob.url && blob.url.length > 500) {
       console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
-      // This shouldn't happen with Vercel Blob URLs, but log if it does
     }
 
-    // Return the URL
-    return blob.url;
+    // Mirror to R2 (non-blocking — failure won't break upload)
+    const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
+
+    return { url: blob.url, r2Url };
   } catch (error) {
     console.error('Error uploading to Blob:', error);
 
@@ -138,12 +140,13 @@ export async function uploadBranchDocumentToBlob(fileBuffer, fileName, mimeType,
       token: token
     });
 
-    // Validate URL length (database column is VARCHAR(500))
     if (blob.url && blob.url.length > 500) {
       console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
-    return blob.url;
+    const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
+
+    return { url: blob.url, r2Url };
   } catch (error) {
     console.error('Error uploading branch document to Blob:', error);
 
@@ -194,12 +197,13 @@ export async function uploadRequestAttachmentToBlob(fileBuffer, fileName, mimeTy
       token: token
     });
 
-    // Validate URL length (database column is VARCHAR(500))
     if (blob.url && blob.url.length > 500) {
       console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
-    return blob.url;
+    const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
+
+    return { url: blob.url, r2Url };
   } catch (error) {
     console.error('Error uploading request attachment to Blob:', error);
 
@@ -345,12 +349,13 @@ export async function uploadNotificationAttachmentToBlob(fileBuffer, fileName, m
       token: token
     });
 
-    // Validate URL length (database column is VARCHAR(500))
     if (blob.url && blob.url.length > 500) {
       console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
-    return blob.url;
+    const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
+
+    return { url: blob.url, r2Url };
   } catch (error) {
     console.error('Error uploading notification attachment to Blob:', error);
 
@@ -425,47 +430,58 @@ export async function copyBlob(sourceUrl, destinationPathname) {
 
 /**
  * Proxy-fetch a blob URL and return its content as a buffer.
- * If the original URL fails, automatically tries:
- * 1. Removing double extension (e.g. .pdf.pdf -> .pdf)
- * 2. Adding double extension (e.g. .pdf -> .pdf.pdf) for files uploaded with the bug
- * Returns { buffer, contentType, fixedUrl }.
+ * Priority order:
+ * 1. R2 storage (fast, reliable — primary storage)
+ * 2. R2 by extracting key from blob URL (if r2Url not set but file was migrated)
+ * 3. Vercel CDN direct fetch
+ * 4. Vercel CDN with double extension fixes
+ * Returns { buffer, contentType, fixedUrl, source }.
  * @param {string} blobUrl - Original blob URL
- * @returns {Promise<{buffer: Buffer, contentType: string, fixedUrl: string|null}>}
+ * @param {string|null} [r2Url] - Optional R2 mirror URL
+ * @returns {Promise<{buffer: Buffer, contentType: string, fixedUrl: string|null, source: string}>}
  */
-export async function fetchBlobWithFallback(blobUrl) {
-  const token = getBlobToken();
-
-  // Method 1: Try get() SDK with Bearer token (authenticated CDN access)
-  if (token) {
+export async function fetchBlobWithFallback(blobUrl, r2Url = null) {
+  // Priority 1: Try R2 storage first (primary, fastest)
+  if (r2Url) {
     try {
-      const result = await get(blobUrl, { access: 'public', token });
-      if (result && result.statusCode === 200 && result.stream) {
-        const chunks = [];
-        for await (const chunk of result.stream) {
-          chunks.push(chunk);
-        }
-        const buffer = Buffer.concat(chunks);
-        const contentType = result.blob?.contentType || 'application/octet-stream';
-        return { buffer, contentType, fixedUrl: null };
-      }
+      const { fetchFromR2 } = await import('./r2Storage.js');
+      const { buffer, contentType } = await fetchFromR2(r2Url);
+      return { buffer, contentType, fixedUrl: null, source: 'r2' };
     } catch (e) {
-      // get() failed, try fallbacks
+      // R2 URL failed, try other methods
     }
   }
 
-  // Method 2: Try plain fetch on original URL
+  // Priority 2: Try R2 by extracting key from blob URL path
+  if (!r2Url && blobUrl) {
+    try {
+      const { fetchFromR2ByKey } = await import('./r2Storage.js');
+      const { isR2StorageConfigured } = await import('../config/r2Storage.js');
+      if (isR2StorageConfigured()) {
+        const blobPath = new URL(blobUrl).pathname.slice(1);
+        if (blobPath) {
+          const { buffer, contentType } = await fetchFromR2ByKey(blobPath);
+          return { buffer, contentType, fixedUrl: null, source: 'r2' };
+        }
+      }
+    } catch (e) {
+      // R2 key lookup failed, fall through to Vercel
+    }
+  }
+
+  // Priority 3: Try Vercel CDN direct fetch
   try {
     const response = await fetch(blobUrl);
     if (response.ok) {
       const buffer = Buffer.from(await response.arrayBuffer());
       const contentType = response.headers.get('content-type') || 'application/octet-stream';
-      return { buffer, contentType, fixedUrl: null };
+      return { buffer, contentType, fixedUrl: null, source: 'vercel' };
     }
   } catch (e) {
-    // original URL failed, will try fallbacks
+    // CDN fetch failed
   }
 
-  // Fallback 1: Try with double extension removed (.pdf.pdf -> .pdf)
+  // Priority 4: Try Vercel with double extension fixes
   const withoutDouble = fixDoubleExtensionUrl(blobUrl);
   if (withoutDouble) {
     try {
@@ -473,14 +489,13 @@ export async function fetchBlobWithFallback(blobUrl) {
       if (response.ok) {
         const buffer = Buffer.from(await response.arrayBuffer());
         const contentType = response.headers.get('content-type') || 'application/octet-stream';
-        return { buffer, contentType, fixedUrl: withoutDouble };
+        return { buffer, contentType, fixedUrl: withoutDouble, source: 'vercel' };
       }
     } catch (e) {
-      // fallback 1 also failed
+      // fallback also failed
     }
   }
 
-  // Fallback 2: Try with double extension added (.pdf -> .pdf.pdf)
   const withDouble = addDoubleExtensionUrl(blobUrl);
   if (withDouble) {
     try {
@@ -488,10 +503,10 @@ export async function fetchBlobWithFallback(blobUrl) {
       if (response.ok) {
         const buffer = Buffer.from(await response.arrayBuffer());
         const contentType = response.headers.get('content-type') || 'application/octet-stream';
-        return { buffer, contentType, fixedUrl: withDouble };
+        return { buffer, contentType, fixedUrl: withDouble, source: 'vercel' };
       }
     } catch (e) {
-      // fallback 2 also failed
+      // fallback also failed
     }
   }
 
@@ -537,7 +552,9 @@ export async function uploadBusRegistrationDocument(fileBuffer, fileName, mimeTy
       console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
-    return blob.url;
+    const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
+
+    return { url: blob.url, r2Url };
   } catch (error) {
     console.error('Error uploading bus registration document to Blob:', error);
 
@@ -588,7 +605,9 @@ export async function uploadDriverLicenseDocument(fileBuffer, fileName, mimeType
       console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
-    return blob.url;
+    const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
+
+    return { url: blob.url, r2Url };
   } catch (error) {
     console.error('Error uploading driver license document to Blob:', error);
 
@@ -639,7 +658,9 @@ export async function uploadBusLeaseContractDocument(fileBuffer, fileName, mimeT
       console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
-    return blob.url;
+    const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
+
+    return { url: blob.url, r2Url };
   } catch (error) {
     console.error('Error uploading bus lease contract document to Blob:', error);
 

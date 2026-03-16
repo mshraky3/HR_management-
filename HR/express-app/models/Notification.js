@@ -146,7 +146,7 @@ export const Notification = {
    */
   async create(notificationData) {
     try {
-      const { message, importance_level, created_by, branch_ids, attachment_url, attachment_name, attachment_type, expires_at, one_time } = notificationData;
+      const { message, importance_level, created_by, branch_ids, attachment_url, attachment_name, attachment_type, expires_at, one_time, r2_attachment_url } = notificationData;
 
       if (!message || !importance_level || !created_by) {
         throw new Error('message, importance_level, and created_by are required');
@@ -158,8 +158,8 @@ export const Notification = {
 
       // Start transaction
       const [notification] = await sql`
-        INSERT INTO notifications (message, importance_level, created_by, attachment_url, attachment_name, attachment_type, expires_at, one_time)
-        VALUES (${message}, ${importance_level}, ${created_by}, ${attachment_url || null}, ${attachment_name || null}, ${attachment_type || null}, ${expires_at || null}, ${one_time || false})
+        INSERT INTO notifications (message, importance_level, created_by, attachment_url, attachment_name, attachment_type, expires_at, one_time, r2_attachment_url)
+        VALUES (${message}, ${importance_level}, ${created_by}, ${attachment_url || null}, ${attachment_name || null}, ${attachment_type || null}, ${expires_at || null}, ${one_time || false}, ${r2_attachment_url || null})
         RETURNING *
       `;
 

@@ -51,25 +51,25 @@ export const Request = {
         LEFT JOIN users resp ON r.responded_by = resp.id
         WHERE 1=1
       `;
-      
+
       if (filters.branch_id) {
         query = sql`${query} AND r.branch_id = ${filters.branch_id}`;
       }
-      
+
       if (filters.main_manager_id) {
         query = sql`${query} AND r.main_manager_id = ${filters.main_manager_id}`;
       }
-      
+
       if (filters.employee_id) {
         query = sql`${query} AND r.employee_id = ${filters.employee_id}`;
       }
-      
+
       if (filters.status) {
         query = sql`${query} AND r.status = ${filters.status}`;
       }
-      
+
       query = sql`${query} ORDER BY r.created_at DESC`;
-      
+
       return await query;
     } catch (error) {
       console.error('Error finding requests:', error);
@@ -106,18 +106,18 @@ export const Request = {
    */
   async create(requestData) {
     try {
-      const { branch_id, main_manager_id, employee_id, request_name, request_text, attachment_url, attachment_name, attachment_type } = requestData;
-      
+      const { branch_id, main_manager_id, employee_id, request_name, request_text, attachment_url, attachment_name, attachment_type, r2_attachment_url } = requestData;
+
       if (!branch_id || !main_manager_id || !request_name || !request_text) {
         throw new Error('branch_id, main_manager_id, request_name, and request_text are required');
       }
-      
+
       const [request] = await sql`
-        INSERT INTO requests (branch_id, main_manager_id, employee_id, request_name, request_text, attachment_url, attachment_name, attachment_type)
-        VALUES (${branch_id}, ${main_manager_id}, ${employee_id || null}, ${request_name}, ${request_text}, ${attachment_url || null}, ${attachment_name || null}, ${attachment_type || null})
+        INSERT INTO requests (branch_id, main_manager_id, employee_id, request_name, request_text, attachment_url, attachment_name, attachment_type, r2_attachment_url)
+        VALUES (${branch_id}, ${main_manager_id}, ${employee_id || null}, ${request_name}, ${request_text}, ${attachment_url || null}, ${attachment_name || null}, ${attachment_type || null}, ${r2_attachment_url || null})
         RETURNING *
       `;
-      
+
       return await this.findById(request.id);
     } catch (error) {
       console.error('Error creating request:', error);
@@ -130,50 +130,50 @@ export const Request = {
    */
   async update(id, updates) {
     try {
-      const allowedFields = ['status', 'response_text', 'responded_by', 'response_attachment_url', 'response_attachment_name', 'response_attachment_type'];
+      const allowedFields = ['status', 'response_text', 'responded_by', 'response_attachment_url', 'response_attachment_name', 'response_attachment_type', 'r2_response_attachment_url'];
       const updateFields = Object.keys(updates).filter(key => allowedFields.includes(key));
-      
+
       if (updateFields.length === 0) {
         throw new Error('No valid fields to update');
       }
-      
+
       // If status is being updated and not pending, set responded_at
       let respondedAt = null;
       if (updates.status && updates.status !== 'pending') {
         respondedAt = new Date();
       }
-      
+
       // Build update object
       const updateData = {};
       updateFields.forEach(field => {
         updateData[field] = updates[field];
       });
-      
+
       if (respondedAt) {
         updateData.responded_at = respondedAt;
       }
       updateData.updated_at = new Date();
-      
+
       // Use sql template literal for safer updates
       const setParts = [];
       const values = [];
       let paramIndex = 1;
-      
+
       Object.keys(updateData).forEach(key => {
         setParts.push(`${key} = $${paramIndex}`);
         values.push(updateData[key]);
         paramIndex++;
       });
-      
+
       values.push(id);
-      
+
       const query = `
         UPDATE requests 
         SET ${setParts.join(', ')}
         WHERE id = $${paramIndex}
         RETURNING *
       `;
-      
+
       const result = await sql.unsafe(query, values);
       return result[0] ? await this.findById(id) : null;
     } catch (error) {
@@ -192,7 +192,7 @@ export const Request = {
         WHERE id = ${id}
         RETURNING id, request_name
       `;
-      
+
       return request;
     } catch (error) {
       console.error('Error deleting request:', error);

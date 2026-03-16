@@ -30,7 +30,7 @@ export const DriverLicenseData = {
     try {
       // Check if license exists
       const existing = await this.findByBusId(busId);
-      
+
       if (existing) {
         // Update existing
         const [updated] = await sql`
@@ -50,6 +50,7 @@ export const DriverLicenseData = {
             license_document_url = ${licenseData.license_document_url || null},
             license_document_name = ${licenseData.license_document_name || null},
             license_document_mime_type = ${licenseData.license_document_mime_type || null},
+            r2_license_document_url = ${licenseData.r2_license_document_url || null},
             is_verified = ${licenseData.is_verified || false},
             verified_at = ${licenseData.is_verified ? new Date() : null},
             verified_by = ${licenseData.verified_by || null},
@@ -69,6 +70,7 @@ export const DriverLicenseData = {
             driver_nationality,
             driver_date_of_birth_gregorian, has_assistant, assistant_full_name, assistant_phone_number, license_document_url,
             license_document_name, license_document_mime_type,
+            r2_license_document_url,
             is_verified, verified_at, verified_by
           )
           VALUES (
@@ -86,6 +88,7 @@ export const DriverLicenseData = {
             ${licenseData.license_document_url || null},
             ${licenseData.license_document_name || null},
             ${licenseData.license_document_mime_type || null},
+            ${licenseData.r2_license_document_url || null},
             ${licenseData.is_verified || false},
             ${licenseData.is_verified ? new Date() : null},
             ${licenseData.verified_by || null}

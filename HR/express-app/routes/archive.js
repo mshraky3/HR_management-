@@ -266,7 +266,7 @@ router.delete('/employee-documents/:id', async (req, res) => {
 
     // First check if document exists and is archived
     const existingDoc = await sql`
-      SELECT id, file_path, is_active, employee_id
+      SELECT id, file_path, r2_file_path, is_active, employee_id
       FROM employee_documents
       WHERE id = ${documentId}
     `;
@@ -296,6 +296,13 @@ router.delete('/employee-documents/:id', async (req, res) => {
         console.error('Error deleting file from blob storage:', deleteError);
         // Continue with database deletion even if blob deletion fails
       }
+    }
+    // Delete R2 copy if it exists
+    if (doc.r2_file_path) {
+      try {
+        const { deleteFromR2Mirror } = await import('../utils/dualStorage.js');
+        await deleteFromR2Mirror(doc.r2_file_path);
+      } catch (e) { /* ignore */ }
     }
 
     // Permanently delete from database
@@ -358,7 +365,7 @@ router.delete('/:id', async (req, res) => {
 
     // Get employee documents to delete from blob storage
     const documents = await sql`
-      SELECT id, file_path 
+      SELECT id, file_path, r2_file_path 
       FROM employee_documents 
       WHERE employee_id = ${employeeId}
     `;
@@ -373,6 +380,13 @@ router.delete('/:id', async (req, res) => {
           console.error('Error deleting file from blob storage:', deleteError);
           // Continue with database deletion even if blob deletion fails
         }
+      }
+      // Delete R2 copy if it exists
+      if (doc.r2_file_path) {
+        try {
+          const { deleteFromR2Mirror } = await import('../utils/dualStorage.js');
+          await deleteFromR2Mirror(doc.r2_file_path);
+        } catch (e) { /* ignore */ }
       }
     }
 

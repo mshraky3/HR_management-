@@ -115,12 +115,14 @@ router.post('/', uploadSingle, async (req, res) => {
     if (req.file) {
       try {
         const fixedFileName = fixFilenameEncoding(req.file.originalname);
-        attachmentUrl = await uploadRequestAttachmentToBlob(
+        const uploadResult = await uploadRequestAttachmentToBlob(
           req.file.buffer,
           fixedFileName,
           req.file.mimetype,
           request.id
         );
+        attachmentUrl = uploadResult.url;
+        const r2AttachmentUrl = uploadResult.r2Url || null;
         attachmentName = fixedFileName;
         attachmentType = req.file.mimetype;
 
@@ -129,7 +131,8 @@ router.post('/', uploadSingle, async (req, res) => {
           UPDATE requests 
           SET attachment_url = ${attachmentUrl},
               attachment_name = ${attachmentName},
-              attachment_type = ${attachmentType}
+              attachment_type = ${attachmentType},
+              r2_attachment_url = ${r2AttachmentUrl}
           WHERE id = ${request.id}
         `;
       } catch (uploadError) {
@@ -337,16 +340,19 @@ router.put('/:id/respond', requireMainManager, uploadSingle, async (req, res) =>
     let responseAttachmentUrl = null;
     let responseAttachmentName = null;
     let responseAttachmentType = null;
+    let r2ResponseAttachmentUrl = null;
 
     if (req.file) {
       try {
         const fixedFileName = fixFilenameEncoding(req.file.originalname);
-        responseAttachmentUrl = await uploadRequestAttachmentToBlob(
+        const uploadResult = await uploadRequestAttachmentToBlob(
           req.file.buffer,
           `response_${fixedFileName}`,
           req.file.mimetype,
           request.id
         );
+        responseAttachmentUrl = uploadResult.url;
+        r2ResponseAttachmentUrl = uploadResult.r2Url || null;
         responseAttachmentName = fixedFileName;
         responseAttachmentType = req.file.mimetype;
       } catch (uploadError) {
@@ -366,6 +372,7 @@ router.put('/:id/respond', requireMainManager, uploadSingle, async (req, res) =>
       updateData.response_attachment_url = responseAttachmentUrl;
       updateData.response_attachment_name = responseAttachmentName;
       updateData.response_attachment_type = responseAttachmentType;
+      updateData.r2_response_attachment_url = r2ResponseAttachmentUrl;
     }
 
     const updatedRequest = await Request.update(parseInt(req.params.id), updateData);
@@ -466,6 +473,19 @@ router.delete('/:id', async (req, res) => {
         log.error('Error deleting attachment', { error: deleteError.message, stack: deleteError.stack });
         // Continue with request deletion even if attachment deletion fails
       }
+    }
+    // Delete R2 copies if they exist
+    if (request.r2_attachment_url) {
+      try {
+        const { deleteFromR2Mirror } = await import('../utils/dualStorage.js');
+        await deleteFromR2Mirror(request.r2_attachment_url);
+      } catch (e) { /* ignore */ }
+    }
+    if (request.r2_response_attachment_url) {
+      try {
+        const { deleteFromR2Mirror } = await import('../utils/dualStorage.js');
+        await deleteFromR2Mirror(request.r2_response_attachment_url);
+      } catch (e) { /* ignore */ }
     }
 
     await Request.delete(parseInt(req.params.id));

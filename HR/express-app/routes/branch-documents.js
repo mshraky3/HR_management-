@@ -390,7 +390,7 @@ router.post(
       // Upload file to Vercel Blob Storage
       // Note: uploadBranchDocumentToBlob uses generateFileName which sanitizes the filename
       // This ensures blob paths are safe for Vercel Blob Storage (no special characters)
-      const blobUrl = await uploadBranchDocumentToBlob(
+      const { url: blobUrl, r2Url } = await uploadBranchDocumentToBlob(
         req.file.buffer,
         fixedFileName, // Use fixed filename for consistent encoding
         req.file.mimetype,
@@ -445,6 +445,7 @@ router.post(
         iban_number: iban_number || null,
         bank_name: bank_name || null,
         uploaded_by: uploadedById, // Always set - either user.id or branch_id
+        r2_file_path: r2Url || null,
       });
 
       // Invalidate dashboard & branch statistics caches for this branch
@@ -521,7 +522,7 @@ router.get("/:id/download", async (req, res) => {
       document.file_path.startsWith("https://")
     ) {
       try {
-        const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path);
+        const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
 
         // Auto-fix double-extension URL in database
         if (fixedUrl) {
@@ -631,7 +632,7 @@ router.get("/:id/preview", async (req, res) => {
           document.file_path.startsWith("https://"))
       ) {
         try {
-          const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path);
+          const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
 
           // If a fixed URL was used, update DB for future requests
           if (fixedUrl) {
@@ -871,7 +872,7 @@ router.put(
         // Upload new file to Blob Storage
         // Note: uploadBranchDocumentToBlob uses generateFileName which sanitizes the filename
         // This ensures blob paths are safe for Vercel Blob Storage (no special characters)
-        const blobUrl = await uploadBranchDocumentToBlob(
+        const { url: blobUrl, r2Url } = await uploadBranchDocumentToBlob(
           req.file.buffer,
           fixedFileName, // Use fixed filename for consistent encoding
           req.file.mimetype,
@@ -891,6 +892,11 @@ router.put(
         // Delete old file from Blob Storage if it exists
         if (document.file_path) {
           await deleteFromBlob(document.file_path);
+        }
+        // Delete old file from R2 if it exists
+        if (document.r2_file_path) {
+          const { deleteFromR2Mirror } = await import('../utils/dualStorage.js');
+          await deleteFromR2Mirror(document.r2_file_path);
         }
 
         // Use the fixed filename for database record
@@ -921,6 +927,7 @@ router.put(
           file_size: req.file.size,
           mime_type: req.file.mimetype,
           file_extension: getExtensionFromMimeType(req.file.mimetype),
+          r2_file_path: r2Url || null,
           description:
             req.body.description !== undefined
               ? req.body.description
@@ -1144,7 +1151,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
           doc.file_path.startsWith("https://")
         ) {
           try {
-            const result = await fetchBlobWithFallback(doc.file_path);
+            const result = await fetchBlobWithFallback(doc.file_path, doc.r2_file_path);
             fileBuffer = result.buffer;
           } catch (blobError) {
             console.error(
@@ -1764,7 +1771,7 @@ router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
               doc.file_path.startsWith("http://") ||
               doc.file_path.startsWith("https://")
             ) {
-              const result = await fetchBlobWithFallback(doc.file_path);
+              const result = await fetchBlobWithFallback(doc.file_path, doc.r2_file_path);
               fileBuffer = result.buffer;
             } else {
               // Local file logic
@@ -2185,7 +2192,7 @@ router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
           try {
             let fileBuffer;
             if (doc.file_path.startsWith("http://") || doc.file_path.startsWith("https://")) {
-              const result = await fetchBlobWithFallback(doc.file_path);
+              const result = await fetchBlobWithFallback(doc.file_path, doc.r2_file_path);
               fileBuffer = result.buffer;
             } else {
               if (process.env.VERCEL !== "1") {

@@ -101,7 +101,8 @@ export const BusTransportation = {
           bd.lease_end_date_gregorian,
           (SELECT plate_number FROM license_plate_data lpd WHERE lpd.bus_id = bt.id AND lpd.is_primary = true LIMIT 1) as primary_plate,
           (SELECT COUNT(*) FROM bus_students bs WHERE bs.bus_id = bt.id) as student_count,
-          bt.lease_contract_document_url
+          bt.lease_contract_document_url,
+          bt.r2_lease_contract_document_url
         FROM bus_transportation bt
         INNER JOIN branches b ON bt.branch_id = b.id
         INNER JOIN terms t ON bt.term_id = t.id
@@ -248,7 +249,8 @@ export const BusTransportation = {
           bd.lease_end_date_gregorian,
           (SELECT plate_number FROM license_plate_data lpd WHERE lpd.bus_id = bt.id AND lpd.is_primary = true LIMIT 1) as primary_plate,
           (SELECT COUNT(*) FROM bus_students bs WHERE bs.bus_id = bt.id) as student_count,
-          bt.lease_contract_document_url
+          bt.lease_contract_document_url,
+          bt.r2_lease_contract_document_url
         FROM bus_transportation bt
         INNER JOIN branches b ON bt.branch_id = b.id
         INNER JOIN terms t ON bt.term_id = t.id
@@ -324,7 +326,8 @@ export const BusTransportation = {
         'term_id',
         'lease_contract_document_url',
         'lease_contract_document_name',
-        'lease_contract_document_mime_type'
+        'lease_contract_document_mime_type',
+        'r2_lease_contract_document_url'
       ];
       const updateFields = [];
       const updateValues = [];

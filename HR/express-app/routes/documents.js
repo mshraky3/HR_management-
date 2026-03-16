@@ -187,7 +187,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     }
 
     // Upload file to Vercel Blob Storage
-    const blobUrl = await uploadToBlob(
+    const { url: blobUrl, r2Url } = await uploadToBlob(
       req.file.buffer, // File buffer from memory storage
       req.file.originalname,
       req.file.mimetype,
@@ -293,7 +293,8 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       file_extension: getExtensionFromMimeType(req.file.mimetype),
       description: description || null,
       expiry_date: expiry_date || null,
-      uploaded_by: uploadedById // Always set - either user.id or branch_id
+      uploaded_by: uploadedById, // Always set - either user.id or branch_id
+      r2_file_path: r2Url || null
     });
 
     // Update employee completion status after document upload
@@ -362,7 +363,7 @@ router.get('/:id/download', async (req, res) => {
     // If file_path is a URL (Blob), proxy the content through the backend
     if (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) {
       try {
-        const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path);
+        const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
 
         // If a fixed URL was used, try to permanently fix the blob path
         if (fixedUrl) {
@@ -490,7 +491,7 @@ router.get('/:id/preview', async (req, res) => {
       // If file_path is a URL (Blob Storage), fetch via authenticated fetchBlobWithFallback
       if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
         try {
-          const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path);
+          const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
 
           // If a fixed URL was used, update DB for future requests
           if (fixedUrl) {
@@ -773,6 +774,11 @@ router.delete('/:id', async (req, res) => {
     // Delete physical file from Blob Storage if requested
     if (req.query.deleteFile === 'true') {
       await deleteFromBlob(document.file_path);
+      // Also delete from R2
+      if (document.r2_file_path) {
+        const { deleteFromR2Mirror } = await import('../utils/dualStorage.js');
+        await deleteFromR2Mirror(document.r2_file_path);
+      }
     }
 
     // Update employee completion status after document deletion

@@ -30,7 +30,7 @@ export const BusRegistrationData = {
     try {
       // Check if registration exists
       const existing = await this.findByBusId(busId);
-      
+
       if (existing) {
         // Update existing
         const [updated] = await sql`
@@ -45,6 +45,7 @@ export const BusRegistrationData = {
             registration_document_url = ${registrationData.registration_document_url || null},
             registration_document_name = ${registrationData.registration_document_name || null},
             registration_document_mime_type = ${registrationData.registration_document_mime_type || null},
+            r2_registration_document_url = ${registrationData.r2_registration_document_url || null},
             is_verified = ${registrationData.is_verified || false},
             verified_at = ${registrationData.is_verified ? new Date() : null},
             verified_by = ${registrationData.verified_by || null},
@@ -61,7 +62,8 @@ export const BusRegistrationData = {
             vehicle_model, model_year, vehicle_color,
             expiry_date_gregorian,
             registration_document_url, registration_document_name,
-            registration_document_mime_type, is_verified, verified_at, verified_by
+            registration_document_mime_type, r2_registration_document_url,
+            is_verified, verified_at, verified_by
           )
           VALUES (
             ${busId}, ${registrationData.registration_number},
@@ -73,6 +75,7 @@ export const BusRegistrationData = {
             ${registrationData.registration_document_url || null},
             ${registrationData.registration_document_name || null},
             ${registrationData.registration_document_mime_type || null},
+            ${registrationData.r2_registration_document_url || null},
             ${registrationData.is_verified || false},
             ${registrationData.is_verified ? new Date() : null},
             ${registrationData.verified_by || null}

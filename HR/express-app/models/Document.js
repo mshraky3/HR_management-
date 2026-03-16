@@ -158,18 +158,21 @@ export const Document = {
     try {
       const {
         employee_id, document_type, file_name, file_path, file_size,
-        mime_type, file_extension, thumbnail_path, description, expiry_date, uploaded_by
+        mime_type, file_extension, thumbnail_path, description, expiry_date, uploaded_by,
+        r2_file_path
       } = documentData;
 
       const [document] = await sql`
         INSERT INTO employee_documents (
           employee_id, document_type, file_name, file_path, file_size,
-          mime_type, file_extension, thumbnail_path, description, expiry_date, uploaded_by
+          mime_type, file_extension, thumbnail_path, description, expiry_date, uploaded_by,
+          r2_file_path
         )
         VALUES (
           ${employee_id}, ${document_type}, ${file_name}, ${file_path}, ${file_size || null},
           ${mime_type}, ${file_extension || null}, ${thumbnail_path || null}, 
-          ${description || null}, ${expiry_date || null}, ${uploaded_by || null}
+          ${description || null}, ${expiry_date || null}, ${uploaded_by || null},
+          ${r2_file_path || null}
         )
         RETURNING *
       `;
@@ -186,7 +189,7 @@ export const Document = {
    */
   async update(id, updates) {
     try {
-      const allowedFields = ['description', 'expiry_date', 'is_verified', 'verified_by', 'thumbnail_path', 'file_path'];
+      const allowedFields = ['description', 'expiry_date', 'is_verified', 'verified_by', 'thumbnail_path', 'file_path', 'r2_file_path'];
       const updateFields = Object.keys(updates).filter(key => allowedFields.includes(key));
 
       if (updateFields.length === 0) {

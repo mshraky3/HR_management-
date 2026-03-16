@@ -1,7 +1,7 @@
-    /**
- * Branch Document Model
- * Handles database operations for branch documents
- */
+/**
+* Branch Document Model
+* Handles database operations for branch documents
+*/
 
 import sql from '../config/database.js';
 
@@ -123,11 +123,11 @@ export const BranchDocument = {
         AND document_type = ${documentType}
         AND is_active = true
       `;
-      
+
       if (excludeId) {
         query = sql`${query} AND id != ${excludeId}`;
       }
-      
+
       const result = await query;
       return result;
     } catch (error) {
@@ -145,7 +145,8 @@ export const BranchDocument = {
         INSERT INTO branch_documents (
           branch_id, document_type, file_name, file_path, file_size,
           mime_type, file_extension, thumbnail_path, description,
-          document_number, issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, iban_number, bank_name, uploaded_by
+          document_number, issue_date, issue_date_hijri, expiry_date, expiry_date_hijri, iban_number, bank_name, uploaded_by,
+          r2_file_path
         )
         VALUES (
           ${documentData.branch_id},
@@ -164,7 +165,8 @@ export const BranchDocument = {
           ${documentData.expiry_date_hijri || null},
           ${documentData.iban_number || null},
           ${documentData.bank_name || null},
-          ${documentData.uploaded_by || null}
+          ${documentData.uploaded_by || null},
+          ${documentData.r2_file_path || null}
         )
         RETURNING *
       `;
@@ -192,6 +194,7 @@ export const BranchDocument = {
           iban_number = ${updateData.iban_number !== undefined ? updateData.iban_number : sql`iban_number`},
           bank_name = ${updateData.bank_name !== undefined ? updateData.bank_name : sql`bank_name`},
           file_path = ${updateData.file_path !== undefined ? updateData.file_path : sql`file_path`},
+          r2_file_path = ${updateData.r2_file_path !== undefined ? updateData.r2_file_path : sql`r2_file_path`},
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ${id} AND is_active = true
         RETURNING *
@@ -216,6 +219,7 @@ export const BranchDocument = {
           file_size = ${updateData.file_size || null},
           mime_type = ${updateData.mime_type},
           file_extension = ${updateData.file_extension || null},
+          r2_file_path = ${updateData.r2_file_path !== undefined ? updateData.r2_file_path : sql`r2_file_path`},
           description = ${updateData.description !== undefined ? updateData.description : sql`description`},
           document_number = ${updateData.document_number !== undefined ? updateData.document_number : sql`document_number`},
           issue_date = ${updateData.issue_date !== undefined ? updateData.issue_date : sql`issue_date`},
