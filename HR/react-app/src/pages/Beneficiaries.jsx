@@ -48,6 +48,10 @@ const Beneficiaries = () => {
     const [staffingData, setStaffingData] = useState([]);
     const [staffingLoading, setStaffingLoading] = useState(false);
 
+    // Staffing calculation toggles (main manager only)
+    const [includeFreeStudents, setIncludeFreeStudents] = useState(false);
+    const [mergeTherapy, setMergeTherapy] = useState(false);
+
     // Filter state
     const [filters, setFilters] = useState({
         branch_id: '',
@@ -151,7 +155,7 @@ const Beneficiaries = () => {
                 loadStaffingRequirements();
             }
         }
-    }, [filters.branch_id, filters.term_id]);
+    }, [filters.branch_id, filters.term_id, includeFreeStudents, mergeTherapy]);
 
     const loadInitialData = async () => {
         try {
@@ -194,9 +198,9 @@ const Beneficiaries = () => {
                     // Load staffing/stats directly — don't rely on useEffect (race condition with loading flag)
                     const termId = currentTerm.id.toString();
                     Promise.all([
-                        beneficiariesAPI.getStaffingRequirements({ term_id: termId }).then(r => { if (r.data.success) setStaffingData(r.data.data); }),
-                        beneficiariesAPI.getStats({ term_id: termId }).then(r => { if (r.data.success) setStats(r.data.data); }),
-                        beneficiariesAPI.getSubmissionStatus({ term_id: termId }).then(r => { if (r.data.success) setSubmissionStatus(r.data.data || []); }),
+                        beneficiariesAPI.getStaffingRequirements({ term_id: termId, include_free: includeFreeStudents, merge_therapy: mergeTherapy }).then(r => { if (r.data.success) setStaffingData(r.data.data); }),
+                        beneficiariesAPI.getStats({ term_id: termId, include_free: includeFreeStudents }).then(r => { if (r.data.success) setStats(r.data.data); }),
+                        beneficiariesAPI.getSubmissionStatus({ term_id: termId, include_free: includeFreeStudents }).then(r => { if (r.data.success) setSubmissionStatus(r.data.data || []); }),
                     ]).catch(err => console.error('Error loading main manager data:', err));
                 } else {
                     loadBranchStats(currentTerm.id);
@@ -241,7 +245,7 @@ const Beneficiaries = () => {
         try {
             const termId = filters.term_id;
             if (!termId) return;
-            const res = await beneficiariesAPI.getStats({ term_id: termId });
+            const res = await beneficiariesAPI.getStats({ term_id: termId, include_free: includeFreeStudents });
             if (res.data.success) {
                 setStats(res.data.data);
             }
@@ -255,7 +259,7 @@ const Beneficiaries = () => {
             const termId = filters.term_id;
             if (!termId) return;
             setStaffingLoading(true);
-            const res = await beneficiariesAPI.getStaffingRequirements({ term_id: termId });
+            const res = await beneficiariesAPI.getStaffingRequirements({ term_id: termId, include_free: includeFreeStudents, merge_therapy: mergeTherapy });
             if (res.data.success) {
                 setStaffingData(res.data.data);
             }
@@ -281,7 +285,7 @@ const Beneficiaries = () => {
         try {
             const termId = filters.term_id;
             if (!termId) return;
-            const res = await beneficiariesAPI.getSubmissionStatus({ term_id: termId });
+            const res = await beneficiariesAPI.getSubmissionStatus({ term_id: termId, include_free: includeFreeStudents });
             if (res.data.success) {
                 setSubmissionStatus(res.data.data || []);
             }
@@ -357,7 +361,7 @@ const Beneficiaries = () => {
 
         // Validation
         if (!formData.beneficiary_number.trim() || !/^\d{6,7}$/.test(formData.beneficiary_number)) {
-            return showWarning('رقم المستفيد يجب أن يكون 6 أرقام بالضبط');
+            return showWarning('رقم المستفيد يجب أن يكون 6 أو 7 أرقام');
         }
         if (!formData.beneficiary_name.trim()) {
             return showWarning('يجب إدخال اسم المستفيد');
@@ -726,8 +730,6 @@ const Beneficiaries = () => {
                                 </button>
                             )}
                         </div>
-                        <div className="mm-tab-actions">
-                        </div>
                     </div>
                     <div className="mm-tabs">
                         <button
@@ -973,6 +975,33 @@ const Beneficiaries = () => {
                 </div>
             )}
 
+            {/* Staffing Controls (shared across all staffing states) */}
+            {isMainManager() && activeTab === 'staffing' && filters.term_id && (
+                <div className="sf-controls">
+                    <button
+                        className={`sf-toggle-btn ${includeFreeStudents ? 'active' : ''}`}
+                        onClick={() => setIncludeFreeStudents(prev => !prev)}
+                    >
+                        {includeFreeStudents ? '✅' : '⬜'} تضمين الطلاب المجانيين
+                    </button>
+                    <button
+                        className={`sf-toggle-btn ${mergeTherapy ? 'active' : ''}`}
+                        onClick={() => setMergeTherapy(prev => !prev)}
+                    >
+                        {mergeTherapy ? '✅' : '⬜'} دمج العلاج الطبيعي والوظيفي
+                    </button>
+                    {staffingData.length > 0 && (
+                        <button
+                            className="btn btn-sm btn-success"
+                            onClick={handleStaffingExport}
+                            title="تصدير متطلبات التوظيف"
+                        >
+                            📥 تصدير
+                        </button>
+                    )}
+                </div>
+            )}
+
             {/* Staffing Requirements Section */}
             {isMainManager() && activeTab === 'staffing' && filters.term_id && staffingData.length > 0 && (() => {
                 // Auto-select first branch if none selected
@@ -984,7 +1013,7 @@ const Beneficiaries = () => {
 
                 return (
                     <div className="staffing-section">
-                        {/* Branch picker */}
+
                         <div className="sf-picker">
                             <div className="sf-picker-search">
                                 <input
@@ -1151,13 +1180,12 @@ const Beneficiaries = () => {
             })()}
             )}
             {isMainManager() && activeTab === 'staffing' && filters.term_id && staffingLoading && (
-                <div className="staffing-section">
-                    <h2>متطلبات التوظيف حسب اللائحة</h2>
+                <div className="staffing-section staffing-section-centered">
                     <div className="staffing-loading">جاري حساب متطلبات التوظيف...</div>
                 </div>
             )}
             {isMainManager() && activeTab === 'staffing' && filters.term_id && !staffingLoading && staffingData.length === 0 && (
-                <div className="staffing-section">
+                <div className="staffing-section staffing-section-centered">
                     <div className="empty-state">
                         <span className="empty-icon">📋</span>
                         <h3>لا توجد بيانات مستفيدين</h3>
@@ -1166,7 +1194,7 @@ const Beneficiaries = () => {
                 </div>
             )}
             {isMainManager() && activeTab === 'staffing' && !filters.term_id && (
-                <div className="staffing-section">
+                <div className="staffing-section staffing-section-centered">
                     <div className="empty-state">
                         <span className="empty-icon">📅</span>
                         <h3>اختر الفصل الدراسي</h3>
@@ -1188,7 +1216,7 @@ const Beneficiaries = () => {
                             {[
                                 { key: 'sequence_number', label: 'التسلسل' },
                                 { key: 'branch_name', label: 'الفرع' },
-                                { key: 'enrollment_period', label: 'فترة الإلتحاق' },
+                                { key: 'enrollment_period', label: 'فترة الالتحاق' },
                                 { key: 'beneficiary_name', label: 'اسم المستفيد' },
                                 { key: 'beneficiary_number', label: 'رقم المستفيد' },
                                 { key: 'civil_id', label: 'السجل المدني' },
@@ -1267,17 +1295,16 @@ const Beneficiaries = () => {
             {(!isMainManager() || activeTab === 'data') && (
                 <div className="table-section">
                     {beneficiaries.length > 0 && (
-                        <div className="search-filter" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div className="table-search-bar">
                             <input
                                 type="text"
                                 placeholder="بحث بالاسم أو رقم الهوية أو رقم المستفيد..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="search-input"
-                                style={{ flex: 1, maxWidth: 350, padding: '6px 12px', borderRadius: 6, border: '1px solid #ddd', fontSize: 13 }}
+                                className="table-search-input"
                             />
                             {searchQuery && (
-                                <span style={{ color: '#888', fontSize: 12, whiteSpace: 'nowrap' }}>
+                                <span className="search-result-count">
                                     {beneficiaries.filter(b => {
                                         const q = searchQuery.trim().toLowerCase();
                                         return (b.beneficiary_name || '').toLowerCase().includes(q)
@@ -1356,7 +1383,7 @@ const Beneficiaries = () => {
                                         />
                                     </div>
                                     <div className="inline-form-group">
-                                        <label>فترة الإلتحاق <span className="required">*</span></label>
+                                        <label>فترة الالتحاق <span className="required">*</span></label>
                                         <select
                                             value={formData.enrollment_period}
                                             onChange={(e) => setFormData(prev => ({ ...prev, enrollment_period: e.target.value }))}
@@ -1582,7 +1609,7 @@ const Beneficiaries = () => {
                                     />
                                 </div>
                                 <div className="form-group">
-                                    <label>فترة الإلتحاق <span className="required">*</span></label>
+                                    <label>فترة الالتحاق <span className="required">*</span></label>
                                     <select
                                         value={formData.enrollment_period}
                                         onChange={(e) => setFormData(prev => ({ ...prev, enrollment_period: e.target.value }))}
@@ -1619,7 +1646,7 @@ const Beneficiaries = () => {
                                 </div>
                             </div>
 
-                            {/* Services Section */}}
+                            {/* Services Section */}
                             <div className="services-section">
                                 <h3>الخدمات المقدمة</h3>
                                 <div className="services-grid">
