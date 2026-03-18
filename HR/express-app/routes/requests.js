@@ -464,14 +464,21 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    // Delete attachment from blob storage if exists
+    // Delete attachments from blob storage if they exist
     if (request.attachment_url) {
       try {
         const { deleteFromBlob } = await import('../utils/blobStorage.js');
         await deleteFromBlob(request.attachment_url);
       } catch (deleteError) {
         log.error('Error deleting attachment', { error: deleteError.message, stack: deleteError.stack });
-        // Continue with request deletion even if attachment deletion fails
+      }
+    }
+    if (request.response_attachment_url) {
+      try {
+        const { deleteFromBlob } = await import('../utils/blobStorage.js');
+        await deleteFromBlob(request.response_attachment_url);
+      } catch (deleteError) {
+        log.error('Error deleting response attachment', { error: deleteError.message, stack: deleteError.stack });
       }
     }
     // Delete R2 copies if they exist

@@ -380,7 +380,7 @@ const loadDocumentFile = async (document) => {
 
     // If file_path is a URL (Blob Storage)
     if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
-      const result = await fetchBlobWithFallback(document.file_path);
+      const result = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
       fileBuffer = result.buffer;
     } else {
       // Local file path (backward compatibility)

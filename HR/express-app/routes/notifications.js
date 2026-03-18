@@ -577,7 +577,8 @@ router.put('/:id', requireMainManager, async (req, res) => {
  */
 router.delete('/:id', requireMainManager, async (req, res) => {
   try {
-    const notification = await Notification.delete(parseInt(req.params.id));
+    // Fetch full notification to get attachment URLs before deleting
+    const notification = await Notification.findById(parseInt(req.params.id));
 
     if (!notification) {
       return res.status(404).json({
@@ -585,6 +586,22 @@ router.delete('/:id', requireMainManager, async (req, res) => {
         message: 'الإشعار غير موجود'
       });
     }
+
+    // Delete attachment files from storage
+    if (notification.attachment_url) {
+      try {
+        const { deleteFromBlob } = await import('../utils/blobStorage.js');
+        await deleteFromBlob(notification.attachment_url);
+      } catch (e) { /* non-blocking */ }
+    }
+    if (notification.r2_attachment_url) {
+      try {
+        const { deleteFromR2Mirror } = await import('../utils/dualStorage.js');
+        await deleteFromR2Mirror(notification.r2_attachment_url);
+      } catch (e) { /* non-blocking */ }
+    }
+
+    await Notification.delete(parseInt(req.params.id));
 
     res.json({
       success: true,

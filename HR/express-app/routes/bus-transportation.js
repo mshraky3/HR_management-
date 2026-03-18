@@ -349,7 +349,33 @@ router.delete('/:id', async (req, res) => {
       }
     }
 
+    // Gather document URLs before deletion (cascade will remove related records)
+    const regData = await BusRegistrationData.findByBusId(busId).catch(() => null);
+    const licData = await DriverLicenseData.findByBusId(busId).catch(() => null);
+    const filesToDelete = [
+      bus.lease_contract_document_url,
+      regData?.registration_document_url,
+      licData?.license_document_url,
+    ].filter(Boolean);
+    const r2FilesToDelete = [
+      bus.r2_lease_contract_document_url,
+      regData?.r2_registration_document_url,
+      licData?.r2_license_document_url,
+    ].filter(Boolean);
+
     const deleted = await BusTransportation.delete(busId);
+
+    // Clean up document files from storage
+    for (const url of filesToDelete) {
+      try { await deleteFromBlob(url); } catch { /* non-blocking */ }
+    }
+    for (const r2Url of r2FilesToDelete) {
+      try {
+        const { deleteFromR2Mirror } = await import('../utils/dualStorage.js');
+        await deleteFromR2Mirror(r2Url);
+      } catch { /* non-blocking */ }
+    }
+
     res.json({ success: true, message: 'تم حذف الحافلة بنجاح', data: deleted });
   } catch (error) {
     log.error('Error deleting bus', { error: error.message });
@@ -448,6 +474,16 @@ router.post('/:id/registration/upload', checkBranchAccess, upload.single('file')
     // Update registration data with document URL
     const existing = await BusRegistrationData.findByBusId(busId);
     if (existing) {
+      // Delete old files if re-uploading
+      if (existing.registration_document_url) {
+        try { await deleteFromBlob(existing.registration_document_url); } catch { /* non-blocking */ }
+      }
+      if (existing.r2_registration_document_url) {
+        try {
+          const { deleteFromR2Mirror } = await import('../utils/dualStorage.js');
+          await deleteFromR2Mirror(existing.r2_registration_document_url);
+        } catch { /* non-blocking */ }
+      }
       await BusRegistrationData.upsert(busId, {
         ...existing,
         registration_document_url: blobUrl,
@@ -584,6 +620,16 @@ router.post('/:id/driver-license/upload', checkBranchAccess, upload.single('file
     // Update license data with document URL
     const existing = await DriverLicenseData.findByBusId(busId);
     if (existing) {
+      // Delete old files if re-uploading
+      if (existing.license_document_url) {
+        try { await deleteFromBlob(existing.license_document_url); } catch { /* non-blocking */ }
+      }
+      if (existing.r2_license_document_url) {
+        try {
+          const { deleteFromR2Mirror } = await import('../utils/dualStorage.js');
+          await deleteFromR2Mirror(existing.r2_license_document_url);
+        } catch { /* non-blocking */ }
+      }
       await DriverLicenseData.upsert(busId, {
         ...existing,
         license_document_url: blobUrl,
@@ -657,6 +703,17 @@ router.post('/:id/lease-contract/upload', checkBranchAccess, upload.single('file
       req.file.mimetype,
       busId
     );
+
+    // Delete old files if re-uploading
+    if (bus.lease_contract_document_url) {
+      try { await deleteFromBlob(bus.lease_contract_document_url); } catch { /* non-blocking */ }
+    }
+    if (bus.r2_lease_contract_document_url) {
+      try {
+        const { deleteFromR2Mirror } = await import('../utils/dualStorage.js');
+        await deleteFromR2Mirror(bus.r2_lease_contract_document_url);
+      } catch { /* non-blocking */ }
+    }
 
     // Store document info on the bus_transportation record
     await BusTransportation.update(busId, {

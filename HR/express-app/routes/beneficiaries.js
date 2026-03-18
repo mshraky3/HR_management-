@@ -60,11 +60,12 @@ router.get('/', async (req, res) => {
 router.get('/stats', requireMainManager, async (req, res) => {
     try {
         const { term_id } = req.query;
+        const includeFree = req.query.include_free === 'true';
         if (!term_id) {
             return res.status(400).json({ success: false, message: 'يجب تحديد الفصل الدراسي' });
         }
 
-        const stats = await Beneficiary.getStatsByTerm(term_id);
+        const stats = await Beneficiary.getStatsByTerm(term_id, includeFree);
         res.json({ success: true, data: stats });
     } catch (error) {
         log.error('Error fetching beneficiary stats:', error);
@@ -79,6 +80,7 @@ router.get('/stats', requireMainManager, async (req, res) => {
 router.get('/stats/branch', async (req, res) => {
     try {
         const { branch_id, term_id } = req.query;
+        const includeFree = req.query.include_free === 'true';
 
         if (!term_id) {
             return res.status(400).json({ success: false, message: 'يجب تحديد الفصل الدراسي' });
@@ -89,7 +91,7 @@ router.get('/stats/branch', async (req, res) => {
             return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
         }
 
-        const stats = await Beneficiary.getStatsByBranch(targetBranchId, term_id);
+        const stats = await Beneficiary.getStatsByBranch(targetBranchId, term_id, includeFree);
         res.json({ success: true, data: stats });
     } catch (error) {
         log.error('Error fetching branch beneficiary stats:', error);
@@ -104,11 +106,12 @@ router.get('/stats/branch', async (req, res) => {
 router.get('/submission-status', requireMainManager, async (req, res) => {
     try {
         const { term_id } = req.query;
+        const includeFree = req.query.include_free === 'true';
         if (!term_id) {
             return res.status(400).json({ success: false, message: 'يجب تحديد الفصل الدراسي' });
         }
 
-        const status = await Beneficiary.getSubmissionStatus(term_id);
+        const status = await Beneficiary.getSubmissionStatus(term_id, includeFree);
         res.json({ success: true, data: status });
     } catch (error) {
         log.error('Error fetching submission status:', error);
@@ -268,7 +271,7 @@ router.get('/export', requireMainManager, async (req, res) => {
         worksheet.views = [{ rightToLeft: true }];
 
         // Parse requested columns from query (default: all except branch_name and free_student)
-        const requestedColumns = req.query.columns ? req.query.columns.split(',') : null;
+        const requestedColumns = req.query.columns ? req.query.columns.split(',').map(c => c.trim()) : null;
 
         const allColumns = [
             { header: 'التسلسل', key: 'sequence_number', width: 10 },
@@ -457,6 +460,8 @@ router.post('/copy-from-term', requireManager, async (req, res) => {
 router.get('/staffing-requirements', requireMainManager, async (req, res) => {
     try {
         const { term_id } = req.query;
+        const includeFree = req.query.include_free === 'true';
+        const mergeTherapy = req.query.merge_therapy === 'true';
         if (!term_id) {
             return res.status(400).json({ success: false, message: 'يجب تحديد الفصل الدراسي' });
         }
@@ -473,10 +478,11 @@ router.get('/staffing-requirements', requireMainManager, async (req, res) => {
                 COUNT(*) FILTER (WHERE b_data.physical_therapy = true) as physical_therapy_count,
                 COUNT(*) FILTER (WHERE b_data.occupational_therapy = true) as occupational_therapy_count,
                 COUNT(*) FILTER (WHERE b_data.autism_therapy = true) as autism_therapy_count,
-                COUNT(*) FILTER (WHERE b_data.transport_service = true) as transport_service_count
+                COUNT(*) FILTER (WHERE b_data.transport_service = true) as transport_service_count,
+                COUNT(*) FILTER (WHERE b_data.physical_therapy = true OR b_data.occupational_therapy = true) as physical_or_occupational_count
             FROM beneficiaries b_data
             LEFT JOIN branches br ON b_data.branch_id = br.id
-            WHERE b_data.term_id = ${term_id} AND b_data.is_archived = false AND b_data.free_student IS NOT TRUE
+            WHERE b_data.term_id = ${term_id} AND b_data.is_archived = false ${includeFree ? sql`` : sql`AND b_data.free_student IS NOT TRUE`}
             GROUP BY b_data.branch_id, br.branch_name
             ORDER BY br.branch_name
         `;
@@ -502,7 +508,7 @@ router.get('/staffing-requirements', requireMainManager, async (req, res) => {
         }
 
         // Staffing rules — includes detailed reason with student counts
-        const computeRequirements = (bs) => {
+        const computeRequirements = (bs, mergeTherapyFlag) => {
             const total = parseInt(bs.total);
             const morning = parseInt(bs.morning_count);
             const evening = parseInt(bs.evening_count);
@@ -511,11 +517,31 @@ router.get('/staffing-requirements', requireMainManager, async (req, res) => {
             const occupational = parseInt(bs.occupational_therapy_count);
             const autism = parseInt(bs.autism_therapy_count);
             const transport = parseInt(bs.transport_service_count);
+            const physicalOrOccupational = parseInt(bs.physical_or_occupational_count || 0);
             const nonAutism = total - autism;
 
             const nursingRequired = (morning > 0 ? 1 : 0) + (evening > 0 ? 1 : 0);
             const driverRequired = 1;
             const companionRequired = transport > 0 ? driverRequired : 0;
+
+            // Therapy roles: merged or separate
+            const therapyRoles = mergeTherapyFlag
+                ? [
+                    {
+                        role: 'علاج طبيعي / وظيفي', required: physicalOrOccupational > 0 ? Math.ceil(physicalOrOccupational / 20) : 0, rule: '1 لكل 20 مستفيد (مدمج)',
+                        reason: `${physicalOrOccupational} مستفيد يحتاج علاج طبيعي أو وظيفي ÷ 20 = ${Math.ceil(physicalOrOccupational / 20)} معالج مطلوب (مدمج)`, students: physicalOrOccupational, ratio: 20, icon: '🦿🧩', merged: true
+                    },
+                ]
+                : [
+                    {
+                        role: 'علاج طبيعي', required: physical > 0 ? Math.ceil(physical / 20) : 0, rule: '1 لكل 20 مستفيد',
+                        reason: `${physical} مستفيد يحتاج علاج طبيعي ÷ 20 = ${Math.ceil(physical / 20)} معالج مطلوب`, students: physical, ratio: 20, icon: '🦿'
+                    },
+                    {
+                        role: 'علاج وظيفي', required: occupational > 0 ? Math.ceil(occupational / 25) : 0, rule: '1 لكل 25 مستفيد',
+                        reason: `${occupational} مستفيد يحتاج علاج وظيفي ÷ 25 = ${Math.ceil(occupational / 25)} معالج مطلوب`, students: occupational, ratio: 25, icon: '🧩'
+                    },
+                ];
 
             return [
                 { role: 'مديرة مراكز', required: 1, rule: 'واحد لكل مركز', reason: 'وظيفة إدارية أساسية — مطلوب مديرة واحدة لكل مركز رعاية', icon: '👔' },
@@ -527,14 +553,7 @@ router.get('/staffing-requirements', requireMainManager, async (req, res) => {
                         : morning > 0 ? `يوجد ${morning} مستفيد في الفترة الصباحية — مطلوب ممرض/ة واحد/ة` : `يوجد ${evening} مستفيد في الفترة المسائية — مطلوب ممرض/ة واحد/ة`,
                     icon: '🏥'
                 },
-                {
-                    role: 'علاج طبيعي', required: physical > 0 ? Math.ceil(physical / 20) : 0, rule: '1 لكل 20 مستفيد',
-                    reason: `${physical} مستفيد يحتاج علاج طبيعي ÷ 20 = ${Math.ceil(physical / 20)} معالج مطلوب`, students: physical, ratio: 20, icon: '🦿'
-                },
-                {
-                    role: 'علاج وظيفي', required: occupational > 0 ? Math.ceil(occupational / 25) : 0, rule: '1 لكل 25 مستفيد',
-                    reason: `${occupational} مستفيد يحتاج علاج وظيفي ÷ 25 = ${Math.ceil(occupational / 25)} معالج مطلوب`, students: occupational, ratio: 25, icon: '🧩'
-                },
+                ...therapyRoles,
                 {
                     role: 'النطق و التخاطب', required: speech > 0 ? Math.ceil(speech / 20) : 0, rule: '1 لكل 20 مستفيد',
                     reason: `${speech} مستفيد يحتاج نطق وتخاطب ÷ 20 = ${Math.ceil(speech / 20)} أخصائي مطلوب`, students: speech, ratio: 20, icon: '🗣️'
@@ -578,11 +597,14 @@ router.get('/staffing-requirements', requireMainManager, async (req, res) => {
 
         // Build response
         const data = branchBeneficiaryStats.map(bs => {
-            const requirements = computeRequirements(bs);
+            const requirements = computeRequirements(bs, mergeTherapy);
             const branchEmployees = employeeMap[bs.branch_id] || {};
 
             const staffing = requirements.map(r => {
-                const current = branchEmployees[r.role] || 0;
+                // For merged therapy role, sum employees from both job titles
+                const current = r.merged
+                    ? (branchEmployees['علاج طبيعي'] || 0) + (branchEmployees['علاج وظيفي'] || 0)
+                    : (branchEmployees[r.role] || 0);
                 return {
                     role: r.role,
                     required: r.required,

@@ -226,7 +226,7 @@ const Beneficiary = {
     /**
      * Get comprehensive statistics for a term
      */
-    async getStatsByTerm(termId) {
+    async getStatsByTerm(termId, includeFree = false) {
         try {
             // Overall stats
             const [totals] = await sql`
@@ -243,7 +243,7 @@ const Beneficiary = {
           COUNT(*) FILTER (WHERE transport_service = true) as transport_service_count,
           ROUND(AVG(age), 1) as avg_age
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false AND free_student IS NOT TRUE
+        WHERE term_id = ${termId} AND is_archived = false ${includeFree ? sql`` : sql`AND free_student IS NOT TRUE`}
       `;
 
             // Per-branch breakdown
@@ -263,7 +263,7 @@ const Beneficiary = {
           COUNT(*) FILTER (WHERE b_data.transport_service = true) as transport_service_count
         FROM beneficiaries b_data
         LEFT JOIN branches br ON b_data.branch_id = br.id
-        WHERE b_data.term_id = ${termId} AND b_data.is_archived = false AND b_data.free_student IS NOT TRUE
+        WHERE b_data.term_id = ${termId} AND b_data.is_archived = false ${includeFree ? sql`` : sql`AND b_data.free_student IS NOT TRUE`}
         GROUP BY b_data.branch_id, br.branch_name
         ORDER BY br.branch_name
       `;
@@ -282,7 +282,7 @@ const Beneficiary = {
           END as age_group,
           COUNT(*) as count
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false AND free_student IS NOT TRUE
+        WHERE term_id = ${termId} AND is_archived = false ${includeFree ? sql`` : sql`AND free_student IS NOT TRUE`}
         GROUP BY age_group
         ORDER BY age_group
       `;
@@ -297,7 +297,7 @@ const Beneficiary = {
            CASE WHEN transport_service THEN 1 ELSE 0 END) as service_count,
           COUNT(*) as beneficiary_count
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false AND free_student IS NOT TRUE
+        WHERE term_id = ${termId} AND is_archived = false ${includeFree ? sql`` : sql`AND free_student IS NOT TRUE`}
         GROUP BY service_count
         ORDER BY service_count
       `;
@@ -317,7 +317,7 @@ const Beneficiary = {
     /**
      * Get statistics for a specific branch
      */
-    async getStatsByBranch(branchId, termId) {
+    async getStatsByBranch(branchId, termId, includeFree = false) {
         try {
             const [stats] = await sql`
         SELECT 
@@ -333,7 +333,7 @@ const Beneficiary = {
           COUNT(*) FILTER (WHERE transport_service = true) as transport_service_count,
           ROUND(AVG(age), 1) as avg_age
         FROM beneficiaries
-        WHERE branch_id = ${branchId} AND term_id = ${termId} AND is_archived = false AND free_student IS NOT TRUE
+        WHERE branch_id = ${branchId} AND term_id = ${termId} AND is_archived = false ${includeFree ? sql`` : sql`AND free_student IS NOT TRUE`}
       `;
             return stats;
         } catch (error) {
@@ -363,7 +363,7 @@ const Beneficiary = {
     /**
      * Get submission status per branch for a term (which branches have entered data)
      */
-    async getSubmissionStatus(termId) {
+    async getSubmissionStatus(termId, includeFree = false) {
         try {
             const rows = await sql`
         SELECT 
@@ -375,7 +375,7 @@ const Beneficiary = {
         LEFT JOIN (
           SELECT branch_id, COUNT(*) as total
           FROM beneficiaries
-          WHERE term_id = ${termId} AND is_archived = false AND free_student IS NOT TRUE
+          WHERE term_id = ${termId} AND is_archived = false ${includeFree ? sql`` : sql`AND free_student IS NOT TRUE`}
           GROUP BY branch_id
         ) counts ON br.id = counts.branch_id
         WHERE br.branch_type = 'healthcare_center' AND br.is_active = true
