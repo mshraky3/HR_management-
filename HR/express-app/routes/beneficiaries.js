@@ -822,17 +822,43 @@ router.post('/:id/assign-bus', requireManager, async (req, res) => {
             return res.status(400).json({ success: false, message: 'خدمة النقل غير مفعلة لهذا المستفيد' });
         }
 
-        // Check if already assigned to this bus by name
+        if (!beneficiary.term_id) {
+            return res.status(400).json({ success: false, message: 'المستفيد غير مرتبط بفصل دراسي' });
+        }
+
+        // Verify the bus exists
+        const [bus] = await sql`
+            SELECT id, branch_id FROM bus_transportation WHERE id = ${parseInt(bus_id)}
+        `;
+        if (!bus) {
+            return res.status(404).json({ success: false, message: 'الباص غير موجود' });
+        }
+
+        // Check if already assigned to any bus by name in the same branch/term
         const normalizedName = beneficiary.beneficiary_name?.trim().toLowerCase();
-        const [existing] = await sql`
+        const [existingByName] = await sql`
             SELECT bs.id FROM bus_students bs
             INNER JOIN bus_transportation bt ON bs.bus_id = bt.id
             WHERE LOWER(TRIM(bs.student_full_name)) = ${normalizedName}
             AND bt.branch_id = ${beneficiary.branch_id}
             AND bs.term_id = ${beneficiary.term_id}
         `;
-        if (existing) {
+        if (existingByName) {
             return res.status(400).json({ success: false, message: 'المستفيد مسجل بالفعل في باص' });
+        }
+
+        // Also check by unique constraint columns (bus_id, contact_mobile_number, term_id)
+        const contactNumber = beneficiary.contact_number || '';
+        if (contactNumber) {
+            const [existingByConstraint] = await sql`
+                SELECT id FROM bus_students
+                WHERE bus_id = ${parseInt(bus_id)}
+                AND contact_mobile_number = ${contactNumber}
+                AND term_id = ${beneficiary.term_id}
+            `;
+            if (existingByConstraint) {
+                return res.status(400).json({ success: false, message: 'يوجد طالب بنفس رقم التواصل مسجل بالفعل في هذا الباص' });
+            }
         }
 
         // Create bus student record
@@ -840,7 +866,7 @@ router.post('/:id/assign-bus', requireManager, async (req, res) => {
             bus_id: parseInt(bus_id),
             term_id: beneficiary.term_id,
             student_full_name: beneficiary.beneficiary_name,
-            contact_mobile_number: beneficiary.contact_number || '',
+            contact_mobile_number: contactNumber,
             address: '',
             created_by: req.user.id
         });
@@ -848,6 +874,14 @@ router.post('/:id/assign-bus', requireManager, async (req, res) => {
         res.status(201).json({ success: true, data: student, message: 'تم تسجيل المستفيد في الباص بنجاح' });
     } catch (error) {
         log.error('Error assigning beneficiary to bus:', error);
+        // Handle unique constraint violation gracefully
+        if (error.code === '23505') {
+            return res.status(400).json({ success: false, message: 'المستفيد مسجل بالفعل في هذا الباص' });
+        }
+        // Handle foreign key violation (e.g. invalid bus_id or term_id)
+        if (error.code === '23503') {
+            return res.status(400).json({ success: false, message: 'الباص أو الفصل الدراسي غير موجود' });
+        }
         res.status(500).json({ success: false, message: 'فشل في تسجيل المستفيد في الباص' });
     }
 });
