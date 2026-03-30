@@ -98,6 +98,8 @@ const BusTransportation = lazy(() => import("./pages/BusTransportation.jsx"));
 const Suggestions = lazy(() => import("./pages/Suggestions"));
 const Beneficiaries = lazy(() => import("./pages/Beneficiaries"));
 const BeneficiariesArchive = lazy(() => import("./pages/BeneficiariesArchive"));
+const TreatmentPlanSubmission = lazy(() => import("./pages/TreatmentPlanSubmission"));
+const TreatmentPlanMonitor = lazy(() => import("./pages/TreatmentPlanMonitor"));
 
 // Wrapper component to choose layout based on role
 const RoleBasedLayout = ({ children }) => {
@@ -123,6 +125,7 @@ const AppContent = () => {
     <Suspense fallback={<PageLoading />}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/treatment-plans" element={<TreatmentPlanSubmission />} />
         <Route
           path="/dashboard"
           element={
@@ -419,6 +422,16 @@ const AppContent = () => {
             <ProtectedRoute requireMainManager>
               <Layout>
                 <BeneficiariesArchive />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/treatment-plans-monitor"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <TreatmentPlanMonitor />
               </Layout>
             </ProtectedRoute>
           }
