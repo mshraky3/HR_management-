@@ -112,6 +112,7 @@ const Layout = ({ children }) => {
         { path: "/fix-missing-dates", label: "البيانات غير الدقيقة" },
         { path: "/archive", label: "الأرشيف" },
         { path: "/beneficiaries-archive", label: "أرشيف المستفيدين" },
+        { path: "/treatment-plans-monitor", label: "الخطط العلاجية" },
       ],
     },
     communication: {
