@@ -30,8 +30,8 @@ export const validateDateFields = (dateFields) => {
         const gregorianValue = req.body[gregorianFieldWithSuffix] || req.body[gregorianFieldBase];
 
         console.log(`[DATE VALIDATION] Validating ${fieldName}:`, {
-          hijri: hijriValue ? hijriValue.substring(0, 20) + '...' : null,
-          gregorian: gregorianValue ? gregorianValue.substring(0, 20) + '...' : null,
+          hijri: hijriValue ? String(hijriValue).substring(0, 20) + '...' : null,
+          gregorian: gregorianValue ? String(gregorianValue).substring(0, 20) + '...' : null,
           required
         });
 

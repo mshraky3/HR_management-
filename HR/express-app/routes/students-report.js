@@ -70,13 +70,13 @@ router.post('/generate-pdf', authenticate, async (req, res) => {
         const { branchId, sections, filters } = req.body;
 
         // Fetch branch data
-        const branch = await Branch.findByPk(branchId);
+        const branch = await Branch.findById(branchId);
         if (!branch) {
             return res.status(404).json({ error: 'Branch not found' });
         }
 
         // Fetch buses for the branch so we can filter students by branch
-        const buses = await BusTransportation.findAll({ where: { branch_id: branchId } });
+        const buses = await BusTransportation.findAll({ branch_id: branchId });
         const busIds = buses.map(bus => bus.id);
         const busMap = new Map(buses.map(bus => [bus.id, bus]));
 

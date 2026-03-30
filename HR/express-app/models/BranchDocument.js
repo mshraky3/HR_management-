@@ -284,7 +284,7 @@ export const BranchDocument = {
     try {
       const documents = await sql`
         SELECT * FROM branch_documents
-        WHERE expiry_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '${days} days'
+        WHERE expiry_date BETWEEN CURRENT_DATE AND CURRENT_DATE + ${days} * INTERVAL '1 day'
         AND is_active = true
         ORDER BY expiry_date ASC
       `;

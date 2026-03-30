@@ -483,6 +483,15 @@ router.post(
       }
 
       await sql.begin(async (trx) => {
+        // Verify keepId belongs to this employee and document type
+        const [keepDoc] = await trx`
+          SELECT id FROM employee_documents
+          WHERE id = ${keepId} AND employee_id = ${employeeId} AND document_type = ${documentType}
+        `;
+        if (!keepDoc) {
+          throw Object.assign(new Error('المستند المحدد للاحتفاظ به غير موجود لهذا الموظف'), { statusCode: 400 });
+        }
+
         // Deactivate or delete other docs of same type for this employee
         await trx`
         DELETE FROM employee_documents
@@ -504,9 +513,10 @@ router.post(
       });
     } catch (error) {
       log.error("Error merging duplicate documents", { error: error.message });
-      return res.status(500).json({
+      const statusCode = error.statusCode || 500;
+      return res.status(statusCode).json({
         success: false,
-        message: "فشل دمج المستندات المكررة",
+        message: error.statusCode ? error.message : "فشل دمج المستندات المكررة",
         error: error.message,
       });
     }
@@ -2624,8 +2634,8 @@ router.post("/link-to-branch", async (req, res) => {
       });
     }
 
-    // Link the employee to the new branch (added_by references branches.id)
-    await Employee.linkToBranch(existingEmployee.id, targetBranchId, req.user.branch_id);
+    // Link the employee to the new branch
+    await Employee.linkToBranch(existingEmployee.id, targetBranchId, req.user.id);
 
     // Reload employee with updated branch info
     const updatedEmployee = await Employee.findById(existingEmployee.id);
@@ -2980,7 +2990,7 @@ router.post(
             await Employee.linkToBranch(
               existingEmployeeId,
               linkBranchId,
-              createdByBranchId,
+              req.user.id,
             );
             const updatedEmployee = await Employee.findById(existingEmployeeId);
             clearByPrefix(`dashboard:summary:${linkBranchId}`);
@@ -3038,7 +3048,7 @@ router.post(
         await Employee.linkToBranch(
           employee.id,
           createdByBranchId,
-          req.user.branch_id,
+          req.user.id,
         );
         console.log("[EMPLOYEE CREATE] Successfully linked employee to branch");
       } catch (linkError) {
@@ -4761,7 +4771,7 @@ router.put("/:id/transfer", async (req, res) => {
     const updatedEmployee = await Employee.transferToBranch(
       employeeId,
       parseInt(target_branch_id),
-      req.user.branch_id || req.user.id
+      req.user.id
     );
 
     // Clear caches

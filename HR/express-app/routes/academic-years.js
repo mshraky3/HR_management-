@@ -26,9 +26,9 @@ router.get('/', async (req, res) => {
       is_current: req.query.is_current !== undefined ? req.query.is_current === 'true' : undefined,
       is_completed: req.query.is_completed !== undefined ? req.query.is_completed === 'true' : undefined
     };
-    
+
     const years = await AcademicYear.findAll(filters);
-    
+
     res.json({
       success: true,
       data: years
@@ -50,14 +50,14 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const year = await AcademicYear.findById(parseInt(req.params.id));
-    
+
     if (!year) {
       return res.status(404).json({
         success: false,
         message: 'السنة الدراسية غير موجودة'
       });
     }
-    
+
     res.json({
       success: true,
       data: year
@@ -79,16 +79,16 @@ router.get('/:id', async (req, res) => {
 router.get('/current/:branchType', async (req, res) => {
   try {
     const { branchType } = req.params;
-    
+
     if (!['school', 'healthcare_center'].includes(branchType)) {
       return res.status(400).json({
         success: false,
         message: 'نوع الفرع غير صحيح'
       });
     }
-    
+
     const year = await AcademicYear.getCurrentYear(branchType);
-    
+
     res.json({
       success: true,
       data: year
@@ -112,7 +112,7 @@ router.post('/', async (req, res) => {
     const {
       branch_type, year_label, year_start, year_end, term1_id, term2_id
     } = req.body;
-    
+
     // Validation
     if (!branch_type || !['school', 'healthcare_center'].includes(branch_type)) {
       return res.status(400).json({
@@ -120,21 +120,21 @@ router.post('/', async (req, res) => {
         message: 'نوع الفرع يجب أن يكون school أو healthcare_center'
       });
     }
-    
+
     if (!year_label || !year_label.trim()) {
       return res.status(400).json({
         success: false,
         message: 'تسمية السنة الدراسية مطلوبة'
       });
     }
-    
+
     if (!year_start || !year_end) {
       return res.status(400).json({
         success: false,
         message: 'تاريخ البداية والنهاية للسنة الدراسية مطلوبان'
       });
     }
-    
+
     // Validate terms exist if provided
     if (term1_id) {
       const term1 = await Term.findById(term1_id);
@@ -145,7 +145,7 @@ router.post('/', async (req, res) => {
         });
       }
     }
-    
+
     if (term2_id) {
       const term2 = await Term.findById(term2_id);
       if (!term2 || term2.branch_type !== branch_type) {
@@ -155,7 +155,7 @@ router.post('/', async (req, res) => {
         });
       }
     }
-    
+
     const year = await AcademicYear.create({
       branch_type,
       year_label: year_label.trim(),
@@ -164,7 +164,7 @@ router.post('/', async (req, res) => {
       term1_id: term1_id || null,
       term2_id: term2_id || null
     });
-    
+
     res.status(201).json({
       success: true,
       message: 'تم إنشاء السنة الدراسية بنجاح',
@@ -190,7 +190,7 @@ router.put('/:id', async (req, res) => {
   try {
     const yearId = parseInt(req.params.id);
     const updates = {};
-    
+
     if (req.body.year_label !== undefined) updates.year_label = req.body.year_label.trim();
     if (req.body.year_start !== undefined) updates.year_start = req.body.year_start;
     if (req.body.year_end !== undefined) updates.year_end = req.body.year_end;
@@ -198,16 +198,16 @@ router.put('/:id', async (req, res) => {
     if (req.body.term2_id !== undefined) updates.term2_id = req.body.term2_id;
     if (req.body.is_current !== undefined) updates.is_current = req.body.is_current === true;
     if (req.body.is_completed !== undefined) updates.is_completed = req.body.is_completed === true;
-    
+
     const year = await AcademicYear.update(yearId, updates);
-    
+
     if (!year) {
       return res.status(404).json({
         success: false,
         message: 'السنة الدراسية غير موجودة'
       });
     }
-    
+
     res.json({
       success: true,
       message: 'تم تحديث السنة الدراسية بنجاح',
@@ -231,16 +231,32 @@ router.post('/:id/end-year', async (req, res) => {
   try {
     const yearId = parseInt(req.params.id);
     const { branch_type } = req.body;
-    
+
+    if (isNaN(yearId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'معرف السنة الدراسية غير صحيح'
+      });
+    }
+
     if (!branch_type || !['school', 'healthcare_center'].includes(branch_type)) {
       return res.status(400).json({
         success: false,
         message: 'نوع الفرع مطلوب'
       });
     }
-    
+
+    // Verify year exists before calling endYear
+    const year = await AcademicYear.findById(yearId);
+    if (!year) {
+      return res.status(404).json({
+        success: false,
+        message: 'السنة الدراسية غير موجودة'
+      });
+    }
+
     const result = await AcademicYear.endYear(yearId, branch_type);
-    
+
     res.json({
       success: true,
       message: `تم إنهاء السنة الدراسية بنجاح. تم تحديث حالة ${result.employeesUpdated} موظف إلى "قيد الانتظار"`,
@@ -264,16 +280,16 @@ router.post('/:id/complete', async (req, res) => {
   try {
     const yearId = parseInt(req.params.id);
     const year = await AcademicYear.findById(yearId);
-    
+
     if (!year) {
       return res.status(404).json({
         success: false,
         message: 'السنة الدراسية غير موجودة'
       });
     }
-    
+
     const result = await AcademicYear.endYear(yearId, year.branch_type);
-    
+
     res.json({
       success: true,
       message: `تم إتمام السنة الدراسية بنجاح. تم تحديث حالة ${result.employeesUpdated} موظف إلى "قيد الانتظار"`,

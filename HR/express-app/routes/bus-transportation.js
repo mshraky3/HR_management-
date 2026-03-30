@@ -1153,13 +1153,13 @@ router.post('/generate-pdf', authenticate, async (req, res) => {
     }
 
     // Fetch branch data
-    const branch = await Branch.findByPk(branchId);
+    const branch = await Branch.findById(branchId);
     if (!branch) {
       return res.status(404).json({ error: 'Branch not found' });
     }
 
     // Fetch bus data for branch
-    const buses = await BusTransportation.findAll({ where: { branch_id: branchId } });
+    const buses = await BusTransportation.findAll({ branch_id: branchId });
     const busIds = buses.map(b => b.id);
     const busStudents = await BusStudent.findByBusIds(busIds);
 

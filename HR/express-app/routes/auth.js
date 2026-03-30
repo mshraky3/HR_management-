@@ -190,9 +190,15 @@ router.get('/me', authenticate, async (req, res) => {
 
     if (!user && req.user.role === 'branch_manager') {
       // Branch managers login via branches table - look up branch directly
+      if (!req.user.branch_id) {
+        return res.status(401).json({
+          success: false,
+          message: 'Branch ID not found for branch manager. Please login again.'
+        });
+      }
       const [branch] = await sql`
         SELECT id, username, branch_name, branch_type, is_active
-        FROM branches WHERE id = ${req.user.branch_id || req.user.id}
+        FROM branches WHERE id = ${req.user.branch_id}
       `;
       if (branch) {
         user = {

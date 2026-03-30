@@ -16,9 +16,15 @@ import express from 'express';
 import { head, put, list, del, copy } from '@vercel/blob';
 import { getBlobToken } from '../config/blobStorage.js';
 import sql from '../config/database.js';
+import { authenticate } from '../middleware/auth.js';
+import { requireMainManager } from '../middleware/authorization.js';
 
 const router = express.Router();
 const token = getBlobToken();
+
+// All blob recovery endpoints require authentication and main_manager role
+router.use(authenticate);
+router.use(requireMainManager);
 
 /**
  * Test: Read a single blob's content and return it

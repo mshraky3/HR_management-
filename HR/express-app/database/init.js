@@ -175,7 +175,7 @@ export async function initializeDatabase() {
       branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
       is_primary BOOLEAN DEFAULT FALSE,
       added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      added_by INTEGER REFERENCES branches(id) ON DELETE SET NULL,
+      added_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       UNIQUE (employee_id, branch_id)
     `);
     await executeQuery(

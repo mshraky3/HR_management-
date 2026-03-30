@@ -342,13 +342,13 @@ export const Employee = {
         params.push(`%${filters.search_phone}%`);
       }
 
+      // Exclude employees whose branch has been deactivated
+      conditions.push(`(b.is_active = true OR b.is_active IS NULL)`);
+
       const whereClause = conditions.join(' AND ');
 
       // Calculate offset
       const offset = (page - 1) * pageSize;
-
-      // Exclude employees whose branch has been deactivated
-      conditions.push(`(b.is_active = true OR b.is_active IS NULL)`);
 
       // Execute count and data queries in parallel
       const countQuery = `
@@ -367,12 +367,14 @@ export const Employee = {
         ${shouldJoinBranches ? 'LEFT JOIN employee_branches eb ON eb.employee_id = e.id' : ''}
         WHERE ${whereClause} 
         ORDER BY full_name ASC 
-        LIMIT ${pageSize} OFFSET ${offset}
+        LIMIT $${paramIndex++} OFFSET $${paramIndex++}
       `;
+
+      const dataParams = [...params, pageSize, offset];
 
       const [countResult, employees] = await Promise.all([
         sql.unsafe(countQuery, params),
-        sql.unsafe(dataQuery, params)
+        sql.unsafe(dataQuery, dataParams)
       ]);
 
       const total = parseInt(countResult[0]?.total || 0, 10);
@@ -943,7 +945,7 @@ export const Employee = {
    * Link employee to an additional branch
    * @param {number} employeeId - Employee ID
    * @param {number} branchId - Branch ID to link
-   * @param {number} addedBy - Branch ID who added the link (references branches.id)
+   * @param {number} addedBy - User ID who added the link (references users.id)
    * @returns {Promise<Object>} - The created employee_branches record
    */
   async linkToBranch(employeeId, branchId, addedBy = null) {
@@ -983,6 +985,21 @@ export const Employee = {
           WHERE employee_id = ${employeeId} AND branch_id = ${branchId}
         `;
         return existing;
+      }
+      // Handle foreign key violation on added_by - retry without it
+      if (error.code === '23503' && error.constraint?.includes('added_by')) {
+        log.warn('FK violation on added_by, retrying with null', { employeeId, branchId, addedBy });
+        const [firstBranch] = await sql`
+          SELECT COUNT(*) as count FROM employee_branches
+          WHERE employee_id = ${employeeId}
+        `;
+        const isPrimary = parseInt(firstBranch.count) === 0;
+        const [link] = await sql`
+          INSERT INTO employee_branches (employee_id, branch_id, is_primary, added_by)
+          VALUES (${employeeId}, ${branchId}, ${isPrimary}, ${null})
+          RETURNING *
+        `;
+        return link;
       }
       log.error('Error linking employee to branch', { error: error.message, employeeId, branchId, addedBy });
       throw error;

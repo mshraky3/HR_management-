@@ -9,11 +9,11 @@
  */
 export const requireRole = (allowedRoles) => {
   const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
-  
+
   return (req, res, next) => {
     // TODO: Get user from req.user (set by auth middleware)
     const user = req.user;
-    
+
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -75,8 +75,8 @@ export const checkBranchAccess = (req, res, next) => {
     if (requestedBranchId) {
       const userBranchId = user.branch_id ? user.branch_id.toString() : null;
       const requestedId = requestedBranchId.toString();
-      
-      if (userBranchId && userBranchId !== requestedId) {
+
+      if (!userBranchId || userBranchId !== requestedId) {
         return res.status(403).json({
           success: false,
           message: 'تم رفض الوصول. يمكنك فقط الوصول إلى بيانات فرعك.'
