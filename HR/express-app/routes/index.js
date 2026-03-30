@@ -29,6 +29,7 @@ import suggestionsRoutes from './suggestions.js';
 import errorReportRoutes from './error-report.js';
 import beneficiariesRoutes from './beneficiaries.js';
 import blobRecoveryRoutes from './blob-recovery.js';
+import treatmentPlansRoutes from './treatment-plans.js';
 
 const router = express.Router();
 
@@ -63,6 +64,7 @@ router.use('/suggestions', suggestionsRoutes);
 router.use('/beneficiaries', beneficiariesRoutes);
 router.use('/error-report', errorReportRoutes);
 router.use('/blob-recovery', blobRecoveryRoutes);
+router.use('/treatment-plans', treatmentPlansRoutes);
 
 export default router;
 

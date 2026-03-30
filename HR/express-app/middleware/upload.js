@@ -64,11 +64,11 @@ export const validateUploadedFile = (req, res, next) => {
 
   // Determine max file size based on document type
   let maxFileSize = 1 * 1024 * 1024; // Default 1MB
-  
+
   // High capacity documents (15MB)
   const highCapacityDocs = ['operational_plan', 'acceptance_notifications'];
   const documentType = req.body.document_type;
-  
+
   if (documentType && highCapacityDocs.includes(documentType)) {
     maxFileSize = 15 * 1024 * 1024; // 15MB
   }
@@ -79,6 +79,51 @@ export const validateUploadedFile = (req, res, next) => {
     return res.status(400).json({
       success: false,
       message: `حجم الملف يتجاوز الحد الأقصى المسموح به (${sizeLimitMsg})`
+    });
+  }
+
+  next();
+};
+
+// ============================================================================
+// DOCX Upload Configuration (for treatment plan submissions)
+// ============================================================================
+
+const docxFileFilter = (req, file, cb) => {
+  const allowedMimes = [
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ];
+
+  if (allowedMimes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('نوع الملف غير مدعوم. يُسمح فقط بملفات Word (.docx).'), false);
+  }
+};
+
+const docxUpload = multer({
+  storage: storage,
+  fileFilter: docxFileFilter
+});
+
+export const uploadDocxSingle = docxUpload.single('file');
+
+export const validateDocxFile = (req, res, next) => {
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      message: 'لم يتم رفع أي ملف'
+    });
+  }
+
+  const allowedMimes = [
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ];
+
+  if (!allowedMimes.includes(req.file.mimetype)) {
+    return res.status(400).json({
+      success: false,
+      message: 'نوع الملف غير مدعوم. يُسمح فقط بملفات Word (.docx).'
     });
   }
 

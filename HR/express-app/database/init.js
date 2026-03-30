@@ -1715,6 +1715,51 @@ export async function initializeDatabase() {
       console.error('Error fixing orphaned employees:', error.message);
     }
 
+    // =============================================
+    // Treatment Plans table (public submission of therapeutic/educational plans)
+    // =============================================
+    await createTable('treatment_plans', `
+      id SERIAL PRIMARY KEY,
+      employee_name VARCHAR(255) NOT NULL,
+      branch_id INTEGER NOT NULL REFERENCES branches(id),
+      job_title VARCHAR(255) NOT NULL,
+      department VARCHAR(255) NOT NULL,
+      plan_type VARCHAR(255) NOT NULL,
+      file_url VARCHAR(500),
+      r2_url VARCHAR(500),
+      original_filename VARCHAR(500),
+      file_size INTEGER,
+      notes TEXT,
+      status VARCHAR(50) DEFAULT 'pending',
+      reviewed_by INTEGER REFERENCES users(id),
+      reviewed_at TIMESTAMPTZ,
+      review_notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    `);
+
+    // Indexes for treatment_plans
+    try {
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_treatment_plans_branch ON treatment_plans(branch_id)',
+        'Created index on treatment_plans(branch_id)'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_treatment_plans_status ON treatment_plans(status)',
+        'Created index on treatment_plans(status)'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_treatment_plans_job_title ON treatment_plans(job_title)',
+        'Created index on treatment_plans(job_title)'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_treatment_plans_created ON treatment_plans(created_at DESC)',
+        'Created index on treatment_plans(created_at DESC)'
+      );
+    } catch (error) {
+      console.log('Treatment plans indexes already exist or skipped');
+    }
+
     return { success: true, message: 'Database initialization completed successfully' };
 
   } catch (error) {
