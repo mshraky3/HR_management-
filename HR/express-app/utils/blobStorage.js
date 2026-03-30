@@ -671,3 +671,56 @@ export async function uploadBusLeaseContractDocument(fileBuffer, fileName, mimeT
     throw new Error(`Failed to upload file to Blob: ${error.message}`);
   }
 }
+
+/**
+ * Upload treatment plan document to Vercel Blob Storage
+ * @param {Buffer} fileBuffer - File buffer data
+ * @param {string} fileName - Original file name
+ * @param {string} mimeType - File MIME type
+ * @param {number} branchId - Branch ID
+ * @returns {Promise<{url: string, r2Url: string|null}>} - Blob URL and R2 URL
+ */
+export async function uploadTreatmentPlanToBlob(fileBuffer, fileName, mimeType, branchId) {
+  try {
+    validateBlobConfig();
+
+    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+      throw new Error('Invalid file buffer provided');
+    }
+    if (!fileName || !mimeType || !branchId) {
+      throw new Error('Missing required parameters for blob upload');
+    }
+
+    let uniqueFileName = generateFileName(fileName);
+    uniqueFileName = uniqueFileName.replace(/(\.(doc|docx))\.\2$/i, '$1');
+    const blobPath = `treatment-plans/${branchId}/${uniqueFileName}`;
+
+    const token = getBlobToken();
+    if (!token) {
+      throw new Error('Blob storage token is not configured');
+    }
+
+    const blob = await put(blobPath, fileBuffer, {
+      access: 'public',
+      contentType: mimeType,
+      addRandomSuffix: false,
+      token: token
+    });
+
+    if (blob.url && blob.url.length > 500) {
+      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+    }
+
+    const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
+
+    return { url: blob.url, r2Url };
+  } catch (error) {
+    console.error('Error uploading treatment plan to Blob:', error);
+
+    if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
+      throw error;
+    }
+
+    throw new Error(`Failed to upload file to Blob: ${error.message}`);
+  }
+}
