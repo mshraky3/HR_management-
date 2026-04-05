@@ -24,6 +24,7 @@ const TreatmentPlanSubmission = () => {
     const [files, setFiles] = useState([]);
     const [customPlanType, setCustomPlanType] = useState('');
     const [loading, setLoading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
     const [showCircular, setShowCircular] = useState(false);
@@ -178,9 +179,11 @@ const TreatmentPlanSubmission = () => {
         }
 
         setLoading(true);
+        setUploadProgress({ current: 0, total: files.length });
         try {
             // Submit each file as a separate plan
-            for (const file of files) {
+            for (let i = 0; i < files.length; i++) {
+                setUploadProgress({ current: i + 1, total: files.length });
                 const data = new FormData();
                 data.append('employee_name', formData.employee_name.trim());
                 data.append('branch_id', formData.branch_id);
@@ -188,7 +191,7 @@ const TreatmentPlanSubmission = () => {
                 data.append('department', formData.department);
                 data.append('plan_type', formData.plan_type === '__other__' ? customPlanType.trim() : formData.plan_type);
                 data.append('notes', formData.notes);
-                data.append('file', file);
+                data.append('file', files[i]);
 
                 await treatmentPlansPublicAPI.submit(data);
             }
@@ -200,6 +203,7 @@ const TreatmentPlanSubmission = () => {
             setError(msg);
         } finally {
             setLoading(false);
+            setUploadProgress({ current: 0, total: 0 });
         }
     };
 
@@ -237,6 +241,27 @@ const TreatmentPlanSubmission = () => {
 
     return (
         <div className="treatment-plan-page">
+            {/* Upload Overlay */}
+            {loading && (
+                <div className="tp-upload-overlay">
+                    <div className="tp-upload-overlay-card">
+                        <div className="tp-upload-spinner"></div>
+                        <h3>جاري رفع الملفات...</h3>
+                        {uploadProgress.total > 1 ? (
+                            <p>يتم رفع الملف {uploadProgress.current} من {uploadProgress.total}</p>
+                        ) : (
+                            <p>يرجى الانتظار، قد يستغرق الأمر بعض الوقت للملفات الكبيرة</p>
+                        )}
+                        <div className="tp-upload-progress-bar">
+                            <div
+                                className="tp-upload-progress-fill"
+                                style={{ width: `${uploadProgress.total ? (uploadProgress.current / uploadProgress.total) * 100 : 0}%` }}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="treatment-plan-container">
                 {/* Header */}
                 <div className="tp-header">
