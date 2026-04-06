@@ -240,6 +240,8 @@ const Beneficiary = {
             const [totals] = await sql`
         SELECT 
           COUNT(*) as total,
+          COUNT(*) FILTER (WHERE free_student = true) as free_student_count,
+          COUNT(*) FILTER (WHERE free_student IS NOT TRUE) as paid_student_count,
           COUNT(*) FILTER (WHERE gender = 'ذكر') as male_count,
           COUNT(*) FILTER (WHERE gender = 'أنثى') as female_count,
           COUNT(*) FILTER (WHERE enrollment_period = 'صباحية') as morning_count,
@@ -251,7 +253,7 @@ const Beneficiary = {
           COUNT(*) FILTER (WHERE transport_service = true) as transport_service_count,
           ROUND(AVG(age), 1) as avg_age
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false ${includeFree ? sql`` : sql`AND free_student IS NOT TRUE`}
+        WHERE term_id = ${termId} AND is_archived = false
       `;
 
             // Per-branch breakdown
@@ -260,6 +262,8 @@ const Beneficiary = {
           b_data.branch_id,
           br.branch_name,
           COUNT(*) as total,
+          COUNT(*) FILTER (WHERE b_data.free_student = true) as free_student_count,
+          COUNT(*) FILTER (WHERE b_data.free_student IS NOT TRUE) as paid_student_count,
           COUNT(*) FILTER (WHERE b_data.gender = 'ذكر') as male_count,
           COUNT(*) FILTER (WHERE b_data.gender = 'أنثى') as female_count,
           COUNT(*) FILTER (WHERE b_data.enrollment_period = 'صباحية') as morning_count,
@@ -271,7 +275,7 @@ const Beneficiary = {
           COUNT(*) FILTER (WHERE b_data.transport_service = true) as transport_service_count
         FROM beneficiaries b_data
         LEFT JOIN branches br ON b_data.branch_id = br.id
-        WHERE b_data.term_id = ${termId} AND b_data.is_archived = false ${includeFree ? sql`` : sql`AND b_data.free_student IS NOT TRUE`}
+        WHERE b_data.term_id = ${termId} AND b_data.is_archived = false
         GROUP BY b_data.branch_id, br.branch_name
         ORDER BY br.branch_name
       `;
@@ -290,7 +294,7 @@ const Beneficiary = {
           END as age_group,
           COUNT(*) as count
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false ${includeFree ? sql`` : sql`AND free_student IS NOT TRUE`}
+        WHERE term_id = ${termId} AND is_archived = false
         GROUP BY age_group
         ORDER BY age_group
       `;
@@ -305,7 +309,7 @@ const Beneficiary = {
            CASE WHEN transport_service THEN 1 ELSE 0 END) as service_count,
           COUNT(*) as beneficiary_count
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false ${includeFree ? sql`` : sql`AND free_student IS NOT TRUE`}
+        WHERE term_id = ${termId} AND is_archived = false
         GROUP BY service_count
         ORDER BY service_count
       `;

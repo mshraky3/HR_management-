@@ -18,6 +18,21 @@ import { sendErrorNotification } from '../utils/errorNotificationService.js';
 
 const router = express.Router();
 
+const normalizeUploadedFilename = (filename) => {
+    if (!filename || typeof filename !== 'string') return filename;
+
+    const looksMojibake = /[ØÙÃÂÐ]/.test(filename) || /[\x80-\x9F]/.test(filename);
+    if (!looksMojibake) return filename;
+
+    try {
+        const fixed = Buffer.from(filename, 'latin1').toString('utf8').trim();
+        if (!fixed || fixed.includes('�')) return filename;
+        return fixed;
+    } catch {
+        return filename;
+    }
+};
+
 // =============================================
 // PUBLIC ENDPOINTS (no authentication required)
 // =============================================
@@ -95,9 +110,10 @@ router.post('/submit', (req, res, next) => {
 
         // Upload file to Blob + R2
         const file = req.file;
+        const originalFilename = normalizeUploadedFilename(file.originalname);
         const { url: fileUrl, r2Url } = await uploadTreatmentPlanToBlob(
             file.buffer,
-            file.originalname,
+            originalFilename,
             file.mimetype,
             parseInt(branch_id)
         );
@@ -111,7 +127,7 @@ router.post('/submit', (req, res, next) => {
             plan_type,
             file_url: fileUrl,
             r2_url: r2Url,
-            original_filename: file.originalname,
+            original_filename: originalFilename,
             file_size: file.size,
             notes: notes || null
         });
@@ -254,9 +270,10 @@ router.get('/:id/download', authenticate, async (req, res) => {
 
         const safeFilename = (plan.original_filename || 'plan.docx')
             .replace(/[\x00-\x1F\x7F-\x9F\r\n]/g, '');
+        const encodedFilename = encodeURIComponent(safeFilename);
 
         res.setHeader('Content-Type', contentType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeFilename)}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="plan.docx"; filename*=UTF-8''${encodedFilename}`);
         return res.send(buffer);
     } catch (error) {
         console.error('Error downloading treatment plan:', error);

@@ -13,6 +13,27 @@ const STATUS_OPTIONS = {
     rejected: 'مرفوض'
 };
 
+const maybeFixMojibakeFilename = (filename) => {
+    if (!filename || typeof filename !== 'string') return filename;
+
+    // Common pattern when UTF-8 Arabic text was decoded as latin1 (e.g. "Ø§Ù...").
+    const looksMojibake = /[ØÙÃÂÐ]/.test(filename) || /[\x80-\x9F]/.test(filename);
+    if (!looksMojibake) return filename;
+
+    try {
+        const fixed = Buffer.from(filename, 'latin1').toString('utf8').trim();
+        if (!fixed || fixed.includes('�')) return filename;
+        return fixed;
+    } catch {
+        return filename;
+    }
+};
+
+const normalizePlanRecord = (plan) => ({
+    ...plan,
+    original_filename: maybeFixMojibakeFilename(plan.original_filename),
+});
+
 const TreatmentPlan = {
     getStatusOptions() {
         return STATUS_OPTIONS;
@@ -52,7 +73,7 @@ const TreatmentPlan = {
         WHERE ${whereClause}
         ORDER BY tp.created_at DESC
       `;
-            return plans;
+            return plans.map(normalizePlanRecord);
         } catch (error) {
             log.error('Error finding treatment plans', { error: error.message });
             throw error;
@@ -71,7 +92,7 @@ const TreatmentPlan = {
         LEFT JOIN users u ON tp.reviewed_by = u.id
         WHERE tp.id = ${id}
       `;
-            return plan;
+            return plan ? normalizePlanRecord(plan) : null;
         } catch (error) {
             log.error('Error finding treatment plan by ID', { id, error: error.message });
             throw error;
@@ -85,6 +106,8 @@ const TreatmentPlan = {
                 file_url, r2_url, original_filename, file_size, notes
             } = data;
 
+            const normalizedFilename = maybeFixMojibakeFilename(original_filename);
+
             const [plan] = await sql`
         INSERT INTO treatment_plans (
           employee_name, branch_id, job_title, department, plan_type,
@@ -92,12 +115,12 @@ const TreatmentPlan = {
         )
         VALUES (
           ${employee_name}, ${branch_id}, ${job_title}, ${department}, ${plan_type},
-          ${file_url || null}, ${r2_url || null}, ${original_filename || null}, 
+                    ${file_url || null}, ${r2_url || null}, ${normalizedFilename || null}, 
           ${file_size || null}, ${notes || null}
         )
         RETURNING *
       `;
-            return plan;
+                        return normalizePlanRecord(plan);
         } catch (error) {
             log.error('Error creating treatment plan', { error: error.message });
             throw error;
