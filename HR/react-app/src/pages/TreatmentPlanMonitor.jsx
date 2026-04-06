@@ -25,6 +25,21 @@ const STATUS_COLORS = {
     rejected: '#ef4444',
 };
 
+const normalizeFilename = (filename) => {
+    if (!filename || typeof filename !== 'string') return 'plan.docx';
+
+    const cleaned = filename.replace(/[\x00-\x1F\x7F-\x9F\r\n]/g, '').trim();
+    const looksMojibake = /[ØÙÃÂÐ]/.test(cleaned);
+    if (!looksMojibake) return cleaned || 'plan.docx';
+
+    try {
+        const fixed = decodeURIComponent(escape(cleaned));
+        return fixed && !fixed.includes('�') ? fixed : (cleaned || 'plan.docx');
+    } catch {
+        return cleaned || 'plan.docx';
+    }
+};
+
 const TreatmentPlanMonitor = () => {
     const { showError, showSuccess } = useNotification();
     const [plans, setPlans] = useState([]);
@@ -85,7 +100,7 @@ const TreatmentPlanMonitor = () => {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = plan.original_filename || 'plan.docx';
+            a.download = normalizeFilename(plan.original_filename);
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -271,7 +286,7 @@ const TreatmentPlanMonitor = () => {
                                     <td>{plan.plan_type}</td>
                                     <td>
                                         <div className="tp-cell-file">
-                                            <span className="tp-filename">{plan.original_filename}</span>
+                                            <span className="tp-filename">{normalizeFilename(plan.original_filename)}</span>
                                             <span className="tp-filesize">{formatFileSize(plan.file_size)}</span>
                                         </div>
                                     </td>
@@ -334,7 +349,7 @@ const TreatmentPlanMonitor = () => {
                                 <div><strong>الفرع:</strong> {reviewModal.branch_name}</div>
                                 <div><strong>القسم:</strong> {reviewModal.department}</div>
                                 <div><strong>نوع الخطة:</strong> {reviewModal.plan_type}</div>
-                                <div><strong>الملف:</strong> {reviewModal.original_filename}</div>
+                                <div><strong>الملف:</strong> {normalizeFilename(reviewModal.original_filename)}</div>
                                 {reviewModal.notes && <div><strong>ملاحظات المقدم:</strong> {reviewModal.notes}</div>}
                             </div>
 

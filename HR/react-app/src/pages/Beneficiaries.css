@@ -332,6 +332,16 @@
     color: white;
 }
 
+.stat-card.paid {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    color: white;
+}
+
+.stat-card.free {
+    background: linear-gradient(135deg, #fc5c7d 0%, #6a82fb 100%);
+    color: white;
+}
+
 .stat-card.male {
     background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
     color: white;

@@ -245,7 +245,7 @@ const Beneficiaries = () => {
         try {
             const termId = filters.term_id;
             if (!termId) return;
-            const res = await beneficiariesAPI.getStats({ term_id: termId, include_free: includeFreeStudents });
+            const res = await beneficiariesAPI.getStats({ term_id: termId });
             if (res.data.success) {
                 setStats(res.data.data);
             }
@@ -800,6 +800,20 @@ const Beneficiaries = () => {
                                     <span className="stat-label">إجمالي المستفيدين</span>
                                 </div>
                             </div>
+                            <div className="stat-card paid">
+                                <span className="stat-icon">💰</span>
+                                <div className="stat-content">
+                                    <span className="stat-value">{stats.totals?.paid_student_count || 0}</span>
+                                    <span className="stat-label">مستفيدين مدفوعين</span>
+                                </div>
+                            </div>
+                            <div className="stat-card free">
+                                <span className="stat-icon">🎓</span>
+                                <div className="stat-content">
+                                    <span className="stat-value">{stats.totals?.free_student_count || 0}</span>
+                                    <span className="stat-label">مستفيدين مجانيين</span>
+                                </div>
+                            </div>
                             <div className="stat-card male">
                                 <span className="stat-icon">👨</span>
                                 <div className="stat-content">
@@ -873,6 +887,8 @@ const Beneficiaries = () => {
                                         <tr>
                                             <th>الفرع</th>
                                             <th>الإجمالي</th>
+                                            <th>مدفوع</th>
+                                            <th>مجاني</th>
                                             <th>ذكور</th>
                                             <th>إناث</th>
                                             <th>صباحية</th>
@@ -887,6 +903,8 @@ const Beneficiaries = () => {
                                             <tr key={bs.branch_id}>
                                                 <td className="branch-name-cell">{bs.branch_name}</td>
                                                 <td className="number-cell">{bs.total}</td>
+                                                <td className="number-cell">{bs.paid_student_count}</td>
+                                                <td className="number-cell">{bs.free_student_count}</td>
                                                 <td className="number-cell">{bs.male_count}</td>
                                                 <td className="number-cell">{bs.female_count}</td>
                                                 <td className="number-cell">{bs.morning_count}</td>
