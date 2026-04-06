@@ -1201,9 +1201,10 @@ export const treatmentPlansPublicAPI = {
   getBranches: () =>
     publicApi.get('/api/treatment-plans/branches'),
 
-  submit: (formData) =>
+  submit: (formData, config = {}) =>
     publicApi.post('/api/treatment-plans/submit', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      ...config,
     }),
 };
 

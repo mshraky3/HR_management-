@@ -1278,26 +1278,15 @@ const Dashboard = () => {
           ...tasksForDisplay.filter(task => !task.hasInlineEditor)
         ];
 
-        // Reset to first task if current index is out of bounds or if tasks changed
-        // Use a ref or effect to track task list changes, but for now, just validate index
+        // Clamp task index to valid range (no setState during render to avoid loops)
         const validTaskIndex = allTasksOrdered.length > 0
           ? Math.max(0, Math.min(currentTaskIndex, allTasksOrdered.length - 1))
           : 0;
-
-        // Update index if it's out of bounds
-        if (currentTaskIndex !== validTaskIndex && allTasksOrdered.length > 0) {
-          setCurrentTaskIndex(validTaskIndex);
-        }
 
         const currentTask = allTasksOrdered[validTaskIndex] || null;
         const isLastTask = validTaskIndex === allTasksOrdered.length - 1;
         const isFirstTask = validTaskIndex === 0;
         const allTasksComplete = allTasks.length > 0 && allTasksOrdered.length === 0;
-
-        // Auto-update index if current task is out of bounds
-        if (currentTaskIndex >= allTasksOrdered.length && allTasksOrdered.length > 0) {
-          setCurrentTaskIndex(allTasksOrdered.length - 1);
-        }
 
         // Handle next task navigation
         const handleNext = () => {

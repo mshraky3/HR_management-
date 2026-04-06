@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { payrollAbsenceAPI } from '../utils/api';
 import './PayrollAbsence.css';
 
@@ -370,8 +370,8 @@ const PayrollAbsenceAdmin = () => {
                 {branches.map((b) => {
                   const st = statusLabel(b.status);
                   return (
-                    <>
-                      <tr key={b.branch_id} className="branch-row">
+                    <Fragment key={b.branch_id}>
+                      <tr className="branch-row">
                         <td>
                           <input
                             type="checkbox"
@@ -396,7 +396,7 @@ const PayrollAbsenceAdmin = () => {
                       </tr>
                       {expandedBranches.has(b.branch_id) && (
                         <tr>
-                          <td colSpan={7}>
+                          <td colSpan={9}>
                             <div className="state-block branch-details-expanded">
                               <div className="state-title">تفاصيل الموظفين</div>
                               {branchEntries[b.branch_id]?.entries?.length ? (
@@ -431,7 +431,7 @@ const PayrollAbsenceAdmin = () => {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>

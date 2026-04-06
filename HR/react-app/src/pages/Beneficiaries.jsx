@@ -1178,7 +1178,6 @@ const Beneficiaries = () => {
                     </div>
                 );
             })()}
-            )}
             {isMainManager() && activeTab === 'staffing' && filters.term_id && staffingLoading && (
                 <div className="staffing-section staffing-section-centered">
                     <div className="staffing-loading">جاري حساب متطلبات التوظيف...</div>
@@ -1496,9 +1495,9 @@ const Beneficiaries = () => {
                                         return (b.beneficiary_name || '').toLowerCase().includes(q)
                                             || (b.civil_id || '').includes(q)
                                             || (b.beneficiary_number || '').includes(q);
-                                    }).map((b) => (
+                                    }).map((b, displayIndex) => (
                                         <tr key={b.id} className={inlineMode === b.id ? 'editing-row' : ''}>
-                                            <td className="number-cell">{b.sequence_number}</td>
+                                            <td className="number-cell">{displayIndex + 1}</td>
                                             {isMainManager() && <td className="branch-name-cell">{b.branch_name}</td>}
                                             <td>{b.enrollment_period}</td>
                                             <td className="name-cell">{b.beneficiary_name}</td>

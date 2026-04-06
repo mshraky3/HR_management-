@@ -24,7 +24,7 @@ const TreatmentPlanSubmission = () => {
     const [files, setFiles] = useState([]);
     const [customPlanType, setCustomPlanType] = useState('');
     const [loading, setLoading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+    const [fileProgress, setFileProgress] = useState([]); // [{ name, size, percent, status }]
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
     const [showCircular, setShowCircular] = useState(false);
@@ -179,11 +179,15 @@ const TreatmentPlanSubmission = () => {
         }
 
         setLoading(true);
-        setUploadProgress({ current: 0, total: files.length });
+        const progress = files.map(f => ({ name: f.name, size: f.size, percent: 0, status: 'waiting' }));
+        setFileProgress([...progress]);
         try {
             // Submit each file as a separate plan
             for (let i = 0; i < files.length; i++) {
-                setUploadProgress({ current: i + 1, total: files.length });
+                progress[i].status = 'uploading';
+                progress[i].percent = 0;
+                setFileProgress([...progress]);
+
                 const data = new FormData();
                 data.append('employee_name', formData.employee_name.trim());
                 data.append('branch_id', formData.branch_id);
@@ -193,7 +197,17 @@ const TreatmentPlanSubmission = () => {
                 data.append('notes', formData.notes);
                 data.append('file', files[i]);
 
-                await treatmentPlansPublicAPI.submit(data);
+                await treatmentPlansPublicAPI.submit(data, {
+                    onUploadProgress: (e) => {
+                        const pct = e.total ? Math.round((e.loaded / e.total) * 100) : 0;
+                        progress[i].percent = pct;
+                        setFileProgress([...progress]);
+                    },
+                });
+
+                progress[i].percent = 100;
+                progress[i].status = 'done';
+                setFileProgress([...progress]);
             }
 
             setSuccess(true);
@@ -203,7 +217,7 @@ const TreatmentPlanSubmission = () => {
             setError(msg);
         } finally {
             setLoading(false);
-            setUploadProgress({ current: 0, total: 0 });
+            setFileProgress([]);
         }
     };
 
@@ -247,16 +261,25 @@ const TreatmentPlanSubmission = () => {
                     <div className="tp-upload-overlay-card">
                         <div className="tp-upload-spinner"></div>
                         <h3>جاري رفع الملفات...</h3>
-                        {uploadProgress.total > 1 ? (
-                            <p>يتم رفع الملف {uploadProgress.current} من {uploadProgress.total}</p>
-                        ) : (
-                            <p>يرجى الانتظار، قد يستغرق الأمر بعض الوقت للملفات الكبيرة</p>
-                        )}
-                        <div className="tp-upload-progress-bar">
-                            <div
-                                className="tp-upload-progress-fill"
-                                style={{ width: `${uploadProgress.total ? (uploadProgress.current / uploadProgress.total) * 100 : 0}%` }}
-                            />
+                        <p>يرجى الانتظار، قد يستغرق الأمر بعض الوقت للملفات الكبيرة</p>
+                        <div className="tp-upload-file-list">
+                            {fileProgress.map((fp, idx) => (
+                                <div key={idx} className={`tp-upload-file-item ${fp.status}`}>
+                                    <div className="tp-upload-file-info">
+                                        <span className="tp-upload-file-icon">
+                                            {fp.status === 'done' ? '✅' : fp.status === 'uploading' ? '⏳' : '⏸️'}
+                                        </span>
+                                        <span className="tp-upload-file-name">{fp.name}</span>
+                                        <span className="tp-upload-file-pct">{fp.percent}%</span>
+                                    </div>
+                                    <div className="tp-upload-file-bar">
+                                        <div
+                                            className="tp-upload-file-bar-fill"
+                                            style={{ width: `${fp.percent}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
