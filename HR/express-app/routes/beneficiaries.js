@@ -302,9 +302,9 @@ router.get('/export', requireMainManager, async (req, res) => {
 
         // Add rows — only include active columns
         const activeKeySet = new Set(activeKeys);
-        data.forEach(row => {
+        data.forEach((row, index) => {
             const rowData = {};
-            if (activeKeySet.has('sequence_number')) rowData.sequence_number = row.sequence_number;
+            if (activeKeySet.has('sequence_number')) rowData.sequence_number = index + 1;
             if (activeKeySet.has('branch_name')) rowData.branch_name = row.branch_name;
             if (activeKeySet.has('enrollment_period')) rowData.enrollment_period = row.enrollment_period;
             if (activeKeySet.has('beneficiary_name')) rowData.beneficiary_name = row.beneficiary_name;
@@ -832,6 +832,11 @@ router.post('/:id/assign-bus', requireManager, async (req, res) => {
         `;
         if (!bus) {
             return res.status(404).json({ success: false, message: 'الباص غير موجود' });
+        }
+
+        // Verify bus belongs to the same branch as the beneficiary
+        if (bus.branch_id !== beneficiary.branch_id) {
+            return res.status(400).json({ success: false, message: 'لا يمكن تعيين مستفيد لباص في فرع آخر' });
         }
 
         // Check if already assigned to any bus by name in the same branch/term

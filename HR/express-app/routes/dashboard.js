@@ -53,7 +53,7 @@ router.get('/summary', async (req, res) => {
             const incompleteRes = await sql`SELECT COUNT(*)::int as incomplete_count FROM employees WHERE branch_id = ${branchId} AND (status IS NULL OR status = 'active') AND (data_completion_status IS NULL OR data_completion_status != 'complete')`;
             incompleteCount = parseInt(incompleteRes[0]?.incomplete_count || 0, 10);
 
-            // Small list of incomplete employees for quick preview (only active employees)
+            // All incomplete employees for this branch (used by task engine for accurate counts)
             incompleteEmployees = await sql`
         SELECT id, employee_id_number, branch_id, first_name, second_name, third_name, fourth_name, data_completion_status
         FROM employees
@@ -61,7 +61,6 @@ router.get('/summary', async (req, res) => {
         AND (status IS NULL OR status = 'active')
         AND (data_completion_status IS NULL OR data_completion_status != 'complete')
         ORDER BY updated_at DESC
-        LIMIT 10
       `;
         } else {
             // Global summary for main manager (only active employees)

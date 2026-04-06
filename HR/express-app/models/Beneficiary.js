@@ -137,21 +137,29 @@ const Beneficiary = {
      */
     async create(data) {
         try {
-            const sequenceNumber = await this.getNextSequenceNumber(data.branch_id, data.term_id);
+            const [row] = await sql.begin(async tx => {
+                const [seqResult] = await tx`
+                    SELECT COALESCE(MAX(sequence_number), 0) + 1 as next_seq
+                    FROM beneficiaries
+                    WHERE branch_id = ${data.branch_id} AND term_id = ${data.term_id}
+                    FOR UPDATE
+                `;
+                const sequenceNumber = seqResult.next_seq;
 
-            const [row] = await sql`
-        INSERT INTO beneficiaries (
-          branch_id, term_id, sequence_number, beneficiary_number, enrollment_period,
-          beneficiary_name, civil_id, contact_number, gender, age,
-          speech_therapy, physical_therapy, occupational_therapy,
-          autism_therapy, transport_service, free_student, notes
-        ) VALUES (
-          ${data.branch_id}, ${data.term_id}, ${sequenceNumber}, ${data.beneficiary_number}, ${data.enrollment_period},
-          ${data.beneficiary_name}, ${data.civil_id}, ${data.contact_number}, ${data.gender}, ${data.age},
-          ${data.speech_therapy || false}, ${data.physical_therapy || false}, ${data.occupational_therapy || false},
-          ${data.autism_therapy || false}, ${data.transport_service || false}, ${data.free_student || false}, ${data.notes || null}
-        ) RETURNING *
-      `;
+                return tx`
+                    INSERT INTO beneficiaries (
+                      branch_id, term_id, sequence_number, beneficiary_number, enrollment_period,
+                      beneficiary_name, civil_id, contact_number, gender, age,
+                      speech_therapy, physical_therapy, occupational_therapy,
+                      autism_therapy, transport_service, free_student, notes
+                    ) VALUES (
+                      ${data.branch_id}, ${data.term_id}, ${sequenceNumber}, ${data.beneficiary_number}, ${data.enrollment_period},
+                      ${data.beneficiary_name}, ${data.civil_id}, ${data.contact_number}, ${data.gender}, ${data.age},
+                      ${data.speech_therapy || false}, ${data.physical_therapy || false}, ${data.occupational_therapy || false},
+                      ${data.autism_therapy || false}, ${data.transport_service || false}, ${data.free_student || false}, ${data.notes || null}
+                    ) RETURNING *
+                `;
+            });
             return row;
         } catch (error) {
             log.error('Error creating beneficiary:', error);
@@ -447,11 +455,16 @@ const Beneficiary = {
                 return { copied: 0, skipped };
             }
 
-            // Get next sequence number
-            let nextSeq = await this.getNextSequenceNumber(branchId, targetTermId);
-
-            // Insert in transaction
+            // Insert in transaction with sequence lock
             await sql.begin(async tx => {
+                const [seqResult] = await tx`
+                    SELECT COALESCE(MAX(sequence_number), 0) + 1 as next_seq
+                    FROM beneficiaries
+                    WHERE branch_id = ${branchId} AND term_id = ${targetTermId}
+                    FOR UPDATE
+                `;
+                let nextSeq = seqResult.next_seq;
+
                 for (const row of toCopy) {
                     await tx`
                         INSERT INTO beneficiaries (

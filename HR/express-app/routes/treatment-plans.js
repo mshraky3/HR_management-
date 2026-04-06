@@ -14,6 +14,7 @@ import {
     uploadTreatmentPlanToBlob,
     fetchBlobWithFallback,
 } from '../utils/blobStorage.js';
+import { sendErrorNotification } from '../utils/errorNotificationService.js';
 
 const router = express.Router();
 
@@ -36,6 +37,15 @@ router.get('/branches', async (req, res) => {
         res.json({ success: true, data: branches });
     } catch (error) {
         console.error('Error fetching healthcare branches:', error);
+        sendErrorNotification({
+            errorType: 'TREATMENT_PLAN_ERROR',
+            message: error.message,
+            endpoint: '/api/treatment-plans/branches',
+            method: 'GET',
+            statusCode: 500,
+            timestamp: new Date().toISOString(),
+            source: 'BACKEND',
+        }).catch(() => { });
         res.status(500).json({
             success: false,
             message: 'فشل في جلب الفروع',
@@ -113,6 +123,23 @@ router.post('/submit', (req, res, next) => {
         });
     } catch (error) {
         console.error('Error submitting treatment plan:', error);
+        sendErrorNotification({
+            errorType: 'TREATMENT_PLAN_SUBMIT_ERROR',
+            message: error.message,
+            endpoint: '/api/treatment-plans/submit',
+            method: 'POST',
+            statusCode: 500,
+            additionalInfo: {
+                employee_name: req.body?.employee_name,
+                branch_id: req.body?.branch_id,
+                job_title: req.body?.job_title,
+                plan_type: req.body?.plan_type,
+                file_name: req.file?.originalname,
+                file_size: req.file?.size,
+            },
+            timestamp: new Date().toISOString(),
+            source: 'BACKEND',
+        }).catch(() => { });
         res.status(500).json({
             success: false,
             message: 'فشل في إرسال الخطة',
@@ -150,6 +177,17 @@ router.get('/', authenticate, async (req, res) => {
         res.json({ success: true, data: plans });
     } catch (error) {
         console.error('Error fetching treatment plans:', error);
+        sendErrorNotification({
+            errorType: 'TREATMENT_PLAN_ERROR',
+            message: error.message,
+            endpoint: '/api/treatment-plans',
+            method: 'GET',
+            statusCode: 500,
+            userId: req.user?.id,
+            username: req.user?.username,
+            timestamp: new Date().toISOString(),
+            source: 'BACKEND',
+        }).catch(() => { });
         res.status(500).json({
             success: false,
             message: 'فشل في جلب الخطط',
@@ -168,6 +206,17 @@ router.get('/stats', authenticate, requireMainManager, async (req, res) => {
         res.json({ success: true, data: stats });
     } catch (error) {
         console.error('Error fetching treatment plan stats:', error);
+        sendErrorNotification({
+            errorType: 'TREATMENT_PLAN_ERROR',
+            message: error.message,
+            endpoint: '/api/treatment-plans/stats',
+            method: 'GET',
+            statusCode: 500,
+            userId: req.user?.id,
+            username: req.user?.username,
+            timestamp: new Date().toISOString(),
+            source: 'BACKEND',
+        }).catch(() => { });
         res.status(500).json({
             success: false,
             message: 'فشل في جلب الإحصائيات',
@@ -211,6 +260,17 @@ router.get('/:id/download', authenticate, async (req, res) => {
         return res.send(buffer);
     } catch (error) {
         console.error('Error downloading treatment plan:', error);
+        sendErrorNotification({
+            errorType: 'TREATMENT_PLAN_DOWNLOAD_ERROR',
+            message: error.message,
+            endpoint: `/api/treatment-plans/${req.params.id}/download`,
+            method: 'GET',
+            statusCode: 500,
+            userId: req.user?.id,
+            username: req.user?.username,
+            timestamp: new Date().toISOString(),
+            source: 'BACKEND',
+        }).catch(() => { });
         res.status(500).json({
             success: false,
             message: 'فشل تحميل الملف',
@@ -252,6 +312,17 @@ router.put('/:id/review', authenticate, requireMainManager, async (req, res) => 
         });
     } catch (error) {
         console.error('Error reviewing treatment plan:', error);
+        sendErrorNotification({
+            errorType: 'TREATMENT_PLAN_ERROR',
+            message: error.message,
+            endpoint: `/api/treatment-plans/${req.params.id}/review`,
+            method: 'PUT',
+            statusCode: 500,
+            userId: req.user?.id,
+            username: req.user?.username,
+            timestamp: new Date().toISOString(),
+            source: 'BACKEND',
+        }).catch(() => { });
         res.status(500).json({
             success: false,
             message: 'فشل في تحديث حالة الخطة',
@@ -284,6 +355,17 @@ router.get('/:id', authenticate, async (req, res) => {
         res.json({ success: true, data: plan });
     } catch (error) {
         console.error('Error fetching treatment plan:', error);
+        sendErrorNotification({
+            errorType: 'TREATMENT_PLAN_ERROR',
+            message: error.message,
+            endpoint: `/api/treatment-plans/${req.params.id}`,
+            method: 'GET',
+            statusCode: 500,
+            userId: req.user?.id,
+            username: req.user?.username,
+            timestamp: new Date().toISOString(),
+            source: 'BACKEND',
+        }).catch(() => { });
         res.status(500).json({
             success: false,
             message: 'فشل في جلب الخطة',
@@ -316,6 +398,17 @@ router.delete('/:id', authenticate, requireMainManager, async (req, res) => {
         });
     } catch (error) {
         console.error('Error deleting treatment plan:', error);
+        sendErrorNotification({
+            errorType: 'TREATMENT_PLAN_ERROR',
+            message: error.message,
+            endpoint: `/api/treatment-plans/${req.params.id}`,
+            method: 'DELETE',
+            statusCode: 500,
+            userId: req.user?.id,
+            username: req.user?.username,
+            timestamp: new Date().toISOString(),
+            source: 'BACKEND',
+        }).catch(() => { });
         res.status(500).json({
             success: false,
             message: 'فشل في حذف الخطة',

@@ -179,12 +179,53 @@ export const PayrollAbsence = {
     const referenceDate = new Date(now);
     // Use getActiveCycleDate to determine which month's cycle we should be working with
     const activeCycleDate = getActiveCycleDate(referenceDate);
-    const cycle = cycleId ? await this.ensureCycleById(cycleId) : await this.ensureCycle(activeCycleDate);
+    let cycle = cycleId ? await this.ensureCycleById(cycleId) : await this.ensureCycle(activeCycleDate);
 
     await this.ensureWindowsForCycle(cycle);
-    const window = await this.ensureBranchWindow(cycle, branchId);
+    let window = await this.ensureBranchWindow(cycle, branchId);
 
     const nowTs = referenceDate.getTime();
+
+    // Check previous month for a manually-reopened or active view_only window.
+    // Handles: admin reopens a branch after the normal entry period has passed
+    // (e.g. it's April 6 but admin reopened for the March cycle).
+    if (!cycleId) {
+      const curManualExpires = window.manual_expires_at ? new Date(window.manual_expires_at) : null;
+      const curManualActive = window.manual_opened && (!curManualExpires || nowTs <= curManualExpires.getTime());
+
+      if (!curManualActive) {
+        const prevMonthDate = new Date(Date.UTC(
+          activeCycleDate.getUTCFullYear(),
+          activeCycleDate.getUTCMonth() - 1,
+          15
+        ));
+        const { monthStart: prevMonthStart } = getCycleDates(prevMonthDate);
+        const [prevCycleRow] = await sql`
+          SELECT * FROM absence_cycles WHERE month_start = ${formatDateOnly(prevMonthStart)}
+        `;
+
+        if (prevCycleRow) {
+          const [prevWindow] = await sql`
+            SELECT * FROM branch_absence_windows
+            WHERE cycle_id = ${prevCycleRow.id} AND branch_id = ${branchId}
+          `;
+
+          if (prevWindow) {
+            const pExpires = prevWindow.manual_expires_at ? new Date(prevWindow.manual_expires_at) : null;
+            const pManualActive = prevWindow.manual_opened && (!pExpires || nowTs <= pExpires.getTime());
+            const pViewActive = (prevWindow.submission_count || 0) > 0
+              && prevWindow.view_until
+              && new Date(prevWindow.view_until).getTime() >= nowTs;
+
+            if (pManualActive || pViewActive) {
+              cycle = prevCycleRow;
+              window = prevWindow;
+            }
+          }
+        }
+      }
+    }
+
     const entryOpenAt = new Date(window.entry_open_at);
     const entryCloseAt = addDays(entryOpenAt, ENTRY_OPEN_DAYS); // Entry stays open for 4 days
     const viewUntil = window.view_until ? new Date(window.view_until) : null;

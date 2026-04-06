@@ -1619,6 +1619,18 @@ export async function initializeDatabase() {
       'Created index on beneficiaries(term_id)'
     );
 
+    // Migration: Add unique constraint on (branch_id, term_id, sequence_number)
+    try {
+      await sql`
+        ALTER TABLE beneficiaries
+        ADD CONSTRAINT beneficiaries_branch_term_seq_unique
+        UNIQUE (branch_id, term_id, sequence_number)
+      `;
+      log.info('Added unique constraint on beneficiaries(branch_id, term_id, sequence_number)');
+    } catch (e) {
+      // Constraint already exists — ignore
+    }
+
     // Migration: Add beneficiary_number column to beneficiaries table
     try {
       const checkBeneficiaryNumber = await sql`
