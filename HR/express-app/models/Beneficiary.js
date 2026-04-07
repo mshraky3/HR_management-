@@ -138,11 +138,12 @@ const Beneficiary = {
     async create(data) {
         try {
             const [row] = await sql.begin(async tx => {
+                // Advisory lock keyed on branch_id + term_id to prevent race conditions
+                await tx`SELECT pg_advisory_xact_lock(${data.branch_id * 100000 + data.term_id})`;
                 const [seqResult] = await tx`
                     SELECT COALESCE(MAX(sequence_number), 0) + 1 as next_seq
                     FROM beneficiaries
                     WHERE branch_id = ${data.branch_id} AND term_id = ${data.term_id}
-                    FOR UPDATE
                 `;
                 const sequenceNumber = seqResult.next_seq;
 
@@ -461,11 +462,11 @@ const Beneficiary = {
 
             // Insert in transaction with sequence lock
             await sql.begin(async tx => {
+                await tx`SELECT pg_advisory_xact_lock(${branchId * 100000 + targetTermId})`;
                 const [seqResult] = await tx`
                     SELECT COALESCE(MAX(sequence_number), 0) + 1 as next_seq
                     FROM beneficiaries
                     WHERE branch_id = ${branchId} AND term_id = ${targetTermId}
-                    FOR UPDATE
                 `;
                 let nextSeq = seqResult.next_seq;
 

@@ -120,7 +120,7 @@ const TreatmentPlan = {
         )
         RETURNING *
       `;
-                        return normalizePlanRecord(plan);
+            return normalizePlanRecord(plan);
         } catch (error) {
             log.error('Error creating treatment plan', { error: error.message });
             throw error;

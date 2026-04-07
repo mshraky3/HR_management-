@@ -421,6 +421,10 @@ export const PayrollAbsence = {
         SELECT * FROM branch_absence_windows WHERE id = ${window.id} FOR UPDATE
       `;
 
+      if (!lockedWindow) {
+        throw new Error('نافذة الإدخال غير موجودة');
+      }
+
       const lockedManualExpires = lockedWindow.manual_expires_at ? new Date(lockedWindow.manual_expires_at) : null;
       const lockedManualActive = lockedWindow.manual_opened && (!lockedManualExpires || now <= lockedManualExpires);
 
