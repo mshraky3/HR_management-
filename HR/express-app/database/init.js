@@ -1621,6 +1621,18 @@ export async function initializeDatabase() {
 
     // Migration: Add unique constraint on (branch_id, term_id, sequence_number)
     try {
+      // First fix any existing duplicate sequence numbers before adding constraint
+      await sql`
+        WITH numbered AS (
+          SELECT id, branch_id, term_id,
+            ROW_NUMBER() OVER (PARTITION BY branch_id, term_id ORDER BY id) as new_seq
+          FROM beneficiaries
+        )
+        UPDATE beneficiaries b
+        SET sequence_number = numbered.new_seq
+        FROM numbered
+        WHERE b.id = numbered.id AND b.sequence_number != numbered.new_seq
+      `;
       await sql`
         ALTER TABLE beneficiaries
         ADD CONSTRAINT beneficiaries_branch_term_seq_unique
