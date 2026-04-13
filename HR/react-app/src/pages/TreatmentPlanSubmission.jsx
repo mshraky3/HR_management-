@@ -5,6 +5,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { treatmentPlansPublicAPI } from '../utils/api';
+import { reportApiError } from '../utils/errorTracking';
 import {
     getTreatmentPlansByJobTitle,
     getTreatmentPlanJobTitles,
@@ -54,6 +55,8 @@ const TreatmentPlanSubmission = () => {
             setBranches(response.data.data || []);
         } catch (err) {
             console.error('Error fetching branches:', err);
+            setError('تعذر تحميل قائمة الفروع. يرجى تحديث الصفحة والمحاولة مرة أخرى');
+            reportApiError(err, { url: '/api/treatment-plans/branches', method: 'GET' });
         }
     };
 
@@ -213,8 +216,26 @@ const TreatmentPlanSubmission = () => {
             setSuccess(true);
         } catch (err) {
             console.error('Error submitting:', err);
-            const msg = err.response?.data?.message || 'حدث خطأ أثناء إرسال الخطة';
+            let msg;
+            if (err.response?.data?.message) {
+                msg = err.response.data.message;
+            } else if (!navigator.onLine) {
+                msg = 'لا يوجد اتصال بالإنترنت. يرجى التحقق من الشبكة والمحاولة مرة أخرى';
+            } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+                msg = 'انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى';
+            } else if (!err.response) {
+                msg = 'تعذر الاتصال بالخادم. يرجى المحاولة لاحقاً';
+            } else if (err.response?.status === 400) {
+                msg = 'يرجى التأكد من تعبئة جميع الحقول المطلوبة ورفع ملف بصيغة .docx';
+            } else if (err.response?.status === 413) {
+                msg = 'حجم الملف كبير جداً. يرجى رفع ملف أصغر';
+            } else if (err.response?.status >= 500) {
+                msg = 'خطأ في الخادم. يرجى المحاولة لاحقاً';
+            } else {
+                msg = 'يرجى التأكد من تعبئة جميع الحقول المطلوبة ورفع ملف بصيغة .docx والمحاولة مرة أخرى';
+            }
             setError(msg);
+            reportApiError(err, { url: '/api/treatment-plans/submit', method: 'POST' });
         } finally {
             setLoading(false);
             setFileProgress([]);
