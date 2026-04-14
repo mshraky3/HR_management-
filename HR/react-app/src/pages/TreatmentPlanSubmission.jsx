@@ -164,6 +164,44 @@ const TreatmentPlanSubmission = () => {
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     };
 
+    const getUploadFailureReason = (fileErr, file) => {
+        const probableHostingLimitBytes = 4.5 * 1024 * 1024;
+
+        if (fileErr.response?.data?.message) {
+            return fileErr.response.data.message;
+        }
+
+        if (!navigator.onLine) {
+            return 'لا يوجد اتصال بالإنترنت';
+        }
+
+        if (fileErr.code === 'ECONNABORTED' || fileErr.message?.includes('timeout')) {
+            return 'انتهت مهلة الاتصال أثناء رفع الملف';
+        }
+
+        if (!fileErr.response) {
+            if (file?.size >= probableHostingLimitBytes) {
+                return `حجم الملف كبير جداً للرفع المباشر على الاستضافة الحالية (${formatFileSize(file.size)}). جرّب ضغط الملف أو تقليل حجمه ثم أعد المحاولة`;
+            }
+
+            return 'تعذر الاتصال بالخادم أثناء رفع الملف';
+        }
+
+        if (fileErr.response?.status === 400) {
+            return 'يرجى التأكد من صيغة الملف والحقول المطلوبة';
+        }
+
+        if (fileErr.response?.status === 413) {
+            return `حجم الملف كبير جداً للرفع المباشر (${formatFileSize(file?.size || 0)})`;
+        }
+
+        if (fileErr.response?.status >= 500) {
+            return 'حدث خطأ في الخادم أثناء رفع الملف';
+        }
+
+        return 'تعذر إكمال رفع الملف. يرجى التحقق من الملف والمحاولة مرة أخرى';
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
@@ -233,26 +271,21 @@ const TreatmentPlanSubmission = () => {
                     progress[i].status = 'error';
                     setFileProgress([...progress]);
 
-                    let reason;
-                    if (fileErr.response?.data?.message) {
-                        reason = fileErr.response.data.message;
-                    } else if (!navigator.onLine) {
-                        reason = 'لا يوجد اتصال بالإنترنت';
-                    } else if (fileErr.code === 'ECONNABORTED' || fileErr.message?.includes('timeout')) {
-                        reason = 'انتهت مهلة الاتصال';
-                    } else if (!fileErr.response) {
-                        reason = 'تعذر الاتصال بالخادم';
-                    } else if (fileErr.response?.status === 400) {
-                        reason = 'يرجى التأكد من صيغة الملف والحقول المطلوبة';
-                    } else if (fileErr.response?.status === 413) {
-                        reason = 'حجم الملف كبير جداً';
-                    } else if (fileErr.response?.status >= 500) {
-                        reason = 'خطأ في الخادم';
-                    } else {
-                        reason = 'يرجى التأكد من صيغة الملف والحقول المطلوبة';
-                    }
+                    const reason = getUploadFailureReason(fileErr, files[i]);
                     failedFiles.push({ name: files[i].name, reason });
-                    reportApiError(fileErr, { url: '/api/treatment-plans/submit', method: 'POST' });
+                    reportApiError(fileErr, {
+                        url: '/api/treatment-plans/submit',
+                        method: 'POST',
+                        data: {
+                            fileName: files[i].name,
+                            fileSize: files[i].size,
+                            fileType: files[i].type,
+                            employee_name: formData.employee_name.trim(),
+                            branch_id: formData.branch_id,
+                            job_title: formData.job_title,
+                            plan_type: formData.plan_type === '__other__' ? customPlanType.trim() : formData.plan_type,
+                        },
+                    });
                 }
             }
 
