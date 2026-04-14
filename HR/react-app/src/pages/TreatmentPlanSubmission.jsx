@@ -4,7 +4,9 @@
  * No authentication required
  */
 import { useState, useEffect, useRef } from 'react';
+import { upload } from '@vercel/blob/client';
 import { treatmentPlansPublicAPI } from '../utils/api';
+import { getCurrentApiUrl } from '../config/api';
 import { reportApiError } from '../utils/errorTracking';
 import {
     getTreatmentPlansByJobTitle,
@@ -165,10 +167,17 @@ const TreatmentPlanSubmission = () => {
     };
 
     const getUploadFailureReason = (fileErr, file) => {
-        const probableHostingLimitBytes = 4.5 * 1024 * 1024;
-
+        // Check for backend-specific error message
         if (fileErr.response?.data?.message) {
             return fileErr.response.data.message;
+        }
+
+        // Vercel Blob SDK errors
+        if (fileErr.message?.includes('not allowed') || fileErr.message?.includes('content type')) {
+            return 'نوع الملف غير مسموح به. يُسمح بملفات Word و PDF فقط';
+        }
+        if (fileErr.message?.includes('size') || fileErr.message?.includes('too large')) {
+            return `حجم الملف كبير جداً (${formatFileSize(file?.size || 0)})`;
         }
 
         if (!navigator.onLine) {
@@ -179,20 +188,12 @@ const TreatmentPlanSubmission = () => {
             return 'انتهت مهلة الاتصال أثناء رفع الملف';
         }
 
-        if (!fileErr.response) {
-            if (file?.size >= probableHostingLimitBytes) {
-                return `حجم الملف كبير جداً للرفع المباشر على الاستضافة الحالية (${formatFileSize(file.size)}). جرّب ضغط الملف أو تقليل حجمه ثم أعد المحاولة`;
-            }
-
-            return 'تعذر الاتصال بالخادم أثناء رفع الملف';
+        if (!fileErr.response && fileErr.message) {
+            return fileErr.message;
         }
 
         if (fileErr.response?.status === 400) {
             return 'يرجى التأكد من صيغة الملف والحقول المطلوبة';
-        }
-
-        if (fileErr.response?.status === 413) {
-            return `حجم الملف كبير جداً للرفع المباشر (${formatFileSize(file?.size || 0)})`;
         }
 
         if (fileErr.response?.status >= 500) {
@@ -237,29 +238,48 @@ const TreatmentPlanSubmission = () => {
         setFileProgress([...progress]);
         let successCount = 0;
         let failedFiles = [];
+        const handleUploadUrl = `${getCurrentApiUrl()}/api/treatment-plans/client-upload`;
+
         try {
-            // Submit each file as a separate plan
+            // Submit each file: upload to blob directly, then send metadata
             for (let i = 0; i < files.length; i++) {
                 progress[i].status = 'uploading';
                 progress[i].percent = 0;
                 setFileProgress([...progress]);
 
-                const data = new FormData();
-                data.append('employee_name', formData.employee_name.trim());
-                data.append('branch_id', formData.branch_id);
-                data.append('job_title', formData.job_title);
-                data.append('department', formData.department);
-                data.append('plan_type', formData.plan_type === '__other__' ? customPlanType.trim() : formData.plan_type);
-                data.append('notes', formData.notes);
-                data.append('file', files[i]);
-
                 try {
-                    await treatmentPlansPublicAPI.submit(data, {
-                        onUploadProgress: (e) => {
-                            const pct = e.total ? Math.round((e.loaded / e.total) * 100) : 0;
-                            progress[i].percent = pct;
+                    // Generate unique filename for blob storage
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19).replace('T', '_');
+                    const sanitized = files[i].name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                    const uniqueName = `${timestamp}_${sanitized}`;
+                    const blobPath = `treatment-plans/${formData.branch_id}/${uniqueName}`;
+
+                    // Step 1: Upload file directly to Vercel Blob
+                    const blob = await upload(blobPath, files[i], {
+                        access: 'public',
+                        handleUploadUrl,
+                        multipart: files[i].size > 4 * 1024 * 1024, // multipart for files > 4MB
+                        onUploadProgress: ({ percentage }) => {
+                            // Blob upload = 90% of progress, metadata submission = last 10%
+                            progress[i].percent = Math.round(percentage * 0.9);
                             setFileProgress([...progress]);
                         },
+                    });
+
+                    progress[i].percent = 90;
+                    setFileProgress([...progress]);
+
+                    // Step 2: Submit metadata + blob URL to backend
+                    await treatmentPlansPublicAPI.submitDirect({
+                        employee_name: formData.employee_name.trim(),
+                        branch_id: formData.branch_id,
+                        job_title: formData.job_title,
+                        department: formData.department,
+                        plan_type: formData.plan_type === '__other__' ? customPlanType.trim() : formData.plan_type,
+                        notes: formData.notes,
+                        file_url: blob.url,
+                        original_filename: files[i].name,
+                        file_size: files[i].size,
                     });
 
                     progress[i].percent = 100;
@@ -274,7 +294,7 @@ const TreatmentPlanSubmission = () => {
                     const reason = getUploadFailureReason(fileErr, files[i]);
                     failedFiles.push({ name: files[i].name, reason });
                     reportApiError(fileErr, {
-                        url: '/api/treatment-plans/submit',
+                        url: '/api/treatment-plans/client-upload',
                         method: 'POST',
                         data: {
                             fileName: files[i].name,
@@ -302,7 +322,7 @@ const TreatmentPlanSubmission = () => {
             }
         } catch (err) {
             console.error('Error submitting:', err);
-            reportApiError(err, { url: '/api/treatment-plans/submit', method: 'POST' });
+            reportApiError(err, { url: '/api/treatment-plans/client-upload', method: 'POST' });
             setError('حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى');
         } finally {
             setLoading(false);

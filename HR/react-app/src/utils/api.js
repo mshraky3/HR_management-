@@ -1206,6 +1206,9 @@ export const treatmentPlansPublicAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
       ...config,
     }),
+
+  submitDirect: (metadata) =>
+    publicApi.post('/api/treatment-plans/submit-direct', metadata),
 };
 
 // Treatment Plans Admin API (auth required)
