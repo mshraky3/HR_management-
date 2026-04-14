@@ -76,9 +76,13 @@ router.get('/branches', async (req, res) => {
 router.post('/submit', (req, res, next) => {
     uploadDocxSingle(req, res, (err) => {
         if (err) {
+            let message = err.message || 'خطأ في رفع الملف';
+            if (err.code === 'LIMIT_FILE_SIZE') {
+                message = 'حجم الملف يتجاوز الحد الأقصى المسموح (10 ميجابايت)';
+            }
             return res.status(400).json({
                 success: false,
-                message: err.message || 'خطأ في رفع الملف'
+                message
             });
         }
         next();

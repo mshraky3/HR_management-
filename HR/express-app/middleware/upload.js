@@ -86,27 +86,30 @@ export const validateUploadedFile = (req, res, next) => {
 };
 
 // ============================================================================
-// DOCX Upload Configuration (for treatment plan submissions)
+// Treatment Plan Upload Configuration
+// Accepts Word (.docx, .doc) and PDF files
 // ============================================================================
 
-const docxFileFilter = (req, file, cb) => {
-  const allowedMimes = [
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  ];
+const TREATMENT_PLAN_ALLOWED_MIMES = [
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+  'application/msword', // .doc
+  'application/pdf', // .pdf
+];
 
-  if (allowedMimes.includes(file.mimetype)) {
+const treatmentPlanFileFilter = (req, file, cb) => {
+  if (TREATMENT_PLAN_ALLOWED_MIMES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('نوع الملف غير مدعوم. يُسمح فقط بملفات Word (.docx).'), false);
+    cb(new Error('نوع الملف غير مدعوم. يُسمح بملفات Word (.docx, .doc) و PDF فقط.'), false);
   }
 };
 
-const docxUpload = multer({
+const treatmentPlanUpload = multer({
   storage: storage,
-  fileFilter: docxFileFilter
+  fileFilter: treatmentPlanFileFilter,
 });
 
-export const uploadDocxSingle = docxUpload.single('file');
+export const uploadDocxSingle = treatmentPlanUpload.single('file');
 
 export const validateDocxFile = (req, res, next) => {
   if (!req.file) {
@@ -116,14 +119,10 @@ export const validateDocxFile = (req, res, next) => {
     });
   }
 
-  const allowedMimes = [
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  ];
-
-  if (!allowedMimes.includes(req.file.mimetype)) {
+  if (!TREATMENT_PLAN_ALLOWED_MIMES.includes(req.file.mimetype)) {
     return res.status(400).json({
       success: false,
-      message: 'نوع الملف غير مدعوم. يُسمح فقط بملفات Word (.docx).'
+      message: 'نوع الملف غير مدعوم. يُسمح بملفات Word (.docx, .doc) و PDF فقط.'
     });
   }
 
