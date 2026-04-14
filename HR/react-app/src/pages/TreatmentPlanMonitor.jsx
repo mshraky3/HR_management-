@@ -4,6 +4,7 @@
  */
 import { useState, useEffect } from 'react';
 import { treatmentPlansAPI } from '../utils/api';
+import { reportApiError } from '../utils/errorTracking';
 import { useNotification } from '../contexts/NotificationContext';
 import {
     getTreatmentPlanJobTitles,
@@ -26,17 +27,17 @@ const STATUS_COLORS = {
 };
 
 const normalizeFilename = (filename) => {
-    if (!filename || typeof filename !== 'string') return 'plan.docx';
+    if (!filename || typeof filename !== 'string') return 'plan';
 
     const cleaned = filename.replace(/[\x00-\x1F\x7F-\x9F\r\n]/g, '').trim();
     const looksMojibake = /[ØÙÃÂÐ]/.test(cleaned);
-    if (!looksMojibake) return cleaned || 'plan.docx';
+    if (!looksMojibake) return cleaned || 'plan';
 
     try {
         const fixed = decodeURIComponent(escape(cleaned));
-        return fixed && !fixed.includes('�') ? fixed : (cleaned || 'plan.docx');
+        return fixed && !fixed.includes('�') ? fixed : (cleaned || 'plan');
     } catch {
-        return cleaned || 'plan.docx';
+        return cleaned || 'plan';
     }
 };
 
@@ -80,7 +81,9 @@ const TreatmentPlanMonitor = () => {
             setStats(statsRes.data.data || null);
         } catch (error) {
             console.error('Error loading treatment plans:', error);
-            showError('فشل تحميل الخطط');
+            const msg = error.response?.data?.message || 'فشل تحميل الخطط';
+            showError(msg);
+            reportApiError(error, { url: '/api/treatment-plans', method: 'GET' });
         } finally {
             setLoading(false);
         }
@@ -107,7 +110,9 @@ const TreatmentPlanMonitor = () => {
             URL.revokeObjectURL(url);
         } catch (error) {
             console.error('Error downloading:', error);
-            showError('فشل تحميل الملف');
+            const msg = error.response?.data?.message || 'فشل تحميل الملف. تأكد من وجود الملف وحاول مرة أخرى';
+            showError(msg);
+            reportApiError(error, { url: `/api/treatment-plans/${plan.id}/download`, method: 'GET' });
         }
     };
 
@@ -132,7 +137,9 @@ const TreatmentPlanMonitor = () => {
             loadData();
         } catch (error) {
             console.error('Error reviewing:', error);
-            showError('فشل في تحديث الحالة');
+            const msg = error.response?.data?.message || 'فشل في تحديث الحالة';
+            showError(msg);
+            reportApiError(error, { url: `/api/treatment-plans/${reviewModal.id}/review`, method: 'PUT' });
         } finally {
             setSaving(false);
         }
@@ -148,7 +155,9 @@ const TreatmentPlanMonitor = () => {
             loadData();
         } catch (error) {
             console.error('Error deleting:', error);
-            showError('فشل في حذف الخطة');
+            const msg = error.response?.data?.message || 'فشل في حذف الخطة';
+            showError(msg);
+            reportApiError(error, { url: `/api/treatment-plans/${plan.id}`, method: 'DELETE' });
         }
     };
 

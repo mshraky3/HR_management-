@@ -89,14 +89,27 @@ const TreatmentPlanSubmission = () => {
         setError('');
     };
 
+    const ALLOWED_TYPES = [
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+        'application/msword', // .doc
+        'application/pdf', // .pdf
+    ];
+
     const addFiles = (incomingFiles) => {
         const newFiles = Array.from(incomingFiles || []);
-        const validFiles = newFiles.filter(f =>
-            f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        );
+        const warnings = [];
+        const validFiles = [];
 
-        if (validFiles.length < newFiles.length) {
-            setError('بعض الملفات تم تجاهلها. يُسمح فقط بملفات Word (.docx)');
+        for (const f of newFiles) {
+            if (!ALLOWED_TYPES.includes(f.type)) {
+                warnings.push(`الملف "${f.name}" غير مدعوم. يُسمح بملفات Word و PDF فقط`);
+            } else {
+                validFiles.push(f);
+            }
+        }
+
+        if (warnings.length > 0) {
+            setError(warnings.join(' \u2022 '));
         }
 
         setFiles(prev => [...prev, ...validFiles]);
@@ -184,6 +197,8 @@ const TreatmentPlanSubmission = () => {
         setLoading(true);
         const progress = files.map(f => ({ name: f.name, size: f.size, percent: 0, status: 'waiting' }));
         setFileProgress([...progress]);
+        let successCount = 0;
+        let failedFiles = [];
         try {
             // Submit each file as a separate plan
             for (let i = 0; i < files.length; i++) {
@@ -200,42 +215,62 @@ const TreatmentPlanSubmission = () => {
                 data.append('notes', formData.notes);
                 data.append('file', files[i]);
 
-                await treatmentPlansPublicAPI.submit(data, {
-                    onUploadProgress: (e) => {
-                        const pct = e.total ? Math.round((e.loaded / e.total) * 100) : 0;
-                        progress[i].percent = pct;
-                        setFileProgress([...progress]);
-                    },
-                });
+                try {
+                    await treatmentPlansPublicAPI.submit(data, {
+                        onUploadProgress: (e) => {
+                            const pct = e.total ? Math.round((e.loaded / e.total) * 100) : 0;
+                            progress[i].percent = pct;
+                            setFileProgress([...progress]);
+                        },
+                    });
 
-                progress[i].percent = 100;
-                progress[i].status = 'done';
-                setFileProgress([...progress]);
+                    progress[i].percent = 100;
+                    progress[i].status = 'done';
+                    setFileProgress([...progress]);
+                    successCount++;
+                } catch (fileErr) {
+                    console.error(`Error submitting file ${files[i].name}:`, fileErr);
+                    progress[i].status = 'error';
+                    setFileProgress([...progress]);
+
+                    let reason;
+                    if (fileErr.response?.data?.message) {
+                        reason = fileErr.response.data.message;
+                    } else if (!navigator.onLine) {
+                        reason = 'لا يوجد اتصال بالإنترنت';
+                    } else if (fileErr.code === 'ECONNABORTED' || fileErr.message?.includes('timeout')) {
+                        reason = 'انتهت مهلة الاتصال';
+                    } else if (!fileErr.response) {
+                        reason = 'تعذر الاتصال بالخادم';
+                    } else if (fileErr.response?.status === 400) {
+                        reason = 'يرجى التأكد من صيغة الملف والحقول المطلوبة';
+                    } else if (fileErr.response?.status === 413) {
+                        reason = 'حجم الملف كبير جداً';
+                    } else if (fileErr.response?.status >= 500) {
+                        reason = 'خطأ في الخادم';
+                    } else {
+                        reason = 'يرجى التأكد من صيغة الملف والحقول المطلوبة';
+                    }
+                    failedFiles.push({ name: files[i].name, reason });
+                    reportApiError(fileErr, { url: '/api/treatment-plans/submit', method: 'POST' });
+                }
             }
 
-            setSuccess(true);
+            if (failedFiles.length === 0) {
+                setSuccess(true);
+            } else if (successCount > 0) {
+                // Partial success
+                const failDetails = failedFiles.map(f => `"${f.name}": ${f.reason}`).join(' \u2022 ');
+                setError(`تم إرسال ${successCount} ملف بنجاح، لكن فشل ${failedFiles.length}: ${failDetails}`);
+            } else {
+                // All failed
+                const failDetails = failedFiles.map(f => `"${f.name}": ${f.reason}`).join(' \u2022 ');
+                setError(`فشل إرسال جميع الملفات: ${failDetails}`);
+            }
         } catch (err) {
             console.error('Error submitting:', err);
-            let msg;
-            if (err.response?.data?.message) {
-                msg = err.response.data.message;
-            } else if (!navigator.onLine) {
-                msg = 'لا يوجد اتصال بالإنترنت. يرجى التحقق من الشبكة والمحاولة مرة أخرى';
-            } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
-                msg = 'انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى';
-            } else if (!err.response) {
-                msg = 'تعذر الاتصال بالخادم. يرجى المحاولة لاحقاً';
-            } else if (err.response?.status === 400) {
-                msg = 'يرجى التأكد من تعبئة جميع الحقول المطلوبة ورفع ملف بصيغة .docx';
-            } else if (err.response?.status === 413) {
-                msg = 'حجم الملف كبير جداً. يرجى رفع ملف أصغر';
-            } else if (err.response?.status >= 500) {
-                msg = 'خطأ في الخادم. يرجى المحاولة لاحقاً';
-            } else {
-                msg = 'يرجى التأكد من تعبئة جميع الحقول المطلوبة ورفع ملف بصيغة .docx والمحاولة مرة أخرى';
-            }
-            setError(msg);
             reportApiError(err, { url: '/api/treatment-plans/submit', method: 'POST' });
+            setError('حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى');
         } finally {
             setLoading(false);
             setFileProgress([]);
@@ -288,7 +323,7 @@ const TreatmentPlanSubmission = () => {
                                 <div key={idx} className={`tp-upload-file-item ${fp.status}`}>
                                     <div className="tp-upload-file-info">
                                         <span className="tp-upload-file-icon">
-                                            {fp.status === 'done' ? '✅' : fp.status === 'uploading' ? '⏳' : '⏸️'}
+                                            {fp.status === 'done' ? '✅' : fp.status === 'error' ? '❌' : fp.status === 'uploading' ? '⏳' : '⏸️'}
                                         </span>
                                         <span className="tp-upload-file-name">{fp.name}</span>
                                         <span className="tp-upload-file-pct">{fp.percent}%</span>
@@ -310,7 +345,7 @@ const TreatmentPlanSubmission = () => {
                 {/* Header */}
                 <div className="tp-header">
                     <h1>تقديم الخطط العلاجية والتربوية</h1>
-                    <p>يرجى تعبئة النموذج ورفع الخطة بصيغة Word (.docx)</p>
+                    <p>يرجى تعبئة النموذج ورفع الخطة بصيغة Word أو PDF</p>
                 </div>
 
                 {/* Circular Instructions */}
@@ -391,7 +426,7 @@ const TreatmentPlanSubmission = () => {
                                     <li>يجب أن تكون الخطط واضحة، منظمة، وقابلة للتطبيق والقياس</li>
                                     <li>يفضل أن تتضمن: (الأهداف – الأنشطة – الوسائل – آلية التقييم)</li>
                                     <li>الحد الأدنى: 15 خطة لكل مركز</li>
-                                    <li>يجب أن يكون الملف بصيغة Word (.docx)</li>
+                                    <li>يجب أن يكون الملف بصيغة Word (.docx, .doc) أو PDF</li>
                                 </ul>
                             </div>
                         </div>
@@ -532,7 +567,7 @@ const TreatmentPlanSubmission = () => {
                     {/* File Upload */}
                     <div className="tp-form-group">
                         <label>
-                            ملف الخطة (.docx) <span className="required">*</span>
+                            ملف الخطة <span className="required">*</span>
                         </label>
                         <div
                             className={`tp-file-upload ${files.length > 0 ? 'has-files' : ''} ${isDragActive ? 'drag-active' : ''}`}
@@ -545,7 +580,7 @@ const TreatmentPlanSubmission = () => {
                             <input
                                 ref={fileInputRef}
                                 type="file"
-                                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                accept=".docx,.doc,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/pdf"
                                 onChange={handleFileChange}
                                 multiple
                             />
@@ -554,7 +589,7 @@ const TreatmentPlanSubmission = () => {
                                 <strong>اضغط هنا</strong> أو اسحب وأفلت الملفات
                             </div>
                             <div className="tp-file-upload-hint">
-                                يُسمح فقط بملفات Word (.docx)
+                                يُسمح بملفات Word (.docx, .doc) و PDF
                             </div>
                         </div>
 
