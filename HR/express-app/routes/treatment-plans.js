@@ -15,6 +15,9 @@ import {
     fetchBlobWithFallback,
 } from '../utils/blobStorage.js';
 import { sendErrorNotification } from '../utils/errorNotificationService.js';
+import { handleUpload } from '@vercel/blob/client';
+import { getBlobToken } from '../config/blobStorage.js';
+import { uploadToR2Mirror } from '../utils/dualStorage.js';
 
 const router = express.Router();
 
@@ -64,6 +67,143 @@ router.get('/branches', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'فشل في جلب الفروع',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * Client upload token exchange (public, no auth)
+ * Handles the Vercel Blob client upload protocol
+ * POST /api/treatment-plans/client-upload
+ */
+router.post('/client-upload', async (req, res) => {
+    try {
+        const jsonResponse = await handleUpload({
+            body: req.body,
+            request: req,
+            token: getBlobToken(),
+            onBeforeGenerateToken: async (pathname) => {
+                return {
+                    allowedContentTypes: [
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                        'application/msword',
+                        'application/pdf',
+                    ],
+                    maximumSizeInBytes: 100 * 1024 * 1024, // 100MB
+                    addRandomSuffix: false,
+                };
+            },
+            onUploadCompleted: async ({ blob }) => {
+                console.log('Client upload completed:', blob.pathname);
+            },
+        });
+        return res.json(jsonResponse);
+    } catch (error) {
+        console.error('Client upload token error:', error);
+        return res.status(400).json({ error: error.message });
+    }
+});
+
+/**
+ * Submit a treatment plan with pre-uploaded blob URL (public, no auth)
+ * POST /api/treatment-plans/submit-direct
+ */
+router.post('/submit-direct', async (req, res) => {
+    try {
+        const { employee_name, branch_id, job_title, department, plan_type, notes, file_url, original_filename, file_size } = req.body;
+
+        // Validate required fields
+        if (!employee_name || !branch_id || !job_title || !department || !plan_type || !file_url || !original_filename) {
+            return res.status(400).json({
+                success: false,
+                message: 'جميع الحقول المطلوبة يجب أن تكون موجودة'
+            });
+        }
+
+        // Validate that file_url is a legitimate Vercel Blob URL
+        if (!file_url.startsWith('https://') || !file_url.includes('.public.blob.vercel-storage.com/')) {
+            return res.status(400).json({
+                success: false,
+                message: 'رابط الملف غير صالح'
+            });
+        }
+
+        // Validate branch exists and is healthcare
+        const [branch] = await sql`
+      SELECT id, branch_name, branch_type
+      FROM branches
+      WHERE id = ${parseInt(branch_id)} AND is_active = true AND branch_type = 'healthcare_center'
+    `;
+        if (!branch) {
+            return res.status(400).json({
+                success: false,
+                message: 'الفرع غير موجود أو غير فعال'
+            });
+        }
+
+        const normalizedFilename = normalizeUploadedFilename(original_filename);
+
+        // R2 mirroring - best effort, skip for large files to avoid timeout
+        let r2Url = null;
+        const MAX_R2_MIRROR_SIZE = 20 * 1024 * 1024; // 20MB
+        if (file_size && file_size <= MAX_R2_MIRROR_SIZE) {
+            try {
+                const blobPathMatch = file_url.match(/treatment-plans\/.+$/);
+                if (blobPathMatch) {
+                    const response = await fetch(file_url);
+                    if (response.ok) {
+                        const buffer = Buffer.from(await response.arrayBuffer());
+                        r2Url = await uploadToR2Mirror(
+                            blobPathMatch[0],
+                            buffer,
+                            response.headers.get('content-type') || 'application/octet-stream'
+                        );
+                    }
+                }
+            } catch (r2Err) {
+                console.error('R2 mirror failed for client upload:', r2Err.message);
+            }
+        }
+
+        // Create DB record
+        const plan = await TreatmentPlan.create({
+            employee_name: employee_name.trim(),
+            branch_id: parseInt(branch_id),
+            job_title,
+            department,
+            plan_type,
+            file_url,
+            r2_url: r2Url,
+            original_filename: normalizedFilename,
+            file_size: file_size || 0,
+            notes: notes || null
+        });
+
+        res.status(201).json({
+            success: true,
+            message: 'تم إرسال الخطة بنجاح',
+            data: { id: plan.id }
+        });
+    } catch (error) {
+        console.error('Error submitting treatment plan (direct):', error);
+        sendErrorNotification({
+            errorType: 'TREATMENT_PLAN_SUBMIT_ERROR',
+            message: error.message,
+            endpoint: '/api/treatment-plans/submit-direct',
+            method: 'POST',
+            statusCode: 500,
+            additionalInfo: {
+                employee_name: req.body?.employee_name,
+                branch_id: req.body?.branch_id,
+                file_url: req.body?.file_url,
+            },
+            timestamp: new Date().toISOString(),
+            source: 'BACKEND',
+        }).catch(() => { });
+        res.status(500).json({
+            success: false,
+            message: 'فشل في إرسال الخطة',
             error: error.message
         });
     }
