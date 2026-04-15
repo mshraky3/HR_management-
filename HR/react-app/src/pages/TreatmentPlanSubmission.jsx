@@ -4,7 +4,6 @@
  * No authentication required
  */
 import { useState, useEffect, useRef } from 'react';
-import { upload } from '@vercel/blob/client';
 import { treatmentPlansPublicAPI } from '../utils/api';
 import { getCurrentApiUrl } from '../config/api';
 import { reportApiError } from '../utils/errorTracking';
@@ -96,6 +95,58 @@ const TreatmentPlanSubmission = () => {
         'application/msword', // .doc
         'application/pdf', // .pdf
     ];
+
+    /**
+     * Upload a file directly to Vercel Blob via the client upload protocol.
+     * Replicates what @vercel/blob/client `upload()` does, using plain XHR for progress.
+     */
+    const uploadToBlob = async (pathname, file, { handleUploadUrl, onUploadProgress }) => {
+        // Step 1: Get client token from backend
+        const tokenRes = await fetch(handleUploadUrl, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                type: 'blob.generate-client-token',
+                payload: { pathname, callbackUrl: handleUploadUrl, clientPayload: null, multipart: false },
+            }),
+        });
+        if (!tokenRes.ok) {
+            const errorData = await tokenRes.json().catch(() => ({}));
+            throw new Error(errorData.error || 'فشل في الحصول على تصريح الرفع');
+        }
+        const { clientToken } = await tokenRes.json();
+
+        // Step 2: Upload file directly to Vercel Blob using XHR (supports progress)
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            const params = new URLSearchParams({ pathname });
+            xhr.open('PUT', `https://vercel.com/api/blob/?${params.toString()}`);
+            xhr.setRequestHeader('authorization', `Bearer ${clientToken}`);
+            xhr.setRequestHeader('x-api-version', '12');
+            xhr.setRequestHeader('x-content-type', file.type || 'application/octet-stream');
+            xhr.setRequestHeader('x-content-length', String(file.size));
+
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable && onUploadProgress) {
+                    onUploadProgress({ percentage: Math.round((e.loaded / e.total) * 100) });
+                }
+            };
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        resolve(JSON.parse(xhr.responseText));
+                    } catch {
+                        reject(new Error('استجابة غير صالحة من خادم التخزين'));
+                    }
+                } else {
+                    reject(new Error(`فشل رفع الملف (${xhr.status})`));
+                }
+            };
+            xhr.onerror = () => reject(new Error('خطأ في الشبكة أثناء رفع الملف'));
+            xhr.ontimeout = () => reject(new Error('انتهت مهلة رفع الملف'));
+            xhr.send(file);
+        });
+    };
 
     const addFiles = (incomingFiles) => {
         const newFiles = Array.from(incomingFiles || []);
@@ -255,10 +306,8 @@ const TreatmentPlanSubmission = () => {
                     const blobPath = `treatment-plans/${formData.branch_id}/${uniqueName}`;
 
                     // Step 1: Upload file directly to Vercel Blob
-                    const blob = await upload(blobPath, files[i], {
-                        access: 'public',
+                    const blob = await uploadToBlob(blobPath, files[i], {
                         handleUploadUrl,
-                        multipart: files[i].size > 4 * 1024 * 1024, // multipart for files > 4MB
                         onUploadProgress: ({ percentage }) => {
                             // Blob upload = 90% of progress, metadata submission = last 10%
                             progress[i].percent = Math.round(percentage * 0.9);
