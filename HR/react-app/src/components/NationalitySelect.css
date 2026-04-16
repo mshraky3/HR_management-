@@ -1,0 +1,67 @@
+.nationality-select {
+  position: relative;
+}
+
+.nationality-input-wrapper {
+  position: relative;
+}
+
+.nationality-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  margin-top: var(--spacing-xs);
+}
+
+.nationality-option {
+  padding: var(--spacing-sm) var(--spacing-md);
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: var(--font-size-sm);
+}
+
+.nationality-option:hover {
+  background: var(--bg-secondary);
+}
+
+.nationality-option.selected {
+  background: var(--primary);
+  color: white;
+}
+
+.nationality-option.no-results {
+  color: var(--text-light);
+  cursor: default;
+  font-style: italic;
+}
+
+.nationality-option.no-results:hover {
+  background: transparent;
+}
+
+/* Scrollbar styling */
+.nationality-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+
+.nationality-dropdown::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+.nationality-dropdown::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.nationality-dropdown::-webkit-scrollbar-thumb:hover {
+  background: var(--text-light);
+}
+

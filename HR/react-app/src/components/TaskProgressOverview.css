@@ -1,0 +1,355 @@
+/* Task Progress Overview */
+.task-progress-overview {
+  background: var(--bg);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl);
+  box-shadow: var(--shadow-md);
+  border: 2px solid var(--primary);
+  margin-bottom: var(--spacing-xl);
+}
+
+.progress-overall {
+  margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-lg);
+  border-bottom: 2px solid var(--border-light);
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.progress-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.progress-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.progress-toggle-btn:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.progress-toggle-btn svg {
+  transition: transform var(--transition-base);
+}
+
+.progress-toggle-btn svg.expanded {
+  transform: rotate(90deg);
+}
+
+.task-progress-overview.compact {
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.task-progress-overview.compact .progress-overall {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.task-progress-overview.compact .progress-label {
+  font-size: var(--font-size-base);
+}
+
+.task-progress-overview.compact .progress-percentage {
+  font-size: var(--font-size-2xl);
+}
+
+.task-progress-overview.compact .progress-bar-container {
+  height: 20px;
+  margin-bottom: var(--spacing-xs);
+}
+
+.progress-label {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.progress-percentage-wrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.progress-percentage {
+  font-size: var(--font-size-3xl);
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.milestone-badge {
+  font-size: var(--font-size-2xl);
+  animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 32px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: var(--spacing-sm);
+}
+
+.progress-bar-container.small {
+  height: 20px;
+}
+
+.progress-bar {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 0.6s ease, background 0.6s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-bar.progress-excellent {
+  background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%);
+}
+
+.progress-bar.progress-good {
+  background: linear-gradient(90deg, #8BC34A 0%, #7CB342 100%);
+}
+
+.progress-bar.progress-moderate {
+  background: linear-gradient(90deg, #FFC107 0%, #FFB300 100%);
+}
+
+.progress-bar.progress-low {
+  background: linear-gradient(90deg, #FF9800 0%, #F57C00 100%);
+}
+
+.progress-bar.progress-critical {
+  background: linear-gradient(90deg, #F44336 0%, #D32F2F 100%);
+}
+
+.progress-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg,
+      rgba(255, 255, 255, 0.2) 0%,
+      transparent 50%,
+      rgba(255, 255, 255, 0.2) 100%);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.progress-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-sm);
+  color: var(--text-light);
+}
+
+.summary-text {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.summary-remaining {
+  color: var(--text-light);
+}
+
+.progress-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.progress-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.progress-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.progress-item-label {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.progress-item-value {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.progress-item-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+}
+
+.progress-item-percentage {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.progress-item-remaining {
+  color: var(--text-light);
+}
+
+@media (max-width: 768px) {
+  .task-progress-overview {
+    padding: var(--spacing-md);
+  }
+
+  .progress-percentage {
+    font-size: var(--font-size-2xl);
+  }
+
+  .progress-label {
+    font-size: var(--font-size-lg);
+  }
+}
+
+/* ============================================
+   MOBILE RESPONSIVE - Task Progress Overview (480px)
+   ============================================ */
+
+@media (max-width: 480px) {
+  .task-progress-overview {
+    padding: var(--spacing-sm);
+    border-radius: var(--radius-lg);
+    border-width: 1px;
+    margin-bottom: var(--spacing-md);
+  }
+
+  .task-progress-overview.compact {
+    padding: var(--spacing-sm);
+  }
+
+  .progress-overall {
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-sm);
+  }
+
+  .progress-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .progress-header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .progress-toggle-btn {
+    padding: var(--spacing-xs);
+    font-size: var(--font-size-xs);
+  }
+
+  .progress-label {
+    font-size: var(--font-size-base);
+  }
+
+  .progress-percentage {
+    font-size: var(--font-size-xl);
+  }
+
+  .milestone-badge {
+    font-size: var(--font-size-lg);
+  }
+
+  .progress-bar-container {
+    height: 20px;
+    margin-bottom: var(--spacing-xs);
+  }
+
+  .progress-bar-container.small {
+    height: 14px;
+  }
+
+  .progress-summary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+    font-size: var(--font-size-xs);
+  }
+
+  .progress-details {
+    gap: var(--spacing-md);
+  }
+
+  .progress-item {
+    gap: var(--spacing-xs);
+  }
+
+  .progress-item-label {
+    font-size: var(--font-size-sm);
+  }
+
+  .progress-item-value {
+    font-size: var(--font-size-base);
+  }
+
+  .progress-item-footer {
+    font-size: 10px;
+  }
+
+  .task-progress-overview.compact .progress-percentage {
+    font-size: var(--font-size-xl);
+  }
+
+  .task-progress-overview.compact .progress-bar-container {
+    height: 16px;
+  }
+}

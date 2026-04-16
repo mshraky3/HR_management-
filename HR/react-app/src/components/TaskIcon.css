@@ -1,0 +1,98 @@
+/* Task Icon - Modern Style */
+.task-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.08) 100%);
+  color: var(--primary);
+  transition: all 0.3s ease;
+}
+
+.task-icon-small {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.task-icon-medium {
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+  border-radius: 12px;
+}
+
+.task-icon-large {
+  width: 56px;
+  height: 56px;
+  padding: 12px;
+  border-radius: 14px;
+}
+
+.task-icon svg {
+  width: 100%;
+  height: 100%;
+  stroke-width: 1.75;
+}
+
+/* Icon type color variations */
+.task-icon.icon-document {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(37, 99, 235, 0.08) 100%);
+  color: #3B82F6;
+}
+
+.task-icon.icon-employee {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.12) 0%, rgba(22, 163, 74, 0.08) 100%);
+  color: #22C55E;
+}
+
+.task-icon.icon-bus {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.08) 100%);
+  color: #F59E0B;
+}
+
+.task-icon.icon-payroll {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.12) 0%, rgba(139, 92, 246, 0.08) 100%);
+  color: #A855F7;
+}
+
+.task-icon.icon-beneficiary {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(2, 132, 199, 0.08) 100%);
+  color: #0EA5E9;
+}
+
+.task-icon.icon-alert {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(220, 38, 38, 0.08) 100%);
+  color: #EF4444;
+}
+
+/* Dark mode adjustments */
+[data-theme="dark"] .task-icon {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%);
+}
+
+[data-theme="dark"] .task-icon.icon-document {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.18) 0%, rgba(37, 99, 235, 0.12) 100%);
+}
+
+[data-theme="dark"] .task-icon.icon-employee {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.18) 0%, rgba(22, 163, 74, 0.12) 100%);
+}
+
+[data-theme="dark"] .task-icon.icon-bus {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(217, 119, 6, 0.12) 100%);
+}
+
+[data-theme="dark"] .task-icon.icon-payroll {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.18) 0%, rgba(139, 92, 246, 0.12) 100%);
+}
+
+[data-theme="dark"] .task-icon.icon-beneficiary {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.18) 0%, rgba(2, 132, 199, 0.12) 100%);
+}
+
+[data-theme="dark"] .task-icon.icon-alert {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.18) 0%, rgba(220, 38, 38, 0.12) 100%);
+}
