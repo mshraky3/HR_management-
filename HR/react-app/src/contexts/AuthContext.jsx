@@ -157,7 +157,7 @@ export const AuthProvider = ({ children }) => {
       // broadcast force logout to other tabs
       try {
         localStorage.setItem("forceLogout", String(Date.now()));
-      } catch (err) {}
+      } catch (err) { }
     }, remaining + 50); // small buffer
   }, [IDLE_TIMEOUT_MS, WARNING_MS, clearTimers]);
 
@@ -313,6 +313,16 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await authAPI.login(username, password);
       if (response.data.success) {
+        // Branch login: requires OTP step
+        if (response.data.requiresOTP) {
+          return {
+            success: true,
+            requiresOTP: true,
+            phoneNumber: response.data.phoneNumber,
+            username: response.data.username,
+          };
+        }
+        // Main manager: direct login
         const { token: newToken, user: userData } = response.data;
         localStorage.setItem("token", newToken);
         localStorage.setItem("user", JSON.stringify(userData));
@@ -325,6 +335,26 @@ export const AuthProvider = ({ children }) => {
       return {
         success: false,
         message: error.response?.data?.message || "Login failed",
+      };
+    }
+  };
+
+  const completeOTPLogin = async (username, firebaseIdToken) => {
+    try {
+      const response = await authAPI.verifyOTP(username, firebaseIdToken);
+      if (response.data.success) {
+        const { token: newToken, user: userData } = response.data;
+        localStorage.setItem("token", newToken);
+        localStorage.setItem("user", JSON.stringify(userData));
+        setToken(newToken);
+        setUser(userData);
+        return { success: true };
+      }
+      return { success: false, message: response.data.message };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.message || "فشل التحقق من الرمز",
       };
     }
   };
@@ -347,7 +377,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       try {
         localStorage.setItem("forceLogout", String(Date.now()));
-      } catch (err) {}
+      } catch (err) { }
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       setToken(null);
@@ -361,7 +391,7 @@ export const AuthProvider = ({ children }) => {
     try {
       localStorage.setItem("lastActivity", String(Date.now()));
       localStorage.setItem("activitySignal", String(Date.now()));
-    } catch (err) {}
+    } catch (err) { }
   }, []);
 
   const isMainManager = () => {
@@ -377,6 +407,7 @@ export const AuthProvider = ({ children }) => {
     token,
     loading,
     login,
+    completeOTPLogin,
     logout,
     markActivity,
     isMainManager,
@@ -387,7 +418,6 @@ export const AuthProvider = ({ children }) => {
   return (
     <AuthContext.Provider value={value}>
       {children}
-      {/* Idle warning modal */}
       {idleWarningVisible && (
         <div
           className="modal-overlay"
