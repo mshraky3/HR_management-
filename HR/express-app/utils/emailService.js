@@ -41,7 +41,7 @@ export async function sendNotificationEmail({ to, subject, message, notification
     const htmlContent = generateEmailHtml({ subject, message, notificationType, appUrl, data });
 
     const mailOptions = {
-      from: '"نظام إدارة الموارد البشرية" <alshrakynodeapp@gmail.com>',
+      from: '"HR system" <alshrakynodeapp@gmail.com>',
       to,
       subject,
       html: htmlContent,
@@ -200,4 +200,61 @@ export async function sendStatisticsAlertEmail({ to, appUrl, alerts }) {
     appUrl,
     data,
   });
+}
+
+/**
+ * Send OTP code email for branch login
+ */
+export async function sendOTPEmail(toEmail, code, branchName) {
+  const subject = 'رمز التحقق لتسجيل الدخول';
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html dir="rtl" lang="ar">
+    <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+    <body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f7fafc;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f7fafc;padding:20px;">
+        <tr><td align="center">
+          <table width="600" cellpadding="0" cellspacing="0" style="background-color:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);overflow:hidden;">
+            <tr><td style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:30px;text-align:center;">
+              <h1 style="margin:0;color:#fff;font-size:24px;">HR system</h1>
+              <p style="margin:10px 0 0;color:#e6e6ff;font-size:14px;">رمز التحقق</p>
+            </td></tr>
+            <tr><td style="padding:30px;text-align:center;">
+              <p style="margin:0 0 10px;color:#4a5568;font-size:16px;">مرحباً <strong>${branchName}</strong></p>
+              <p style="margin:0 0 20px;color:#718096;font-size:14px;">استخدم الرمز التالي لتسجيل الدخول:</p>
+              <div style="background:#edf2f7;border-radius:8px;padding:20px;display:inline-block;margin:0 auto;">
+                <span style="font-size:36px;font-weight:700;letter-spacing:8px;color:#2d3748;">${code}</span>
+              </div>
+              <p style="margin:20px 0 0;color:#e53e3e;font-size:13px;">ينتهي الرمز خلال 10 دقائق. لا تشاركه مع أحد.</p>
+            </td></tr>
+            <tr><td style="background-color:#f7fafc;padding:20px;text-align:center;border-top:1px solid #e2e8f0;">
+              <p style="margin:0;color:#a0aec0;font-size:12px;">© ${new Date().getFullYear()} شركة الرعاية المتناهية. جميع الحقوق محفوظة.</p>
+            </td></tr>
+          </table>
+        </td></tr>
+      </table>
+    </body></html>`;
+
+  try {
+    const result = await emailTransporter.sendMail({
+      from: '"HR system" <alshrakynodeapp@gmail.com>',
+      to: toEmail,
+      subject,
+      html: htmlContent,
+      text: `رمز التحقق الخاص بك: ${code} - ينتهي خلال 10 دقائق`,
+    });
+    log.info('OTP email sent', { to: toEmail, messageId: result.messageId });
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    log.error('Failed to send OTP email', { to: toEmail, error: error.message });
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Send email notification to a branch
+ */
+export async function sendBranchEmail({ to, subject, message, appUrl, data = {} }) {
+  return sendNotificationEmail({ to, subject, message, notificationType: 'branch_notification', appUrl, data });
 }

@@ -1784,6 +1784,29 @@ export async function initializeDatabase() {
       console.log('Treatment plans indexes already exist or skipped');
     }
 
+    // Create branch_otp_tokens table for email OTP login
+    await createTable('branch_otp_tokens', `
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+      otp_hash VARCHAR(128) NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      attempts INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    `);
+
+    try {
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_branch_otp_branch_id ON branch_otp_tokens(branch_id)',
+        'Created index on branch_otp_tokens.branch_id'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_branch_otp_expires ON branch_otp_tokens(expires_at)',
+        'Created index on branch_otp_tokens.expires_at'
+      );
+    } catch (error) {
+      console.log('branch_otp_tokens indexes already exist or skipped');
+    }
+
     return { success: true, message: 'Database initialization completed successfully' };
 
   } catch (error) {

@@ -9,6 +9,7 @@ import { requireMainManager } from '../middleware/authorization.js';
 import { Term } from '../models/Term.js';
 import { AcademicYear } from '../models/AcademicYear.js';
 import sql from '../config/database.js';
+import { sendNotificationEmail } from '../utils/emailService.js';
 
 const router = express.Router();
 
@@ -28,9 +29,9 @@ router.get('/', async (req, res) => {
       academic_year_label: req.query.academic_year_label,
       is_active: req.query.is_active !== undefined ? req.query.is_active === 'true' : undefined
     };
-    
+
     const terms = await Term.findAll(filters);
-    
+
     res.json({
       success: true,
       data: terms
@@ -54,16 +55,16 @@ router.get('/', async (req, res) => {
 router.get('/current/:branchType', async (req, res) => {
   try {
     const { branchType } = req.params;
-    
+
     if (!['school', 'healthcare_center'].includes(branchType)) {
       return res.status(400).json({
         success: false,
         message: 'نوع الفرع غير صحيح'
       });
     }
-    
+
     const term = await Term.getCurrentTerm(branchType);
-    
+
     res.json({
       success: true,
       data: term
@@ -86,14 +87,14 @@ router.get('/current/:branchType', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const term = await Term.findById(parseInt(req.params.id));
-    
+
     if (!term) {
       return res.status(404).json({
         success: false,
         message: 'الفصل الدراسي غير موجود'
       });
     }
-    
+
     res.json({
       success: true,
       data: term
@@ -119,7 +120,7 @@ router.post('/', requireMainManager, async (req, res) => {
       branch_type, term_name, term_number, start_date, end_date,
       academic_year_start, academic_year_end, academic_year_label
     } = req.body;
-    
+
     // Validation
     if (!branch_type || !['school', 'healthcare_center'].includes(branch_type)) {
       return res.status(400).json({
@@ -127,35 +128,35 @@ router.post('/', requireMainManager, async (req, res) => {
         message: 'نوع الفرع يجب أن يكون school أو healthcare_center'
       });
     }
-    
+
     if (!term_name || !term_name.trim()) {
       return res.status(400).json({
         success: false,
         message: 'اسم الفصل الدراسي مطلوب'
       });
     }
-    
+
     if (!term_number || ![1, 2].includes(parseInt(term_number))) {
       return res.status(400).json({
         success: false,
         message: 'رقم الفصل يجب أن يكون 1 أو 2'
       });
     }
-    
+
     if (!start_date || !end_date) {
       return res.status(400).json({
         success: false,
         message: 'تاريخ البداية والنهاية مطلوبان'
       });
     }
-    
+
     if (!academic_year_start || !academic_year_end || !academic_year_label) {
       return res.status(400).json({
         success: false,
         message: 'تواريخ السنة الدراسية والتسمية مطلوبة'
       });
     }
-    
+
     const term = await Term.create({
       branch_type,
       term_name: term_name.trim(),
@@ -167,7 +168,24 @@ router.post('/', requireMainManager, async (req, res) => {
       academic_year_label: academic_year_label.trim(),
       created_by: req.user.id
     });
-    
+
+    // Email active branches of matching branch_type
+    try {
+      const branches = await sql`SELECT id, branch_name, email FROM branches WHERE branch_type = ${branch_type} AND is_active = true AND email IS NOT NULL`;
+      for (const b of branches) {
+        await sendNotificationEmail({
+          to: b.email,
+          subject: `فصل دراسي جديد: ${term_name.trim()}`,
+          message: `تم إنشاء فصل دراسي جديد "${term_name.trim()}" للسنة الدراسية ${academic_year_label.trim()}.`,
+          notificationType: 'branch_notification',
+          appUrl: `${process.env.REACT_APP_URL || 'https://hr-react-theta.vercel.app'}/terms`,
+          data: {}
+        });
+      }
+    } catch (emailError) {
+      console.error('Failed to send term creation emails:', emailError);
+    }
+
     res.status(201).json({
       success: true,
       message: 'تم إنشاء الفصل الدراسي بنجاح',
@@ -177,7 +195,7 @@ router.post('/', requireMainManager, async (req, res) => {
     console.error('Error creating term:', error);
     res.status(500).json({
       success: false,
-      message: error.message.includes('overlap') 
+      message: error.message.includes('overlap')
         ? 'الفصل الدراسي يتداخل مع فصل موجود'
         : 'فشل إنشاء الفصل الدراسي',
       error: error.message
@@ -194,7 +212,7 @@ router.put('/:id', requireMainManager, async (req, res) => {
   try {
     const termId = parseInt(req.params.id);
     const updates = {};
-    
+
     if (req.body.term_name !== undefined) updates.term_name = req.body.term_name.trim();
     if (req.body.start_date !== undefined) updates.start_date = req.body.start_date;
     if (req.body.end_date !== undefined) updates.end_date = req.body.end_date;
@@ -202,16 +220,16 @@ router.put('/:id', requireMainManager, async (req, res) => {
     if (req.body.academic_year_end !== undefined) updates.academic_year_end = req.body.academic_year_end;
     if (req.body.academic_year_label !== undefined) updates.academic_year_label = req.body.academic_year_label.trim();
     if (req.body.is_active !== undefined) updates.is_active = req.body.is_active === true;
-    
+
     const term = await Term.update(termId, updates);
-    
+
     if (!term) {
       return res.status(404).json({
         success: false,
         message: 'الفصل الدراسي غير موجود'
       });
     }
-    
+
     res.json({
       success: true,
       message: 'تم تحديث الفصل الدراسي بنجاح',
@@ -237,14 +255,14 @@ router.put('/:id', requireMainManager, async (req, res) => {
 router.delete('/:id', requireMainManager, async (req, res) => {
   try {
     const term = await Term.deactivate(parseInt(req.params.id));
-    
+
     if (!term) {
       return res.status(404).json({
         success: false,
         message: 'الفصل الدراسي غير موجود'
       });
     }
-    
+
     res.json({
       success: true,
       message: 'تم إلغاء تفعيل الفصل الدراسي بنجاح',
@@ -277,7 +295,7 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
       term2_start_date,
       term2_end_date
     } = req.body;
-    
+
     // Validation
     if (!branch_type || !['school', 'healthcare_center'].includes(branch_type)) {
       return res.status(400).json({
@@ -285,28 +303,28 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
         message: 'نوع الفرع يجب أن يكون school أو healthcare_center'
       });
     }
-    
+
     if (!year_label || !year_label.trim()) {
       return res.status(400).json({
         success: false,
         message: 'تسمية السنة الدراسية مطلوبة'
       });
     }
-    
+
     if (!term1_name || !term1_start_date || !term1_end_date) {
       return res.status(400).json({
         success: false,
         message: 'بيانات الفصل الأول مطلوبة'
       });
     }
-    
+
     if (!term2_name || !term2_start_date || !term2_end_date) {
       return res.status(400).json({
         success: false,
         message: 'بيانات الفصل الثاني مطلوبة'
       });
     }
-    
+
     // Validate dates
     if (new Date(term1_start_date) > new Date(term1_end_date)) {
       return res.status(400).json({
@@ -314,25 +332,25 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
         message: 'تاريخ بداية الفصل الأول يجب أن يكون قبل تاريخ النهاية'
       });
     }
-    
+
     if (new Date(term2_start_date) > new Date(term2_end_date)) {
       return res.status(400).json({
         success: false,
         message: 'تاريخ بداية الفصل الثاني يجب أن يكون قبل تاريخ النهاية'
       });
     }
-    
+
     // Academic year dates: start = term1 start, end = term2 end
     const academic_year_start = term1_start_date;
     const academic_year_end = term2_end_date;
-    
+
     if (new Date(academic_year_start) > new Date(academic_year_end)) {
       return res.status(400).json({
         success: false,
         message: 'تاريخ بداية السنة يجب أن يكون قبل تاريخ النهاية'
       });
     }
-    
+
     // Check for overlapping terms
     const term1Overlaps = await Term.checkOverlap(branch_type, term1_start_date, term1_end_date);
     if (term1Overlaps.length > 0) {
@@ -341,7 +359,7 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
         message: 'الفصل الأول يتداخل مع فصل موجود'
       });
     }
-    
+
     const term2Overlaps = await Term.checkOverlap(branch_type, term2_start_date, term2_end_date);
     if (term2Overlaps.length > 0) {
       return res.status(400).json({
@@ -349,7 +367,7 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
         message: 'الفصل الثاني يتداخل مع فصل موجود'
       });
     }
-    
+
     // Check if academic year label already exists
     const existingYears = await AcademicYear.findAll({ branch_type });
     if (existingYears.some(y => y.year_label === year_label.trim())) {
@@ -358,7 +376,7 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
         message: 'تسمية السنة الدراسية موجودة مسبقاً'
       });
     }
-    
+
     // Check for duplicate terms (same branch_type, academic_year_label, term_number)
     const term1Duplicates = await Term.checkDuplicate(branch_type, year_label.trim(), 1);
     if (term1Duplicates.length > 0) {
@@ -367,7 +385,7 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
         message: `الفصل الأول للسنة الدراسية "${year_label.trim()}" موجود مسبقاً لهذا النوع من الفروع`
       });
     }
-    
+
     const term2Duplicates = await Term.checkDuplicate(branch_type, year_label.trim(), 2);
     if (term2Duplicates.length > 0) {
       return res.status(400).json({
@@ -375,7 +393,7 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
         message: `الفصل الثاني للسنة الدراسية "${year_label.trim()}" موجود مسبقاً لهذا النوع من الفروع`
       });
     }
-    
+
     // Create both terms and academic year in a transaction
     const result = await sql.begin(async sql => {
       // Create first term
@@ -390,7 +408,7 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
         )
         RETURNING *
       `;
-      
+
       // Create second term
       const [term2] = await sql`
         INSERT INTO terms (
@@ -403,7 +421,7 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
         )
         RETURNING *
       `;
-      
+
       // Create academic year
       const [academicYear] = await sql`
         INSERT INTO academic_years (
@@ -415,14 +433,14 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
         )
         RETURNING *
       `;
-      
+
       return {
         term1,
         term2,
         academicYear
       };
     });
-    
+
     res.status(201).json({
       success: true,
       message: 'تم إنشاء الفصلين الدراسيين والسنة الدراسية بنجاح',

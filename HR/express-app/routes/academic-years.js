@@ -8,6 +8,8 @@ import { authenticate } from '../middleware/auth.js';
 import { requireMainManager } from '../middleware/authorization.js';
 import { AcademicYear } from '../models/AcademicYear.js';
 import { Term } from '../models/Term.js';
+import sql from '../config/database.js';
+import { sendNotificationEmail } from '../utils/emailService.js';
 
 const router = express.Router();
 
@@ -164,6 +166,23 @@ router.post('/', async (req, res) => {
       term1_id: term1_id || null,
       term2_id: term2_id || null
     });
+
+    // Email active branches of matching branch_type
+    try {
+      const branches = await sql`SELECT id, branch_name, email FROM branches WHERE branch_type = ${branch_type} AND is_active = true AND email IS NOT NULL`;
+      for (const b of branches) {
+        await sendNotificationEmail({
+          to: b.email,
+          subject: `سنة دراسية جديدة: ${year_label.trim()}`,
+          message: `تم إنشاء سنة دراسية جديدة "${year_label.trim()}".`,
+          notificationType: 'branch_notification',
+          appUrl: `${process.env.REACT_APP_URL || 'https://hr-react-theta.vercel.app'}/academic-years`,
+          data: {}
+        });
+      }
+    } catch (emailError) {
+      console.error('Failed to send academic year creation emails:', emailError);
+    }
 
     res.status(201).json({
       success: true,

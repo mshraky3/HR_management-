@@ -4,15 +4,37 @@
  */
 
 import express from 'express';
+import crypto from 'crypto';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
 import { User } from '../models/User.js';
 import { Branch } from '../models/Branch.js';
+import { Request } from '../models/Request.js';
 import { generateToken } from '../utils/jwt.js';
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
-import { getFirebaseAdmin, normalizePhoneE164 } from '../config/firebaseAdmin.js';
+import { sendOTPEmail, sendNotificationEmail } from '../utils/emailService.js';
 
 const router = express.Router();
+
+// OTP config
+const OTP_EXPIRY_MINUTES = 10;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_RESEND_COOLDOWN_SECONDS = 60;
+
+function generateOTP() {
+  return crypto.randomInt(100000, 999999).toString();
+}
+
+function hashOTP(code) {
+  return crypto.createHash('sha256').update(code).digest('hex');
+}
+
+function maskEmail(email) {
+  if (!email) return '';
+  const [local, domain] = email.split('@');
+  const visible = local.length <= 3 ? local[0] : local.slice(0, 3);
+  return `${visible}***@${domain}`;
+}
 
 /**
  * Login endpoint
@@ -77,21 +99,64 @@ router.post('/login', async (req, res) => {
           });
         }
 
-        // Branch login requires OTP via SMS — return phone for Firebase verification
-        const phoneNumber = normalizePhoneE164(branch.phone_number);
-        if (!phoneNumber) {
+        // Branch login requires OTP via email
+        const branchEmail = branch.email;
+        if (!branchEmail) {
           return res.status(400).json({
             success: false,
-            message: 'لا يوجد رقم هاتف مسجل لهذا الفرع. يرجى التواصل مع المسؤول.'
+            noEmail: true,
+            username: branch.username,
+            branchName: branch.branch_name,
+            message: 'لا يوجد بريد إلكتروني مسجل لهذا الفرع. يرجى التواصل مع المسؤول.'
+          });
+        }
+
+        // Check resend cooldown
+        const [recentOTP] = await sql`
+          SELECT created_at FROM branch_otp_tokens
+          WHERE branch_id = ${branch.id}
+          ORDER BY created_at DESC LIMIT 1
+        `;
+        if (recentOTP) {
+          const elapsed = (Date.now() - new Date(recentOTP.created_at).getTime()) / 1000;
+          if (elapsed < OTP_RESEND_COOLDOWN_SECONDS) {
+            return res.json({
+              success: true,
+              requiresOTP: true,
+              maskedEmail: maskEmail(branchEmail),
+              username: branch.username,
+              message: 'رمز التحقق قد أُرسل بالفعل. يرجى الانتظار قبل طلب رمز جديد.'
+            });
+          }
+        }
+
+        // Invalidate old tokens and generate new OTP
+        await sql`DELETE FROM branch_otp_tokens WHERE branch_id = ${branch.id}`;
+        const code = generateOTP();
+        const otpHash = hashOTP(code);
+        const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+        await sql`
+          INSERT INTO branch_otp_tokens (branch_id, otp_hash, expires_at)
+          VALUES (${branch.id}, ${otpHash}, ${expiresAt})
+        `;
+
+        // Send OTP email
+        const emailResult = await sendOTPEmail(branchEmail, code, branch.branch_name);
+        if (!emailResult.success) {
+          log.error('Failed to send OTP email', { branchId: branch.id, error: emailResult.error });
+          return res.status(500).json({
+            success: false,
+            message: 'فشل إرسال رمز التحقق. يرجى المحاولة مرة أخرى.'
           });
         }
 
         return res.json({
           success: true,
           requiresOTP: true,
-          phoneNumber,
+          maskedEmail: maskEmail(branchEmail),
           username: branch.username,
-          message: 'تم التحقق من بيانات الدخول. سيتم إرسال رمز التحقق إلى هاتف الفرع.'
+          message: 'تم التحقق من بيانات الدخول. تم إرسال رمز التحقق إلى البريد الإلكتروني.'
         });
       }
     }
@@ -184,35 +249,22 @@ router.post('/login', async (req, res) => {
 });
 
 /**
- * Verify Firebase OTP and complete branch login
+ * Verify email OTP and complete branch login
  * POST /api/auth/verify-otp
- * Body: { username, firebaseIdToken }
+ * Body: { username, otp }
  */
 router.post('/verify-otp', async (req, res) => {
   try {
-    const { username, firebaseIdToken } = req.body;
+    const { username, otp } = req.body;
 
-    if (!username || !firebaseIdToken) {
+    if (!username || !otp) {
       return res.status(400).json({
         success: false,
-        message: 'اسم المستخدم ورمز Firebase مطلوبان'
+        message: 'اسم المستخدم ورمز التحقق مطلوبان'
       });
     }
 
-    // Verify the Firebase ID token
-    let decodedToken;
-    try {
-      const admin = getFirebaseAdmin();
-      decodedToken = await admin.auth().verifyIdToken(firebaseIdToken);
-    } catch (firebaseError) {
-      log.warn('Firebase token verification failed', { error: firebaseError.message });
-      return res.status(401).json({
-        success: false,
-        message: 'رمز التحقق غير صالح أو منتهي الصلاحية'
-      });
-    }
-
-    // Find branch by username
+    // Find branch
     const branch = await Branch.findByUsername(username);
     if (!branch || !branch.is_active) {
       return res.status(401).json({
@@ -221,17 +273,56 @@ router.post('/verify-otp', async (req, res) => {
       });
     }
 
-    // Verify phone number matches
-    const branchPhone = normalizePhoneE164(branch.phone_number);
-    const firebasePhone = decodedToken.phone_number;
+    // Find active OTP token
+    const [otpRecord] = await sql`
+      SELECT id, otp_hash, expires_at, attempts FROM branch_otp_tokens
+      WHERE branch_id = ${branch.id}
+      ORDER BY created_at DESC LIMIT 1
+    `;
 
-    if (!branchPhone || branchPhone !== firebasePhone) {
-      log.warn('OTP phone mismatch', { branchPhone, firebasePhone, username });
-      return res.status(401).json({
+    if (!otpRecord) {
+      return res.status(400).json({
         success: false,
-        message: 'رقم الهاتف لا يتطابق مع حساب الفرع'
+        message: 'لا يوجد رمز تحقق نشط. يرجى طلب رمز جديد.'
       });
     }
+
+    // Check expiry
+    if (new Date() > new Date(otpRecord.expires_at)) {
+      await sql`DELETE FROM branch_otp_tokens WHERE branch_id = ${branch.id}`;
+      return res.status(400).json({
+        success: false,
+        message: 'انتهت صلاحية رمز التحقق. يرجى طلب رمز جديد.',
+        expired: true
+      });
+    }
+
+    // Check max attempts
+    if (otpRecord.attempts >= OTP_MAX_ATTEMPTS) {
+      await sql`DELETE FROM branch_otp_tokens WHERE branch_id = ${branch.id}`;
+      return res.status(429).json({
+        success: false,
+        message: 'تم تجاوز عدد المحاولات المسموحة. يرجى طلب رمز جديد.',
+        expired: true
+      });
+    }
+
+    // Verify OTP hash
+    const inputHash = hashOTP(otp);
+    if (inputHash !== otpRecord.otp_hash) {
+      await sql`
+        UPDATE branch_otp_tokens SET attempts = attempts + 1
+        WHERE id = ${otpRecord.id}
+      `;
+      const remaining = OTP_MAX_ATTEMPTS - otpRecord.attempts - 1;
+      return res.status(401).json({
+        success: false,
+        message: `رمز التحقق غير صحيح. المحاولات المتبقية: ${remaining}`
+      });
+    }
+
+    // OTP verified — delete token and issue JWT
+    await sql`DELETE FROM branch_otp_tokens WHERE branch_id = ${branch.id}`;
 
     const user = {
       id: branch.id,
@@ -296,6 +387,72 @@ router.post('/verify-otp', async (req, res) => {
         ? 'خطأ داخلي في الخادم.'
         : error.message
     });
+  }
+});
+
+/**
+ * Resend OTP code
+ * POST /api/auth/resend-otp
+ * Body: { username }
+ */
+router.post('/resend-otp', async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username) {
+      return res.status(400).json({ success: false, message: 'اسم المستخدم مطلوب' });
+    }
+
+    const branch = await Branch.findByUsername(username);
+    if (!branch || !branch.is_active) {
+      return res.status(401).json({ success: false, message: 'حساب الفرع غير موجود أو معطل' });
+    }
+
+    const branchEmail = branch.email;
+    if (!branchEmail) {
+      return res.status(400).json({ success: false, message: 'لا يوجد بريد إلكتروني مسجل لهذا الفرع.' });
+    }
+
+    // Check cooldown
+    const [recentOTP] = await sql`
+      SELECT created_at FROM branch_otp_tokens
+      WHERE branch_id = ${branch.id}
+      ORDER BY created_at DESC LIMIT 1
+    `;
+    if (recentOTP) {
+      const elapsed = (Date.now() - new Date(recentOTP.created_at).getTime()) / 1000;
+      if (elapsed < OTP_RESEND_COOLDOWN_SECONDS) {
+        const wait = Math.ceil(OTP_RESEND_COOLDOWN_SECONDS - elapsed);
+        return res.status(429).json({
+          success: false,
+          message: `يرجى الانتظار ${wait} ثانية قبل إعادة إرسال الرمز.`
+        });
+      }
+    }
+
+    // Invalidate old and create new OTP
+    await sql`DELETE FROM branch_otp_tokens WHERE branch_id = ${branch.id}`;
+    const code = generateOTP();
+    const otpHash = hashOTP(code);
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    await sql`
+      INSERT INTO branch_otp_tokens (branch_id, otp_hash, expires_at)
+      VALUES (${branch.id}, ${otpHash}, ${expiresAt})
+    `;
+
+    const emailResult = await sendOTPEmail(branchEmail, code, branch.branch_name);
+    if (!emailResult.success) {
+      return res.status(500).json({ success: false, message: 'فشل إرسال رمز التحقق.' });
+    }
+
+    res.json({
+      success: true,
+      maskedEmail: maskEmail(branchEmail),
+      message: 'تم إعادة إرسال رمز التحقق بنجاح.'
+    });
+  } catch (error) {
+    log.error('Resend OTP error', { error: error.message });
+    res.status(500).json({ success: false, message: 'حدث خطأ أثناء إعادة إرسال الرمز.' });
   }
 });
 
@@ -378,6 +535,72 @@ router.post('/logout', optionalAuth, (req, res) => {
     success: true,
     message: 'تم تسجيل الخروج بنجاح'
   });
+});
+
+/**
+ * Request email update (public – no auth required, used from login page)
+ * POST /api/auth/request-email-update
+ * Body: { username, newEmail }
+ */
+router.post('/request-email-update', async (req, res) => {
+  try {
+    const { username, newEmail } = req.body;
+    if (!username || !newEmail) {
+      return res.status(400).json({ success: false, message: 'اسم المستخدم والبريد الإلكتروني مطلوبان' });
+    }
+
+    // Basic email format check
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newEmail)) {
+      return res.status(400).json({ success: false, message: 'صيغة البريد الإلكتروني غير صحيحة' });
+    }
+
+    const branch = await Branch.findByUsername(username);
+    if (!branch) {
+      return res.status(404).json({ success: false, message: 'الفرع غير موجود' });
+    }
+
+    // Find main manager (role = 'main_manager')
+    const [mainManager] = await sql`
+      SELECT id, email, full_name FROM users WHERE role = 'main_manager' AND is_active = true LIMIT 1
+    `;
+    if (!mainManager) {
+      return res.status(500).json({ success: false, message: 'لم يتم العثور على المسؤول الرئيسي' });
+    }
+
+    // Create a request record
+    const requestData = {
+      branch_id: branch.id,
+      main_manager_id: mainManager.id,
+      employee_id: null,
+      request_name: 'طلب تحديث البريد الإلكتروني',
+      request_text: `يطلب فرع "${branch.branch_name}" تحديث البريد الإلكتروني إلى: ${newEmail}`,
+      attachment_url: null,
+      attachment_name: null,
+      attachment_type: null,
+      r2_attachment_url: null
+    };
+
+    await Request.create(requestData);
+
+    // Email the main manager
+    try {
+      await sendNotificationEmail(
+        mainManager.email,
+        'طلب تحديث بريد إلكتروني لفرع',
+        `الفرع: ${branch.branch_name}\nالبريد المطلوب: ${newEmail}`,
+        `${process.env.FRONTEND_URL || 'https://hr-react-theta.vercel.app'}`,
+        { branchName: branch.branch_name, newEmail }
+      );
+    } catch (emailErr) {
+      log.warn('Failed to email main manager about email update request', { error: emailErr.message });
+    }
+
+    res.json({ success: true, message: 'تم إرسال طلب تحديث البريد الإلكتروني للمسؤول بنجاح.' });
+  } catch (error) {
+    log.error('Request email update error', { error: error.message });
+    res.status(500).json({ success: false, message: 'حدث خطأ أثناء إرسال الطلب.' });
+  }
 });
 
 export default router;

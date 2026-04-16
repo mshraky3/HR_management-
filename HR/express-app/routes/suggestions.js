@@ -326,6 +326,26 @@ router.put('/:id', async (req, res) => {
 
         const suggestion = await Suggestion.update(id, updateData);
 
+        // Email branch when manager responds
+        try {
+            const branch = await Branch.findById(existingSuggestion.branch_id);
+            if (branch && branch.email && (updateData.admin_notes || updateData.status)) {
+                const statusMap = { 'pending': 'قيد المراجعة', 'reviewed': 'تمت المراجعة', 'implemented': 'تم التنفيذ', 'rejected': 'مرفوض' };
+                await sendNotificationEmail({
+                    to: branch.email,
+                    subject: `تحديث على اقتراحكم`,
+                    message: `تم تحديث حالة اقتراحكم إلى: ${statusMap[suggestion.status] || suggestion.status}`,
+                    notificationType: 'branch_notification',
+                    appUrl: `${process.env.REACT_APP_URL || 'https://hr-react-theta.vercel.app'}/suggestions`,
+                    data: {
+                        'ملاحظات الإدارة': suggestion.admin_notes || 'بدون ملاحظات',
+                    }
+                });
+            }
+        } catch (emailError) {
+            console.error('Failed to send suggestion update email:', emailError);
+        }
+
         res.json({
             success: true,
             message: 'تم تحديث الاقتراح بنجاح',

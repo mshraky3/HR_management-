@@ -8,6 +8,8 @@ import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { requireManager, requireMainManager } from '../middleware/authorization.js';
 import { PayrollAbsence } from '../models/PayrollAbsence.js';
+import { Branch } from '../models/Branch.js';
+import { sendNotificationEmail } from '../utils/emailService.js';
 
 const router = express.Router();
 router.use(authenticate);
@@ -141,6 +143,29 @@ router.post('/admin/reopen', requireMainManager, async (req, res) => {
       return res.status(400).json({ success: false, message: 'معرف الشهر مطلوب' });
     }
     await PayrollAbsence.reopenBranches(cycleId, branchIds || [], req.user.id, note, manualExpiresAt);
+
+    // Email reopened branches
+    try {
+      const ids = branchIds || [];
+      if (ids.length > 0) {
+        for (const bid of ids) {
+          const branch = await Branch.findById(bid);
+          if (branch && branch.email) {
+            await sendNotificationEmail({
+              to: branch.email,
+              subject: 'تم إعادة فتح إدخال الرواتب',
+              message: 'تم إعادة فتح فترة إدخال الغياب والرواتب لفرعكم. يرجى إكمال الإدخال قبل انتهاء المهلة.',
+              notificationType: 'branch_notification',
+              appUrl: `${process.env.REACT_APP_URL || 'https://hr-react-theta.vercel.app'}/payroll`,
+              data: {}
+            });
+          }
+        }
+      }
+    } catch (emailError) {
+      console.error('Failed to send payroll reopen emails:', emailError);
+    }
+
     return res.json({
       success: true,
       message: 'تم فتح الفرع/الفروع لإعادة الإدخال'

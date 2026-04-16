@@ -413,6 +413,27 @@ router.put('/:id/respond', requireMainManager, uploadSingle, async (req, res) =>
       // Don't fail the response if email fails
     }
 
+    // Email the branch itself
+    try {
+      const branch = await Branch.findById(request.branch_id);
+      if (branch && branch.email) {
+        const statusLabels2 = { 'approved': 'موافق عليه', 'rejected': 'مرفوض', 'in_progress': 'قيد المعالجة', 'completed': 'مكتمل' };
+        await sendNotificationEmail({
+          to: branch.email,
+          subject: `رد على طلب: ${request.request_name}`,
+          message: `تم الرد على طلبكم بحالة: ${statusLabels2[status] || status}`,
+          notificationType: 'branch_notification',
+          appUrl: `${process.env.REACT_APP_URL || 'https://hr-react-theta.vercel.app'}/manage-requests`,
+          data: {
+            'عنوان الطلب': request.request_name,
+            'الحالة الجديدة': statusLabels2[status] || status,
+          }
+        });
+      }
+    } catch (branchEmailError) {
+      log.error('Error sending branch request email', { error: branchEmailError.message });
+    }
+
     res.json({
       success: true,
       message: 'تم الرد على الطلب بنجاح',

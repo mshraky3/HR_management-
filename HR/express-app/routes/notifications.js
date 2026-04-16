@@ -242,6 +242,27 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
       // Don't fail the notification creation if email fails
     }
 
+    // Send email to each assigned branch that has an email
+    try {
+      const appUrl = process.env.APP_URL || 'http://localhost:5173';
+      for (const branch of validBranches) {
+        if (branch.email) {
+          await sendNotificationEmail({
+            to: branch.email,
+            subject: `إشعار جديد من الإدارة`,
+            message: message.trim(),
+            notificationType: 'branch_notification',
+            appUrl: `${appUrl}/notifications`,
+            data: {
+              'مستوى الأهمية': ['منخفضة', 'عادية', 'متوسطة', 'عالية'][parseInt(importance_level) - 1] || 'عادية',
+            }
+          });
+        }
+      }
+    } catch (branchEmailError) {
+      console.error('Failed to send branch email notifications:', branchEmailError);
+    }
+
     res.status(201).json({
       success: true,
       message: 'تم إرسال الإشعار بنجاح',
