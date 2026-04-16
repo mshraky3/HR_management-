@@ -264,7 +264,7 @@ api.interceptors.request.use(
 
 
     const token = localStorage.getItem('token');
-    const publicPaths = ['/api/auth/login', '/api/auth/me', '/api/auth/verify-otp'];
+    const publicPaths = ['/api/auth/login', '/api/auth/me', '/api/auth/verify-otp', '/api/auth/resend-otp', '/api/auth/request-email-update'];
 
     if (!token && !publicPaths.some(p => url.includes(p))) {
       return Promise.reject(new axios.Cancel('No token available'));
@@ -431,8 +431,14 @@ export const authAPI = {
   login: (username, password) =>
     api.post('/api/auth/login', { username, password }),
 
-  verifyOTP: (username, firebaseIdToken) =>
-    api.post('/api/auth/verify-otp', { username, firebaseIdToken }),
+  verifyOTP: (username, otp) =>
+    api.post('/api/auth/verify-otp', { username, otp }),
+
+  resendOTP: (username) =>
+    api.post('/api/auth/resend-otp', { username }),
+
+  requestEmailUpdate: (username, newEmail) =>
+    api.post('/api/auth/request-email-update', { username, newEmail }),
 
   logout: () =>
     api.post('/api/auth/logout'),

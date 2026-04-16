@@ -318,7 +318,7 @@ export const AuthProvider = ({ children }) => {
           return {
             success: true,
             requiresOTP: true,
-            phoneNumber: response.data.phoneNumber,
+            maskedEmail: response.data.maskedEmail,
             username: response.data.username,
           };
         }
@@ -335,13 +335,16 @@ export const AuthProvider = ({ children }) => {
       return {
         success: false,
         message: error.response?.data?.message || "Login failed",
+        noEmail: error.response?.data?.noEmail,
+        username: error.response?.data?.username,
+        branchName: error.response?.data?.branchName,
       };
     }
   };
 
-  const completeOTPLogin = async (username, firebaseIdToken) => {
+  const completeOTPLogin = async (username, otp) => {
     try {
-      const response = await authAPI.verifyOTP(username, firebaseIdToken);
+      const response = await authAPI.verifyOTP(username, otp);
       if (response.data.success) {
         const { token: newToken, user: userData } = response.data;
         localStorage.setItem("token", newToken);
@@ -350,11 +353,12 @@ export const AuthProvider = ({ children }) => {
         setUser(userData);
         return { success: true };
       }
-      return { success: false, message: response.data.message };
+      return { success: false, message: response.data.message, expired: response.data.expired };
     } catch (error) {
       return {
         success: false,
         message: error.response?.data?.message || "فشل التحقق من الرمز",
+        expired: error.response?.data?.expired,
       };
     }
   };

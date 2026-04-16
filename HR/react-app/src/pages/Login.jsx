@@ -1,43 +1,12 @@
 /**
- * Login Page — supports 2-step OTP for branch managers
+ * Login Page — supports 2-step email OTP for branch managers
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
-import { firebaseAuth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { authAPI } from '../utils/api';
 import './Login.css';
-
-const mapFirebasePhoneError = (error) => {
-  const code = error?.code || '';
-  const message = error?.message || '';
-
-  if (code === 'auth/invalid-phone-number') {
-    return 'رقم الهاتف غير صالح. تأكد أن رقم الفرع بصيغة صحيحة.';
-  }
-  if (code === 'auth/operation-not-allowed') {
-    return 'تسجيل الدخول برقم الهاتف غير مفعّل في Firebase Authentication.';
-  }
-  if (code === 'auth/quota-exceeded') {
-    return 'تم تجاوز حصة رسائل SMS. حاول لاحقاً أو راجع خطة Firebase.';
-  }
-  if (code === 'auth/too-many-requests') {
-    return 'عدد المحاولات كبير جداً. انتظر قليلاً ثم أعد المحاولة.';
-  }
-  if (code === 'auth/captcha-check-failed') {
-    return 'فشل تحقق reCAPTCHA. حدّث الصفحة وحاول مرة أخرى.';
-  }
-  if (code === 'auth/invalid-app-credential') {
-    return 'بيانات اعتماد التطبيق غير صالحة. راجع إعدادات Firebase Authorized Domains.';
-  }
-
-  if (message.includes('BILLING_NOT_ENABLED')) {
-    return 'خدمة الفوترة غير مفعلة لمشروع Firebase. يلزم تفعيل Blaze لإرسال SMS.';
-  }
-
-  return 'فشل إرسال رمز التحقق. راجع إعدادات Firebase أو حاول مجدداً.';
-};
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -47,63 +16,25 @@ const Login = () => {
 
   const [otpStep, setOtpStep] = useState(false);
   const [otpUsername, setOtpUsername] = useState('');
-  const [otpPhone, setOtpPhone] = useState('');
-  const [phoneDisplay, setPhoneDisplay] = useState('');
+  const [maskedEmail, setMaskedEmail] = useState('');
   const [otp, setOtp] = useState('');
-  const [confirmationResult, setConfirmationResult] = useState(null);
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  const recaptchaVerifierRef = useRef(null);
+  // Email update request state
+  const [emailUpdateStep, setEmailUpdateStep] = useState(false);
+  const [emailUpdateUsername, setEmailUpdateUsername] = useState('');
+  const [emailUpdateBranchName, setEmailUpdateBranchName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [emailUpdateSuccess, setEmailUpdateSuccess] = useState(false);
+
   const { login, completeOTPLogin } = useAuth();
   const navigate = useNavigate();
-
-  const initRecaptcha = () => {
-    if (!recaptchaVerifierRef.current) {
-      recaptchaVerifierRef.current = new RecaptchaVerifier(
-        firebaseAuth,
-        'recaptcha-container',
-        {
-          size: 'invisible',
-          'expired-callback': () => {
-            setError('انتهت صلاحية التحقق. حاول مرة أخرى.');
-          },
-          'error-callback': () => {
-            setError('حدث خطأ في reCAPTCHA. حدّث الصفحة وحاول مرة أخرى.');
-          },
-        }
-      );
-    }
-  };
-
-  useEffect(() => {
-    initRecaptcha();
-    return () => {
-      try { recaptchaVerifierRef.current?.clear(); } catch (_) { }
-      recaptchaVerifierRef.current = null;
-    };
-  }, []);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [resendCooldown]);
-
-  const maskPhone = (phone) => {
-    if (!phone || phone.length < 6) return phone;
-    return phone.slice(0, 4) + '*'.repeat(phone.length - 8) + phone.slice(-4);
-  };
-
-  const sendOTP = async (phoneNumber) => {
-    initRecaptcha();
-    const result = await signInWithPhoneNumber(
-      firebaseAuth,
-      phoneNumber,
-      recaptchaVerifierRef.current
-    );
-    setConfirmationResult(result);
-    setResendCooldown(60);
-  };
 
   const handleCredentialsSubmit = async (e) => {
     e.preventDefault();
@@ -113,21 +44,16 @@ const Login = () => {
     const result = await login(username, password);
 
     if (result.success && result.requiresOTP) {
-      try {
-        await sendOTP(result.phoneNumber);
-        setOtpUsername(result.username);
-        setOtpPhone(result.phoneNumber);
-        setPhoneDisplay(maskPhone(result.phoneNumber));
-        setOtpStep(true);
-      } catch (firebaseErr) {
-        console.error('Firebase send OTP error:', {
-          code: firebaseErr?.code,
-          message: firebaseErr?.message,
-        });
-        setError(mapFirebasePhoneError(firebaseErr));
-      }
+      setOtpUsername(result.username);
+      setMaskedEmail(result.maskedEmail || '');
+      setOtpStep(true);
+      setResendCooldown(60);
     } else if (result.success) {
       navigate('/dashboard');
+    } else if (result.noEmail) {
+      setEmailUpdateStep(true);
+      setEmailUpdateUsername(result.username);
+      setEmailUpdateBranchName(result.branchName || '');
     } else {
       setError(result.message || 'فشل تسجيل الدخول');
     }
@@ -145,24 +71,17 @@ const Login = () => {
     setError('');
     setLoading(true);
 
-    try {
-      if (!confirmationResult) {
-        setError('لم يتم إرسال رمز تحقق بعد.');
-        setLoading(false);
-        return;
-      }
+    const result = await completeOTPLogin(otpUsername, otp);
 
-      const firebaseResult = await confirmationResult.confirm(otp);
-      const firebaseIdToken = await firebaseResult.user.getIdToken();
-      const result = await completeOTPLogin(otpUsername, firebaseIdToken);
-
-      if (result.success) {
-        navigate('/dashboard');
-      } else {
-        setError(result.message || 'فشل التحقق');
+    if (result.success) {
+      navigate('/dashboard');
+    } else {
+      setError(result.message || 'فشل التحقق');
+      // If expired, go back to credentials
+      if (result.expired) {
+        setOtpStep(false);
+        setOtp('');
       }
-    } catch {
-      setError('رمز التحقق غير صحيح أو منتهي الصلاحية');
     }
 
     setLoading(false);
@@ -174,30 +93,53 @@ const Login = () => {
     setError('');
     setLoading(true);
     try {
-      recaptchaVerifierRef.current?.clear();
-      recaptchaVerifierRef.current = null;
-      await sendOTP(otpPhone);
-    } catch (firebaseErr) {
-      console.error('Firebase resend OTP error:', {
-        code: firebaseErr?.code,
-        message: firebaseErr?.message,
-      });
-      setError(mapFirebasePhoneError(firebaseErr));
+      const response = await authAPI.resendOTP(otpUsername);
+      if (response.data.success) {
+        setResendCooldown(60);
+        setMaskedEmail(response.data.maskedEmail || maskedEmail);
+      } else {
+        setError(response.data.message || 'فشل إعادة إرسال الرمز');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'فشل إعادة إرسال الرمز');
     }
     setLoading(false);
   };
 
+  const handleEmailUpdateRequest = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await authAPI.requestEmailUpdate(emailUpdateUsername, newEmail);
+      if (response.data.success) {
+        setEmailUpdateSuccess(true);
+      } else {
+        setError(response.data.message || 'فشل إرسال الطلب');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'فشل إرسال الطلب');
+    }
+    setLoading(false);
+  };
+
+  const currentStep = emailUpdateStep ? 'emailUpdate' : otpStep ? 'otp' : 'login';
+  const stepTitle = {
+    login: 'تسجيل الدخول',
+    otp: 'التحقق بخطوتين',
+    emailUpdate: 'طلب تحديث البريد الإلكتروني'
+  };
+
   return (
     <div className="login-container">
-      <div id="recaptcha-container" />
-
       <div className="login-card">
         <h1>نظام إدارة الموارد البشرية</h1>
-        <h2>{otpStep ? 'التحقق بخطوتين' : 'تسجيل الدخول'}</h2>
+        <h2>{stepTitle[currentStep]}</h2>
 
         {error && <div className="error-message">{error}</div>}
 
-        {!otpStep ? (
+        {currentStep === 'login' && (
           <form onSubmit={handleCredentialsSubmit}>
             <div className="form-group">
               <label htmlFor="username">اسم المستخدم</label>
@@ -229,11 +171,13 @@ const Login = () => {
               {loading ? 'جاري التحقق...' : 'تسجيل الدخول'}
             </button>
           </form>
-        ) : (
+        )}
+
+        {currentStep === 'otp' && (
           <form onSubmit={handleOTPSubmit}>
             <p style={{ textAlign: 'center', color: 'var(--text-light)', marginBottom: '1.5rem' }}>
               تم إرسال رمز التحقق إلى
-              <strong> {phoneDisplay}</strong>
+              <strong> {maskedEmail}</strong>
             </p>
 
             <div className="form-group">
@@ -281,6 +225,66 @@ const Login = () => {
               ← رجوع
             </button>
           </form>
+        )}
+
+        {currentStep === 'emailUpdate' && (
+          emailUpdateSuccess ? (
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ color: 'var(--success, #28a745)', marginBottom: '1rem', fontSize: '1.1rem' }}>
+                ✓ تم إرسال طلبك للمسؤول بنجاح. سيتم تحديث بريدك الإلكتروني قريبًا.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmailUpdateStep(false);
+                  setEmailUpdateSuccess(false);
+                  setNewEmail('');
+                  setError('');
+                }}
+                className="login-button"
+              >
+                العودة لتسجيل الدخول
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleEmailUpdateRequest}>
+              <p style={{ textAlign: 'center', color: 'var(--text-light)', marginBottom: '1.5rem' }}>
+                لا يوجد بريد إلكتروني مسجل لفرع <strong>{emailUpdateBranchName}</strong>.
+                <br />أدخل بريدك الإلكتروني لإرسال طلب تحديث للمسؤول.
+              </p>
+
+              <div className="form-group">
+                <label htmlFor="newEmail">البريد الإلكتروني الجديد</label>
+                <input
+                  id="newEmail"
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  required
+                  disabled={loading}
+                  placeholder="example@email.com"
+                  dir="ltr"
+                />
+              </div>
+
+              <button type="submit" disabled={loading || !newEmail} className="login-button">
+                {loading ? 'جاري الإرسال...' : 'إرسال الطلب'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEmailUpdateStep(false);
+                  setNewEmail('');
+                  setError('');
+                }}
+                disabled={loading}
+                style={{ marginTop: 4, background: 'none', border: 'none', color: 'var(--text-light)', cursor: 'pointer', width: '100%', padding: '0.5rem' }}
+              >
+                ← رجوع
+              </button>
+            </form>
+          )
         )}
       </div>
     </div>
