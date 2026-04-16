@@ -36,6 +36,21 @@ function maskEmail(email) {
   return `${visible}***@${domain}`;
 }
 
+async function ensureBranchOtpTableExists() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS branch_otp_tokens (
+      id SERIAL PRIMARY KEY,
+      branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+      otp_hash VARCHAR(128) NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      attempts INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_branch_otp_branch_id ON branch_otp_tokens(branch_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_branch_otp_expires ON branch_otp_tokens(expires_at)`;
+}
+
 /**
  * Login endpoint
  * POST /api/auth/login
@@ -110,6 +125,9 @@ router.post('/login', async (req, res) => {
             message: 'لا يوجد بريد إلكتروني مسجل لهذا الفرع. يرجى التواصل مع المسؤول.'
           });
         }
+
+        // Guard against schema drift in production (prevents 500 if table is missing)
+        await ensureBranchOtpTableExists();
 
         // Check resend cooldown
         const [recentOTP] = await sql`
@@ -273,6 +291,9 @@ router.post('/verify-otp', async (req, res) => {
       });
     }
 
+    // Guard against schema drift in production (prevents 500 if table is missing)
+    await ensureBranchOtpTableExists();
+
     // Find active OTP token
     const [otpRecord] = await sql`
       SELECT id, otp_hash, expires_at, attempts FROM branch_otp_tokens
@@ -411,6 +432,9 @@ router.post('/resend-otp', async (req, res) => {
     if (!branchEmail) {
       return res.status(400).json({ success: false, message: 'لا يوجد بريد إلكتروني مسجل لهذا الفرع.' });
     }
+
+    // Guard against schema drift in production (prevents 500 if table is missing)
+    await ensureBranchOtpTableExists();
 
     // Check cooldown
     const [recentOTP] = await sql`
@@ -585,13 +609,14 @@ router.post('/request-email-update', async (req, res) => {
 
     // Email the main manager
     try {
-      await sendNotificationEmail(
-        mainManager.email,
-        'طلب تحديث بريد إلكتروني لفرع',
-        `الفرع: ${branch.branch_name}\nالبريد المطلوب: ${newEmail}`,
-        `${process.env.FRONTEND_URL || 'https://hr-react-theta.vercel.app'}`,
-        { branchName: branch.branch_name, newEmail }
-      );
+      await sendNotificationEmail({
+        to: mainManager.email,
+        subject: 'طلب تحديث بريد إلكتروني لفرع',
+        message: `الفرع: ${branch.branch_name}\nالبريد المطلوب: ${newEmail}`,
+        notificationType: 'branch_email_update_request',
+        appUrl: `${process.env.FRONTEND_URL || 'https://hr-react-theta.vercel.app'}`,
+        data: { branchName: branch.branch_name, newEmail }
+      });
     } catch (emailErr) {
       log.warn('Failed to email main manager about email update request', { error: emailErr.message });
     }
