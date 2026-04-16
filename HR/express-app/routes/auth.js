@@ -10,6 +10,7 @@ import { Branch } from '../models/Branch.js';
 import { generateToken } from '../utils/jwt.js';
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
+import { getFirebaseAdmin, normalizePhoneE164 } from '../config/firebaseAdmin.js';
 
 const router = express.Router();
 
@@ -76,18 +77,22 @@ router.post('/login', async (req, res) => {
           });
         }
 
-        // Create a branch manager session
-        isBranchLogin = true;
-        user = {
-          id: branch.id,
+        // Branch login requires OTP via SMS — return phone for Firebase verification
+        const phoneNumber = normalizePhoneE164(branch.phone_number);
+        if (!phoneNumber) {
+          return res.status(400).json({
+            success: false,
+            message: 'لا يوجد رقم هاتف مسجل لهذا الفرع. يرجى التواصل مع المسؤول.'
+          });
+        }
+
+        return res.json({
+          success: true,
+          requiresOTP: true,
+          phoneNumber,
           username: branch.username,
-          role: 'branch_manager',
-          branch_id: branch.id,
-          full_name: branch.branch_name,
-          email: null,
-          is_active: branch.is_active,
-          branch_type: branch.branch_type
-        };
+          message: 'تم التحقق من بيانات الدخول. سيتم إرسال رمز التحقق إلى هاتف الفرع.'
+        });
       }
     }
 
@@ -173,6 +178,122 @@ router.post('/login', async (req, res) => {
       message: 'فشل تسجيل الدخول',
       error: process.env.NODE_ENV === 'production'
         ? 'خطأ داخلي في الخادم. يرجى التحقق من سجلات الخادم.'
+        : error.message
+    });
+  }
+});
+
+/**
+ * Verify Firebase OTP and complete branch login
+ * POST /api/auth/verify-otp
+ * Body: { username, firebaseIdToken }
+ */
+router.post('/verify-otp', async (req, res) => {
+  try {
+    const { username, firebaseIdToken } = req.body;
+
+    if (!username || !firebaseIdToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'اسم المستخدم ورمز Firebase مطلوبان'
+      });
+    }
+
+    // Verify the Firebase ID token
+    let decodedToken;
+    try {
+      const admin = getFirebaseAdmin();
+      decodedToken = await admin.auth().verifyIdToken(firebaseIdToken);
+    } catch (firebaseError) {
+      log.warn('Firebase token verification failed', { error: firebaseError.message });
+      return res.status(401).json({
+        success: false,
+        message: 'رمز التحقق غير صالح أو منتهي الصلاحية'
+      });
+    }
+
+    // Find branch by username
+    const branch = await Branch.findByUsername(username);
+    if (!branch || !branch.is_active) {
+      return res.status(401).json({
+        success: false,
+        message: 'حساب الفرع غير موجود أو معطل'
+      });
+    }
+
+    // Verify phone number matches
+    const branchPhone = normalizePhoneE164(branch.phone_number);
+    const firebasePhone = decodedToken.phone_number;
+
+    if (!branchPhone || branchPhone !== firebasePhone) {
+      log.warn('OTP phone mismatch', { branchPhone, firebasePhone, username });
+      return res.status(401).json({
+        success: false,
+        message: 'رقم الهاتف لا يتطابق مع حساب الفرع'
+      });
+    }
+
+    const user = {
+      id: branch.id,
+      username: branch.username,
+      role: 'branch_manager',
+      branch_id: branch.id,
+      full_name: branch.branch_name,
+      email: null,
+      is_active: branch.is_active,
+      branch_type: branch.branch_type
+    };
+
+    const token = generateToken({
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      branch_id: user.branch_id
+    });
+
+    // Track login
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const ipAddress = req.ip || req.connection.remoteAddress || null;
+      const userAgent = req.get('user-agent') || null;
+      const [existingLogin] = await sql`
+        SELECT id FROM user_logins
+        WHERE branch_id = ${branch.id} AND login_date = ${today}
+        LIMIT 1
+      `;
+      if (!existingLogin) {
+        await sql`
+          INSERT INTO user_logins (user_id, branch_id, login_date, ip_address, user_agent)
+          VALUES (${null}, ${branch.id}, ${today}, ${ipAddress}, ${userAgent})
+        `;
+      }
+    } catch (trackingError) {
+      log.warn('Error tracking OTP login', { error: trackingError.message });
+    }
+
+    log.info('Branch OTP login successful', { username, branch_id: branch.id });
+
+    res.json({
+      success: true,
+      message: 'تم تسجيل الدخول بنجاح',
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        branch_id: user.branch_id,
+        full_name: user.full_name,
+        email: user.email,
+        branch_type: user.branch_type || null
+      }
+    });
+  } catch (error) {
+    log.error('OTP verification error', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'فشل التحقق من الرمز',
+      error: process.env.NODE_ENV === 'production'
+        ? 'خطأ داخلي في الخادم.'
         : error.message
     });
   }
