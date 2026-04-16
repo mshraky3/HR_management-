@@ -1,0 +1,319 @@
+/* Smooth scrolling for the entire page */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Upload Form Expanding Section Styles - Modern Compact Design */
+.upload-form-expanding-section {
+  background: var(--bg, #ffffff);
+  border-radius: 10px;
+  margin: 1rem 0;
+  border: 1px solid var(--border-light, #e2e8f0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  animation: slideDown 0.3s ease-out;
+  scroll-margin-top: 80px;
+  max-width: 900px;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.upload-form-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.2rem;
+  border-bottom: 1px solid var(--border-light, #e2e8f0);
+  background: linear-gradient(135deg, var(--bg-secondary, #f8fafc) 0%, var(--bg, #ffffff) 100%);
+}
+
+.upload-form-section-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text, #1e293b);
+  font-weight: 700;
+}
+
+.upload-form-section-content {
+  padding: 1rem 1.2rem;
+  max-height: none;
+  overflow-y: visible;
+}
+
+.upload-form-section-content form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 0.8rem;
+}
+
+.upload-form-section-content .form-group {
+  margin-bottom: 0;
+}
+
+.upload-form-section-content .form-group label {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text, #1e293b);
+}
+
+.upload-form-section-content .form-group input,
+.upload-form-section-content .form-group select,
+.upload-form-section-content .form-group textarea {
+  width: 100%;
+  padding: 0.6rem;
+  font-size: 0.9rem;
+  min-height: 36px;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  transition: all 0.2s;
+  box-sizing: border-box;
+  background: var(--bg, #ffffff);
+  color: var(--text, #1e293b);
+}
+
+.upload-form-section-content .form-group input:focus,
+.upload-form-section-content .form-group select:focus,
+.upload-form-section-content .form-group textarea:focus {
+  outline: none;
+  border-color: var(--primary, #4988C4);
+  box-shadow: 0 0 0 2px rgba(73, 136, 196, 0.1);
+}
+
+.upload-form-section-content .form-group textarea {
+  min-height: 60px;
+  resize: vertical;
+  grid-column: 1 / -1;
+}
+
+.upload-form-section-content .form-group input[type="file"] {
+  grid-column: 1 / -1;
+}
+
+.section-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-secondary, #64748b);
+  line-height: 1;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+
+.section-close:hover {
+  color: var(--text, #1e293b);
+  background: var(--border-light, #e2e8f0);
+}
+
+.upload-form-actions {
+  display: flex;
+  gap: 0.8rem;
+  justify-content: flex-end;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border-light, #e2e8f0);
+  margin-top: 0.8rem;
+  grid-column: 1 / -1;
+}
+
+.upload-form-actions .btn-primary,
+.upload-form-actions .btn-secondary {
+  padding: 0.6rem 1.2rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  white-space: nowrap;
+}
+
+.upload-form-actions .btn-primary {
+  background: var(--primary, #4988C4);
+  color: white;
+}
+
+.upload-form-actions .btn-primary:hover:not(:disabled) {
+  background: #3a73a0;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(73, 136, 196, 0.2);
+}
+
+.upload-form-actions .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.upload-form-actions .btn-secondary {
+  background: var(--bg-secondary, #f8fafc);
+  color: var(--text, #1e293b);
+  border: 1px solid var(--border, #cbd5e1);
+}
+
+.upload-form-actions .btn-secondary:hover:not(:disabled) {
+  background: var(--border-light, #e2e8f0);
+}
+
+.upload-form-actions .btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Document alert styles */
+.document-alert {
+  margin-top: 10px;
+  padding: 12px;
+  background-color: #e3f2fd;
+  border: 1px solid var(--primary, #4988C4);
+  border-radius: 8px;
+  color: #1565c0;
+  font-size: 14px;
+  white-space: pre-line;
+  line-height: 1.6;
+}
+
+/* Modal Styles - Compact Modern Design */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-content {
+  background: var(--bg, #ffffff);
+  border-radius: 10px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem;
+  max-width: 500px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-content h2 {
+  margin: 0 0 1rem 0;
+  font-size: 1.25rem;
+  color: var(--text, #1e293b);
+  font-weight: 700;
+}
+
+.modal-content form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.modal-content .form-group {
+  margin-bottom: 0;
+}
+
+.modal-content .form-group label {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text, #1e293b);
+}
+
+.modal-content .form-group input,
+.modal-content .form-group select,
+.modal-content .form-group textarea {
+  width: 100%;
+  padding: 0.6rem;
+  font-size: 0.9rem;
+  min-height: 36px;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  transition: all 0.2s;
+  box-sizing: border-box;
+  background: var(--bg, #ffffff);
+  color: var(--text, #1e293b);
+}
+
+.modal-content .form-group input:focus,
+.modal-content .form-group select:focus,
+.modal-content .form-group textarea:focus {
+  outline: none;
+  border-color: var(--primary, #4988C4);
+  box-shadow: 0 0 0 2px rgba(73, 136, 196, 0.1);
+}
+
+.modal-content .form-group textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.8rem;
+  justify-content: flex-end;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border-light, #e2e8f0);
+  margin-top: 0.8rem;
+}
+
+.form-actions .btn-primary,
+.form-actions .btn-secondary {
+  padding: 0.6rem 1.2rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  white-space: nowrap;
+}
+
+.form-actions .btn-primary {
+  background: var(--primary, #4988C4);
+  color: white;
+}
+
+.form-actions .btn-primary:hover {
+  background: #3a73a0;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(73, 136, 196, 0.2);
+}
+
+.form-actions .btn-secondary {
+  background: var(--bg-secondary, #f8fafc);
+  color: var(--text, #1e293b);
+  border: 1px solid var(--border, #cbd5e1);
+}
+
+.form-actions .btn-secondary:hover {
+  background: var(--border-light, #e2e8f0);
+}
+
+.file-name {
+  font-size: 12px;
+  color: #4CAF50;
+  display: block;
+  margin-top: 5px;
+}

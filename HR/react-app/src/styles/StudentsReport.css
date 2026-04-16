@@ -1,0 +1,282 @@
+.students-report-container {
+    padding: 40px 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.report-header {
+    text-align: center;
+    margin-bottom: 50px;
+}
+
+.report-header h1 {
+    font-size: 32px;
+    color: #1e293b;
+    margin: 0 0 10px 0;
+    font-weight: 700;
+}
+
+.report-header p {
+    font-size: 16px;
+    color: #64748b;
+    margin: 0;
+}
+
+.report-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+}
+
+/* Filters Section */
+.filters-section {
+    background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    border-radius: 12px;
+    padding: 30px;
+    color: white;
+    box-shadow: 0 10px 30px rgba(250, 112, 154, 0.2);
+}
+
+.filters-section h2 {
+    margin-top: 0;
+    margin-bottom: 25px;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.filter-group {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-group label {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.filter-group select {
+    padding: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.filter-group select:hover {
+    border-color: rgba(255, 255, 255, 0.5);
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+.filter-group select:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.filter-group select option {
+    background: #2c3e50;
+    color: white;
+}
+
+.additional-filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.data-selection {
+    margin-bottom: 25px;
+}
+
+.selection-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.selection-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.select-all-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 6px 15px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.select-all-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.data-options-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+}
+
+.data-checkbox {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.data-checkbox:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.data-checkbox input {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    margin-right: 12px;
+    accent-color: #43e97b;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.checkbox-label .icon {
+    font-size: 16px;
+}
+
+.generate-pdf-btn {
+    width: 100%;
+    padding: 14px;
+    background: #43e97b;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-top: 20px;
+}
+
+.generate-pdf-btn:hover:not(:disabled) {
+    background: #30c75f;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(67, 233, 123, 0.3);
+}
+
+.generate-pdf-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Info Section */
+.info-section {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 30px;
+}
+
+.info-section h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 20px;
+    color: #1e293b;
+    font-weight: 600;
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 15px;
+}
+
+.info-card {
+    background: white;
+    border-left: 4px solid #fa709a;
+    padding: 15px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.info-card:hover {
+    box-shadow: 0 4px 12px rgba(250, 112, 154, 0.1);
+    transform: translateX(4px);
+}
+
+.info-card h3 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.info-card p {
+    margin: 0;
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.5;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+    .report-content {
+        grid-template-columns: 1fr;
+        gap: 30px;
+    }
+
+    .data-options-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .additional-filters {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .students-report-container {
+        padding: 20px 15px;
+    }
+
+    .report-header h1 {
+        font-size: 24px;
+    }
+
+    .filters-section,
+    .info-section {
+        padding: 20px;
+    }
+
+    .data-options-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .additional-filters {
+        grid-template-columns: 1fr;
+    }
+
+    .info-grid {
+        grid-template-columns: 1fr;
+    }
+}

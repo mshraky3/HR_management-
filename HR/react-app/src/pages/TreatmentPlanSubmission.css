@@ -1,0 +1,585 @@
+/* Treatment Plan Submission - Public Page Styles */
+
+.treatment-plan-page {
+    direction: rtl;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #dbeafe 100%);
+    font-family: 'Cairo', 'Segoe UI', 'Tahoma', 'Arial', sans-serif;
+    padding: 20px;
+}
+
+.treatment-plan-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Header */
+.tp-header {
+    text-align: center;
+    margin-bottom: 24px;
+    padding: 32px 24px;
+    background: linear-gradient(135deg, #1C4D8D 0%, #4988C4 100%);
+    border-radius: 16px;
+    color: white;
+    box-shadow: 0 8px 32px rgba(73, 136, 196, 0.3);
+}
+
+.tp-header h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.tp-header p {
+    font-size: 0.95rem;
+    opacity: 0.9;
+}
+
+/* Circular Instructions Toggle */
+.tp-circular-toggle {
+    background: white;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+}
+
+.tp-circular-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 16px 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #1C4D8D;
+    transition: background 0.2s;
+}
+
+.tp-circular-toggle-btn:hover {
+    background: #f0f9ff;
+}
+
+.tp-circular-toggle-btn .toggle-icon {
+    transition: transform 0.3s;
+    font-size: 1.2rem;
+}
+
+.tp-circular-toggle-btn .toggle-icon.open {
+    transform: rotate(180deg);
+}
+
+.tp-circular-content {
+    padding: 0 20px 20px;
+    font-size: 0.85rem;
+    line-height: 1.9;
+    color: #334155;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.tp-circular-content h3 {
+    color: #1C4D8D;
+    font-size: 0.95rem;
+    margin: 16px 0 8px;
+}
+
+.tp-circular-content h3:first-child {
+    margin-top: 0;
+}
+
+.tp-circular-content ul {
+    padding-right: 20px;
+    margin: 4px 0;
+}
+
+.tp-circular-content li {
+    margin-bottom: 2px;
+}
+
+.tp-circular-content .note-box {
+    background: #fef3c7;
+    border-right: 4px solid #f59e0b;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-top: 16px;
+    font-size: 0.85rem;
+}
+
+/* Form Card */
+.tp-form-card {
+    background: white;
+    border-radius: 16px;
+    padding: 32px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+.tp-form-card h2 {
+    font-size: 1.2rem;
+    color: #1C4D8D;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #e0f2fe;
+}
+
+/* Form Groups */
+.tp-form-group {
+    margin-bottom: 20px;
+}
+
+.tp-form-group label {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 8px;
+}
+
+.tp-form-group label .required {
+    color: #ef4444;
+    margin-right: 4px;
+}
+
+.tp-form-group input[type="text"],
+.tp-form-group select,
+.tp-form-group textarea {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #dbeafe;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: #0F2854;
+    background: #fafcff;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    direction: rtl;
+}
+
+.tp-form-group input:focus,
+.tp-form-group select:focus,
+.tp-form-group textarea:focus {
+    outline: none;
+    border-color: #4988C4;
+    box-shadow: 0 0 0 3px rgba(73, 136, 196, 0.15);
+    background: white;
+}
+
+.tp-form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.tp-form-group select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%234988C4' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: left 16px center;
+    padding-left: 40px;
+}
+
+/* File Upload Area */
+.tp-file-upload {
+    border: 2px dashed #93c5fd;
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #f8fbff;
+}
+
+.tp-file-upload:hover {
+    border-color: #4988C4;
+    background: #f0f9ff;
+}
+
+.tp-file-upload.has-files {
+    border-color: #10b981;
+    background: #f0fdf4;
+}
+
+.tp-file-upload.drag-active {
+    border-color: #1C4D8D;
+    background: #eaf4ff;
+    box-shadow: 0 0 0 4px rgba(28, 77, 141, 0.15);
+}
+
+.tp-file-upload input[type="file"] {
+    display: none;
+}
+
+.tp-file-upload-icon {
+    font-size: 2rem;
+    margin-bottom: 8px;
+}
+
+.tp-file-upload-text {
+    font-size: 0.9rem;
+    color: #64748b;
+}
+
+.tp-file-upload-text strong {
+    color: #4988C4;
+}
+
+.tp-file-upload-hint {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    margin-top: 6px;
+}
+
+/* File List */
+.tp-file-list {
+    margin-top: 12px;
+}
+
+.tp-file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: #f0f9ff;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+}
+
+.tp-file-item-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.tp-file-item-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #334155;
+}
+
+.tp-file-item-size {
+    color: #94a3b8;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.tp-file-remove {
+    background: none;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: background 0.2s;
+}
+
+.tp-file-remove:hover {
+    background: #fef2f2;
+}
+
+/* Submit Button */
+.tp-submit-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #1C4D8D 0%, #4988C4 100%);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 16px rgba(73, 136, 196, 0.3);
+    margin-top: 8px;
+}
+
+.tp-submit-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(73, 136, 196, 0.4);
+}
+
+.tp-submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Plan Type Info */
+.tp-plan-info {
+    background: #eff6ff;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    border-right: 4px solid #4988C4;
+}
+
+.tp-plan-info-title {
+    font-weight: 600;
+    color: #1C4D8D;
+    font-size: 0.88rem;
+    margin-bottom: 4px;
+}
+
+.tp-plan-info-count {
+    font-size: 0.82rem;
+    color: #64748b;
+}
+
+/* Success Message */
+.tp-success {
+    text-align: center;
+    padding: 48px 24px;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+.tp-success-icon {
+    font-size: 4rem;
+    margin-bottom: 16px;
+}
+
+.tp-success h2 {
+    color: #10b981;
+    font-size: 1.4rem;
+    margin-bottom: 8px;
+}
+
+.tp-success p {
+    color: #64748b;
+    margin-bottom: 24px;
+}
+
+.tp-success-btn {
+    padding: 12px 32px;
+    background: #4988C4;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.tp-success-btn:hover {
+    background: #3a73a8;
+}
+
+/* Error Message */
+.tp-error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    color: #dc2626;
+    font-size: 0.88rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Loading Spinner (inline button) */
+.tp-loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: tp-spin 0.6s linear infinite;
+    margin-left: 8px;
+}
+
+@keyframes tp-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Upload Overlay */
+.tp-upload-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+}
+
+.tp-upload-overlay-card {
+    background: white;
+    border-radius: 16px;
+    padding: 40px 48px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+    animation: tpOverlayIn 0.3s ease;
+    max-width: 400px;
+    width: 100%;
+}
+
+@keyframes tpOverlayIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.tp-upload-spinner {
+    width: 56px;
+    height: 56px;
+    border: 5px solid #dbeafe;
+    border-top-color: #1C4D8D;
+    border-radius: 50%;
+    animation: tp-spin 0.7s linear infinite;
+    margin: 0 auto 20px;
+}
+
+.tp-upload-overlay-card h3 {
+    margin: 0 0 8px;
+    color: #1C4D8D;
+    font-size: 1.15rem;
+}
+
+.tp-upload-overlay-card p {
+    margin: 0 0 16px;
+    color: #64748b;
+    font-size: 0.88rem;
+}
+
+/* Per-file progress list */
+.tp-upload-file-list {
+    text-align: right;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.tp-upload-file-item {
+    margin-bottom: 10px;
+}
+
+.tp-upload-file-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+    font-size: 0.82rem;
+}
+
+.tp-upload-file-icon {
+    flex-shrink: 0;
+}
+
+.tp-upload-file-name {
+    color: #334155;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.tp-upload-file-pct {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: #1C4D8D;
+    min-width: 36px;
+    text-align: left;
+    font-size: 0.8rem;
+}
+
+.tp-upload-file-bar {
+    width: 100%;
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.tp-upload-file-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #1C4D8D, #4988C4);
+    border-radius: 6px;
+    transition: width 0.25s ease;
+}
+
+.tp-upload-file-item.done .tp-upload-file-bar-fill {
+    background: #10b981;
+}
+
+.tp-upload-file-item.waiting .tp-upload-file-pct {
+    color: #94a3b8;
+}
+
+/* Additional Department Section */
+.tp-additional-dept {
+    background: #fef3c7;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    border-right: 4px solid #f59e0b;
+}
+
+.tp-additional-dept-title {
+    font-weight: 600;
+    color: #92400e;
+    font-size: 0.88rem;
+    margin-bottom: 4px;
+}
+
+.tp-additional-dept-text {
+    font-size: 0.82rem;
+    color: #78716c;
+}
+
+/* Form Row (two columns) */
+.tp-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+    .treatment-plan-page {
+        padding: 12px;
+    }
+
+    .tp-header {
+        padding: 24px 16px;
+    }
+
+    .tp-header h1 {
+        font-size: 1.3rem;
+    }
+
+    .tp-form-card {
+        padding: 20px 16px;
+    }
+
+    .tp-form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .tp-file-upload {
+        padding: 16px;
+    }
+}
