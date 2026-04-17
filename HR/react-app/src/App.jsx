@@ -21,6 +21,7 @@ import {
 import ProtectedRoute from "./components/ProtectedRoute";
 import Layout from "./components/Layout";
 import BranchManagerLayout from "./components/BranchManagerLayout";
+import BranchOpsLayout from "./components/BranchOpsLayout";
 import MaintenancePage from "./pages/MaintenancePage";
 import "./App.css";
 // Load shared page CSS immediately to prevent FOUC (Flash of Unstyled Content)
@@ -63,51 +64,94 @@ const PageLoading = () => (
   </div>
 );
 
+// Recover from stale hashed chunks after a new deployment by reloading once.
+const lazyRetry = (importer) =>
+  lazy(async () => {
+    const retryKey = "lazy-chunk-retry";
+    const hasRetried = window.sessionStorage.getItem(retryKey) === "1";
+    try {
+      const mod = await importer();
+      window.sessionStorage.removeItem(retryKey);
+      return mod;
+    } catch (error) {
+      const message = error?.message || "";
+      const isChunkError =
+        message.includes("Failed to fetch dynamically imported module") ||
+        message.includes("ChunkLoadError");
+
+      if (isChunkError && !hasRetried) {
+        window.sessionStorage.setItem(retryKey, "1");
+        window.location.reload();
+      }
+
+      throw error;
+    }
+  });
+
 // Lazy load all page components (code splitting)
 // These will be loaded on-demand when user navigates to each route
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const AccountManagement = lazy(() => import("./pages/AccountManagement"));
-const Branches = lazy(() => import("./pages/Branches"));
-const Employees = lazy(() => import("./pages/Employees"));
-const EmployeeDetails = lazy(() => import("./pages/EmployeeDetails/index.jsx"));
-const BranchDocuments = lazy(() => import("./pages/BranchDocuments"));
-const Reports = lazy(() => import("./pages/Reports"));
-const BranchDocumentsReport = lazy(() => import("./pages/BranchDocumentsReport"));
-const EmployeeFile = lazy(() => import("./pages/EmployeeFile"));
-const NotifyBranches = lazy(() => import("./pages/NotifyBranches"));
-const Archive = lazy(() => import("./pages/Archive"));
-const BranchStatistics = lazy(() => import("./pages/BranchStatistics"));
-const TermManagement = lazy(() => import("./pages/TermManagement"));
-const BranchDocumentsManagement = lazy(
+const Dashboard = lazyRetry(() => import("./pages/Dashboard"));
+const AccountManagement = lazyRetry(() => import("./pages/AccountManagement"));
+const BranchOpsAccounts = lazyRetry(() => import("./pages/BranchOpsAccounts"));
+const Branches = lazyRetry(() => import("./pages/Branches"));
+const Employees = lazyRetry(() => import("./pages/Employees"));
+const EmployeeDetails = lazyRetry(() => import("./pages/EmployeeDetails/index.jsx"));
+const BranchDocuments = lazyRetry(() => import("./pages/BranchDocuments"));
+const Reports = lazyRetry(() => import("./pages/Reports"));
+const BranchDocumentsReport = lazyRetry(() => import("./pages/BranchDocumentsReport"));
+const EmployeeFile = lazyRetry(() => import("./pages/EmployeeFile"));
+const NotifyBranches = lazyRetry(() => import("./pages/NotifyBranches"));
+const Archive = lazyRetry(() => import("./pages/Archive"));
+const BranchStatistics = lazyRetry(() => import("./pages/BranchStatistics"));
+const TermManagement = lazyRetry(() => import("./pages/TermManagement"));
+const BranchDocumentsManagement = lazyRetry(
   () => import("./pages/BranchDocumentsManagement"),
 );
-const BranchInfo = lazy(() => import("./pages/BranchInfo"));
-const DirectContact = lazy(() => import("./pages/DirectContact"));
-const BranchRequests = lazy(() => import("./pages/BranchRequests"));
-const ManageRequests = lazy(() => import("./pages/ManageRequests"));
-const FixMissingDates = lazy(() => import("./pages/FixMissingDates"));
-const PayrollAbsenceAdmin = lazy(() => import("./pages/PayrollAbsenceAdmin"));
-const EmployeeStatistics = lazy(() => import("./pages/EmployeeStatistics"));
-const EmployeeStatisticsReport = lazy(() => import("./pages/EmployeeStatisticsReport"));
-const BusTransportationReport = lazy(() => import("./pages/BusTransportationReport"));
-const ExperienceCertificate = lazy(
+const BranchInfo = lazyRetry(() => import("./pages/BranchInfo"));
+const DirectContact = lazyRetry(() => import("./pages/DirectContact"));
+const BranchRequests = lazyRetry(() => import("./pages/BranchRequests"));
+const ManageRequests = lazyRetry(() => import("./pages/ManageRequests"));
+const FixMissingDates = lazyRetry(() => import("./pages/FixMissingDates"));
+const PayrollAbsenceAdmin = lazyRetry(() => import("./pages/PayrollAbsenceAdmin"));
+const EmployeeStatistics = lazyRetry(() => import("./pages/EmployeeStatistics"));
+const EmployeeStatisticsReport = lazyRetry(() => import("./pages/EmployeeStatisticsReport"));
+const BusTransportationReport = lazyRetry(() => import("./pages/BusTransportationReport"));
+const ExperienceCertificate = lazyRetry(
   () => import("./pages/ExperienceCertificate"),
 );
-const EmployeeTransfer = lazy(() => import("./pages/EmployeeTransfer"));
-const BusTransportation = lazy(() => import("./pages/BusTransportation.jsx"));
-const Suggestions = lazy(() => import("./pages/Suggestions"));
-const Beneficiaries = lazy(() => import("./pages/Beneficiaries"));
-const BeneficiariesArchive = lazy(() => import("./pages/BeneficiariesArchive"));
-const TreatmentPlanSubmission = lazy(() => import("./pages/TreatmentPlanSubmission"));
-const TreatmentPlanMonitor = lazy(() => import("./pages/TreatmentPlanMonitor"));
+const EmployeeTransfer = lazyRetry(() => import("./pages/EmployeeTransfer"));
+const BusTransportation = lazyRetry(() => import("./pages/BusTransportation.jsx"));
+const Suggestions = lazyRetry(() => import("./pages/Suggestions"));
+const Beneficiaries = lazyRetry(() => import("./pages/Beneficiaries"));
+const BeneficiariesArchive = lazyRetry(() => import("./pages/BeneficiariesArchive"));
+const TreatmentPlanSubmission = lazyRetry(() => import("./pages/TreatmentPlanSubmission"));
+const TreatmentPlanMonitor = lazyRetry(() => import("./pages/TreatmentPlanMonitor"));
 
 // Wrapper component to choose layout based on role
 const RoleBasedLayout = ({ children }) => {
-  const { isMainManager } = useAuth();
-  return isMainManager() ? (
-    <Layout>{children}</Layout>
-  ) : (
-    <BranchManagerLayout>{children}</BranchManagerLayout>
+  const { isMainManager, isBranchOperationsManager } = useAuth();
+  if (isMainManager()) return <Layout>{children}</Layout>;
+  if (isBranchOperationsManager()) return <BranchOpsLayout>{children}</BranchOpsLayout>;
+  return <BranchManagerLayout>{children}</BranchManagerLayout>;
+};
+
+const BlockBranchOpsRoute = ({ children, fallback = "/dashboard" }) => {
+  const { isBranchOperationsManager } = useAuth();
+
+  if (isBranchOperationsManager()) {
+    return <Navigate to={fallback} replace />;
+  }
+
+  return children;
+};
+
+const BranchDocumentsRoute = () => {
+  const { isBranchOperationsManager } = useAuth();
+
+  return (
+    <RoleBasedLayout>
+      {isBranchOperationsManager() ? <BranchDocumentsManagement /> : <BranchDocuments />}
+    </RoleBasedLayout>
   );
 };
 
@@ -142,6 +186,16 @@ const AppContent = () => {
             <ProtectedRoute requireMainManager>
               <Layout>
                 <AccountManagement />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch-ops-accounts"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <BranchOpsAccounts />
               </Layout>
             </ProtectedRoute>
           }
@@ -190,9 +244,7 @@ const AppContent = () => {
           path="/branch-documents"
           element={
             <ProtectedRoute>
-              <RoleBasedLayout>
-                <BranchDocuments />
-              </RoleBasedLayout>
+              <BranchDocumentsRoute />
             </ProtectedRoute>
           }
         />
@@ -200,9 +252,11 @@ const AppContent = () => {
           path="/reports"
           element={
             <ProtectedRoute>
-              <RoleBasedLayout>
-                <Reports />
-              </RoleBasedLayout>
+              <BlockBranchOpsRoute>
+                <RoleBasedLayout>
+                  <Reports />
+                </RoleBasedLayout>
+              </BlockBranchOpsRoute>
             </ProtectedRoute>
           }
         />
@@ -259,10 +313,12 @@ const AppContent = () => {
         <Route
           path="/branch-statistics"
           element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <BranchStatistics />
-              </Layout>
+            <ProtectedRoute>
+              <BlockBranchOpsRoute>
+                <RoleBasedLayout>
+                  <BranchStatistics />
+                </RoleBasedLayout>
+              </BlockBranchOpsRoute>
             </ProtectedRoute>
           }
         />

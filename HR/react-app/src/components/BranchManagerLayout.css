@@ -445,3 +445,151 @@
         max-width: 100%;
     }
 }
+
+/* ============================================================
+   Branch Ops Nav — flat 3-button navbar (no dropdowns)
+   Scoped under .branch-ops-nav to avoid affecting BranchManagerLayout
+   ============================================================ */
+
+/* Desktop: hide mobile-only logout button */
+.branch-ops-nav .nav-links .mobile-only {
+    display: none !important;
+}
+
+/* Desktop: direct nav links row */
+.branch-ops-nav .nav-links {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--spacing-sm);
+    flex: 1;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.branch-ops-nav .nav-links .nav-link {
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 0.625rem 1.25rem;
+    border-radius: var(--radius-lg);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    transition: all var(--transition-base);
+    white-space: nowrap;
+    background: transparent;
+}
+
+.branch-ops-nav .nav-links .nav-link:hover {
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+.branch-ops-nav .nav-links .nav-link.active {
+    background: var(--primary);
+    color: #ffffff;
+    box-shadow: var(--shadow-md);
+}
+
+/* Mobile: full-screen overlay + slide-in sidebar */
+@media (max-width: 768px) {
+
+    /* Show mobile-only logout button */
+    .branch-ops-nav .nav-links .mobile-only {
+        display: flex !important;
+        width: 100%;
+        justify-content: center;
+        margin-top: 12px;
+    }
+
+    /* Overlay */
+    .branch-ops-nav .nav-links.mobile-open {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 9998;
+        animation: fadeIn 0.2s ease;
+    }
+
+    /* Sidebar panel — use ::before trick via a wrapper, but since
+       we have direct children we make a pseudo inner container via
+       a CSS flex column on the links directly */
+    .branch-ops-nav .nav-links.mobile-open {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: 280px;
+        max-width: 85vw;
+        height: 100vh;
+        background: var(--bg);
+        box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+        overflow-y: auto;
+        padding: 24px 16px;
+        box-sizing: border-box;
+        animation: slideIn 0.3s ease;
+        z-index: 9999;
+        gap: 10px;
+    }
+
+    .branch-ops-nav .nav-links.mobile-open .nav-link {
+        width: 100%;
+        padding: 16px 18px;
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        font-size: 16px;
+        text-align: right;
+        border: 1px solid var(--border-light);
+        display: block;
+        color: var(--text-secondary);
+        text-decoration: none;
+        font-weight: 600;
+        transition: all var(--transition-base);
+    }
+
+    .branch-ops-nav .nav-links.mobile-open .nav-link.active {
+        background: var(--primary);
+        color: white;
+        border-color: var(--primary);
+    }
+
+    .branch-ops-nav .nav-links.mobile-open .mobile-only {
+        width: 100%;
+        padding: 16px 18px;
+        background: var(--danger);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        margin-top: 20px;
+        font-weight: 600;
+    }
+}
+
+/* Overlay backdrop for mobile nav */
+.branch-ops-nav .nav-overlay {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .branch-ops-nav .nav-overlay {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 9998;
+        animation: fadeIn 0.2s ease;
+    }
+}
+
+@media (max-width: 480px) {
+    .branch-ops-nav .nav-links.mobile-open {
+        width: 100%;
+        max-width: 100%;
+    }
+}

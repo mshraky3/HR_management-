@@ -81,6 +81,7 @@ const Layout = ({ children }) => {
       items: [
         { path: "/dashboard", label: "لوحة التحكم" },
         { path: "/account-management", label: "إدارة الحسابات" },
+        { path: "/branch-ops-accounts", label: "حسابات إدارة بيانات الفروع" },
         { path: "/branches", label: "حسابات الفروع" },
       ],
     },
