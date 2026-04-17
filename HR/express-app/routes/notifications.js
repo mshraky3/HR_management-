@@ -9,7 +9,6 @@ import { requireMainManager } from '../middleware/authorization.js';
 import { Notification } from '../models/Notification.js';
 import { NotificationResponse } from '../models/NotificationResponse.js';
 import { Branch } from '../models/Branch.js';
-import { User } from '../models/User.js';
 import { uploadSingle, validateUploadedFile } from '../middleware/upload.js';
 import { uploadNotificationAttachmentToBlob } from '../utils/blobStorage.js';
 import { fixFilenameEncoding } from '../utils/fileUpload.js';
@@ -18,6 +17,17 @@ import { sendNotificationEmail } from '../utils/emailService.js';
 import sql from '../config/database.js';
 
 const router = express.Router();
+
+const parseEmailList = (rawValue = '') =>
+  String(rawValue)
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+const getMainManagerEmails = () => {
+  // Main manager emails from environment (hardcoded configuration, not dynamic)
+  return parseEmailList(process.env.MAIN_MANAGER_EMAIL || process.env.MAIN_MANAGER_EMAILS || '');
+};
 
 // All routes require authentication
 router.use(authenticate);
@@ -36,9 +46,6 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
     // When using FormData with JSON.stringify, it comes as a string that needs parsing
     let branch_ids = req.body.branch_ids;
 
-    // Debug logging (remove in production if needed)
-    console.log('Received branch_ids:', branch_ids, 'Type:', typeof branch_ids);
-    console.log('All req.body keys:', Object.keys(req.body));
 
     // If branch_ids is a string (from JSON.stringify), parse it
     if (typeof branch_ids === 'string') {
@@ -68,7 +75,6 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
       .map(id => parseInt(id))
       .filter(id => !isNaN(id));
 
-    console.log('Processed branch_ids:', branch_ids);
 
     // Validation
     if (!message || !message.trim()) {
@@ -217,47 +223,56 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
     // Fetch updated notification
     const updatedNotification = await Notification.findById(notification.id);
 
-    // Send email to main manager
+    // Send email to main managers
     try {
-      const mainManagerEmail = 'Sharaksa@gmail.com';
-      const appUrl = process.env.APP_URL || 'http://localhost:5173';
+      const managerEmails = getMainManagerEmails();
+      const appUrl = process.env.APP_URL || process.env.REACT_APP_URL || 'http://localhost:5173';
 
-      // Get branch names for email
-      const branchNames = validBranches.map(b => b.branch_name).join('، ');
+      if (managerEmails.length > 0) {
+        const branchNames = validBranches.map((b) => b.branch_name).join('، ');
 
-      await sendNotificationEmail({
-        to: mainManagerEmail,
-        subject: `إشعار جديد - ${['منخفضة', 'عادية', 'متوسطة', 'عالية'][parseInt(importance_level) - 1] || 'عادية'}`,
-        message: message.trim(),
-        notificationType: 'notification_created',
-        appUrl: `${appUrl}/notify-branches`,
-        data: {
-          'الفروع المستهدفة': branchNames,
-          'مستوى الأهمية': ['منخفضة', 'عادية', 'متوسطة', 'عالية'][parseInt(importance_level) - 1] || 'عادية',
-          'تاريخ الانتهاء': expires_at ? new Date(expires_at).toLocaleDateString('ar-SA') : 'غير محدد',
-        }
-      });
+        await Promise.allSettled(
+          managerEmails.map((email) =>
+            sendNotificationEmail({
+              to: email,
+              subject: `إشعار جديد - ${['منخفضة', 'عادية', 'متوسطة', 'عالية'][parseInt(importance_level, 10) - 1] || 'عادية'}`,
+              message: message.trim(),
+              notificationType: 'notification_created',
+              appUrl: `${appUrl}/notify-branches`,
+              data: {
+                'الفروع المستهدفة': branchNames,
+                'مستوى الأهمية': ['منخفضة', 'عادية', 'متوسطة', 'عالية'][parseInt(importance_level, 10) - 1] || 'عادية',
+                'تاريخ الانتهاء': expires_at ? new Date(expires_at).toLocaleDateString('ar-SA') : 'غير محدد',
+              },
+            }),
+          ),
+        );
+      }
     } catch (emailError) {
-      console.error('Failed to send email notification:', emailError);
+      console.error('Failed to send manager notification emails:', emailError);
       // Don't fail the notification creation if email fails
     }
 
     // Send email to each assigned branch that has an email
     try {
-      const appUrl = process.env.APP_URL || 'http://localhost:5173';
-      for (const branch of validBranches) {
-        if (branch.email) {
-          await sendNotificationEmail({
+      const appUrl = process.env.APP_URL || process.env.REACT_APP_URL || 'http://localhost:5173';
+      const branchEmailPromises = validBranches
+        .filter((branch) => branch.email)
+        .map((branch) =>
+          sendNotificationEmail({
             to: branch.email,
-            subject: `إشعار جديد من الإدارة`,
+            subject: 'إشعار جديد من الإدارة',
             message: message.trim(),
             notificationType: 'branch_notification',
             appUrl: `${appUrl}/notifications`,
             data: {
-              'مستوى الأهمية': ['منخفضة', 'عادية', 'متوسطة', 'عالية'][parseInt(importance_level) - 1] || 'عادية',
-            }
-          });
-        }
+              'مستوى الأهمية': ['منخفضة', 'عادية', 'متوسطة', 'عالية'][parseInt(importance_level, 10) - 1] || 'عادية',
+            },
+          }),
+        );
+
+      if (branchEmailPromises.length > 0) {
+        await Promise.allSettled(branchEmailPromises);
       }
     } catch (branchEmailError) {
       console.error('Failed to send branch email notifications:', branchEmailError);
@@ -495,42 +510,42 @@ router.post('/:id/respond', async (req, res) => {
       }
     );
 
-    // Send email notification to main manager about response
+    // Send email notification to main managers about response
     try {
       const branch = await Branch.findById(req.user.branch_id);
       const branchName = branch ? branch.branch_name : 'غير محدد';
 
-      // Map response status to Arabic
+      // Map current response statuses to Arabic labels
       const statusLabels = {
-        'received': 'وصل',
-        'acknowledged': 'تم التأكيد',
-        'in_progress': 'قيد التنفيذ',
-        'completed': 'مكتمل',
-        'needs_clarification': 'يحتاج توضيح'
+        done: 'تم',
+        working_on_it: 'قيد العمل',
+        seen: 'شوهد',
       };
       const statusLabel = statusLabels[response_status] || response_status;
-      const mainManagerEmail = 'Sharaksa@gmail.com';
+      const managerEmails = getMainManagerEmails();
 
-      console.log('Sending notification response email', {
-        to: mainManagerEmail,
-        branch: branchName,
-        status: statusLabel
-      });
+      if (managerEmails.length > 0) {
+        const appUrl = process.env.APP_URL || process.env.REACT_APP_URL || 'https://hr-react-theta.vercel.app';
 
-      const emailResult = await sendNotificationEmail({
-        to: mainManagerEmail,
-        subject: `رد جديد من ${branchName}`,
-        message: `تلقيت ردًا على الإشعار من ${branchName} بحالة: ${statusLabel}`,
-        notificationType: 'notification_response',
-        appUrl: `${process.env.REACT_APP_URL || 'https://hr-react-theta.vercel.app'}/notify-branches`,
-        data: {
-          'الفرع': branchName,
-          'الحالة': statusLabel,
-          'الملاحظات': response_message ? response_message.substring(0, 100) + (response_message.length > 100 ? '...' : '') : 'بدون ملاحظات'
-        }
-      });
-
-      console.log('Notification response email result', { emailResult });
+        await Promise.allSettled(
+          managerEmails.map((email) =>
+            sendNotificationEmail({
+              to: email,
+              subject: `رد جديد من ${branchName}`,
+              message: `تلقيت ردًا على الإشعار من ${branchName} بحالة: ${statusLabel}`,
+              notificationType: 'notification_response',
+              appUrl: `${appUrl}/notify-branches`,
+              data: {
+                'الفرع': branchName,
+                'الحالة': statusLabel,
+                'الملاحظات': response_message
+                  ? response_message.substring(0, 100) + (response_message.length > 100 ? '...' : '')
+                  : 'بدون ملاحظات',
+              },
+            }),
+          ),
+        );
+      }
     } catch (emailError) {
       console.error('Error sending notification response email:', emailError);
       // Don't fail the response if email fails

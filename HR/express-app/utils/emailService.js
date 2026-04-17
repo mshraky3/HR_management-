@@ -6,14 +6,34 @@
 import nodemailer from 'nodemailer';
 import { log } from './logger.js';
 
+function escapeHtml(str) {
+  if (typeof str !== 'string') return str;
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_SECURE = process.env.SMTP_SECURE === 'true';
+const SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
+const SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
+const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'HR system';
+const EMAIL_FROM_ADDRESS = process.env.EMAIL_FROM_ADDRESS || SMTP_USER;
+
+if (!SMTP_USER || !SMTP_PASS) {
+  log.warn('SMTP credentials are not fully configured. Outgoing emails may fail.', {
+    hasUser: Boolean(SMTP_USER),
+    hasPass: Boolean(SMTP_PASS),
+  });
+}
+
 // Create email transporter
 const emailTransporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
+  host: SMTP_HOST,
+  port: SMTP_PORT,
+  secure: SMTP_SECURE,
   auth: {
-    user: 'alshrakynodeapp@gmail.com',
-    pass: 'ssjpnctdsyqxylxd', // Updated app password Feb 2026
+    user: SMTP_USER,
+    pass: SMTP_PASS,
   },
 });
 
@@ -41,7 +61,7 @@ export async function sendNotificationEmail({ to, subject, message, notification
     const htmlContent = generateEmailHtml({ subject, message, notificationType, appUrl, data });
 
     const mailOptions = {
-      from: '"HR system" <alshrakynodeapp@gmail.com>',
+      from: `"${EMAIL_FROM_NAME}" <${EMAIL_FROM_ADDRESS}>`,
       to,
       subject,
       html: htmlContent,
@@ -61,6 +81,9 @@ export async function sendNotificationEmail({ to, subject, message, notification
  * Generate HTML content for email
  */
 function generateEmailHtml({ subject, message, notificationType, appUrl, data }) {
+  const safeSubject = escapeHtml(subject);
+  const safeMessage = escapeHtml(message);
+  const safeAppUrl = encodeURI(appUrl || '');
   const currentDate = new Date().toLocaleDateString('ar-SA', {
     year: 'numeric',
     month: 'long',
@@ -73,8 +96,8 @@ function generateEmailHtml({ subject, message, notificationType, appUrl, data })
     dataRows = Object.entries(data)
       .map(([key, value]) => `
         <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #4a5568;">${key}:</td>
-          <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; color: #2d3748;">${value}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #4a5568;">${escapeHtml(key)}:</td>
+          <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; color: #2d3748;">${escapeHtml(String(value))}</td>
         </tr>
       `)
       .join('');
@@ -86,7 +109,7 @@ function generateEmailHtml({ subject, message, notificationType, appUrl, data })
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${subject}</title>
+      <title>${safeSubject}</title>
     </head>
     <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f7fafc;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f7fafc; padding: 20px;">
@@ -110,7 +133,7 @@ function generateEmailHtml({ subject, message, notificationType, appUrl, data })
               <tr>
                 <td style="padding: 30px 30px 20px 30px;">
                   <h2 style="margin: 0 0 10px 0; color: #2d3748; font-size: 20px; font-weight: 600;">
-                    ${subject}
+                    ${safeSubject}
                   </h2>
                   <p style="margin: 0; color: #718096; font-size: 14px;">
                     ${currentDate}
@@ -123,7 +146,7 @@ function generateEmailHtml({ subject, message, notificationType, appUrl, data })
                 <td style="padding: 0 30px 20px 30px;">
                   <div style="background-color: #edf2f7; border-right: 4px solid #667eea; padding: 20px; border-radius: 4px;">
                     <p style="margin: 0; color: #2d3748; font-size: 16px; line-height: 1.6;">
-                      ${message}
+                      ${safeMessage}
                     </p>
                   </div>
                 </td>
@@ -143,7 +166,7 @@ function generateEmailHtml({ subject, message, notificationType, appUrl, data })
               <!-- Call to Action -->
               <tr>
                 <td style="padding: 0 30px 30px 30px; text-align: center;">
-                  <a href="${appUrl}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 6px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.4);">
+                  <a href="${safeAppUrl}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 6px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.4);">
                     عرض في التطبيق
                   </a>
                 </td>
@@ -187,6 +210,9 @@ export async function sendStatisticsAlertEmail({ to, appUrl, alerts }) {
   }
   if (alerts.expiredIds > 0) {
     data['هويات منتهية'] = `${alerts.expiredIds} موظف`;
+  }
+  if (alerts.idsExpiringSoon > 0) {
+    data['هويات تنتهي قريباً'] = `${alerts.idsExpiringSoon} موظف`;
   }
   if (alerts.incompleteData > 0) {
     data['بيانات ناقصة'] = `${alerts.incompleteData} موظف`;
@@ -238,7 +264,7 @@ export async function sendOTPEmail(toEmail, code, branchName) {
 
   try {
     const result = await emailTransporter.sendMail({
-      from: '"HR system" <alshrakynodeapp@gmail.com>',
+      from: `"${EMAIL_FROM_NAME}" <${EMAIL_FROM_ADDRESS}>`,
       to: toEmail,
       subject,
       html: htmlContent,

@@ -149,7 +149,7 @@ router.post('/', requireManager, uploadSingle, async (req, res) => {
       const branch = await Branch.findById(req.user.branch_id);
       const branchName = branch ? branch.branch_name : 'غير محدد';
       const requesterName = req.user.full_name || req.user.username;
-      const mainManagerEmail = 'Sharaksa@gmail.com';
+      const mainManagerEmail = process.env.MAIN_MANAGER_EMAIL || 'Sharaksa@gmail.com';
 
       log.info('Sending request notification email', {
         to: mainManagerEmail,

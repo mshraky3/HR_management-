@@ -863,8 +863,9 @@ router.post('/request-email-update', async (req, res) => {
 
     // Email the main manager
     try {
+      const managerEmail = process.env.MAIN_MANAGER_EMAIL || mainManager.email;
       await sendNotificationEmail({
-        to: mainManager.email,
+        to: managerEmail,
         subject: 'طلب تحديث بريد إلكتروني لفرع',
         message: `الفرع: ${branch.branch_name}\nالبريد المطلوب: ${newEmail}`,
         notificationType: 'branch_email_update_request',

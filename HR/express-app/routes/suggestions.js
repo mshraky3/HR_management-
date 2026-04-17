@@ -207,7 +207,7 @@ router.post('/', requireManager, async (req, res) => {
             const branchName = branch ? branch.branch_name : 'غير محدد';
             const managerName = req.user.full_name || req.user.username;
             const importanceLabel = Suggestion.getImportanceLevels()[importance_level || 'useful'];
-            const mainManagerEmail = 'Sharaksa@gmail.com';
+            const mainManagerEmail = process.env.MAIN_MANAGER_EMAIL || 'Sharaksa@gmail.com';
 
             console.log('Sending suggestion email', {
                 to: mainManagerEmail,
