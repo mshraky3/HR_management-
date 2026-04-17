@@ -22,7 +22,7 @@ router.use(authenticate);
  * GET /api/beneficiaries
  * List beneficiaries - branch managers see their own, main manager sees all
  */
-router.get('/', async (req, res) => {
+router.get('/', requireManager, async (req, res) => {
     try {
         const { branch_id, term_id, gender, enrollment_period, page, limit } = req.query;
 

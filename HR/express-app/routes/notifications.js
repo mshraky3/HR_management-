@@ -369,6 +369,17 @@ router.get('/branch/:branchId', async (req, res) => {
         message: 'غير مصرح لك بالوصول إلى هذا الفرع'
       });
     }
+    // branch_operations_manager: only assigned branches
+    if (req.user.role === 'branch_operations_manager') {
+      const { UserBranchAssignment } = await import('../models/User.js');
+      const assignedBranches = await UserBranchAssignment.getAssignedBranches(req.user.id);
+      if (!assignedBranches.includes(branchId)) {
+        return res.status(403).json({
+          success: false,
+          message: 'غير مصرح لك بالوصول إلى هذا الفرع'
+        });
+      }
+    }
 
     const filters = {
       importance_level: req.query.importance_level ? parseInt(req.query.importance_level) : undefined,

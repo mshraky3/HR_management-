@@ -5,34 +5,40 @@
 
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { requireMainManager, checkBranchAccess } from '../middleware/authorization.js';
+import { requireMainManager, checkBranchAccess, loadAssignedBranches } from '../middleware/authorization.js';
 import { validateRequired } from '../middleware/validation.js';
 import { isValidEmail, isValidPhone } from '../utils/validators.js';
 
 const router = express.Router();
 
 // Get all branches (filtered by role)
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, loadAssignedBranches, async (req, res) => {
   try {
     const { Branch } = await import('../models/Branch.js');
     const filters = {
       branch_type: req.query.branch_type,
       is_active: req.query.is_active !== undefined ? (req.query.is_active === 'true' || req.query.is_active === true) : undefined
     };
-    
+
     // Branch managers only see their own branch
     // Main managers should see all branches regardless of branch_id
     // IMPORTANT: Only apply branch_id filter for branch_manager role, never for main_manager
     if (req.user && req.user.role === 'branch_manager' && req.user.branch_id) {
       filters.id = req.user.branch_id;
     }
-    
+
     // Safety check: Remove any branch_id filter if user is main_manager (in case frontend sends it)
     if (req.user && req.user.role === 'main_manager' && filters.id) {
       delete filters.id;
     }
-    
-    const branches = await Branch.findAll(filters);
+
+    let branches = await Branch.findAll(filters);
+
+    // Branch operations managers see only assigned branches
+    if (req.user && req.user.role === 'branch_operations_manager' && req.user.assigned_branches) {
+      branches = branches.filter(b => req.user.assigned_branches.includes(b.id));
+    }
+
     res.json({ success: true, data: branches });
   } catch (error) {
     res.status(500).json({
@@ -86,7 +92,7 @@ router.put('/my-branch',
       // Only allow updating phone_number, email, and number_of_employees
       const allowedFields = ['phone_number', 'email', 'number_of_employees'];
       const updateData = {};
-      
+
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) {
           // Convert empty string to null, except for number_of_employees which should be parsed as integer
@@ -115,14 +121,14 @@ router.put('/my-branch',
 
       const { Branch } = await import('../models/Branch.js');
       const branch = await Branch.update(req.user.branch_id, updateData);
-      
+
       if (!branch) {
         return res.status(404).json({
           success: false,
           message: 'Branch not found'
         });
       }
-      
+
       res.json({ success: true, data: branch });
     } catch (error) {
       res.status(500).json({
@@ -139,14 +145,14 @@ router.get('/:id', authenticate, checkBranchAccess, async (req, res) => {
   try {
     const { Branch } = await import('../models/Branch.js');
     const branch = await Branch.findById(parseInt(req.params.id));
-    
+
     if (!branch) {
       return res.status(404).json({
         success: false,
         message: 'Branch not found'
       });
     }
-    
+
     res.json({ success: true, data: branch });
   } catch (error) {
     res.status(500).json({
@@ -193,7 +199,7 @@ router.post('/',
 
       const { Branch } = await import('../models/Branch.js');
       const branch = await Branch.create(req.body);
-      
+
       res.status(201).json({ success: true, data: branch });
     } catch (error) {
       res.status(500).json({
@@ -240,14 +246,14 @@ router.put('/:id',
 
       const { Branch } = await import('../models/Branch.js');
       const branch = await Branch.update(parseInt(req.params.id), req.body);
-      
+
       if (!branch) {
         return res.status(404).json({
           success: false,
           message: 'Branch not found'
         });
       }
-      
+
       res.json({ success: true, data: branch });
     } catch (error) {
       res.status(500).json({
@@ -269,7 +275,7 @@ router.delete('/:id',
       const { Branch } = await import('../models/Branch.js');
       const branchId = parseInt(req.params.id);
       const branch = await Branch.softDelete(branchId);
-      
+
       if (!branch) {
         return res.status(404).json({
           success: false,

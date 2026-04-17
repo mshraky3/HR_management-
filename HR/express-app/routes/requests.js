@@ -6,7 +6,7 @@
 
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { requireMainManager } from '../middleware/authorization.js';
+import { requireMainManager, requireManager } from '../middleware/authorization.js';
 import { Request } from '../models/Request.js';
 import { Branch } from '../models/Branch.js';
 import { User } from '../models/User.js';
@@ -26,7 +26,7 @@ router.use(authenticate);
  * GET /api/requests/main-managers
  * Get list of main managers (for branch managers to select when creating requests)
  */
-router.get('/main-managers', async (req, res) => {
+router.get('/main-managers', requireManager, async (req, res) => {
   try {
     const { User } = await import('../models/User.js');
     const managers = await User.findAll({
@@ -53,7 +53,7 @@ router.get('/main-managers', async (req, res) => {
  * Create a new request (Branch Manager only)
  * Form data: main_manager_id, employee_id (optional), request_name, request_text, file (optional)
  */
-router.post('/', uploadSingle, async (req, res) => {
+router.post('/', requireManager, uploadSingle, async (req, res) => {
   try {
     const { main_manager_id, employee_id, request_name, request_text } = req.body;
 
@@ -203,7 +203,7 @@ router.post('/', uploadSingle, async (req, res) => {
  * - Main managers see requests assigned to them
  * Query params: status, employee_id
  */
-router.get('/', async (req, res) => {
+router.get('/', requireManager, async (req, res) => {
   try {
     let filters = {};
 
@@ -248,7 +248,7 @@ router.get('/', async (req, res) => {
  * GET /api/requests/:id
  * Get request by ID
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', requireManager, async (req, res) => {
   try {
     const request = await Request.findById(parseInt(req.params.id));
 
@@ -453,7 +453,7 @@ router.put('/:id/respond', requireMainManager, uploadSingle, async (req, res) =>
  * DELETE /api/requests/:id
  * Delete a request (Branch Manager can delete their own requests if pending)
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireManager, async (req, res) => {
   try {
     const request = await Request.findById(parseInt(req.params.id));
 

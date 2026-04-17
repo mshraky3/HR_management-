@@ -7,7 +7,7 @@
 import express from 'express';
 import sql from '../config/database.js';
 import { authenticate } from '../middleware/auth.js';
-import { requireMainManager } from '../middleware/authorization.js';
+import { requireMainManager, requireManager } from '../middleware/authorization.js';
 import { uploadDocxSingle, validateDocxFile } from '../middleware/upload.js';
 import TreatmentPlan from '../models/TreatmentPlan.js';
 import {
@@ -316,7 +316,7 @@ router.post('/submit', (req, res, next) => {
  * Get all treatment plans (with filters)
  * GET /api/treatment-plans
  */
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, requireManager, async (req, res) => {
     try {
         const { branch_id, job_title, department, status } = req.query;
         const filters = {};
@@ -389,7 +389,7 @@ router.get('/stats', authenticate, requireMainManager, async (req, res) => {
  * Download treatment plan file
  * GET /api/treatment-plans/:id/download
  */
-router.get('/:id/download', authenticate, async (req, res) => {
+router.get('/:id/download', authenticate, requireManager, async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         if (isNaN(id)) {
@@ -496,7 +496,7 @@ router.put('/:id/review', authenticate, requireMainManager, async (req, res) => 
  * Get treatment plan by ID
  * GET /api/treatment-plans/:id
  */
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, requireManager, async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         if (isNaN(id)) {

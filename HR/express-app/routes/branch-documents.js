@@ -14,6 +14,7 @@ import { authenticate } from "../middleware/auth.js";
 import { uploadSingle, validateUploadedFile } from "../middleware/upload.js";
 import { BranchDocument } from "../models/BranchDocument.js";
 import { Branch } from "../models/Branch.js";
+import { loadAssignedBranches } from "../middleware/authorization.js";
 import {
   getExtensionFromMimeType,
   fixFilenameEncoding,
@@ -189,6 +190,7 @@ const resolveFilePath = (filePath) => {
 
 // All routes require authentication
 router.use(authenticate);
+router.use(loadAssignedBranches);
 
 /**
  * Get all branch documents (with filters)
@@ -219,6 +221,22 @@ const getDocumentsByRole = async (user, filters) => {
   }
   if (user.role === "main_manager") {
     return await BranchDocument.findAll(filters);
+  }
+  if (user.role === "branch_operations_manager" && user.assigned_branches) {
+    if (filters.branch_id) {
+      // Ensure requested branch is in assigned list
+      if (!user.assigned_branches.includes(parseInt(filters.branch_id))) {
+        return [];
+      }
+      return await BranchDocument.findByBranchId(filters.branch_id, filters);
+    }
+    // Return documents for all assigned branches
+    const allDocs = [];
+    for (const branchId of user.assigned_branches) {
+      const docs = await BranchDocument.findByBranchId(branchId, filters);
+      allDocs.push(...(docs || []));
+    }
+    return allDocs;
   }
   return [];
 };
@@ -335,6 +353,17 @@ router.post(
         return res.status(403).json({
           success: false,
           message: "You can only upload documents for your branch",
+        });
+      }
+
+      // Branch operations managers can only upload to assigned branches
+      if (
+        req.user.role === "branch_operations_manager" &&
+        (!req.user.assigned_branches || !req.user.assigned_branches.includes(parseInt(branch_id)))
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only upload documents for your assigned branches",
         });
       }
 

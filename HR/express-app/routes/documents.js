@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { authenticate } from '../middleware/auth.js';
-import { checkBranchAccess } from '../middleware/authorization.js';
+import { checkBranchAccess, requireManager } from '../middleware/authorization.js';
 import { uploadSingle, validateUploadedFile } from '../middleware/upload.js';
 import { Document } from '../models/Document.js';
 import { Employee } from '../models/Employee.js';
@@ -21,8 +21,9 @@ const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
-// All routes require authentication
+// All routes require authentication + manager role (blocks branch_operations_manager)
 router.use(authenticate);
+router.use(requireManager);
 
 /**
  * Get all documents (with filters)

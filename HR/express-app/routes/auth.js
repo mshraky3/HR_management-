@@ -51,6 +51,21 @@ async function ensureBranchOtpTableExists() {
   await sql`CREATE INDEX IF NOT EXISTS idx_branch_otp_expires ON branch_otp_tokens(expires_at)`;
 }
 
+async function ensureUserOtpTableExists() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS user_otp_tokens (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      otp_hash VARCHAR(128) NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      attempts INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_user_otp_user_id ON user_otp_tokens(user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_user_otp_expires ON user_otp_tokens(expires_at)`;
+}
+
 /**
  * Login endpoint
  * POST /api/auth/login
@@ -131,12 +146,14 @@ router.post('/login', async (req, res) => {
 
         // Check resend cooldown
         const [recentOTP] = await sql`
-          SELECT created_at FROM branch_otp_tokens
+          SELECT created_at,
+                 EXTRACT(EPOCH FROM (NOW() - created_at)) as elapsed_seconds
+          FROM branch_otp_tokens
           WHERE branch_id = ${branch.id}
           ORDER BY created_at DESC LIMIT 1
         `;
         if (recentOTP) {
-          const elapsed = (Date.now() - new Date(recentOTP.created_at).getTime()) / 1000;
+          const elapsed = Number(recentOTP.elapsed_seconds);
           if (elapsed < OTP_RESEND_COOLDOWN_SECONDS) {
             return res.json({
               success: true,
@@ -152,11 +169,10 @@ router.post('/login', async (req, res) => {
         await sql`DELETE FROM branch_otp_tokens WHERE branch_id = ${branch.id}`;
         const code = generateOTP();
         const otpHash = hashOTP(code);
-        const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
         await sql`
           INSERT INTO branch_otp_tokens (branch_id, otp_hash, expires_at)
-          VALUES (${branch.id}, ${otpHash}, ${expiresAt})
+          VALUES (${branch.id}, ${otpHash}, NOW() + INTERVAL '${sql.unsafe(String(OTP_EXPIRY_MINUTES))} minutes')
         `;
 
         // Send OTP email
@@ -199,6 +215,71 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({
         success: false,
         message: 'اسم المستخدم أو كلمة المرور غير صحيحة'
+      });
+    }
+
+    // branch_operations_manager requires email OTP (same UX as branch login)
+    if (user.role === 'branch_operations_manager') {
+      const userEmail = user.email;
+      if (!userEmail) {
+        return res.status(400).json({
+          success: false,
+          noEmail: true,
+          username: user.username,
+          message: 'لا يوجد بريد إلكتروني مسجل لهذا الحساب. يرجى التواصل مع المسؤول.'
+        });
+      }
+
+      await ensureUserOtpTableExists();
+
+      // Check resend cooldown
+      const [recentOTP] = await sql`
+        SELECT created_at,
+               EXTRACT(EPOCH FROM (NOW() - created_at)) as elapsed_seconds
+        FROM user_otp_tokens
+        WHERE user_id = ${user.id}
+        ORDER BY created_at DESC LIMIT 1
+      `;
+      if (recentOTP) {
+        const elapsed = Number(recentOTP.elapsed_seconds);
+        if (elapsed < OTP_RESEND_COOLDOWN_SECONDS) {
+          return res.json({
+            success: true,
+            requiresOTP: true,
+            isUserOTP: true,
+            maskedEmail: maskEmail(userEmail),
+            username: user.username,
+            message: 'رمز التحقق قد أُرسل بالفعل. يرجى الانتظار قبل طلب رمز جديد.'
+          });
+        }
+      }
+
+      // Invalidate old tokens and generate new OTP
+      await sql`DELETE FROM user_otp_tokens WHERE user_id = ${user.id}`;
+      const code = generateOTP();
+      const otpHash = hashOTP(code);
+
+      await sql`
+        INSERT INTO user_otp_tokens (user_id, otp_hash, expires_at)
+        VALUES (${user.id}, ${otpHash}, NOW() + INTERVAL '${sql.unsafe(String(OTP_EXPIRY_MINUTES))} minutes')
+      `;
+
+      const emailResult = await sendOTPEmail(userEmail, code, user.full_name || user.username);
+      if (!emailResult.success) {
+        log.error('Failed to send OTP email to user', { userId: user.id, error: emailResult.error });
+        return res.status(500).json({
+          success: false,
+          message: 'فشل إرسال رمز التحقق. يرجى المحاولة مرة أخرى.'
+        });
+      }
+
+      return res.json({
+        success: true,
+        requiresOTP: true,
+        isUserOTP: true,
+        maskedEmail: maskEmail(userEmail),
+        username: user.username,
+        message: 'تم التحقق من بيانات الدخول. تم إرسال رمز التحقق إلى البريد الإلكتروني.'
       });
     }
 
@@ -273,7 +354,9 @@ router.post('/login', async (req, res) => {
  */
 router.post('/verify-otp', async (req, res) => {
   try {
-    const { username, otp } = req.body;
+    const { username, otp, isUserOTP } = req.body;
+
+    log.info('verify-otp request', { username, isUserOTP, hasOtp: !!otp });
 
     if (!username || !otp) {
       return res.status(400).json({
@@ -282,6 +365,106 @@ router.post('/verify-otp', async (req, res) => {
       });
     }
 
+    // === User-based OTP (branch_operations_manager) ===
+    if (isUserOTP) {
+      log.info('verify-otp: entering user OTP path', { username });
+      const userAccount = await User.findByUsername(username);
+      if (!userAccount || !userAccount.is_active) {
+        log.warn('verify-otp: user not found or inactive', { username, found: !!userAccount });
+        return res.status(401).json({
+          success: false,
+          message: 'الحساب غير موجود أو معطل'
+        });
+      }
+
+      await ensureUserOtpTableExists();
+
+      const [otpRecord] = await sql`
+        SELECT id, otp_hash, expires_at, attempts,
+               (NOW() > expires_at) as is_expired
+        FROM user_otp_tokens
+        WHERE user_id = ${userAccount.id}
+        ORDER BY created_at DESC LIMIT 1
+      `;
+
+      if (!otpRecord) {
+        log.warn('verify-otp: no OTP record found', { userId: userAccount.id });
+        return res.status(400).json({
+          success: false,
+          message: 'لا يوجد رمز تحقق نشط. يرجى طلب رمز جديد.'
+        });
+      }
+
+      log.info('verify-otp: OTP record found', { userId: userAccount.id, isExpired: otpRecord.is_expired, attempts: otpRecord.attempts });
+
+      if (otpRecord.is_expired) {
+        log.warn('verify-otp: OTP expired', { userId: userAccount.id });
+        await sql`DELETE FROM user_otp_tokens WHERE user_id = ${userAccount.id}`;
+        return res.status(400).json({
+          success: false,
+          message: 'انتهت صلاحية رمز التحقق. يرجى طلب رمز جديد.',
+          expired: true
+        });
+      }
+
+      if (otpRecord.attempts >= OTP_MAX_ATTEMPTS) {
+        await sql`DELETE FROM user_otp_tokens WHERE user_id = ${userAccount.id}`;
+        return res.status(429).json({
+          success: false,
+          message: 'تم تجاوز عدد المحاولات المسموحة. يرجى طلب رمز جديد.',
+          expired: true
+        });
+      }
+
+      const inputHash = hashOTP(otp);
+      if (inputHash !== otpRecord.otp_hash) {
+        await sql`
+          UPDATE user_otp_tokens SET attempts = attempts + 1
+          WHERE id = ${otpRecord.id}
+        `;
+        const remaining = OTP_MAX_ATTEMPTS - otpRecord.attempts - 1;
+        return res.status(401).json({
+          success: false,
+          message: `رمز التحقق غير صحيح. المحاولات المتبقية: ${remaining}`
+        });
+      }
+
+      // OTP verified — delete token and issue JWT
+      await sql`DELETE FROM user_otp_tokens WHERE user_id = ${userAccount.id}`;
+
+      // Load assigned branches for token
+      const assignedBranches = await sql`
+        SELECT branch_id FROM user_branch_assignments WHERE user_id = ${userAccount.id}
+      `;
+      const assignedBranchIds = assignedBranches.map(r => r.branch_id);
+
+      const token = generateToken({
+        id: userAccount.id,
+        username: userAccount.username,
+        role: userAccount.role,
+        branch_id: userAccount.branch_id,
+        assigned_branches: assignedBranchIds
+      });
+
+      log.info('User OTP login successful', { username, userId: userAccount.id });
+
+      return res.json({
+        success: true,
+        message: 'تم تسجيل الدخول بنجاح',
+        token,
+        user: {
+          id: userAccount.id,
+          username: userAccount.username,
+          role: userAccount.role,
+          branch_id: userAccount.branch_id,
+          full_name: userAccount.full_name,
+          email: userAccount.email,
+          assigned_branches: assignedBranchIds
+        }
+      });
+    }
+
+    // === Branch-based OTP (branch_manager) ===
     // Find branch
     const branch = await Branch.findByUsername(username);
     if (!branch || !branch.is_active) {
@@ -296,7 +479,9 @@ router.post('/verify-otp', async (req, res) => {
 
     // Find active OTP token
     const [otpRecord] = await sql`
-      SELECT id, otp_hash, expires_at, attempts FROM branch_otp_tokens
+      SELECT id, otp_hash, expires_at, attempts,
+             (NOW() > expires_at) as is_expired
+      FROM branch_otp_tokens
       WHERE branch_id = ${branch.id}
       ORDER BY created_at DESC LIMIT 1
     `;
@@ -309,7 +494,7 @@ router.post('/verify-otp', async (req, res) => {
     }
 
     // Check expiry
-    if (new Date() > new Date(otpRecord.expires_at)) {
+    if (otpRecord.is_expired) {
       await sql`DELETE FROM branch_otp_tokens WHERE branch_id = ${branch.id}`;
       return res.status(400).json({
         success: false,
@@ -418,11 +603,65 @@ router.post('/verify-otp', async (req, res) => {
  */
 router.post('/resend-otp', async (req, res) => {
   try {
-    const { username } = req.body;
+    const { username, isUserOTP } = req.body;
     if (!username) {
       return res.status(400).json({ success: false, message: 'اسم المستخدم مطلوب' });
     }
 
+    // === User-based OTP (branch_operations_manager) ===
+    if (isUserOTP) {
+      const userAccount = await User.findByUsername(username);
+      if (!userAccount || !userAccount.is_active) {
+        return res.status(401).json({ success: false, message: 'الحساب غير موجود أو معطل' });
+      }
+
+      const userEmail = userAccount.email;
+      if (!userEmail) {
+        return res.status(400).json({ success: false, message: 'لا يوجد بريد إلكتروني مسجل لهذا الحساب.' });
+      }
+
+      await ensureUserOtpTableExists();
+
+      const [recentOTP] = await sql`
+        SELECT created_at,
+               EXTRACT(EPOCH FROM (NOW() - created_at)) as elapsed_seconds
+        FROM user_otp_tokens
+        WHERE user_id = ${userAccount.id}
+        ORDER BY created_at DESC LIMIT 1
+      `;
+      if (recentOTP) {
+        const elapsed = Number(recentOTP.elapsed_seconds);
+        if (elapsed < OTP_RESEND_COOLDOWN_SECONDS) {
+          const wait = Math.ceil(OTP_RESEND_COOLDOWN_SECONDS - elapsed);
+          return res.status(429).json({
+            success: false,
+            message: `يرجى الانتظار ${wait} ثانية قبل إعادة إرسال الرمز.`
+          });
+        }
+      }
+
+      await sql`DELETE FROM user_otp_tokens WHERE user_id = ${userAccount.id}`;
+      const code = generateOTP();
+      const otpHash = hashOTP(code);
+
+      await sql`
+        INSERT INTO user_otp_tokens (user_id, otp_hash, expires_at)
+        VALUES (${userAccount.id}, ${otpHash}, NOW() + INTERVAL '${sql.unsafe(String(OTP_EXPIRY_MINUTES))} minutes')
+      `;
+
+      const emailResult = await sendOTPEmail(userEmail, code, userAccount.full_name || userAccount.username);
+      if (!emailResult.success) {
+        return res.status(500).json({ success: false, message: 'فشل إرسال رمز التحقق.' });
+      }
+
+      return res.json({
+        success: true,
+        maskedEmail: maskEmail(userEmail),
+        message: 'تم إعادة إرسال رمز التحقق بنجاح.'
+      });
+    }
+
+    // === Branch-based OTP ===
     const branch = await Branch.findByUsername(username);
     if (!branch || !branch.is_active) {
       return res.status(401).json({ success: false, message: 'حساب الفرع غير موجود أو معطل' });
@@ -438,12 +677,14 @@ router.post('/resend-otp', async (req, res) => {
 
     // Check cooldown
     const [recentOTP] = await sql`
-      SELECT created_at FROM branch_otp_tokens
+      SELECT created_at,
+             EXTRACT(EPOCH FROM (NOW() - created_at)) as elapsed_seconds
+      FROM branch_otp_tokens
       WHERE branch_id = ${branch.id}
       ORDER BY created_at DESC LIMIT 1
     `;
     if (recentOTP) {
-      const elapsed = (Date.now() - new Date(recentOTP.created_at).getTime()) / 1000;
+      const elapsed = Number(recentOTP.elapsed_seconds);
       if (elapsed < OTP_RESEND_COOLDOWN_SECONDS) {
         const wait = Math.ceil(OTP_RESEND_COOLDOWN_SECONDS - elapsed);
         return res.status(429).json({
@@ -457,11 +698,10 @@ router.post('/resend-otp', async (req, res) => {
     await sql`DELETE FROM branch_otp_tokens WHERE branch_id = ${branch.id}`;
     const code = generateOTP();
     const otpHash = hashOTP(code);
-    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
     await sql`
       INSERT INTO branch_otp_tokens (branch_id, otp_hash, expires_at)
-      VALUES (${branch.id}, ${otpHash}, ${expiresAt})
+      VALUES (${branch.id}, ${otpHash}, NOW() + INTERVAL '${sql.unsafe(String(OTP_EXPIRY_MINUTES))} minutes')
     `;
 
     const emailResult = await sendOTPEmail(branchEmail, code, branch.branch_name);
@@ -526,6 +766,19 @@ router.get('/me', authenticate, async (req, res) => {
     }
 
     // Return user info (without password)
+    // For branch_operations_manager, include assigned branches
+    let assigned_branches = null;
+    if (user.role === 'branch_operations_manager') {
+      try {
+        const assignments = await sql`
+          SELECT branch_id FROM user_branch_assignments WHERE user_id = ${user.id}
+        `;
+        assigned_branches = assignments.map(r => r.branch_id);
+      } catch (err) {
+        assigned_branches = [];
+      }
+    }
+
     res.json({
       success: true,
       user: {
@@ -537,7 +790,8 @@ router.get('/me', authenticate, async (req, res) => {
         email: user.email,
         is_active: user.is_active,
         created_at: user.created_at,
-        branch_type: user.branch_type || null
+        branch_type: user.branch_type || null,
+        ...(assigned_branches !== null && { assigned_branches })
       }
     });
   } catch (error) {

@@ -56,10 +56,10 @@ export async function initializeDatabase() {
       id SERIAL PRIMARY KEY,
       username VARCHAR(255) UNIQUE NOT NULL,
       password VARCHAR(255) NOT NULL,
-      role VARCHAR(50) NOT NULL CHECK (role IN ('main_manager', 'branch_manager')),
+      role VARCHAR(50) NOT NULL CHECK (role IN ('main_manager', 'branch_manager', 'branch_operations_manager')),
       branch_id INTEGER,
       full_name VARCHAR(255) NOT NULL,
-      email VARCHAR(255) UNIQUE,
+      email VARCHAR(255),
       is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -80,6 +80,75 @@ export async function initializeDatabase() {
     await executeQuery(
       'CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)',
       'Created index on users.role'
+    );
+
+    // Migration: expand role constraint to include branch_operations_manager
+    try {
+      await executeQuery(
+        `DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check'
+          ) THEN
+            ALTER TABLE users DROP CONSTRAINT users_role_check;
+          END IF;
+          ALTER TABLE users ADD CONSTRAINT users_role_check
+            CHECK (role IN ('main_manager', 'branch_manager', 'branch_operations_manager'));
+        END $$;`,
+        'Updated users role CHECK constraint to include branch_operations_manager'
+      );
+    } catch (error) {
+      // Constraint may already be correct
+    }
+
+    // Migration: Replace global UNIQUE on users.email with role-scoped partial index
+    try {
+      await executeQuery(
+        `ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key`,
+        'Dropped global unique constraint on users.email'
+      );
+      await executeQuery(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_role_active ON users (email, role) WHERE is_active = true AND email IS NOT NULL`,
+        'Created partial unique index on users(email, role) for active users'
+      );
+    } catch (error) {
+      // Index may already exist
+    }
+
+    // Migration: Replace global UNIQUE on users.username with partial index (active users only)
+    try {
+      await executeQuery(
+        `ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_key`,
+        'Dropped global unique constraint on users.username'
+      );
+      // Drop the old simple index too
+      await executeQuery(
+        `DROP INDEX IF EXISTS idx_users_username`,
+        'Dropped old username index'
+      );
+      await executeQuery(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_active ON users (username) WHERE is_active = true`,
+        'Created partial unique index on users(username) for active users'
+      );
+    } catch (error) {
+      // Index may already exist
+    }
+
+    // Create user_branch_assignments table (many-to-many: users ↔ branches)
+    await createTable('user_branch_assignments', `
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+      assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      assigned_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      UNIQUE(user_id, branch_id)
+    `);
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_user_branch_assignments_user ON user_branch_assignments(user_id)',
+      'Index user_branch_assignments.user_id'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_user_branch_assignments_branch ON user_branch_assignments(branch_id)',
+      'Index user_branch_assignments.branch_id'
     );
 
     // NOTE: We no longer create `schools` / `healthcare_centers` tables.
@@ -1805,6 +1874,29 @@ export async function initializeDatabase() {
       );
     } catch (error) {
       console.log('branch_otp_tokens indexes already exist or skipped');
+    }
+
+    // Create user_otp_tokens table for email OTP login (branch_operations_manager)
+    await createTable('user_otp_tokens', `
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      otp_hash VARCHAR(128) NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      attempts INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    `);
+
+    try {
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_user_otp_user_id ON user_otp_tokens(user_id)',
+        'Created index on user_otp_tokens.user_id'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_user_otp_expires ON user_otp_tokens(expires_at)',
+        'Created index on user_otp_tokens.expires_at'
+      );
+    } catch (error) {
+      console.log('user_otp_tokens indexes already exist or skipped');
     }
 
     return { success: true, message: 'Database initialization completed successfully' };

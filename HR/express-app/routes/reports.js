@@ -645,6 +645,15 @@ router.post('/generate', async (req, res) => {
     if (req.user.role === 'branch_manager') {
       // Branch manager can only access their own branch
       branchIds = [req.user.branch_id];
+    } else if (req.user.role === 'branch_operations_manager') {
+      // branch_operations_manager: only assigned branches
+      const { UserBranchAssignment } = await import('../models/User.js');
+      const assignedBranches = await UserBranchAssignment.getAssignedBranches(req.user.id);
+      if (branch_ids && Array.isArray(branch_ids) && branch_ids.length > 0) {
+        branchIds = branch_ids.map(id => parseInt(id)).filter(id => !isNaN(id) && assignedBranches.includes(id));
+      } else {
+        branchIds = assignedBranches;
+      }
     } else if (branch_ids && Array.isArray(branch_ids) && branch_ids.length > 0) {
       // Main manager with multiple branch selection
       branchIds = branch_ids.map(id => parseInt(id)).filter(id => !isNaN(id));

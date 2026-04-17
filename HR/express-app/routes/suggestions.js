@@ -6,7 +6,7 @@
 import express from 'express';
 import Suggestion from '../models/Suggestion.js';
 import { authenticate } from '../middleware/auth.js';
-import { requireMainManager } from '../middleware/authorization.js';
+import { requireMainManager, requireManager } from '../middleware/authorization.js';
 import { sendNotificationEmail } from '../utils/emailService.js';
 import { User } from '../models/User.js';
 import { Branch } from '../models/Branch.js';
@@ -76,7 +76,7 @@ router.get('/stats', requireMainManager, async (req, res) => {
  * GET /api/suggestions
  * Query params: branch_id, importance_level, status
  */
-router.get('/', async (req, res) => {
+router.get('/', requireManager, async (req, res) => {
     try {
         const { branch_id, importance_level, status } = req.query;
         const filters = {};
@@ -116,7 +116,7 @@ router.get('/', async (req, res) => {
  * Get suggestion by ID
  * GET /api/suggestions/:id
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', requireManager, async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         if (isNaN(id)) {
@@ -161,7 +161,7 @@ router.get('/:id', async (req, res) => {
  * POST /api/suggestions
  * Body: { suggestion_text, importance_level }
  */
-router.post('/', async (req, res) => {
+router.post('/', requireManager, async (req, res) => {
     try {
         const { suggestion_text, importance_level } = req.body;
 
@@ -255,7 +255,7 @@ router.post('/', async (req, res) => {
  * PUT /api/suggestions/:id
  * Body: { suggestion_text, importance_level, status, admin_notes }
  */
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireManager, async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         if (isNaN(id)) {
@@ -365,7 +365,7 @@ router.put('/:id', async (req, res) => {
  * Delete suggestion
  * DELETE /api/suggestions/:id
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireManager, async (req, res) => {
     try {
         const id = parseInt(req.params.id);
         if (isNaN(id)) {

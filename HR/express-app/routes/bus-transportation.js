@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import fs from 'fs';
 import { authenticate } from '../middleware/auth.js';
-import { requireManager, checkBranchAccess } from '../middleware/authorization.js';
+import { requireAnyManager, checkBranchAccess, loadAssignedBranches } from '../middleware/authorization.js';
 import { validateRequired } from '../middleware/validation.js';
 import { BusTransportation } from '../models/BusTransportation.js';
 import { BusRegistrationData } from '../models/BusRegistrationData.js';
@@ -88,7 +88,8 @@ const upload = multer({
 
 // All routes require authentication and manager role
 router.use(authenticate);
-router.use(requireManager);
+router.use(requireAnyManager);
+router.use(loadAssignedBranches);
 
 /**
  * GET /api/bus-transportation
@@ -114,6 +115,23 @@ router.get('/', async (req, res) => {
     } else if (req.query.branch_id) {
       // Main manager can filter by branch
       filters.branch_id = parseInt(req.query.branch_id);
+    }
+
+    // Branch operations managers only see their assigned branches
+    if (req.user.role === 'branch_operations_manager' && req.user.assigned_branches) {
+      if (filters.branch_id) {
+        if (!req.user.assigned_branches.includes(filters.branch_id)) {
+          return res.json({ success: true, data: [] });
+        }
+      } else {
+        // If no branch_id filter, return all buses for assigned branches
+        const allBuses = [];
+        for (const branchId of req.user.assigned_branches) {
+          const branchBuses = await BusTransportation.findAll({ ...filters, branch_id: branchId });
+          allBuses.push(...(branchBuses || []));
+        }
+        return res.json({ success: true, data: allBuses });
+      }
     }
 
     // Filter by branch_type if provided (to get relevant terms)

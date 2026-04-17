@@ -23,6 +23,17 @@ router.get('/summary', async (req, res) => {
         let branchId = null;
         if (req.user.role === 'branch_manager') {
             branchId = req.user.branch_id;
+        } else if (req.user.role === 'branch_operations_manager') {
+            // branch_operations_manager: scope to first assigned branch or query param if valid
+            const { UserBranchAssignment } = await import('../models/User.js');
+            const assignedBranches = await UserBranchAssignment.getAssignedBranches(req.user.id);
+            if (req.query.branch_id) {
+                const parsed = parseInt(req.query.branch_id);
+                if (!isNaN(parsed) && assignedBranches.includes(parsed)) branchId = parsed;
+                else branchId = assignedBranches[0] || null;
+            } else {
+                branchId = assignedBranches[0] || null;
+            }
         } else if (req.query.branch_id) {
             const parsed = parseInt(req.query.branch_id);
             if (!isNaN(parsed)) branchId = parsed;

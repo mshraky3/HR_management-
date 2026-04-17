@@ -5,16 +5,17 @@
 
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { requireMainManager } from '../middleware/authorization.js';
+import { requireMainManager, requireAnyManager, loadAssignedBranches } from '../middleware/authorization.js';
 import sql from '../config/database.js';
 import { calculateEmployeeCompletion } from '../utils/dataCompletionUtils.js';
 import { formatDate } from '../utils/dateConverter.js';
 
 const router = express.Router();
 
-// All routes require authentication and main manager
+// All routes require authentication and manager role
 router.use(authenticate);
-router.use(requireMainManager);
+router.use(requireAnyManager);
+router.use(loadAssignedBranches);
 
 /**
  * GET /api/branch-statistics
@@ -25,18 +26,31 @@ router.get('/', async (req, res) => {
     const currentDate = new Date();
     const currentMonth = currentDate.getMonth() + 1; // 1-12
     const currentYear = currentDate.getFullYear();
-    
+
     // Get first and last day of current month
     const firstDayOfMonth = new Date(currentYear, currentMonth - 1, 1).toISOString().split('T')[0];
     const lastDayOfMonth = new Date(currentYear, currentMonth, 0).toISOString().split('T')[0];
-    
+
     // Get all branches (including number_of_employees for accurate completion calculation)
-    const branches = await sql`
-      SELECT id, branch_name, branch_type, username, is_active, number_of_employees
-      FROM branches
-      WHERE is_active = true
-      ORDER BY branch_name
-    `;
+    let branches;
+    if (req.user.role === 'branch_operations_manager' && req.user.assigned_branches) {
+      if (req.user.assigned_branches.length === 0) {
+        return res.json({ success: true, data: [], period: { month: currentMonth, year: currentYear, first_day: firstDayOfMonth, last_day: lastDayOfMonth } });
+      }
+      branches = await sql`
+        SELECT id, branch_name, branch_type, username, is_active, number_of_employees
+        FROM branches
+        WHERE is_active = true AND id = ANY(${req.user.assigned_branches}::int[])
+        ORDER BY branch_name
+      `;
+    } else {
+      branches = await sql`
+        SELECT id, branch_name, branch_type, username, is_active, number_of_employees
+        FROM branches
+        WHERE is_active = true
+        ORDER BY branch_name
+      `;
+    }
 
     // If no branches, return early
     if (!branches || branches.length === 0) {
@@ -51,17 +65,17 @@ router.get('/', async (req, res) => {
         }
       });
     }
-    
+
     // Get statistics for each branch
     // Performance Optimization: Calculate date ranges once before the loop
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
-    
+
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const sixMonthsAgoStr = sixMonthsAgo.toISOString().split('T')[0];
-    
+
     const branchIds = branches.map(b => b.id).filter(Boolean);
 
     // IMPORTANT: Avoid N-branches * N-queries fan-out.
@@ -344,7 +358,7 @@ router.get('/', async (req, res) => {
         };
       }
     });
-    
+
     res.json({
       success: true,
       data: statistics,
@@ -374,12 +388,12 @@ router.get('/', async (req, res) => {
 router.post('/performance-report', async (req, res) => {
   try {
     const { month, year, branch_ids, format = 'excel' } = req.body;
-    
+
     // Get statistics
     let branchesQuery = sql`
       SELECT * FROM branches WHERE is_active = true
     `;
-    
+
     if (branch_ids && Array.isArray(branch_ids) && branch_ids.length > 0) {
       branchesQuery = sql`
         SELECT * FROM branches 
@@ -394,20 +408,20 @@ router.post('/performance-report', async (req, res) => {
         ORDER BY branch_name
       `;
     }
-    
+
     const branches = await branchesQuery;
     const targetMonth = month || new Date().getMonth() + 1;
     const targetYear = year || new Date().getFullYear();
-    
+
     const firstDayOfMonth = new Date(targetYear, targetMonth - 1, 1).toISOString().split('T')[0];
     const lastDayOfMonth = new Date(targetYear, targetMonth, 0).toISOString().split('T')[0];
-    
+
     // Get detailed statistics for each branch
     // Performance Optimization: Calculate date range once before the loop
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
-    
+
     const detailedStats = await Promise.all(
       branches.map(async (branch) => {
         // Performance Optimization: Execute all queries in parallel using Promise.all
@@ -453,29 +467,29 @@ router.post('/performance-report', async (req, res) => {
             WHERE branch_id = ${branch.id}
           `
         ]);
-        
+
         // Extract results from parallel queries
         const stats = employeeStats[0] || {
           total_employees: 0,
           complete_employees: 0,
           active_employees: 0
         };
-        
+
         // Use unified utility to calculate completion percentage
         // This ensures consistent calculation using branch.number_of_employees when available
         const employeeMetrics = calculateEmployeeCompletion(stats, branch);
         const completionPercentage = employeeMetrics.percentage;
-        
-        const daysSinceLastLogin = lastLogin[0]?.last_login 
+
+        const daysSinceLastLogin = lastLogin[0]?.last_login
           ? Math.floor((new Date() - new Date(lastLogin[0].last_login)) / (1000 * 60 * 60 * 24))
           : null;
-        
+
         const isOperational = (
           (daysSinceLastLogin !== null && daysSinceLastLogin <= 30) ||
           parseInt(activities[0]?.employee_updates || 0) > 0 ||
           parseInt(activities[0]?.document_uploads || 0) > 0
         ) && stats.total_employees > 0;
-        
+
         return {
           branch_name: branch.branch_name,
           branch_type: branch.branch_type,
@@ -494,13 +508,13 @@ router.post('/performance-report', async (req, res) => {
         };
       })
     );
-    
+
     // Generate report based on format
     if (format === 'excel') {
       const ExcelJS = (await import('exceljs')).default;
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('تقرير الأداء');
-      
+
       // Add headers
       worksheet.columns = [
         { header: 'اسم الفرع', key: 'branch_name', width: 30 },
@@ -515,15 +529,15 @@ router.post('/performance-report', async (req, res) => {
         { header: 'أيام منذ آخر دخول', key: 'days_since_last_login', width: 20 },
         { header: 'حالة التشغيل', key: 'is_operational', width: 15 }
       ];
-      
+
       // Use unified formatDate function for consistent dd/mm/yyyy format
-      
+
       // Helper function to format numbers (ensure English)
       const formatNumber = (value) => {
         if (value === null || value === undefined) return 'لا يوجد';
         return String(value);
       };
-      
+
       // Add data
       detailedStats.forEach(stat => {
         worksheet.addRow({
@@ -540,14 +554,14 @@ router.post('/performance-report', async (req, res) => {
           is_operational: stat.is_operational ? 'نشط' : 'غير نشط'
         });
       });
-      
+
       // Style header row
       worksheet.getRow(1).font = { bold: true };
       worksheet.getRow(1).alignment = { horizontal: 'center' };
-      
+
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="performance-report-${targetYear}-${targetMonth}.xlsx"`);
-      
+
       await workbook.xlsx.write(res);
       res.end();
     } else {
