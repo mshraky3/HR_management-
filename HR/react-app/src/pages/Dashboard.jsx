@@ -31,9 +31,17 @@ import { calculateTasks } from '../utils/taskPrioritizer';
 import './Dashboard.css';
 
 const Dashboard = () => {
-  const { user, isMainManager } = useAuth();
+  const { user, isMainManager, isBranchOperationsManager } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const location = useLocation();
+  const isBranchOpsUser = isBranchOperationsManager();
+  const assignedBranchIds = useMemo(
+    () =>
+      Array.isArray(user?.assigned_branches)
+        ? user.assigned_branches.map((id) => parseInt(id, 10)).filter(Number.isFinite)
+        : [],
+    [user?.assigned_branches],
+  );
   const [branches, setBranches] = useState([]);
   const [stats, setStats] = useState({
     branches: 0,
@@ -75,9 +83,14 @@ const Dashboard = () => {
   const [payrollAbsenceState, setPayrollAbsenceState] = useState(null);
   const [beneficiaryCount, setBeneficiaryCount] = useState(0);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0); // Track current task being shown
+  const [branchOpsTasksLoading, setBranchOpsTasksLoading] = useState(false);
 
   const loadStats = useCallback(async () => {
     try {
+      if (isBranchOpsUser) {
+        setBranchOpsTasksLoading(true);
+      }
+
       // Clear cache to ensure fresh data (especially completion status)
       clearCache('/api/employees');
       clearCache('/api/branch-statistics');
@@ -99,7 +112,11 @@ const Dashboard = () => {
 
       const apiPromises = [
         branchesAPI.getAll(branchFilters),
-        employeesAPI.getAll(employeeFilters),
+        employeesAPI.getAll(employeeFilters)
+          .catch((err) => {
+            console.warn('[Dashboard] employeesAPI.getAll failed:', err?.message || 'Unknown error');
+            return { data: { data: [] } };
+          }),
         branchDocumentsAPI.getAll(documentFilters)
           .catch((err) => {
             console.warn('[Dashboard] branchDocumentsAPI.getAll failed:', err?.message || 'Unknown error');
@@ -168,12 +185,25 @@ const Dashboard = () => {
       const documentsRes = results[2];
 
       // Store branches for display
-      const branchesList = branchesRes.data.success ? (branchesRes.data.data || []) : [];
+      const rawBranches = branchesRes.data.success ? (branchesRes.data.data || []) : [];
+      const branchesList = isBranchOpsUser
+        ? rawBranches.filter((branch) => assignedBranchIds.includes(parseInt(branch.id, 10)))
+        : rawBranches;
       setBranches(branchesList);
 
       // Store employees and documents for progress component
-      const employeesData = employeesRes.data.success ? (employeesRes.data.data || []) : [];
-      const documentsData = documentsRes.data.data || [];
+      const rawEmployeesData = employeesRes.data.success ? (employeesRes.data.data || []) : [];
+      const rawDocumentsData = documentsRes.data.data || [];
+      const employeesData = isBranchOpsUser
+        ? rawEmployeesData.filter((employee) =>
+          assignedBranchIds.includes(parseInt(employee.branch_id, 10)),
+        )
+        : rawEmployeesData;
+      const documentsData = isBranchOpsUser
+        ? rawDocumentsData.filter((document) =>
+          assignedBranchIds.includes(parseInt(document.branch_id, 10)),
+        )
+        : rawDocumentsData;
       setEmployeesList(employeesData);
       setDocumentsList(documentsData);
 
@@ -318,20 +348,37 @@ const Dashboard = () => {
       } else {
         // Set stats for branch managers (main manager stats set above)
         const branchStatsData = {
-          branches: branchesRes.data.data?.length || 0,
-          employees: employeesRes.data.data?.length || 0,
+          branches: branchesList.length || 0,
+          employees: employeesData.length || 0,
           users: 0, // Branch managers don't see users count
-          documents: documentsRes.data.data?.length || 0,
+          documents: documentsData.length || 0,
           notifications: results[4]?.data?.data?.length || 0,
           loading: false,
         };
         setStats(branchStatsData);
+
+        if (isBranchOpsUser) {
+          checkMonthlyDocuments(documentsData, branchesList);
+          checkMissingBranchDocuments(documentsData, branchesList);
+          setIncompleteEmployees([]);
+          setPendingEmployees([]);
+          setNotifications([]);
+          setBranchInfo(null);
+          setBuses([]);
+          setMissingEmployeeContractData([]);
+          setPayrollAbsenceState(null);
+          setBeneficiaryCount(0);
+          setBranchOpsTasksLoading(false);
+        }
       }
     } catch (error) {
       console.error('[Dashboard] Error loading stats:', error);
       setStats((prev) => ({ ...prev, loading: false }));
+      if (isBranchOpsUser) {
+        setBranchOpsTasksLoading(false);
+      }
     }
-  }, [user, isMainManager]); // Dependencies: user and isMainManager from context
+  }, [user, isMainManager, isBranchOpsUser, assignedBranchIds]); // Dependencies: user and role context
 
   // Load stats on mount and when navigating back to Dashboard
   useEffect(() => {
@@ -546,7 +593,9 @@ const Dashboard = () => {
     // Get branches to check
     const branchesToCheck = isMainManager()
       ? branchesList
-      : branchesList.filter(b => b.id === user?.branch_id);
+      : isBranchOpsUser
+        ? branchesList.filter((branch) => assignedBranchIds.includes(parseInt(branch.id, 10)))
+        : branchesList.filter(b => b.id === user?.branch_id);
 
     for (const branch of branchesToCheck) {
       for (const docType of monthlyTypes) {
@@ -674,7 +723,6 @@ const Dashboard = () => {
     const alertsWithExpiry = [];
     const alertsWithoutExpiry = [];
     const seenAlerts = new Set(); // To prevent duplicates
-    const missingDebug = [];
     const hasStoredFile = (doc) => !!(doc?.file_path || doc?.file_url || doc?.blob_url);
     const normalizeDocType = (type) => (type === 'insurance_print' ? 'insurance_statement' : type);
 
@@ -704,7 +752,9 @@ const Dashboard = () => {
     // Get branches to check
     const branchesToCheck = isMainManager()
       ? branchesList
-      : branchesList.filter(b => b.id === user?.branch_id);
+      : isBranchOpsUser
+        ? branchesList.filter((branch) => assignedBranchIds.includes(parseInt(branch.id, 10)))
+        : branchesList.filter(b => b.id === user?.branch_id);
 
     for (const branch of branchesToCheck) {
       const branchType = branch.branch_type; // 'school' or 'healthcare_center'
@@ -743,22 +793,6 @@ const Dashboard = () => {
         const hasArchivedDoc = archivedDocs.length > 0;
 
         if (branchDocs.length === 0) {
-          missingDebug.push({
-            branchId: branch.id,
-            branchName: branch.branch_name,
-            branchType,
-            documentType: docType,
-            documentLabel: typeLabels[docType] || docType,
-            reason: allBranchDocsOfType.length > 0 ? (hasArchivedDoc ? 'exists_but_archived' : 'exists_but_inactive_or_no_file_ref') : 'no_record',
-            found: allBranchDocsOfType.map(d => ({
-              id: d.id,
-              is_active: d.is_active,
-              has_file_path: !!d.file_path,
-              has_file_url: !!d.file_url,
-              has_blob_url: !!d.blob_url,
-            }))
-          });
-
           // Document is missing - determine message based on archive status
           const alertMessage = hasArchivedDoc
             ? `مستند ${typeLabels[docType] || docType} منتهي الصلاحية في الأرشيف - يحتاج رفع مستند جديد`
@@ -807,20 +841,6 @@ const Dashboard = () => {
 
     // Keep old state for backward compatibility
     const allAlerts = [...alertsWithExpiry, ...alertsWithoutExpiry];
-
-    // Final summary logging
-    console.log('[Dashboard] Missing documents summary:', {
-      totalMissing: allAlerts.length,
-      withExpiry: alertsWithExpiry.length,
-      withoutExpiry: alertsWithoutExpiry.length,
-      missingDebug,
-      missingDocuments: allAlerts.map(a => ({
-        branchId: a.branchId,
-        branchName: a.branchName,
-        documentType: a.documentType,
-        documentLabel: a.documentLabel
-      }))
-    });
 
     setMissingBranchDocumentAlerts(allAlerts);
     setMissingBranchDocumentAlertsWithExpiry(sortAlerts(alertsWithExpiry));
@@ -1056,7 +1076,9 @@ const Dashboard = () => {
       <p className="welcome-message">
         {isMainManager()
           ? `مرحباً، ${user?.full_name || user?.username}!`
-          : `${branches.find(b => b.id === user?.branch_id)?.branch_name || 'غير محدد'}`
+          : isBranchOpsUser
+            ? `مرحباً، ${user?.full_name || user?.username}! — ${branches.length} ${branches.length === 1 ? 'فرع' : 'فروع'} مُعينة`
+            : `${branches.find(b => b.id === user?.branch_id)?.branch_name || 'غير محدد'}`
         }
       </p>
 
@@ -1246,6 +1268,100 @@ const Dashboard = () => {
           </div>
         </div>
       )}
+
+      {isBranchOpsUser && (() => {
+        const groupedMissing = missingBranchDocumentAlerts.reduce((acc, alert) => {
+          const current = acc.get(alert.branchId) || {
+            branchId: alert.branchId,
+            branchName: alert.branchName,
+            items: [],
+          };
+          current.items.push(alert.documentLabel);
+          acc.set(alert.branchId, current);
+          return acc;
+        }, new Map());
+
+        const missingGroups = Array.from(groupedMissing.values()).sort((a, b) =>
+          a.branchName.localeCompare(b.branchName, 'ar'),
+        );
+
+        const branchOpsTasks = missingBranchDocumentAlerts.length > 0
+          ? [{
+            id: 'branch-ops-missing-documents',
+            type: 'document',
+            category: 'documents',
+            priority: 'critical',
+            title: 'استكمال مستندات الفروع المعينة',
+            description: `${missingBranchDocumentAlerts.length} مستند مفقود في ${missingGroups.length} فرع`,
+            totalItems: missingBranchDocumentAlerts.length,
+            completedItems: 0,
+            remainingItems: missingBranchDocumentAlerts.length,
+            progress: 0,
+            actionUrl: '/branch-documents',
+            actionLabel: 'رفع المستندات',
+            urgency: 'no_deadline',
+            estimatedTime: `${Math.max(missingGroups.length * 5, 5)} min`,
+            dependencies: [],
+          }]
+          : [];
+
+        return (
+          <div className="dashboard-tasks-section">
+            {branchOpsTasksLoading ? (
+              <div className="branch-ops-tasks-loading" aria-label="جاري تحميل مهام مستندات الفروع">
+                <div className="branch-ops-loading-card" />
+                <div className="branch-ops-loading-card" />
+                <div className="branch-ops-loading-row" />
+                <div className="branch-ops-loading-row" />
+              </div>
+            ) : (
+              <TaskProgressOverview tasks={branchOpsTasks} />
+            )}
+
+            {!branchOpsTasksLoading && (branchOpsTasks.length > 0 ? (
+              <>
+                <div className="task-navigation-info">
+                  <span className="task-counter">المهمة 1 من 1</span>
+                </div>
+
+                <FocusTaskCard task={branchOpsTasks[0]} />
+
+                <div className="missing-branch-documents-alerts" style={{ marginTop: '1.5rem' }}>
+                  <h2>الفروع التي تحتاج رفع مستندات</h2>
+                  <div className="alerts-grid">
+                    {missingGroups.map((group) => (
+                      <div key={group.branchId} className="alert-card warning">
+                        <h3>{group.branchName}</h3>
+                        <p>
+                          {group.items.slice(0, 4).join('، ')}
+                          {group.items.length > 4 ? `، +${group.items.length - 4}` : ''}
+                        </p>
+                        <Link
+                          to={`/branch-documents?branch_id=${group.branchId}`}
+                          className="btn btn-primary"
+                        >
+                          رفع المستندات
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="tasks-completion-message">
+                <div className="completion-icon">
+                  <svg width="80" height="80" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" fill="#4CAF50" opacity="0.2" />
+                    <path d="M9 12L11 14L15 10" stroke="#4CAF50" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <h2 className="completion-title">لا توجد مستندات ناقصة حالياً</h2>
+                <p className="completion-description">كل الفروع المعينة لك مغطاة بالمستندات المطلوبة حالياً.</p>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Gamified Dashboard for Branch Managers */}
       {!isMainManager() && branchInfo && (() => {
@@ -1477,7 +1593,15 @@ const Dashboard = () => {
 
       {isMainManager() && (
         stats.loading ? (
-          <div className="loading">جاري تحميل الإحصائيات...</div>
+          <div className="stats-grid stats-grid-skeleton" aria-label="جاري تحميل الإحصائيات">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="stat-card skeleton-stat-card">
+                <div className="skeleton-stat-line skeleton-title" />
+                <div className="skeleton-stat-line skeleton-number" />
+                <div className="skeleton-stat-line skeleton-link" />
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="stats-grid">
             <div className="stat-card">

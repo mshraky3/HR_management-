@@ -320,6 +320,7 @@ export const AuthProvider = ({ children }) => {
             requiresOTP: true,
             maskedEmail: response.data.maskedEmail,
             username: response.data.username,
+            isUserOTP: response.data.isUserOTP || false,
           };
         }
         // Main manager: direct login
@@ -342,9 +343,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const completeOTPLogin = async (username, otp) => {
+  const completeOTPLogin = async (username, otp, isUserOTP = false) => {
     try {
-      const response = await authAPI.verifyOTP(username, otp);
+      const response = await authAPI.verifyOTP(username, otp, isUserOTP);
       if (response.data.success) {
         const { token: newToken, user: userData } = response.data;
         localStorage.setItem("token", newToken);
@@ -406,6 +407,10 @@ export const AuthProvider = ({ children }) => {
     return user?.role === "branch_manager";
   };
 
+  const isBranchOperationsManager = () => {
+    return user?.role === "branch_operations_manager";
+  };
+
   const value = {
     user,
     token,
@@ -416,6 +421,7 @@ export const AuthProvider = ({ children }) => {
     markActivity,
     isMainManager,
     isBranchManager,
+    isBranchOperationsManager,
     isAuthenticated: !!token,
   };
 

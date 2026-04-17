@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   branchDocumentsAPI,
   branchesAPI,
@@ -25,8 +26,17 @@ import { RESTRICTED_DOCUMENT_TYPES } from "../utils/documentRestrictions";
 import "./BranchDocumentsManagement.css";
 
 const BranchDocumentsManagement = () => {
-  const { isMainManager, user } = useAuth();
+  const { isMainManager, isBranchOperationsManager, user } = useAuth();
   const { showError, showSuccess } = useNotification();
+  const [searchParams] = useSearchParams();
+  const isBranchOpsUser = isBranchOperationsManager();
+  const assignedBranchIds = useMemo(
+    () =>
+      Array.isArray(user?.assigned_branches)
+        ? user.assigned_branches.map((id) => parseInt(id, 10)).filter(Number.isFinite)
+        : [],
+    [user?.assigned_branches],
+  );
 
   const [branches, setBranches] = useState([]);
   const [allDocuments, setAllDocuments] = useState([]);
@@ -255,16 +265,42 @@ const BranchDocumentsManagement = () => {
     }
   }, [branches]);
 
+  useEffect(() => {
+    const branchIdFromUrl = searchParams.get("branch_id");
+    if (!branchIdFromUrl) return;
+
+    if (branches.some((branch) => String(branch.id) === String(branchIdFromUrl))) {
+      setSelectedBranchFilter(String(branchIdFromUrl));
+    }
+  }, [branches, searchParams]);
+
   const loadBranches = async () => {
     try {
       setLoading(true);
       const filters = { is_active: true };
-      if (!isMainManager() && user?.branch_id) {
+
+      if (!isMainManager() && !isBranchOpsUser && user?.branch_id) {
         filters.id = user.branch_id;
       }
+
       const response = await branchesAPI.getAll(filters);
       if (response.data.success) {
-        setBranches(response.data.data || []);
+        const nextBranches = isBranchOpsUser
+          ? (response.data.data || []).filter((branch) =>
+            assignedBranchIds.includes(parseInt(branch.id, 10)),
+          )
+          : response.data.data || [];
+
+        setBranches(nextBranches);
+
+        if (!isMainManager() && !isBranchOpsUser && user?.branch_id) {
+          setFormData((prev) => ({ ...prev, branch_id: user.branch_id }));
+        } else if (isBranchOpsUser && nextBranches.length === 1) {
+          setFormData((prev) => ({
+            ...prev,
+            branch_id: prev.branch_id || String(nextBranches[0].id),
+          }));
+        }
       }
     } catch (error) {
       showError("فشل تحميل الفروع");
@@ -282,7 +318,11 @@ const BranchDocumentsManagement = () => {
       // For branch managers, only load for their branch (password will be handled by API interceptor)
       const branchesToLoad = isMainManager()
         ? branches
-        : branches.filter((b) => b.id === user?.branch_id);
+        : isBranchOpsUser
+          ? branches.filter((branch) =>
+            assignedBranchIds.includes(parseInt(branch.id, 10)),
+          )
+          : branches.filter((b) => b.id === user?.branch_id);
 
       // Load documents for branches in parallel for faster UX
       const results = await Promise.allSettled(
@@ -804,9 +844,18 @@ const BranchDocumentsManagement = () => {
   if (loading && branches.length === 0) {
     return (
       <div className="branch-documents-management-page">
-        <div className="loading-container">
-          <div className="loading-spinner"></div>
-          <p>جاري التحميل...</p>
+        <div className="documents-skeleton-page" aria-label="جاري تحميل مستندات الفروع">
+          <div className="documents-skeleton-header" />
+          <div className="documents-skeleton-stats">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="documents-skeleton-card" />
+            ))}
+          </div>
+          <div className="documents-skeleton-table">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="documents-skeleton-row" />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -843,7 +892,7 @@ const BranchDocumentsManagement = () => {
       </div>
 
       {/* PDF Generation Section */}
-      <div className="pdf-generation-section">
+      {isMainManager() && <div className="pdf-generation-section">
         <div className="section-header">
           <h2>إنشاء ملف PDF</h2>
         </div>
@@ -1073,7 +1122,7 @@ const BranchDocumentsManagement = () => {
             </div>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* Statistics Cards */}
       <div className="stats-section">

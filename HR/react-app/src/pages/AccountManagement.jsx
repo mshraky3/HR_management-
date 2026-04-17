@@ -6,7 +6,6 @@
 import { useState, useEffect } from 'react';
 import { usersAPI } from '../utils/api';
 import { useNotification } from '../contexts/NotificationContext';
-// TablePage.css is now loaded in App.jsx to prevent FOUC
 
 const AccountManagement = () => {
   const { showError, showSuccess } = useNotification();
@@ -44,7 +43,6 @@ const AccountManagement = () => {
     e.preventDefault();
     try {
       if (editingAccount) {
-        // When editing, only include password if it's not empty
         const updateData = { ...formData };
         if (!updateData.password || updateData.password.trim() === '') {
           delete updateData.password;
@@ -86,12 +84,7 @@ const AccountManagement = () => {
   };
 
   const resetForm = () => {
-    setFormData({
-      username: '',
-      password: '',
-      full_name: '',
-      phone_number: '',
-    });
+    setFormData({ username: '', password: '', full_name: '', phone_number: '' });
   };
 
   if (loading) {

@@ -16,6 +16,7 @@ const Login = () => {
 
   const [otpStep, setOtpStep] = useState(false);
   const [otpUsername, setOtpUsername] = useState('');
+  const [isUserOTP, setIsUserOTP] = useState(false);
   const [maskedEmail, setMaskedEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -46,6 +47,7 @@ const Login = () => {
     if (result.success && result.requiresOTP) {
       setOtpUsername(result.username);
       setMaskedEmail(result.maskedEmail || '');
+      setIsUserOTP(result.isUserOTP || false);
       setOtpStep(true);
       setResendCooldown(60);
     } else if (result.success) {
@@ -71,7 +73,7 @@ const Login = () => {
     setError('');
     setLoading(true);
 
-    const result = await completeOTPLogin(otpUsername, otp);
+    const result = await completeOTPLogin(otpUsername, otp, isUserOTP);
 
     if (result.success) {
       navigate('/dashboard');
@@ -93,7 +95,7 @@ const Login = () => {
     setError('');
     setLoading(true);
     try {
-      const response = await authAPI.resendOTP(otpUsername);
+      const response = await authAPI.resendOTP(otpUsername, isUserOTP);
       if (response.data.success) {
         setResendCooldown(60);
         setMaskedEmail(response.data.maskedEmail || maskedEmail);

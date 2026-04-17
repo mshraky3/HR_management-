@@ -431,11 +431,11 @@ export const authAPI = {
   login: (username, password) =>
     api.post('/api/auth/login', { username, password }),
 
-  verifyOTP: (username, otp) =>
-    api.post('/api/auth/verify-otp', { username, otp }),
+  verifyOTP: (username, otp, isUserOTP = false) =>
+    api.post('/api/auth/verify-otp', { username, otp, isUserOTP }),
 
-  resendOTP: (username) =>
-    api.post('/api/auth/resend-otp', { username }),
+  resendOTP: (username, isUserOTP = false) =>
+    api.post('/api/auth/resend-otp', { username, isUserOTP }),
 
   requestEmailUpdate: (username, newEmail) =>
     api.post('/api/auth/request-email-update', { username, newEmail }),
@@ -463,6 +463,18 @@ export const usersAPI = {
 
   delete: (id) =>
     api.delete(`/api/users/${id}`),
+
+  getAssignedBranches: (id) =>
+    api.get(`/api/users/${id}/assigned-branches`),
+
+  assignBranch: (id, branch_id) =>
+    api.post(`/api/users/${id}/assign-branch`, { branch_id }),
+
+  unassignBranch: (id, branch_id) =>
+    api.post(`/api/users/${id}/unassign-branch`, { branch_id }),
+
+  getBranchOpsList: () =>
+    api.get('/api/users/branch-ops/list'),
 };
 
 // Branches API

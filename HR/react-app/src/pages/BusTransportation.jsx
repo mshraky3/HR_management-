@@ -4,7 +4,7 @@
  * Main managers can view all branches, branch managers only their branch
  */
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { Fragment, useState, useEffect, useRef, useMemo } from "react";
 import { busTransportationAPI, branchesAPI, termsAPI } from "../utils/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
@@ -104,9 +104,17 @@ function PlateDisplay({ value = "" }) {
 }
 
 const BusTransportation = () => {
-  const { isMainManager, user } = useAuth();
+  const { isMainManager, isBranchOperationsManager, user } = useAuth();
   const { showError, showSuccess } = useNotification();
   const pageTopRef = useRef(null);
+  const isBranchOpsUser = isBranchOperationsManager();
+  const assignedBranchIds = useMemo(
+    () =>
+      Array.isArray(user?.assigned_branches)
+        ? user.assigned_branches.map((id) => parseInt(id, 10)).filter(Number.isFinite)
+        : [],
+    [user?.assigned_branches],
+  );
   const [buses, setBuses] = useState([]);
   const [filteredBuses, setFilteredBuses] = useState([]);
   const [highlightBusId, setHighlightBusId] = useState(null);
@@ -130,10 +138,10 @@ const BusTransportation = () => {
 
   useEffect(() => {
     loadTerms();
-    if (isMainManager()) {
+    if (isMainManager() || isBranchOpsUser) {
       loadBranches();
     }
-  }, [isMainManager]);
+  }, [isMainManager, isBranchOpsUser]);
 
   useEffect(() => {
     loadBuses();
@@ -248,7 +256,13 @@ const BusTransportation = () => {
     try {
       const response = await branchesAPI.getAll({ is_active: true });
       if (response.data.success) {
-        const sorted = (response.data.data || []).sort((a, b) =>
+        const visibleBranches = isBranchOpsUser
+          ? (response.data.data || []).filter((branch) =>
+            assignedBranchIds.includes(parseInt(branch.id, 10)),
+          )
+          : response.data.data || [];
+
+        const sorted = visibleBranches.sort((a, b) =>
           (a.branch_name || "").localeCompare(b.branch_name || "", "ar"),
         );
         setBranches(sorted);
@@ -264,7 +278,7 @@ const BusTransportation = () => {
       let currentTermResponse = null;
       let branchType = null;
 
-      if (!isMainManager() && user?.branch_id) {
+      if (!isMainManager() && !isBranchOpsUser && user?.branch_id) {
         // For branch managers, get active terms for their branch type
         const branchResponse = await branchesAPI.getById(user.branch_id);
         if (
@@ -362,10 +376,10 @@ const BusTransportation = () => {
 
   // Reload terms when branch selection changes (for main managers)
   useEffect(() => {
-    if (isMainManager() && branches.length > 0) {
+    if ((isMainManager() || isBranchOpsUser) && branches.length > 0) {
       loadTerms();
     }
-  }, [selectedBranchId]);
+  }, [selectedBranchId, isMainManager, isBranchOpsUser, branches.length]);
 
   const loadBuses = async () => {
     try {
@@ -374,7 +388,7 @@ const BusTransportation = () => {
       if (selectedTermId) {
         params.term_id = selectedTermId;
       }
-      if (!isMainManager() && user?.branch_id) {
+      if (!isMainManager() && !isBranchOpsUser && user?.branch_id) {
         params.branch_id = user.branch_id;
       } else if (selectedBranchId) {
         params.branch_id = selectedBranchId;
@@ -490,9 +504,9 @@ const BusTransportation = () => {
 
     });
 
-    // Group by branch for main manager
+    // Group by branch for users who can access multiple branches
     const busesByBranch = {};
-    if (isMainManager()) {
+    if (isMainManager() || isBranchOpsUser) {
       filteredBuses.forEach((bus) => {
         const branchName = bus.branch_name || "غير محدد";
         if (!busesByBranch[branchName]) {
@@ -519,6 +533,26 @@ const BusTransportation = () => {
   };
 
   const stats = calculateStats();
+  const canGroupByBranch = isMainManager() || isBranchOpsUser;
+  const canSelectBranchInForms = isMainManager() || isBranchOpsUser;
+  const defaultScopedBranchId = user?.branch_id || (assignedBranchIds.length === 1 ? assignedBranchIds[0] : "");
+  const orderedFilteredBuses = useMemo(() => {
+    if (!canGroupByBranch) {
+      return filteredBuses;
+    }
+
+    return [...filteredBuses].sort((a, b) => {
+      const branchCompare = (a.branch_name || "").localeCompare(
+        b.branch_name || "",
+        "ar",
+      );
+      if (branchCompare !== 0) return branchCompare;
+      return String(a.primary_plate || a.bus_number || a.id).localeCompare(
+        String(b.primary_plate || b.bus_number || b.id),
+        "ar",
+      );
+    });
+  }, [filteredBuses, canGroupByBranch]);
 
   const handleCreateBus = async (busData) => {
     try {
@@ -613,9 +647,14 @@ const BusTransportation = () => {
   if (loading && !showBusForm && !selectedBus) {
     return (
       <div className="bus-transportation-container">
-        <div className="loading-container">
-          <div className="loading-spinner"></div>
-          <p>جاري التحميل...</p>
+        <div className="bus-skeleton-page" aria-label="جاري تحميل بيانات الباصات">
+          <div className="bus-skeleton-header" />
+          <div className="bus-skeleton-filters" />
+          <div className="bus-skeleton-grid">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="bus-skeleton-card" />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -987,8 +1026,8 @@ const BusTransportation = () => {
         </div>
       )}
 
-      {/* Filters - Main Manager Only */}
-      {isMainManager() && (
+      {/* Filters - Main Manager and Branch Ops */}
+      {(isMainManager() || isBranchOpsUser) && (
         <div className="filters-section">
           <div className="filters-header">
             <h3 className="filters-title">
@@ -1156,8 +1195,8 @@ const BusTransportation = () => {
                 </select>
               </div>
 
-              {/* Branch Filter - Main Manager Only */}
-              {isMainManager() && (
+              {/* Branch Filter - Multi-branch users */}
+              {(isMainManager() || isBranchOpsUser) && branches.length > 1 && (
                 <div className="filter-group filter-branch">
                   <label className="filter-label">
                     <svg
@@ -1254,7 +1293,7 @@ const BusTransportation = () => {
 
       {/* Buses List */}
       <div className="buses-list">
-        {filteredBuses.length === 0 ? (
+        {orderedFilteredBuses.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">
               <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
@@ -1269,142 +1308,173 @@ const BusTransportation = () => {
           </div>
         ) : (
           <div className="buses-grid">
-            {filteredBuses.map((bus) => (
-              <div key={bus.id} className="bus-card" data-bus-id={bus.id}>
-                <div className="bus-card-header">
-                  <div className="bus-number">
-                    {isMainManager()
-                      ? bus.branch_name || "غير محدد"
-                      : bus.bus_number}
-                  </div>
-                  {isMainManager() && (
-                    <div className="branch-badge-wrapper">
-                      <BranchBadge
-                        branch={{
-                          id: bus.branch_id,
-                          branch_name: bus.branch_name,
-                          branch_type: bus.branch_type,
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="bus-card-body">
-                  {bus.driver_full_name && (
-                    <div className="bus-info-item">
-                      <span className="info-label">السائق:</span>
-                      <span className="info-value">{bus.driver_full_name}</span>
-                    </div>
-                  )}
-                  {/* Show plate - use primary_plate if available, fallback to bus_number */}
-                  {(bus.primary_plate || bus.bus_number) && (
-                    <div className="plate-display-wrapper">
-                      <span className="info-label">رقم اللوحات</span>
-                      <PlateDisplay value={bus.primary_plate || bus.bus_number} />
-                    </div>
-                  )}
-                  {bus.route_name && (
-                    <div className="bus-info-item">
-                      <span className="info-label">المسار:</span>
-                      <span className="info-value">{bus.route_name}</span>
-                    </div>
-                  )}
-                  {bus.number_of_seats && (
-                    <div className="bus-info-item">
-                      <span className="info-label">عدد المقاعد:</span>
-                      <span className="info-value">{bus.number_of_seats}</span>
-                    </div>
-                  )}
-                  {bus.student_count !== undefined && (
-                    <div className="bus-info-item">
-                      <span className="info-label">عدد الطلاب:</span>
-                      <span className="info-value">{bus.student_count}</span>
-                    </div>
-                  )}
-                  {bus.term_name && (
-                    <div className="bus-info-item">
-                      <span className="info-label">الفصل الدراسي:</span>
-                      <span className="info-value">
-                        {bus.term_name}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="bus-card-actions">
-                  <button
-                    className="btn-view"
-                    onClick={() => handleViewBus(bus.id)}
-                  >
-                    عرض التفاصيل
-                  </button>
-                  <button
-                    className={`btn-edit ${(() => {
-                      const studentCount = parseInt(bus.student_count, 10);
-                      const missingStudents =
-                        studentCount === 0 ||
-                        isNaN(studentCount) ||
-                        bus.student_count === null ||
-                        bus.student_count === undefined;
-                      const missingRegDoc = !bus.registration_document_url;
-                      const missingDriverDoc = !bus.license_document_url;
-                      // Lease contract is optional - not required for completion
-                      const missingDocs =
-                        missingRegDoc || missingDriverDoc;
-                      return missingDocs || missingStudents
-                        ? "incomplete"
-                        : "complete";
-                    })()}`}
-                    onClick={() => {
-                      // If the form is already open, force re-mount by changing key (below)
-                      // and open the most relevant missing section.
-                      const studentCount = parseInt(bus.student_count, 10);
-                      const missingStudents =
-                        studentCount === 0 ||
-                        isNaN(studentCount) ||
-                        bus.student_count === null ||
-                        bus.student_count === undefined;
-                      const missingRegDoc = !bus.registration_document_url;
-                      const missingDriverDoc = !bus.license_document_url;
-                      // Lease contract is optional - not required for completion
-                      const missingDocs =
-                        missingRegDoc || missingDriverDoc;
-
-                      setBusFormInitialTab(
-                        missingDocs
-                          ? "documents"
-                          : missingStudents
-                            ? "students"
-                            : "basic",
-                      );
-                      setEditingBus(bus);
-                      setShowBusForm(true);
+            {orderedFilteredBuses.map((bus, index) => (
+              <Fragment key={bus.id}>
+                {canGroupByBranch && (index === 0 || orderedFilteredBuses[index - 1].branch_id !== bus.branch_id) && (
+                  <div
+                    key={`section-${bus.branch_id}`}
+                    style={{
+                      gridColumn: '1 / -1',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '0.9rem 1rem',
+                      borderRadius: '16px',
+                      background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(16,185,129,0.08))',
+                      border: '1px solid rgba(148,163,184,0.2)',
+                      marginTop: index === 0 ? 0 : '0.5rem',
                     }}
                   >
-                    {(() => {
-                      const studentCount = parseInt(bus.student_count, 10);
-                      const missingStudents =
-                        studentCount === 0 ||
-                        isNaN(studentCount) ||
-                        bus.student_count === null ||
-                        bus.student_count === undefined;
-                      const missingRegDoc = !bus.registration_document_url;
-                      const missingDriverDoc = !bus.license_document_url;
-                      // Lease contract is optional - not required for completion
-                      const missingDocs =
-                        missingRegDoc || missingDriverDoc;
-                      return missingDocs || missingStudents ? "إكمال" : "تعديل";
-                    })()}
-                  </button>
-                  <button
-                    className="btn-delete"
-                    onClick={() => handleDeleteBus(bus.id)}
-                  >
-                    حذف
-                  </button>
+                    <div>
+                      <strong style={{ color: 'var(--text)' }}>{bus.branch_name || 'غير محدد'}</strong>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                        مجموعة مستقلة لهذا الفرع
+                      </div>
+                    </div>
+                    <BranchBadge
+                      branch={{
+                        id: bus.branch_id,
+                        branch_name: bus.branch_name,
+                        branch_type: bus.branch_type,
+                      }}
+                    />
+                  </div>
+                )}
+
+                <div key={bus.id} className="bus-card" data-bus-id={bus.id}>
+                  <div className="bus-card-header">
+                    <div className="bus-number">
+                      {bus.primary_plate || bus.bus_number || `حافلة #${bus.id}`}
+                    </div>
+                    {canGroupByBranch && (
+                      <div className="branch-badge-wrapper">
+                        <BranchBadge
+                          branch={{
+                            id: bus.branch_id,
+                            branch_name: bus.branch_name,
+                            branch_type: bus.branch_type,
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bus-card-body">
+                    {bus.driver_full_name && (
+                      <div className="bus-info-item">
+                        <span className="info-label">السائق:</span>
+                        <span className="info-value">{bus.driver_full_name}</span>
+                      </div>
+                    )}
+                    {/* Show plate - use primary_plate if available, fallback to bus_number */}
+                    {(bus.primary_plate || bus.bus_number) && (
+                      <div className="plate-display-wrapper">
+                        <span className="info-label">رقم اللوحات</span>
+                        <PlateDisplay value={bus.primary_plate || bus.bus_number} />
+                      </div>
+                    )}
+                    {bus.route_name && (
+                      <div className="bus-info-item">
+                        <span className="info-label">المسار:</span>
+                        <span className="info-value">{bus.route_name}</span>
+                      </div>
+                    )}
+                    {bus.number_of_seats && (
+                      <div className="bus-info-item">
+                        <span className="info-label">عدد المقاعد:</span>
+                        <span className="info-value">{bus.number_of_seats}</span>
+                      </div>
+                    )}
+                    {bus.student_count !== undefined && (
+                      <div className="bus-info-item">
+                        <span className="info-label">عدد الطلاب:</span>
+                        <span className="info-value">{bus.student_count}</span>
+                      </div>
+                    )}
+                    {bus.term_name && (
+                      <div className="bus-info-item">
+                        <span className="info-label">الفصل الدراسي:</span>
+                        <span className="info-value">
+                          {bus.term_name}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bus-card-actions">
+                    <button
+                      className="btn-view"
+                      onClick={() => handleViewBus(bus.id)}
+                    >
+                      عرض التفاصيل
+                    </button>
+                    <button
+                      className={`btn-edit ${(() => {
+                        const studentCount = parseInt(bus.student_count, 10);
+                        const missingStudents =
+                          studentCount === 0 ||
+                          isNaN(studentCount) ||
+                          bus.student_count === null ||
+                          bus.student_count === undefined;
+                        const missingRegDoc = !bus.registration_document_url;
+                        const missingDriverDoc = !bus.license_document_url;
+                        // Lease contract is optional - not required for completion
+                        const missingDocs =
+                          missingRegDoc || missingDriverDoc;
+                        return missingDocs || missingStudents
+                          ? "incomplete"
+                          : "complete";
+                      })()}`}
+                      onClick={() => {
+                        // If the form is already open, force re-mount by changing key (below)
+                        // and open the most relevant missing section.
+                        const studentCount = parseInt(bus.student_count, 10);
+                        const missingStudents =
+                          studentCount === 0 ||
+                          isNaN(studentCount) ||
+                          bus.student_count === null ||
+                          bus.student_count === undefined;
+                        const missingRegDoc = !bus.registration_document_url;
+                        const missingDriverDoc = !bus.license_document_url;
+                        // Lease contract is optional - not required for completion
+                        const missingDocs =
+                          missingRegDoc || missingDriverDoc;
+
+                        setBusFormInitialTab(
+                          missingDocs
+                            ? "documents"
+                            : missingStudents
+                              ? "students"
+                              : "basic",
+                        );
+                        setEditingBus(bus);
+                        setShowBusForm(true);
+                      }}
+                    >
+                      {(() => {
+                        const studentCount = parseInt(bus.student_count, 10);
+                        const missingStudents =
+                          studentCount === 0 ||
+                          isNaN(studentCount) ||
+                          bus.student_count === null ||
+                          bus.student_count === undefined;
+                        const missingRegDoc = !bus.registration_document_url;
+                        const missingDriverDoc = !bus.license_document_url;
+                        // Lease contract is optional - not required for completion
+                        const missingDocs =
+                          missingRegDoc || missingDriverDoc;
+                        return missingDocs || missingStudents ? "إكمال" : "تعديل";
+                      })()}
+                    </button>
+                    <button
+                      className="btn-delete"
+                      onClick={() => handleDeleteBus(bus.id)}
+                    >
+                      حذف
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </Fragment>
             ))}
           </div>
         )}
@@ -1417,8 +1487,8 @@ const BusTransportation = () => {
           bus={editingBus}
           branches={branches}
           terms={terms}
-          isMainManager={isMainManager()}
-          userBranchId={user?.branch_id}
+          isMainManager={canSelectBranchInForms}
+          userBranchId={defaultScopedBranchId}
           initialTab={busFormInitialTab}
           onClose={() => {
             setShowBusForm(false);
@@ -1443,8 +1513,8 @@ const BusTransportation = () => {
           bus={selectedBus}
           branches={branches}
           terms={terms}
-          isMainManager={isMainManager()}
-          userBranchId={user?.branch_id}
+          isMainManager={canSelectBranchInForms}
+          userBranchId={defaultScopedBranchId}
           showEditForm={showBusFormInline}
           onClose={handleCloseDetailSection}
           onEdit={() => {

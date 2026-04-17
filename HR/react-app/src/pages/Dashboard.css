@@ -239,6 +239,43 @@
   margin-bottom: var(--spacing-xl);
 }
 
+.stats-grid-skeleton .skeleton-stat-card {
+  pointer-events: none;
+}
+
+.skeleton-stat-line {
+  height: 12px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 1000px 100%;
+  animation: dashboardSkeletonShimmer 1.8s linear infinite;
+}
+
+.skeleton-stat-line.skeleton-title {
+  width: 55%;
+  margin-bottom: var(--spacing-lg);
+}
+
+.skeleton-stat-line.skeleton-number {
+  width: 40%;
+  height: 34px;
+  margin-bottom: var(--spacing-lg);
+}
+
+.skeleton-stat-line.skeleton-link {
+  width: 65%;
+}
+
+@keyframes dashboardSkeletonShimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
 .stat-card {
   background: var(--bg);
   border: 1px solid var(--border-light);
@@ -1688,6 +1725,37 @@ html {
   color: var(--text);
   line-height: 1.6;
   margin: 0;
+}
+
+.branch-ops-tasks-loading {
+  display: grid;
+  gap: var(--spacing-md);
+}
+
+.branch-ops-loading-card,
+.branch-ops-loading-row {
+  border-radius: var(--radius-lg);
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 1000px 100%;
+  animation: branchOpsTaskShimmer 1.8s linear infinite;
+}
+
+.branch-ops-loading-card {
+  height: 110px;
+}
+
+.branch-ops-loading-row {
+  height: 72px;
+}
+
+@keyframes branchOpsTaskShimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+
+  100% {
+    background-position: 1000px 0;
+  }
 }
 
 @media (max-width: 768px) {
