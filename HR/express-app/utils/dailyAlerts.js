@@ -7,17 +7,6 @@ import { sendStatisticsAlertEmail } from './emailService.js';
 import sql from '../config/database.js';
 import { log } from './logger.js';
 
-const parseEmailList = (rawValue = '') =>
-    String(rawValue)
-        .split(',')
-        .map((value) => value.trim().toLowerCase())
-        .filter(Boolean);
-
-const getMainManagerEmails = () => {
-    // Main manager emails from environment (hardcoded configuration, not dynamic)
-    return parseEmailList(process.env.MAIN_MANAGER_EMAIL || process.env.MAIN_MANAGER_EMAILS || '');
-};
-
 /**
  * Check for critical alerts and send email if needed
  */
@@ -25,8 +14,8 @@ export async function checkAndSendDailyAlerts() {
     try {
         log.info('Checking for critical alerts...');
 
-        const mainManagerEmails = getMainManagerEmails();
-        const appUrl = process.env.APP_URL || process.env.REACT_APP_URL || 'http://localhost:5173';
+        const mainManagerEmail = 'Sharaksa@gmail.com';
+        const appUrl = process.env.APP_URL || 'http://localhost:5173';
 
         // Query for critical statistics
         const [stats] = await sql`
@@ -57,22 +46,13 @@ export async function checkAndSendDailyAlerts() {
                 incompleteData: stats.incomplete_data,
             };
 
-            if (mainManagerEmails.length === 0) {
-                log.warn('No main manager emails configured for daily alerts.');
-                return;
-            }
+            await sendStatisticsAlertEmail({
+                to: mainManagerEmail,
+                appUrl: `${appUrl}/employee-statistics`,
+                alerts,
+            });
 
-            await Promise.allSettled(
-                mainManagerEmails.map((email) =>
-                    sendStatisticsAlertEmail({
-                        to: email,
-                        appUrl: `${appUrl}/employee-statistics`,
-                        alerts,
-                    }),
-                ),
-            );
-
-            log.info('Daily alert email sent successfully', { alerts, recipients: mainManagerEmails });
+            log.info('Daily alert email sent successfully', { alerts });
         } else {
             log.info('No critical alerts to send');
         }

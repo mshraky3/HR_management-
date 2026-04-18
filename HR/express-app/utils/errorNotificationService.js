@@ -6,48 +6,17 @@
 import nodemailer from 'nodemailer';
 import { log } from './logger.js';
 
-function escapeHtml(str) {
-  if (typeof str !== 'string') return str;
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-}
-
-const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
-const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
-const SMTP_SECURE = process.env.SMTP_SECURE === 'true';
-const SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
-const SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
-const EMAIL_FROM_ADDRESS = process.env.EMAIL_FROM_ADDRESS || SMTP_USER;
-const ERROR_EMAIL_FROM_NAME = process.env.ERROR_EMAIL_FROM_NAME || 'نظام الإنذارات - HR System';
-
-const parseEmailList = (rawValue = '') =>
-  String(rawValue)
-    .split(',')
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean);
-
-const ERROR_RECIPIENTS = parseEmailList(
-  process.env.DEVELOPER_EMAIL || process.env.DEVELOPER_EMAILS || process.env.ERROR_REPORT_EMAILS || '',
-);
-
-if (!SMTP_USER || !SMTP_PASS) {
-  log.warn('SMTP credentials are not fully configured for error notifications.', {
-    hasUser: Boolean(SMTP_USER),
-    hasPass: Boolean(SMTP_PASS),
-  });
-}
-
-if (ERROR_RECIPIENTS.length === 0) {
-  log.warn('No developer error-notification recipients configured. Set DEVELOPER_EMAIL/DEVELOPER_EMAILS.');
-}
+// Developer email for error notifications
+const DEVELOPER_EMAIL = 'alshraky3@gmail.com';
 
 // Create email transporter (using same config as emailService.js)
 const errorTransporter = nodemailer.createTransport({
-  host: SMTP_HOST,
-  port: SMTP_PORT,
-  secure: SMTP_SECURE,
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
   auth: {
-    user: SMTP_USER,
-    pass: SMTP_PASS,
+    user: 'alshrakynodeapp@gmail.com',
+    pass: 'ssjpnctdsyqxylxd', // Updated app password Feb 2026
   },
 });
 
@@ -202,15 +171,6 @@ function generateErrorEmailHtml(errorData, frequencyInfo = {}) {
     additionalInfo,
   } = errorData;
 
-  const safeErrorType = escapeHtml(errorType);
-  const safeMessage = escapeHtml(message);
-  const safeEndpoint = escapeHtml(endpoint);
-  const safeMethod = escapeHtml(method);
-  const safePage = escapeHtml(page);
-  const safeUserAgent = escapeHtml(userAgent);
-  const safeUsername = escapeHtml(username);
-  const safeStackTrace = escapeHtml(stackTrace);
-
   const { errorCount = 1, totalErrorsLastHour = 1 } = frequencyInfo;
 
   const severity = getErrorSeverity(errorData);
@@ -232,7 +192,7 @@ function generateErrorEmailHtml(errorData, frequencyInfo = {}) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>تقرير خطأ - ${safeErrorType}</title>
+      <title>تقرير خطأ - ${errorType}</title>
     </head>
     <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f9; padding: 20px;">
@@ -275,10 +235,10 @@ function generateErrorEmailHtml(errorData, frequencyInfo = {}) {
                 <td style="padding: 25px 25px 15px 25px;">
                   <div style="background: linear-gradient(135deg, #fee2e2 0%, #fef3c7 100%); border-radius: 8px; padding: 15px; border-right: 4px solid ${severityColor};">
                     <h2 style="margin: 0; color: #991b1b; font-size: 18px;">
-                      ${safeErrorType || 'UNKNOWN_ERROR'}
+                      ${errorType || 'UNKNOWN_ERROR'}
                     </h2>
                     <p style="margin: 8px 0 0 0; color: #78350f; font-size: 14px;">
-                      ${safeMessage || 'لا توجد رسالة خطأ'}
+                      ${message || 'لا توجد رسالة خطأ'}
                     </p>
                   </div>
                 </td>
@@ -297,12 +257,12 @@ function generateErrorEmailHtml(errorData, frequencyInfo = {}) {
                     </tr>
                     <tr>
                       <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #475569;">الصفحة</td>
-                      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #1e293b;" dir="ltr">${safePage || 'غير محدد'}</td>
+                      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #1e293b;" dir="ltr">${page || 'غير محدد'}</td>
                     </tr>
                     <tr>
                       <td style="padding: 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #475569;">Endpoint</td>
                       <td style="padding: 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; color: #1e293b;" dir="ltr">
-                        <code style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 13px;">${safeMethod || 'GET'} ${safeEndpoint || 'N/A'}</code>
+                        <code style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 13px;">${method || 'GET'} ${endpoint || 'N/A'}</code>
                       </td>
                     </tr>
                     <tr>
@@ -317,13 +277,13 @@ function generateErrorEmailHtml(errorData, frequencyInfo = {}) {
                     <tr>
                       <td style="padding: 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #475569;">المستخدم</td>
                       <td style="padding: 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; color: #1e293b;">
-                        ${safeUsername || 'غير معروف'} (ID: ${userId})${branchId ? ` - فرع: ${branchId}` : ''}
+                        ${username || 'غير معروف'} (ID: ${userId})${branchId ? ` - فرع: ${branchId}` : ''}
                       </td>
                     </tr>
                     ` : ''}
                     <tr>
                       <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #475569;">المتصفح</td>
-                      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 12px;" dir="ltr">${safeUserAgent || 'غير معروف'}</td>
+                      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 12px;" dir="ltr">${userAgent || 'غير معروف'}</td>
                     </tr>
                   </table>
                 </td>
@@ -336,7 +296,7 @@ function generateErrorEmailHtml(errorData, frequencyInfo = {}) {
                   <h3 style="margin: 0 0 15px 0; color: #1e293b; font-size: 16px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">
                     📤 بيانات الطلب
                   </h3>
-                  <pre style="background: #1e293b; color: #e2e8f0; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all;" dir="ltr">${escapeHtml(JSON.stringify(requestData, null, 2))}</pre>
+                  <pre style="background: #1e293b; color: #e2e8f0; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all;" dir="ltr">${JSON.stringify(requestData, null, 2)}</pre>
                 </td>
               </tr>
               ` : ''}
@@ -348,7 +308,7 @@ function generateErrorEmailHtml(errorData, frequencyInfo = {}) {
                   <h3 style="margin: 0 0 15px 0; color: #1e293b; font-size: 16px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">
                     📥 رد الخادم
                   </h3>
-                  <pre style="background: #1e293b; color: #e2e8f0; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all;" dir="ltr">${escapeHtml(JSON.stringify(responseData, null, 2))}</pre>
+                  <pre style="background: #1e293b; color: #e2e8f0; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all;" dir="ltr">${JSON.stringify(responseData, null, 2)}</pre>
                 </td>
               </tr>
               ` : ''}
@@ -360,7 +320,7 @@ function generateErrorEmailHtml(errorData, frequencyInfo = {}) {
                   <h3 style="margin: 0 0 15px 0; color: #1e293b; font-size: 16px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">
                     🔍 Stack Trace
                   </h3>
-                  <pre style="background: #450a0a; color: #fca5a5; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 11px; white-space: pre-wrap; word-break: break-all; max-height: 200px;" dir="ltr">${safeStackTrace}</pre>
+                  <pre style="background: #450a0a; color: #fca5a5; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 11px; white-space: pre-wrap; word-break: break-all; max-height: 200px;" dir="ltr">${stackTrace}</pre>
                 </td>
               </tr>
               ` : ''}
@@ -372,7 +332,7 @@ function generateErrorEmailHtml(errorData, frequencyInfo = {}) {
                   <h3 style="margin: 0 0 15px 0; color: #1e293b; font-size: 16px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">
                     ℹ️ معلومات إضافية
                   </h3>
-                  <pre style="background: #f8fafc; color: #475569; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; border: 1px solid #e2e8f0;" dir="ltr">${escapeHtml(typeof additionalInfo === 'string' ? additionalInfo : JSON.stringify(additionalInfo, null, 2))}</pre>
+                  <pre style="background: #f8fafc; color: #475569; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; border: 1px solid #e2e8f0;" dir="ltr">${typeof additionalInfo === 'string' ? additionalInfo : JSON.stringify(additionalInfo, null, 2)}</pre>
                 </td>
               </tr>
               ` : ''}
@@ -386,7 +346,7 @@ function generateErrorEmailHtml(errorData, frequencyInfo = {}) {
                   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
                     <tr>
                       <td style="padding: 10px; text-align: center;">
-                        <a href="${encodeURI((process.env.FRONTEND_URL || 'http://localhost:5174') + (page || ''))}" 
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:5174'}${page || ''}" 
                            style="display: inline-block; background: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 14px; margin: 5px;">
                           🌐 فتح الصفحة
                         </a>
@@ -475,17 +435,9 @@ export async function sendErrorNotification(errorData) {
       timestamp: errorData.timestamp || new Date().toISOString(),
     }, frequencyInfo);
 
-    if (ERROR_RECIPIENTS.length === 0) {
-      log.warn('Skipping error notification email because no recipients are configured', {
-        errorType,
-        endpoint,
-      });
-      return { success: false, reason: 'no_recipients' };
-    }
-
     const mailOptions = {
-      from: `"${ERROR_EMAIL_FROM_NAME}" <${EMAIL_FROM_ADDRESS}>`,
-      to: ERROR_RECIPIENTS.join(', '),
+      from: '"نظام الإنذارات - HR System" <alshrakynodeapp@gmail.com>',
+      to: DEVELOPER_EMAIL,
       subject,
       html: htmlContent,
       text: `خطأ في النظام\n\nنوع الخطأ: ${errorType}\nالرسالة: ${errorData.message}\nEndpoint: ${errorData.method} ${endpoint}\nStatus: ${statusCode}\nالتكرار: ${errorCount} مرة\n\nالرجاء التحقق من سجلات الخادم.`,
@@ -497,7 +449,6 @@ export async function sendErrorNotification(errorData) {
     log.info('Error notification email sent', {
       errorType,
       endpoint,
-      recipients: ERROR_RECIPIENTS,
       messageId: result.messageId,
       errorCount,
       totalErrorsLastHour,
