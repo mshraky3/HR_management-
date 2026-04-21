@@ -7,11 +7,44 @@ import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { requireManager, requireMainManager } from '../middleware/authorization.js';
 import { getEmployeeExpiries, getExpirySummary } from '../utils/expiryService.js';
+import { Notification } from '../models/Notification.js';
 import { sendNotificationEmail } from '../utils/emailService.js';
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
 
 const router = express.Router();
+
+const VALID_EXPIRY_TYPES = ['id_expiry', 'contract_end', 'passport_expiry', 'document_expiry'];
+const VALID_STATUS_BUCKETS = ['expired', 'within_30_days', 'within_90_days', 'ok'];
+
+function isValidDateOnly(value) {
+    return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function getImportanceFromStatus(statusBucket) {
+    if (statusBucket === 'expired') return 3;
+    if (statusBucket === 'within_30_days') return 2;
+    return 1;
+}
+
+function buildTaskReference({ employeeId, branchId, expiryType, documentId, expiryDate }) {
+    return `EXPIRY_TASK|emp:${employeeId}|branch:${branchId}|type:${expiryType}|doc:${documentId || 0}|date:${expiryDate}`;
+}
+
+function buildDefaultTaskMessage({ employeeName, expiryTypeLabel, expiryDate, expiryDateHijri }) {
+    const lines = [
+        `طلب تحديث تاريخ موظف: ${employeeName || 'غير محدد'}`,
+        `نوع التاريخ: ${expiryTypeLabel || 'غير محدد'}`,
+        `التاريخ الحالي (ميلادي): ${expiryDate}`,
+    ];
+
+    if (expiryDateHijri) {
+        lines.push(`التاريخ الحالي (هجري): ${expiryDateHijri}`);
+    }
+
+    lines.push('يرجى مراجعة التاريخ وتحديثه في صفحة التواريخ المنتهية.');
+    return lines.join('\n');
+}
 
 // All routes require authentication + at least manager role
 router.use(authenticate);
@@ -266,6 +299,149 @@ router.post('/notify-branches', requireMainManager, async (req, res) => {
     } catch (error) {
         log.error('Error notifying branches about expiry', { error: error.message });
         res.status(500).json({ success: false, message: 'فشل إرسال التنبيهات' });
+    }
+});
+
+/**
+ * POST /api/employee-expiry/request-update-task
+ * Create a targeted branch task (notification) to review/update an employee expiry date.
+ * Main manager only.
+ */
+router.post('/request-update-task', requireMainManager, async (req, res) => {
+    try {
+        const {
+            employee_id,
+            branch_id,
+            expiry_type,
+            expiry_type_label,
+            current_expiry_date,
+            current_expiry_date_hijri,
+            document_id,
+            status_bucket,
+            custom_message,
+            employee_name,
+        } = req.body;
+
+        const employeeId = parseInt(employee_id, 10);
+        const branchId = parseInt(branch_id, 10);
+        const documentId = document_id ? parseInt(document_id, 10) : null;
+
+        if (!employeeId || Number.isNaN(employeeId)) {
+            return res.status(400).json({ success: false, message: 'معرف الموظف غير صحيح' });
+        }
+
+        if (!branchId || Number.isNaN(branchId)) {
+            return res.status(400).json({ success: false, message: 'معرف الفرع غير صحيح' });
+        }
+
+        if (!expiry_type || !VALID_EXPIRY_TYPES.includes(expiry_type)) {
+            return res.status(400).json({ success: false, message: 'نوع التاريخ غير صحيح' });
+        }
+
+        if (!isValidDateOnly(current_expiry_date)) {
+            return res.status(400).json({ success: false, message: 'صيغة التاريخ الحالي غير صحيحة (YYYY-MM-DD)' });
+        }
+
+        if (status_bucket && !VALID_STATUS_BUCKETS.includes(status_bucket)) {
+            return res.status(400).json({ success: false, message: 'تصنيف الحالة غير صحيح' });
+        }
+
+        if (expiry_type === 'document_expiry' && (!documentId || Number.isNaN(documentId))) {
+            return res.status(400).json({ success: false, message: 'معرف المستند مطلوب لهذا النوع' });
+        }
+
+        // Verify employee exists and is assigned to this branch
+        const [employee] = await sql`
+            SELECT id, branch_id, first_name, second_name, third_name, fourth_name
+            FROM employees
+            WHERE id = ${employeeId}
+        `;
+
+        if (!employee) {
+            return res.status(404).json({ success: false, message: 'الموظف غير موجود' });
+        }
+
+        if (parseInt(employee.branch_id, 10) !== branchId) {
+            return res.status(400).json({ success: false, message: 'الفرع المحدد لا يطابق فرع الموظف' });
+        }
+
+        if (documentId) {
+            const [document] = await sql`
+                SELECT id
+                FROM employee_documents
+                WHERE id = ${documentId} AND employee_id = ${employeeId}
+            `;
+
+            if (!document) {
+                return res.status(400).json({ success: false, message: 'المستند المحدد غير مرتبط بهذا الموظف' });
+            }
+        }
+
+        const employeeName = employee_name || [employee.first_name, employee.second_name, employee.third_name, employee.fourth_name].filter(Boolean).join(' ');
+        const taskReference = buildTaskReference({
+            employeeId,
+            branchId,
+            expiryType: expiry_type,
+            documentId,
+            expiryDate: current_expiry_date,
+        });
+
+        // Duplicate prevention: same reference, active notification for this branch, and not done
+        const [existing] = await sql`
+            SELECT n.id, nr.response_status
+            FROM notifications n
+            INNER JOIN notification_branches nb ON nb.notification_id = n.id
+            LEFT JOIN notification_responses nr ON nr.notification_id = n.id AND nr.branch_id = ${branchId}
+            WHERE nb.branch_id = ${branchId}
+              AND n.is_active = true
+              AND (n.expires_at IS NULL OR n.expires_at >= CURRENT_TIMESTAMP)
+              AND n.message LIKE ${`%مرجع المهمة: ${taskReference}%`}
+            ORDER BY n.created_at DESC
+            LIMIT 1
+        `;
+
+        if (existing && existing.response_status !== 'done') {
+            return res.status(409).json({
+                success: false,
+                message: 'يوجد طلب تحديث مفتوح بالفعل لهذا التاريخ',
+                error: 'duplicate_open_task',
+                existing_notification_id: existing.id,
+            });
+        }
+
+        const bodyMessage = (custom_message || '').trim() || buildDefaultTaskMessage({
+            employeeName,
+            expiryTypeLabel: expiry_type_label,
+            expiryDate: current_expiry_date,
+            expiryDateHijri: current_expiry_date_hijri,
+        });
+
+        const fullMessage = `${bodyMessage}\n\nمرجع المهمة: ${taskReference}`;
+        const importanceLevel = getImportanceFromStatus(status_bucket);
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 14);
+
+        const notification = await Notification.create({
+            message: fullMessage,
+            importance_level: importanceLevel,
+            created_by: req.user.id,
+            branch_ids: [branchId],
+            expires_at: expiresAt,
+            one_time: false,
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: 'تم إرسال مهمة التحديث للفرع بنجاح',
+            data: {
+                notification_id: notification.id,
+                branch_id: branchId,
+                importance_level: importanceLevel,
+            },
+        });
+    } catch (error) {
+        log.error('Error creating expiry update task', { error: error.message });
+        res.status(500).json({ success: false, message: 'فشل إنشاء مهمة تحديث التاريخ' });
     }
 });
 
