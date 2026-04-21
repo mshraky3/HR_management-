@@ -359,15 +359,16 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-align-items: flex-start;
-flex-wrap: wrap;
-margin-top: var(--spacing-lg);
-padding: var(--spacing-lg);
-background: var(--bg-secondary);
-border-radius: var(--radius-lg);
-border: 1px solid var(--border-light);
-position: relative;
-z-index: 2;
+.payroll-actions {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-top: var(--spacing-lg);
+  padding: var(--spacing-lg);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
+  position: relative;
+  z-index: 2;
 }
 
 .payroll-actions>div {

@@ -1270,6 +1270,9 @@ export const employeeExpiryAPI = {
   notifyBranches: (data) =>
     api.post('/api/employee-expiry/notify-branches', data),
 
+  requestUpdateTask: (data) =>
+    api.post('/api/employee-expiry/request-update-task', data),
+
   updateDate: (data) =>
     api.put('/api/employee-expiry/update-date', data),
 };

@@ -633,6 +633,81 @@
     background: #edf2f7;
 }
 
+.row-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.btn-request-task {
+    padding: 4px 10px;
+    background: #edf2f7;
+    color: #2d3748;
+    border: 1px solid #cbd5e0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.btn-request-task:hover {
+    background: #e2e8f0;
+}
+
+.task-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1200;
+    padding: 16px;
+}
+
+.task-modal {
+    width: min(620px, 100%);
+    background: #fff;
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.task-modal h3 {
+    margin: 0 0 8px;
+    color: #1a202c;
+}
+
+.task-modal-subtitle {
+    margin: 0 0 12px;
+    color: #718096;
+    font-size: 0.85rem;
+}
+
+.task-message-input {
+    width: 100%;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 0.9rem;
+    resize: vertical;
+    direction: rtl;
+    margin-bottom: 14px;
+}
+
+.task-message-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.task-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
 /* Pagination */
 .pagination {
     display: flex;

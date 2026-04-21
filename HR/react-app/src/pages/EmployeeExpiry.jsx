@@ -25,8 +25,24 @@ const TYPE_LABELS = {
     document_expiry: "مستند",
 };
 
+const buildPrefillTaskMessage = (row) => {
+    const name = [row.first_name, row.second_name, row.third_name, row.fourth_name].filter(Boolean).join(" ") || "غير محدد";
+    const lines = [
+        `يرجى مراجعة وتحديث تاريخ الموظف: ${name}`,
+        `نوع التاريخ: ${row.expiry_type_label || TYPE_LABELS[row.expiry_type] || row.expiry_type}`,
+        `التاريخ الحالي (ميلادي): ${row.expiry_date ? new Date(row.expiry_date).toLocaleDateString("en-CA") : "-"}`,
+    ];
+
+    if (row.expiry_date_hijri) {
+        lines.push(`التاريخ الحالي (هجري): ${row.expiry_date_hijri}`);
+    }
+
+    lines.push("الرجاء تحديثه في أسرع وقت.");
+    return lines.join("\n");
+};
+
 const EmployeeExpiry = () => {
-    const { user, isMainManager, isBranchManager } = useAuth();
+    const { isMainManager } = useAuth();
     const { showError, showSuccess } = useNotification();
 
     // Data state
@@ -54,6 +70,12 @@ const EmployeeExpiry = () => {
     const [notifying, setNotifying] = useState(false);
     const [selectedBranches, setSelectedBranches] = useState([]);
     const [exporting, setExporting] = useState(false);
+
+    // Row task request state
+    const [taskModalOpen, setTaskModalOpen] = useState(false);
+    const [selectedTaskRow, setSelectedTaskRow] = useState(null);
+    const [taskMessage, setTaskMessage] = useState("");
+    const [taskSubmitting, setTaskSubmitting] = useState(false);
 
     // Load summary + branches on mount
     useEffect(() => {
@@ -217,6 +239,53 @@ const EmployeeExpiry = () => {
 
     const formatFullName = (row) =>
         [row.first_name, row.second_name, row.third_name, row.fourth_name].filter(Boolean).join(" ");
+
+    const openTaskModal = (row) => {
+        setSelectedTaskRow(row);
+        setTaskMessage(buildPrefillTaskMessage(row));
+        setTaskModalOpen(true);
+    };
+
+    const closeTaskModal = () => {
+        setTaskModalOpen(false);
+        setSelectedTaskRow(null);
+        setTaskMessage("");
+        setTaskSubmitting(false);
+    };
+
+    const handleSendRowTask = async () => {
+        if (!selectedTaskRow) return;
+
+        try {
+            setTaskSubmitting(true);
+            const payload = {
+                employee_id: selectedTaskRow.employee_id,
+                branch_id: selectedTaskRow.branch_id,
+                expiry_type: selectedTaskRow.expiry_type,
+                expiry_type_label: selectedTaskRow.expiry_type_label,
+                current_expiry_date: selectedTaskRow.expiry_date ? new Date(selectedTaskRow.expiry_date).toISOString().split("T")[0] : "",
+                current_expiry_date_hijri: selectedTaskRow.expiry_date_hijri || undefined,
+                status_bucket: selectedTaskRow.status_bucket,
+                document_id: selectedTaskRow.document_id || undefined,
+                custom_message: taskMessage,
+                employee_name: formatFullName(selectedTaskRow),
+            };
+
+            const res = await employeeExpiryAPI.requestUpdateTask(payload);
+            if (res?.data?.success) {
+                showSuccess("تم إرسال مهمة تحديث التاريخ للفرع");
+                closeTaskModal();
+            }
+        } catch (err) {
+            if (err?.response?.status === 409) {
+                showError("يوجد طلب تحديث مفتوح بالفعل لهذا التاريخ");
+            } else {
+                showError(err.response?.data?.message || "فشل إرسال مهمة التحديث");
+            }
+        } finally {
+            setTaskSubmitting(false);
+        }
+    };
 
     const totalPages = Math.ceil(total / limit);
 
@@ -425,7 +494,7 @@ const EmployeeExpiry = () => {
                                     <th>تاريخ الانتهاء</th>
                                     <th>الأيام المتبقية</th>
                                     <th>الحالة</th>
-                                    <th>تعديل</th>
+                                    <th>إجراءات</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -496,9 +565,20 @@ const EmployeeExpiry = () => {
                                                         <button className="btn-cancel" onClick={cancelEdit}>✕</button>
                                                     </div>
                                                 ) : (
-                                                    <button className="btn-edit" onClick={() => startEdit(row)} title="تعديل التاريخ">
-                                                        ✏️
-                                                    </button>
+                                                    <div className="row-actions">
+                                                        <button className="btn-edit" onClick={() => startEdit(row)} title="تعديل التاريخ">
+                                                            ✏️
+                                                        </button>
+                                                        {isMainManager() && (
+                                                            <button
+                                                                className="btn-request-task"
+                                                                onClick={() => openTaskModal(row)}
+                                                                title="إرسال مهمة تحديث للفرع"
+                                                            >
+                                                                📌 طلب تحديث
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </td>
                                         </tr>
@@ -518,6 +598,30 @@ const EmployeeExpiry = () => {
                     </div>
                 )}
             </div>
+
+            {taskModalOpen && selectedTaskRow && (
+                <div className="task-modal-overlay" onClick={closeTaskModal}>
+                    <div className="task-modal" onClick={(e) => e.stopPropagation()}>
+                        <h3>إرسال مهمة تحديث للفرع</h3>
+                        <p className="task-modal-subtitle">
+                            سيتم إنشاء مهمة للفرع لمراجعة/تحديث هذا التاريخ.
+                        </p>
+                        <textarea
+                            className="task-message-input"
+                            value={taskMessage}
+                            onChange={(e) => setTaskMessage(e.target.value)}
+                            rows={7}
+                            placeholder="اكتب رسالة المهمة"
+                        />
+                        <div className="task-modal-actions">
+                            <button className="btn-clear" onClick={closeTaskModal} disabled={taskSubmitting}>إلغاء</button>
+                            <button className="btn-notify" onClick={handleSendRowTask} disabled={taskSubmitting}>
+                                {taskSubmitting ? "جاري الإرسال..." : "إرسال المهمة"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
