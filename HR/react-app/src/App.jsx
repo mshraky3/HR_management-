@@ -126,6 +126,8 @@ const Beneficiaries = lazyRetry(() => import("./pages/Beneficiaries"));
 const BeneficiariesArchive = lazyRetry(() => import("./pages/BeneficiariesArchive"));
 const TreatmentPlanSubmission = lazyRetry(() => import("./pages/TreatmentPlanSubmission"));
 const TreatmentPlanMonitor = lazyRetry(() => import("./pages/TreatmentPlanMonitor"));
+const TestEmails = lazyRetry(() => import("./pages/TestEmails"));
+const EmployeeExpiry = lazyRetry(() => import("./pages/EmployeeExpiry"));
 
 // Wrapper component to choose layout based on role
 const RoleBasedLayout = ({ children }) => {
@@ -403,6 +405,16 @@ const AppContent = () => {
           }
         />
         <Route
+          path="/employee-expiry"
+          element={
+            <ProtectedRoute>
+              <RoleBasedLayout>
+                <EmployeeExpiry />
+              </RoleBasedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/employee-statistics"
           element={
             <ProtectedRoute>
@@ -488,6 +500,16 @@ const AppContent = () => {
             <ProtectedRoute requireMainManager>
               <Layout>
                 <TreatmentPlanMonitor />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/test-emails"
+          element={
+            <ProtectedRoute requireMainManager>
+              <Layout>
+                <TestEmails />
               </Layout>
             </ProtectedRoute>
           }

@@ -91,6 +91,7 @@ const Layout = ({ children }) => {
         { path: "/employees", label: "البحث عن موظف" },
         { path: "/employee-transfer", label: "نقل وربط الموظفين" },
         { path: "/employee-statistics", label: "احصائيات" },
+        { path: "/employee-expiry", label: "التواريخ المنتهية" },
       ],
     },
     reports: {

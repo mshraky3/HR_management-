@@ -49,6 +49,7 @@ const BranchManagerLayout = ({ children }) => {
       label: "الموظفين",
       items: [
         { path: "/employees", label: "موظفي الفرع" },
+        { path: "/employee-expiry", label: "التواريخ المنتهية" },
         { path: "/reports", label: "إصدار التقارير" },
       ],
     },
