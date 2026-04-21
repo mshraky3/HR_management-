@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { branchStatisticsAPI, branchDocumentsAPI } from '../utils/api';
@@ -250,6 +251,13 @@ const BranchStatistics = () => {
             disabled={generatingReport}
           >
             {generatingReport ? 'جاري الإنشاء...' : 'إنشاء تقرير Excel'}
+          </button>
+          <button
+            className="btn btn-secondary btn-lg"
+            onClick={() => window.location.href = '/test-emails'}
+            style={{ marginLeft: '10px' }}
+          >
+            📧 اختبار البريد
           </button>
         </div>
       </div>

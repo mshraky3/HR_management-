@@ -892,6 +892,58 @@ const calculatePriorityScore = (task) => {
 };
 
 /**
+ * Calculate employee expiry tasks from summary data
+ */
+const calculateEmployeeExpiryTasks = (expirySummary) => {
+  const tasks = [];
+  if (!expirySummary?.totals) return tasks;
+
+  const { expired, within_30_days } = expirySummary.totals;
+
+  if (expired > 0) {
+    tasks.push({
+      id: 'employee-expiry-expired',
+      type: 'employee',
+      category: 'employees',
+      priority: 'critical',
+      title: 'تواريخ موظفين منتهية',
+      description: `${expired} تاريخ منتهي (هوية/عقد/جواز/مستند)`,
+      totalItems: expired,
+      completedItems: 0,
+      remainingItems: expired,
+      progress: 0,
+      actionUrl: '/employee-expiry',
+      actionLabel: 'مراجعة التواريخ',
+      urgency: 'expired',
+      estimatedTime: '15 min',
+      dependencies: []
+    });
+  }
+
+  if (within_30_days > 0) {
+    tasks.push({
+      id: 'employee-expiry-soon',
+      type: 'employee',
+      category: 'employees',
+      priority: 'should_do',
+      title: 'تواريخ موظفين قريبة الانتهاء',
+      description: `${within_30_days} تاريخ ينتهي خلال 30 يوم`,
+      totalItems: within_30_days,
+      completedItems: 0,
+      remainingItems: within_30_days,
+      progress: 0,
+      actionUrl: '/employee-expiry',
+      actionLabel: 'مراجعة التواريخ',
+      urgency: 'warning',
+      estimatedTime: '10 min',
+      dependencies: []
+    });
+  }
+
+  return tasks;
+};
+
+/**
  * Main function to calculate all tasks
  */
 export const calculateTasks = ({
@@ -907,7 +959,8 @@ export const calculateTasks = ({
   missingEmployeeContractData = [],
   payrollAbsenceState = null,
   employees = [],
-  beneficiaryCount = 0
+  beneficiaryCount = 0,
+  employeeExpirySummary = null
 }) => {
   const branchId = branchInfo?.id;
   if (!branchId) return [];
@@ -941,6 +994,10 @@ export const calculateTasks = ({
   // 3. Employees (Must Do) - Employee related, comes before bus
   const employeeTasks = calculateEmployeeTasks(incompleteEmployees);
   tasks.push(...employeeTasks);
+
+  // 3.5. Employee Expiry Dates
+  const expiryTasks = calculateEmployeeExpiryTasks(employeeExpirySummary);
+  tasks.push(...expiryTasks);
 
   // 4. Payroll Absence (exception: if entry_open, it goes between employees and bus)
   const payrollAbsenceTask = calculatePayrollAbsenceTask(payrollAbsenceState);

@@ -957,6 +957,9 @@ export const adminAPI = {
 
   updateBranchDocumentDates: (docId, dates) =>
     api.put(`/api/admin/branch-documents/${docId}/dates`, dates),
+
+  testEmail: () =>
+    api.post('/api/admin/test-email'),
 };
 
 // Requests API
@@ -1251,6 +1254,24 @@ export const treatmentPlansAPI = {
 
   delete: (id) =>
     api.delete(`/api/treatment-plans/${id}`),
+};
+
+// Employee Expiry API
+export const employeeExpiryAPI = {
+  getSummary: (params = {}) =>
+    api.get('/api/employee-expiry/summary', { params }),
+
+  getList: (params = {}) =>
+    api.get('/api/employee-expiry/list', { params }),
+
+  exportExcel: (params = {}) =>
+    api.get('/api/employee-expiry/export', { params, responseType: 'blob' }),
+
+  notifyBranches: (data) =>
+    api.post('/api/employee-expiry/notify-branches', data),
+
+  updateDate: (data) =>
+    api.put('/api/employee-expiry/update-date', data),
 };
 
 

@@ -7,7 +7,7 @@ import { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, dashboardAPI, adminAPI, requestsAPI, busTransportationAPI, payrollAbsenceAPI, beneficiariesAPI, clearCache } from '../utils/api';
+import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, dashboardAPI, adminAPI, requestsAPI, busTransportationAPI, payrollAbsenceAPI, beneficiariesAPI, employeeExpiryAPI, clearCache } from '../utils/api';
 import BranchesOverallProgressChart from '../components/BranchesOverallProgressChart';
 import {
   getRequiredBranchDocuments,
@@ -82,6 +82,7 @@ const Dashboard = () => {
   const [missingEmployeeContractData, setMissingEmployeeContractData] = useState([]);
   const [payrollAbsenceState, setPayrollAbsenceState] = useState(null);
   const [beneficiaryCount, setBeneficiaryCount] = useState(0);
+  const [employeeExpirySummary, setEmployeeExpirySummary] = useState(null);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0); // Track current task being shown
   const [branchOpsTasksLoading, setBranchOpsTasksLoading] = useState(false);
 
@@ -151,6 +152,10 @@ const Dashboard = () => {
           beneficiariesAPI.getBranchCount().catch((err) => {
             console.warn('[Dashboard] beneficiariesAPI.getBranchCount failed:', err?.message || 'Unknown error');
             return { data: { success: false, data: { count: 0 } } };
+          }),
+          employeeExpiryAPI.getSummary().catch((err) => {
+            console.warn('[Dashboard] employeeExpiryAPI.getSummary failed:', err?.message || 'Unknown error');
+            return { data: { success: false, data: null } };
           })
         );
       } else if (isMainManager()) {
@@ -251,6 +256,13 @@ const Dashboard = () => {
           setBeneficiaryCount(beneficiaryCountRes.data.data?.count || 0);
         } else {
           setBeneficiaryCount(0);
+        }
+
+        const expiryRes = results[9];
+        if (expiryRes?.data?.success) {
+          setEmployeeExpirySummary(expiryRes.data.data);
+        } else {
+          setEmployeeExpirySummary(null);
         }
 
         // Use cached dashboard summary endpoint to get current incomplete employees and totals
@@ -368,6 +380,7 @@ const Dashboard = () => {
           setMissingEmployeeContractData([]);
           setPayrollAbsenceState(null);
           setBeneficiaryCount(0);
+          setEmployeeExpirySummary(null);
           setBranchOpsTasksLoading(false);
         }
       }
@@ -1379,7 +1392,8 @@ const Dashboard = () => {
           missingEmployeeContractData,
           payrollAbsenceState,
           employees: employeesList,
-          beneficiaryCount
+          beneficiaryCount,
+          employeeExpirySummary
         });
 
         // Filter out actually completed tasks (not just skipped)
