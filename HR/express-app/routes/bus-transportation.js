@@ -440,6 +440,16 @@ router.post('/:id/registration', checkBranchAccess, validateRequired([
     res.json({ success: true, data: registration });
   } catch (error) {
     log.error('Error saving bus registration', { error: error.message });
+
+    // Handle duplicate registration number
+    if (error.code === '23505' || (error.message && error.message.includes('bus_registration_data_registration_number_key'))) {
+      return res.status(409).json({
+        success: false,
+        message: 'رقم تسجيل الحافلة مستخدم بالفعل',
+        error: 'duplicate_registration_number'
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: 'فشل حفظ بيانات تسجيل الحافلة',

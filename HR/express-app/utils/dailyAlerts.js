@@ -1,9 +1,10 @@
 /**
  * Daily Email Alerts
- * Sends critical statistics alerts to main manager
+ * Sends critical statistics alerts to main manager and branch managers
  */
 
-import { sendStatisticsAlertEmail } from './emailService.js';
+import { sendStatisticsAlertEmail, sendNotificationEmail } from './emailService.js';
+import { getExpirySummary } from './expiryService.js';
 import sql from '../config/database.js';
 import { log } from './logger.js';
 
@@ -17,7 +18,7 @@ export async function checkAndSendDailyAlerts() {
         const mainManagerEmail = 'Sharaksa@gmail.com';
         const appUrl = process.env.APP_URL || 'http://localhost:5173';
 
-        // Query for critical statistics
+        // Query for critical statistics (legacy counts)
         const [stats] = await sql`
       SELECT
         COUNT(*) FILTER (WHERE contract_end_date_gregorian < CURRENT_DATE)::int as expired_contracts,
@@ -35,7 +36,7 @@ export async function checkAndSendDailyAlerts() {
             stats.expiring_soon > 0 ||
             stats.expired_ids > 0 ||
             stats.ids_expiring_soon > 0 ||
-            stats.incomplete_data > 10; // Only alert if more than 10 employees with incomplete data
+            stats.incomplete_data > 10;
 
         if (hasAlerts) {
             const alerts = {
@@ -48,13 +49,39 @@ export async function checkAndSendDailyAlerts() {
 
             await sendStatisticsAlertEmail({
                 to: mainManagerEmail,
-                appUrl: `${appUrl}/employee-statistics`,
+                appUrl: `${appUrl}/employee-expiry`,
                 alerts,
             });
 
             log.info('Daily alert email sent successfully', { alerts });
         } else {
             log.info('No critical alerts to send');
+        }
+
+        // --- Branch-level expiry alerts ---
+        try {
+            const summary = await getExpirySummary();
+            for (const branch of summary.byBranch) {
+                if (!branch.branch_email) continue;
+                const total = (branch.expired_count || 0) + (branch.expiring_soon_count || 0);
+                if (total === 0) continue;
+
+                await sendNotificationEmail({
+                    to: branch.branch_email,
+                    subject: `تنبيه يومي: تواريخ موظفين منتهية - ${branch.branch_name}`,
+                    message: `يوجد لديكم ${branch.expired_count} تاريخ منتهي و ${branch.expiring_soon_count} تاريخ ينتهي خلال 30 يوم. يرجى مراجعة صفحة التواريخ المنتهية وتحديث البيانات.`,
+                    notificationType: 'daily_expiry_alert',
+                    appUrl: `${appUrl}/employee-expiry`,
+                    data: {
+                        'تواريخ منتهية': `${branch.expired_count}`,
+                        'تنتهي خلال 30 يوم': `${branch.expiring_soon_count}`,
+                        'الفرع': branch.branch_name,
+                    }
+                });
+            }
+            log.info('Branch expiry alert emails sent');
+        } catch (branchAlertError) {
+            log.error('Failed to send branch expiry alerts', { error: branchAlertError.message });
         }
     } catch (error) {
         log.error('Failed to check and send daily alerts', { error: error.message });
