@@ -412,8 +412,6 @@ export function initErrorTracking() {
             : new Error(String(event.reason));
         reportUnhandledError(error, 'unhandledrejection');
     });
-
-    console.log('[ErrorTracking] Initialized');
 }
 
 export default {

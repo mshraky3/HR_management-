@@ -364,20 +364,6 @@ api.interceptors.response.use(
     const isBackendError = detectBackendError(error);
 
     if (isBackendError) {
-      // Console log full error details for debugging
-      console.error('[API] Backend/Database Connection Error:', {
-        url: url,
-        method: method,
-        message: error.message,
-        code: error.code,
-        name: error.name,
-        response: error.response ? {
-          status: error.response.status,
-          statusText: error.response.statusText,
-          data: error.response.data,
-        } : null,
-      });
-
       // Report critical error via email notification
       reportApiError(error, config);
 
