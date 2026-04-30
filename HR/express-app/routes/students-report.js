@@ -1,67 +1,12 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import PdfPrinter from '@digicole/pdfmake-rtl';
-import { fileURLToPath } from 'url';
-import path from 'path';
-import fs from 'fs';
 import { log } from '../utils/logger.js';
 import { BusStudent } from '../models/BusStudent.js';
 import { BusTransportation } from '../models/BusTransportation.js';
 import { Branch } from '../models/Branch.js';
+import { printer as certificatePrinter } from '../utils/pdfFonts.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Set up fonts
-const fontsDir = path.join(__dirname, '..', 'fonts');
-const amiriDir = path.join(fontsDir, 'Amiri');
-const amiriRegular = path.join(amiriDir, 'Amiri-Regular.ttf');
-const amiriBold = path.join(amiriDir, 'Amiri-Bold.ttf');
-const amiriItalic = path.join(amiriDir, 'Amiri-Italic.ttf');
-const amiriBoldItalic = path.join(amiriDir, 'Amiri-BoldItalic.ttf');
-
-let arabicFontPath = null;
-try {
-    if (fs.existsSync(amiriRegular)) {
-        arabicFontPath = amiriRegular;
-    }
-} catch (error) {
-    console.warn('Font files not accessible:', error.message);
-}
-
-const hasArabicFont = arabicFontPath !== null;
-
-let fonts;
-if (hasArabicFont) {
-    fonts = {
-        Roboto: {
-            normal: path.join(fontsDir, 'Roboto-Regular.ttf'),
-            bold: path.join(fontsDir, 'Roboto-Bold.ttf'),
-        },
-        Amiri: {
-            normal: amiriRegular,
-            bold: amiriBold,
-            italics: amiriItalic,
-            bolditalics: amiriBoldItalic,
-        }
-    };
-    console.log('Using Amiri font for PDF generation');
-} else {
-    fonts = {
-        Roboto: {
-            normal: 'Helvetica',
-            bold: 'Helvetica-Bold',
-        },
-        Amiri: {
-            normal: 'Helvetica',
-            bold: 'Helvetica-Bold',
-            italics: 'Helvetica-Oblique',
-            bolditalics: 'Helvetica-BoldOblique',
-        }
-    };
-}
-
-const certificatePrinter = new PdfPrinter(fonts);
 const router = express.Router();
 
 // Generate Students Report PDF
@@ -286,7 +231,7 @@ router.post('/generate-pdf', authenticate, async (req, res) => {
         pdfDoc.end();
     } catch (error) {
         log.error('Error generating students PDF:', error);
-        res.status(500).json({ error: 'Failed to generate PDF' });
+        handleRouteError(error, req, res, 'حدث خطأ في الخادم');
     }
 });
 

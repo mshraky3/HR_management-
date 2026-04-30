@@ -3,11 +3,12 @@
  */
 
 import sql from '../config/database.js';
-import { 
-  gregorianToHijri, 
-  hijriToGregorian, 
+import { log } from './logger.js';
+import {
+  gregorianToHijri,
+  hijriToGregorian,
   formatHijriToString,
-  parseHijriString 
+  parseHijriString
 } from './dateConverter.js';
 
 /**
@@ -41,15 +42,15 @@ export async function getEmployeesWithMissingDates(limit = 100, offset = 0) {
 
   // Calculate age and validation status for each employee
   return employees.map(emp => {
-    const hasHijri = emp.date_of_birth_hijri && 
-                     typeof emp.date_of_birth_hijri === 'string' && 
-                     emp.date_of_birth_hijri.trim() !== '';
-    const hasGregorian = emp.date_of_birth_gregorian !== null && 
-                        emp.date_of_birth_gregorian !== undefined;
-    
+    const hasHijri = emp.date_of_birth_hijri &&
+      typeof emp.date_of_birth_hijri === 'string' &&
+      emp.date_of_birth_hijri.trim() !== '';
+    const hasGregorian = emp.date_of_birth_gregorian !== null &&
+      emp.date_of_birth_gregorian !== undefined;
+
     let age = null;
     let isInvalidAge = false;
-    
+
     if (hasGregorian) {
       const gregorianDateStr = emp.date_of_birth_gregorian.toISOString().split('T')[0];
       age = calculateAge(gregorianDateStr);
@@ -58,7 +59,7 @@ export async function getEmployeesWithMissingDates(limit = 100, offset = 0) {
         isInvalidAge = true;
       }
     }
-    
+
     return {
       ...emp,
       has_hijri: hasHijri,
@@ -66,10 +67,10 @@ export async function getEmployeesWithMissingDates(limit = 100, offset = 0) {
       can_convert: hasHijri || hasGregorian,
       age: age,
       is_invalid_age: isInvalidAge,
-      validation_status: isInvalidAge 
-        ? 'invalid_age' 
-        : (!hasHijri && !hasGregorian 
-          ? 'missing_both' 
+      validation_status: isInvalidAge
+        ? 'invalid_age'
+        : (!hasHijri && !hasGregorian
+          ? 'missing_both'
           : (!hasHijri ? 'missing_hijri' : 'missing_gregorian'))
     };
   });
@@ -97,16 +98,16 @@ export async function getEmployeesWithMissingDatesCount() {
  */
 function calculateAge(dateOfBirth) {
   if (!dateOfBirth) return null;
-  
+
   let birthDate;
   if (typeof dateOfBirth === 'string') {
     birthDate = new Date(dateOfBirth);
   } else {
     birthDate = new Date(dateOfBirth);
   }
-  
+
   if (isNaN(birthDate.getTime())) return null;
-  
+
   const today = new Date();
   let age = today.getFullYear() - birthDate.getFullYear();
   const monthDiff = today.getMonth() - birthDate.getMonth();
@@ -122,22 +123,22 @@ function calculateAge(dateOfBirth) {
  */
 function validateDateOfBirth(gregorianDate) {
   if (!gregorianDate) return { valid: false, reason: 'Date is missing' };
-  
+
   const date = new Date(gregorianDate);
   if (isNaN(date.getTime())) {
     return { valid: false, reason: 'Invalid date format' };
   }
-  
+
   // Allow future dates - they might be data entry errors or system date issues
   // We'll accept any valid date that can be converted
-  
+
   // Calculate age
   const age = calculateAge(gregorianDate);
-  
+
   if (age === null) {
     return { valid: false, reason: 'Could not calculate age' };
   }
-  
+
   // Very lenient validation: accept any age from 0 to 150
   // The goal is to fix the dates, not reject valid conversions
   if (age < 0) {
@@ -145,12 +146,12 @@ function validateDateOfBirth(gregorianDate) {
     // as the conversion algorithm produced a valid date
     return { valid: true, age: 0, warning: 'Date is in the future' };
   }
-  
+
   if (age > 150) {
     // Very old age - likely data error, but accept the conversion
     return { valid: true, age, warning: `Age is ${age} years - may need manual verification` };
   }
-  
+
   return { valid: true, age };
 }
 
@@ -171,11 +172,11 @@ export async function convertEmployeeDates(employeeId) {
     throw new Error('Employee not found');
   }
 
-  const hasHijri = employee.date_of_birth_hijri && 
-                   typeof employee.date_of_birth_hijri === 'string' && 
-                   employee.date_of_birth_hijri.trim() !== '';
-  const hasGregorian = employee.date_of_birth_gregorian !== null && 
-                      employee.date_of_birth_gregorian !== undefined;
+  const hasHijri = employee.date_of_birth_hijri &&
+    typeof employee.date_of_birth_hijri === 'string' &&
+    employee.date_of_birth_hijri.trim() !== '';
+  const hasGregorian = employee.date_of_birth_gregorian !== null &&
+    employee.date_of_birth_gregorian !== undefined;
 
   if (!hasHijri && !hasGregorian) {
     throw new Error('Both dates are missing - cannot convert');
@@ -188,7 +189,7 @@ export async function convertEmployeeDates(employeeId) {
   if (hasHijri && !hasGregorian) {
     // Convert Hijri to Gregorian
     const hijriParts = parseHijriString(employee.date_of_birth_hijri);
-    
+
     if (!hijriParts) {
       throw new Error(`Invalid Hijri date format: ${employee.date_of_birth_hijri}. Expected format: DD/MM/YYYY`);
     }
@@ -199,14 +200,14 @@ export async function convertEmployeeDates(employeeId) {
     }
 
     // Basic range validation
-    if (hijriParts.day < 1 || hijriParts.day > 30 || 
-        hijriParts.month < 1 || hijriParts.month > 12) {
+    if (hijriParts.day < 1 || hijriParts.day > 30 ||
+      hijriParts.month < 1 || hijriParts.month > 12) {
       throw new Error(`Invalid Hijri date values: ${employee.date_of_birth_hijri}. Day must be 1-30, Month must be 1-12.`);
     }
 
     try {
       const gregorianDate = hijriToGregorian(hijriParts.day, hijriParts.month, hijriParts.year);
-      
+
       if (!gregorianDate) {
         throw new Error(`Failed to convert Hijri date to Gregorian: ${employee.date_of_birth_hijri}. The conversion algorithm returned null (likely date out of valid range).`);
       }
@@ -226,15 +227,15 @@ export async function convertEmployeeDates(employeeId) {
   } else if (hasGregorian && !hasHijri) {
     // Convert Gregorian to Hijri
     const gregorianDateStr = employee.date_of_birth_gregorian.toISOString().split('T')[0];
-    
+
     // Validate the existing Gregorian date first
     const validation = validateDateOfBirth(gregorianDateStr);
     if (!validation.valid) {
       throw new Error(`Invalid date of birth: ${validation.reason}. Gregorian date: ${gregorianDateStr}`);
     }
-    
+
     const hijriDate = gregorianToHijri(gregorianDateStr);
-    
+
     if (!hijriDate) {
       throw new Error(`Failed to convert Gregorian date to Hijri: ${gregorianDateStr}`);
     }
@@ -245,22 +246,22 @@ export async function convertEmployeeDates(employeeId) {
     // Both dates exist - check if Gregorian date is invalid and needs recalculation
     const gregorianDateStr = employee.date_of_birth_gregorian.toISOString().split('T')[0];
     const validation = validateDateOfBirth(gregorianDateStr);
-    
+
     if (!validation.valid) {
       // Gregorian date is invalid - try to recalculate from Hijri first, then from Gregorian if that fails
       let recalculated = false;
-      
+
       // First, try to recalculate from Hijri date
       const hijriParts = parseHijriString(employee.date_of_birth_hijri);
-      
+
       if (hijriParts && !isNaN(hijriParts.day) && !isNaN(hijriParts.month) && !isNaN(hijriParts.year)) {
         // Basic range validation
-        if (hijriParts.day >= 1 && hijriParts.day <= 30 && 
-            hijriParts.month >= 1 && hijriParts.month <= 12) {
+        if (hijriParts.day >= 1 && hijriParts.day <= 30 &&
+          hijriParts.month >= 1 && hijriParts.month <= 12) {
           try {
             // Recalculate Gregorian from Hijri
             const recalculatedGregorian = hijriToGregorian(hijriParts.day, hijriParts.month, hijriParts.year);
-            
+
             if (recalculatedGregorian) {
               // Validate the recalculated date
               const recalcValidation = validateDateOfBirth(recalculatedGregorian);
@@ -278,11 +279,11 @@ export async function convertEmployeeDates(employeeId) {
             }
           } catch (convError) {
             // Hijri conversion failed, will try Gregorian below
-            console.warn(`Failed to convert from Hijri ${employee.date_of_birth_hijri}: ${convError.message}`);
+            log.warn(`Failed to convert from Hijri ${employee.date_of_birth_hijri}: ${convError.message}`);
           }
         }
       }
-      
+
       // If Hijri conversion failed or produced invalid date, try using Gregorian as source of truth
       if (!recalculated) {
         // Validate the Gregorian date itself (might be correct even if age validation failed)
@@ -299,7 +300,7 @@ export async function convertEmployeeDates(employeeId) {
           }
         }
       }
-      
+
       if (!recalculated) {
         throw new Error(`لا يمكن إصلاح التواريخ. التاريخ الهجري: ${employee.date_of_birth_hijri}, التاريخ الميلادي: ${gregorianDateStr}`);
       }
@@ -308,11 +309,11 @@ export async function convertEmployeeDates(employeeId) {
       // First try to recalculate from Hijri, but if that fails, use Gregorian as source of truth
       let recalculated = false;
       const hijriParts = parseHijriString(employee.date_of_birth_hijri);
-      
+
       if (hijriParts && !isNaN(hijriParts.day) && !isNaN(hijriParts.month) && !isNaN(hijriParts.year)) {
         // Try to recalculate Gregorian from Hijri to ensure they match
         const recalculatedGregorian = hijriToGregorian(hijriParts.day, hijriParts.month, hijriParts.year);
-        
+
         if (recalculatedGregorian) {
           const recalcValidation = validateDateOfBirth(recalculatedGregorian);
           if (recalcValidation.valid) {
@@ -327,7 +328,7 @@ export async function convertEmployeeDates(employeeId) {
           }
         }
       }
-      
+
       // If Hijri recalculation failed or produced invalid result, use Gregorian as source of truth
       if (!recalculated) {
         const calculatedHijri = gregorianToHijri(gregorianDateStr);
@@ -338,7 +339,7 @@ export async function convertEmployeeDates(employeeId) {
           recalculated = true;
         }
       }
-      
+
       if (!recalculated) {
         // Keep original dates if all conversions failed
         conversionResult = `كلا التاريخين موجودان. العمر: ${validation.age} سنة`;
@@ -399,7 +400,7 @@ export async function deleteEmployee(employeeId) {
  */
 export async function batchFixAllEmployees(options = {}) {
   const { batchSize = 50, delayMs = 100, autoDelete = false } = options;
-  
+
   const results = {
     total: 0,
     converted: 0,
@@ -410,11 +411,11 @@ export async function batchFixAllEmployees(options = {}) {
   };
 
   let offset = 0;
-  
+
   while (true) {
     // Fetch batch of employees
     const employees = await getEmployeesWithMissingDates(batchSize, offset);
-    
+
     if (!employees || employees.length === 0) {
       break; // No more employees to process
     }
@@ -444,9 +445,9 @@ export async function batchFixAllEmployees(options = {}) {
           employee_name: `${employee.first_name} ${employee.second_name}`,
           error: error.message
         });
-        
+
         // Log error but continue processing
-        console.warn(`Failed to fix employee ${employee.id}: ${error.message}`);
+        log.warn(`Failed to fix employee ${employee.id}: ${error.message}`);
       }
     }
 

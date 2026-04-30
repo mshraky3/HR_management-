@@ -5,6 +5,7 @@
  */
 
 import { uploadToR2, fetchFromR2, deleteFromR2, isR2StorageConfigured } from './r2Storage.js';
+import { log } from './logger.js';
 
 /**
  * Upload a file to R2 alongside Vercel Blob.
@@ -23,7 +24,7 @@ export async function uploadToR2Mirror(blobPath, fileBuffer, contentType) {
         const r2Url = await uploadToR2(blobPath, fileBuffer, contentType);
         return r2Url;
     } catch (error) {
-        console.error('R2 mirror upload failed (non-blocking):', error.message);
+        log.error('R2 mirror upload failed (non-blocking):', error.message);
         return null;
     }
 }
@@ -70,7 +71,7 @@ export async function deleteFromR2Mirror(r2Url) {
     try {
         return await deleteFromR2(r2Url);
     } catch (error) {
-        console.error('R2 mirror delete failed (non-blocking):', error.message);
+        log.error('R2 mirror delete failed (non-blocking):', error.message);
         return false;
     }
 }

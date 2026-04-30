@@ -4,6 +4,7 @@
  */
 
 import sql from '../config/database.js';
+import { log } from '../utils/logger.js';
 
 export const Notification = {
   /**
@@ -32,7 +33,7 @@ export const Notification = {
       const [notification] = await query;
       return notification || null;
     } catch (error) {
-      console.error('Error finding notification by ID:', error);
+      log.error('Error finding notification by ID:', { error: error.message });
       throw error;
     }
   },
@@ -42,15 +43,6 @@ export const Notification = {
    */
   async findAll(filters = {}) {
     try {
-      // First, mark expired notifications as inactive
-      await sql`
-        UPDATE notifications 
-        SET is_active = false, updated_at = CURRENT_TIMESTAMP
-        WHERE expires_at IS NOT NULL 
-          AND expires_at < CURRENT_TIMESTAMP 
-          AND is_active = true
-      `;
-
       let query = sql`
         SELECT n.*, u.full_name as created_by_name
         FROM notifications n
@@ -75,7 +67,7 @@ export const Notification = {
 
       return await query;
     } catch (error) {
-      console.error('Error finding notifications:', error);
+      log.error('Error finding notifications:', { error: error.message });
       throw error;
     }
   },
@@ -85,15 +77,6 @@ export const Notification = {
    */
   async findByBranchId(branchId, filters = {}, userId = null) {
     try {
-      // First, mark expired notifications as inactive
-      await sql`
-        UPDATE notifications 
-        SET is_active = false, updated_at = CURRENT_TIMESTAMP
-        WHERE expires_at IS NOT NULL 
-          AND expires_at < CURRENT_TIMESTAMP 
-          AND is_active = true
-      `;
-
       // Query notifications for this branch
       let query = sql`
         SELECT DISTINCT n.*, u.full_name as created_by_name,
@@ -136,7 +119,7 @@ export const Notification = {
 
       return notifications;
     } catch (error) {
-      console.error('Error finding notifications by branch ID:', error);
+      log.error('Error finding notifications by branch ID:', { error: error.message });
       throw error;
     }
   },
@@ -174,7 +157,7 @@ export const Notification = {
       // Fetch with created_by name
       return await this.findById(notification.id);
     } catch (error) {
-      console.error('Error creating notification:', error);
+      log.error('Error creating notification:', { error: error.message });
       throw error;
     }
   },
@@ -213,7 +196,7 @@ export const Notification = {
       const result = await sql.unsafe(query, values);
       return result[0] || null;
     } catch (error) {
-      console.error('Error updating notification:', error);
+      log.error('Error updating notification:', { error: error.message });
       throw error;
     }
   },
@@ -242,7 +225,7 @@ export const Notification = {
 
       return notification;
     } catch (error) {
-      console.error('Error deleting notification:', error);
+      log.error('Error deleting notification:', { error: error.message });
       throw error;
     }
   },
@@ -261,7 +244,7 @@ export const Notification = {
 
       return notification || null;
     } catch (error) {
-      console.error('Error activating notification:', error);
+      log.error('Error activating notification:', { error: error.message });
       throw error;
     }
   },
@@ -280,7 +263,7 @@ export const Notification = {
 
       return notification || null;
     } catch (error) {
-      console.error('Error deactivating notification:', error);
+      log.error('Error deactivating notification:', { error: error.message });
       throw error;
     }
   },
@@ -310,7 +293,7 @@ export const Notification = {
 
       return notification || null;
     } catch (error) {
-      console.error('Error toggling notification active status:', error);
+      log.error('Error toggling notification active status:', { error: error.message });
       throw error;
     }
   },
@@ -334,7 +317,7 @@ export const Notification = {
 
       return notification || null;
     } catch (error) {
-      console.error('Error marking notification as seen by branch:', error);
+      log.error('Error marking notification as seen by branch:', { error: error.message });
       throw error;
     }
   },
@@ -351,7 +334,7 @@ export const Notification = {
       `;
 
       if (!user) {
-        console.warn(`User ${userId} does not exist, skipping mark as viewed`);
+        log.warn(`User ${userId} does not exist, skipping mark as viewed`);
         return null;
       }
 
@@ -363,7 +346,7 @@ export const Notification = {
       `;
       return view || null;
     } catch (error) {
-      console.error('Error marking notification as viewed:', error);
+      log.error('Error marking notification as viewed:', { error: error.message });
       throw error;
     }
   },
@@ -379,7 +362,7 @@ export const Notification = {
       `;
       return !!view;
     } catch (error) {
-      console.error('Error checking if notification has been viewed:', error);
+      log.error('Error checking if notification has been viewed:', { error: error.message });
       throw error;
     }
   },
@@ -418,7 +401,7 @@ export const Notification = {
         responses: responses || []
       };
     } catch (error) {
-      console.error('Error finding notification with details:', error);
+      log.error('Error finding notification with details:', { error: error.message });
       throw error;
     }
   }

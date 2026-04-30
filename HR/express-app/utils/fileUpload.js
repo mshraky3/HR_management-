@@ -5,6 +5,7 @@
  */
 
 import path from 'path';
+import { log } from './logger.js';
 
 // Note: Storage directories and local file system functions are no longer used
 // Files are now stored in Vercel Blob Storage
@@ -73,7 +74,7 @@ export function fixFilenameEncoding(fileName) {
     }
     return fileName;
   } catch (error) {
-    console.warn('Error fixing filename encoding:', error);
+    log.warn('Error fixing filename encoding:', error);
     // If decoding fails, use original filename
     return fileName;
   }

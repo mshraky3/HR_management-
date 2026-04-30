@@ -7,6 +7,9 @@ import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import sql from '../config/database.js';
 import { getCache, setCache } from '../utils/simpleCache.js';
+import { getScopedBranchFilter } from '../utils/policyScope.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 router.use(authenticate);
@@ -19,25 +22,17 @@ router.use(authenticate);
  */
 router.get('/summary', async (req, res) => {
     try {
-        // Branch scoping
-        let branchId = null;
-        if (req.user.role === 'branch_manager') {
-            branchId = req.user.branch_id;
-        } else if (req.user.role === 'branch_operations_manager') {
-            // branch_operations_manager: scope to first assigned branch or query param if valid
-            const { UserBranchAssignment } = await import('../models/User.js');
-            const assignedBranches = await UserBranchAssignment.getAssignedBranches(req.user.id);
-            if (req.query.branch_id) {
-                const parsed = parseInt(req.query.branch_id);
-                if (!isNaN(parsed) && assignedBranches.includes(parsed)) branchId = parsed;
-                else branchId = assignedBranches[0] || null;
-            } else {
-                branchId = assignedBranches[0] || null;
-            }
-        } else if (req.query.branch_id) {
-            const parsed = parseInt(req.query.branch_id);
-            if (!isNaN(parsed)) branchId = parsed;
+        if (req.scope?.access?.denied) {
+            return res.status(403).json({
+                success: false,
+                message: 'غير مصرح لك بالوصول إلى هذا الفرع'
+            });
         }
+
+        const scopedBranch = getScopedBranchFilter(req, { allowMultiple: true });
+        const branchId = Array.isArray(scopedBranch)
+            ? (scopedBranch[0] || null)
+            : (scopedBranch || null);
 
         const cacheKey = `dashboard:summary:${branchId || 'all'}`;
 
@@ -98,8 +93,8 @@ router.get('/summary', async (req, res) => {
         res.set('X-Cache', 'MISS');
         return res.json({ success: true, data: result });
     } catch (error) {
-        console.error('Error in dashboard summary:', error);
-        res.status(500).json({ success: false, message: 'فشل جلب ملخص لوحة التحكم', error: error.message });
+        log.error('Error in dashboard summary:', error);
+        handleRouteError(error, req, res, 'فشل جلب ملخص لوحة التحكم');
     }
 });
 

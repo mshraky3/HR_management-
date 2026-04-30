@@ -1,97 +1,14 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import PdfPrinter from '@digicole/pdfmake-rtl';
-import { fileURLToPath } from 'url';
-import path from 'path';
-import fs from 'fs';
 import { log } from '../utils/logger.js';
 import { BusTransportation } from '../models/BusTransportation.js';
 import { BusStudent } from '../models/BusStudent.js';
 import { BusDetails } from '../models/BusDetails.js';
 import { Branch } from '../models/Branch.js';
+import { getScopedBranchFilter } from '../utils/policyScope.js';
+import { printer as certificatePrinter } from '../utils/pdfFonts.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Set up fonts
-const fontsDir = path.join(__dirname, '..', 'fonts');
-const amiriDir = path.join(fontsDir, 'Amiri');
-const amiriRegular = path.join(amiriDir, 'Amiri-Regular.ttf');
-const amiriBold = path.join(amiriDir, 'Amiri-Bold.ttf');
-const amiriItalic = path.join(amiriDir, 'Amiri-Italic.ttf');
-const amiriBoldItalic = path.join(amiriDir, 'Amiri-BoldItalic.ttf');
-
-let arabicFontPath = null;
-try {
-    if (fs.existsSync(amiriRegular)) {
-        arabicFontPath = amiriRegular;
-    }
-} catch (error) {
-    console.warn('Font files not accessible:', error.message);
-}
-
-const hasArabicFont = arabicFontPath !== null;
-
-let fonts;
-if (hasArabicFont) {
-    const fontExists = (fontPath) => {
-        try {
-            return fs.existsSync(fontPath);
-        } catch {
-            return false;
-        }
-    };
-
-    const regular = amiriRegular;
-    const bold = fontExists(amiriBold) ? amiriBold : amiriRegular;
-    const italics = fontExists(amiriItalic) ? amiriItalic : amiriRegular;
-    const bolditalics = fontExists(amiriBoldItalic) ? amiriBoldItalic : (fontExists(amiriBold) ? amiriBold : amiriRegular);
-
-    fonts = {
-        Roboto: {
-            normal: regular,
-            bold,
-            italics,
-            bolditalics,
-        },
-        Amiri: {
-            normal: regular,
-            bold,
-            italics,
-            bolditalics,
-        },
-        Nillima: {
-            normal: regular,
-            bold,
-            italics,
-            bolditalics,
-        }
-    };
-    console.log('Using Amiri font for PDF generation');
-} else {
-    fonts = {
-        Roboto: {
-            normal: 'Helvetica',
-            bold: 'Helvetica-Bold',
-            italics: 'Helvetica-Oblique',
-            bolditalics: 'Helvetica-BoldOblique',
-        },
-        Amiri: {
-            normal: 'Helvetica',
-            bold: 'Helvetica-Bold',
-            italics: 'Helvetica-Oblique',
-            bolditalics: 'Helvetica-BoldOblique',
-        },
-        Nillima: {
-            normal: 'Helvetica',
-            bold: 'Helvetica-Bold',
-            italics: 'Helvetica-Oblique',
-            bolditalics: 'Helvetica-BoldOblique',
-        }
-    };
-}
-
-const certificatePrinter = new PdfPrinter(fonts);
 const router = express.Router();
 
 /**
@@ -139,6 +56,16 @@ router.post('/generate-pdf', authenticate, async (req, res) => {
 
         if (normalizedBranchIds.length === 0) {
             return res.status(400).json({ error: 'يجب اختيار فرع واحد على الأقل' });
+        }
+
+        // Validate requested branches against user scope
+        const scopedBranch = getScopedBranchFilter(req, { allowMultiple: true });
+        if (scopedBranch !== null && scopedBranch !== undefined) {
+            const allowedIds = Array.isArray(scopedBranch) ? scopedBranch : [scopedBranch];
+            const unauthorized = normalizedBranchIds.filter(id => !allowedIds.includes(id));
+            if (unauthorized.length > 0) {
+                return res.status(403).json({ error: 'تم رفض الوصول لبعض الفروع المطلوبة' });
+            }
         }
 
         // Fetch only requested branches using efficient IN query
@@ -496,7 +423,7 @@ router.post('/generate-pdf', authenticate, async (req, res) => {
         pdfDoc.end();
     } catch (error) {
         log.error('Error generating bus transportation PDF:', error);
-        res.status(500).json({ error: 'فشل في إنشاء التقرير' });
+        handleRouteError(error, req, res, 'حدث خطأ في الخادم');
     }
 });
 

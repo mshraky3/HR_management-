@@ -7,6 +7,7 @@ import express from 'express';
 import { sendErrorNotification } from '../utils/errorNotificationService.js';
 import { log } from '../utils/logger.js';
 import { optionalAuth } from '../middleware/auth.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
 
 const router = express.Router();
 
@@ -78,10 +79,7 @@ router.post('/', optionalAuth, async (req, res) => {
         });
     } catch (error) {
         log.error('Error processing error report', { error: error.message });
-        res.status(500).json({
-            success: false,
-            message: 'Failed to process error report',
-        });
+        handleRouteError(error, req, res, 'Failed to process error report');
     }
 });
 
@@ -138,10 +136,7 @@ router.post('/batch', optionalAuth, async (req, res) => {
         });
     } catch (error) {
         log.error('Error processing batch error reports', { error: error.message });
-        res.status(500).json({
-            success: false,
-            message: 'Failed to process batch error reports',
-        });
+        handleRouteError(error, req, res, 'Failed to process batch error reports');
     }
 });
 

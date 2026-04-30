@@ -10,30 +10,17 @@ import { requireManager, requireMainManager } from '../middleware/authorization.
 import { PayrollAbsence } from '../models/PayrollAbsence.js';
 import { Branch } from '../models/Branch.js';
 import { sendNotificationEmail } from '../utils/emailService.js';
+import { getScopedBranchFilter, resolveBranchAccessFromScope } from '../utils/policyScope.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 router.use(authenticate);
 
-/**
- * Sanitize error messages for production
- * In production, returns generic messages to prevent information disclosure
- * In development, returns actual error messages for debugging
- */
-const sanitizeError = (error, defaultMessage = 'فشل تنفيذ العملية') => {
-  if (process.env.NODE_ENV === 'production') {
-    // In production, return generic message to prevent database schema exposure
-    return defaultMessage;
-  }
-  // In development, return actual error for debugging
-  return error.message || defaultMessage;
-};
-
 // Branch - get current state
 router.get('/branch/state', requireManager, async (req, res) => {
   try {
-    const branchId = req.user.role === 'branch_manager'
-      ? req.user.branch_id
-      : parseInt(req.query.branch_id || req.user.branch_id, 10);
+    const branchId = getScopedBranchFilter(req, { allowMultiple: false });
 
     if (!branchId) {
       return res.status(400).json({ success: false, message: 'معرف الفرع مفقود' });
@@ -44,20 +31,17 @@ router.get('/branch/state', requireManager, async (req, res) => {
 
     return res.json({ success: true, data });
   } catch (error) {
-    console.error('Error getting branch absence state:', error);
-    return res.status(500).json({
-      success: false,
-      message: sanitizeError(error, 'فشل جلب حالة الغياب')
-    });
+    log.error('Error getting branch absence state:', error);
+    return handleRouteError(error, req, res, 'حدث خطأ في الخادم');
   }
 });
 
 // Branch - submit absences
 router.post('/branch/submit', requireManager, async (req, res) => {
   try {
-    const branchId = req.user.role === 'branch_manager'
-      ? req.user.branch_id
-      : parseInt(req.body.branch_id || req.user.branch_id, 10);
+    const requestedBranchId = req.user.role === 'branch_manager' ? req.user.branch_id : req.body.branch_id; // policy-scope:allow-direct
+    const branchAccessResult = resolveBranchAccessFromScope(req.scope, requestedBranchId);
+    const branchId = branchAccessResult.allowed ? branchAccessResult.effectiveBranchId : null;
 
     if (!branchId) {
       return res.status(400).json({ success: false, message: 'معرف الفرع مفقود' });
@@ -75,10 +59,10 @@ router.post('/branch/submit', requireManager, async (req, res) => {
       data: result
     });
   } catch (error) {
-    console.error('Error submitting branch absences:', error);
+    log.error('Error submitting branch absences:', error);
     return res.status(400).json({
       success: false,
-      message: sanitizeError(error, 'فشل حفظ بيانات الغياب')
+      message: 'فشل حفظ بيانات الغياب'
     });
   }
 });
@@ -89,12 +73,8 @@ router.get('/admin/cycles', requireMainManager, async (req, res) => {
     const cycles = await PayrollAbsence.listCycles();
     return res.json({ success: true, data: cycles });
   } catch (error) {
-    console.error('Error listing cycles:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'فشل جلب الأشهر',
-      error: error.message
-    });
+    log.error('Error listing cycles:', error);
+    return handleRouteError(error, req, res, 'فشل جلب الأشهر');
   }
 });
 
@@ -108,11 +88,8 @@ router.get('/admin/cycles/:cycleId/branches', requireMainManager, async (req, re
     const data = await PayrollAbsence.getBranchesForCycle(cycleId);
     return res.json({ success: true, data });
   } catch (error) {
-    console.error('Error getting branches for cycle:', error);
-    return res.status(500).json({
-      success: false,
-      message: sanitizeError(error, 'فشل جلب فروع الشهر')
-    });
+    log.error('Error getting branches for cycle:', error);
+    return handleRouteError(error, req, res, 'حدث خطأ في الخادم');
   }
 });
 
@@ -120,18 +97,15 @@ router.get('/admin/cycles/:cycleId/branches', requireMainManager, async (req, re
 router.get('/admin/cycles/:cycleId/branches/:branchId/entries', requireMainManager, async (req, res) => {
   try {
     const cycleId = parseInt(req.params.cycleId, 10);
-    const branchId = parseInt(req.params.branchId, 10);
+    const branchId = parseInt(req.params.branchId, 10); // policy-scope:allow-direct: URL param in admin-only route
     if (!cycleId || !branchId) {
       return res.status(400).json({ success: false, message: 'معرف الشهر أو الفرع غير صالح' });
     }
     const data = await PayrollAbsence.getBranchSubmissionDetail(cycleId, branchId);
     return res.json({ success: true, data });
   } catch (error) {
-    console.error('Error getting branch submission detail:', error);
-    return res.status(500).json({
-      success: false,
-      message: sanitizeError(error, 'فشل جلب تفاصيل الفرع')
-    });
+    log.error('Error getting branch submission detail:', error);
+    return handleRouteError(error, req, res, 'حدث خطأ في الخادم');
   }
 });
 
@@ -163,7 +137,7 @@ router.post('/admin/reopen', requireMainManager, async (req, res) => {
         }
       }
     } catch (emailError) {
-      console.error('Failed to send payroll reopen emails:', emailError);
+      log.error('Failed to send payroll reopen emails:', emailError);
     }
 
     return res.json({
@@ -171,10 +145,10 @@ router.post('/admin/reopen', requireMainManager, async (req, res) => {
       message: 'تم فتح الفرع/الفروع لإعادة الإدخال'
     });
   } catch (error) {
-    console.error('Error reopening branches:', error);
+    log.error('Error reopening branches:', error);
     return res.status(400).json({
       success: false,
-      message: sanitizeError(error, 'فشل إعادة فتح الإدخال')
+      message: 'فشل إعادة فتح الإدخال'
     });
   }
 });
@@ -192,10 +166,10 @@ router.post('/admin/reset', requireMainManager, async (req, res) => {
       message: 'تمت إعادة تعيين الشهر وإرجاع جميع الفروع إلى العد التنازلي'
     });
   } catch (error) {
-    console.error('Error resetting cycle:', error);
+    log.error('Error resetting cycle:', error);
     return res.status(400).json({
       success: false,
-      message: sanitizeError(error, 'فشل إعادة تعيين الشهر')
+      message: 'فشل إعادة تعيين الشهر'
     });
   }
 });
@@ -213,10 +187,10 @@ router.post('/admin/close', requireMainManager, async (req, res) => {
       message: 'تم إغلاق الإدخال للفروع المحددة'
     });
   } catch (error) {
-    console.error('Error closing branches:', error);
+    log.error('Error closing branches:', error);
     return res.status(400).json({
       success: false,
-      message: sanitizeError(error, 'فشل إغلاق الإدخال')
+      message: 'فشل إغلاق الإدخال'
     });
   }
 });
@@ -280,11 +254,8 @@ router.post('/admin/export', requireMainManager, async (req, res) => {
     await workbook.xlsx.write(res);
     res.end();
   } catch (error) {
-    console.error('Error exporting absences:', error);
-    return res.status(500).json({
-      success: false,
-      message: sanitizeError(error, 'فشل إنشاء ملف الإكسل')
-    });
+    log.error('Error exporting absences:', error);
+    return handleRouteError(error, req, res, 'حدث خطأ في الخادم');
   }
 });
 

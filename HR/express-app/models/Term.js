@@ -4,6 +4,7 @@
  */
 
 import sql from '../config/database.js';
+import { log } from '../utils/logger.js';
 
 export const Term = {
   /**
@@ -19,7 +20,7 @@ export const Term = {
       `;
       return term || null;
     } catch (error) {
-      console.error('Error finding term by ID:', error);
+      log.error('Error finding term by ID:', { error: error.message });
       throw error;
     }
   },
@@ -56,7 +57,7 @@ export const Term = {
 
       return await query;
     } catch (error) {
-      console.error('Error finding terms:', error);
+      log.error('Error finding terms:', { error: error.message });
       throw error;
     }
   },
@@ -104,7 +105,7 @@ export const Term = {
       `;
       return recent || null;
     } catch (error) {
-      console.error('Error finding current term:', error);
+      log.error('Error finding current term:', { error: error.message });
       throw error;
     }
   },
@@ -125,7 +126,7 @@ export const Term = {
       `;
       return term || null;
     } catch (error) {
-      console.error('Error finding term for date:', error);
+      log.error('Error finding term for date:', { error: error.message });
       throw error;
     }
   },
@@ -152,7 +153,7 @@ export const Term = {
 
       return await query;
     } catch (error) {
-      console.error('Error checking term overlap:', error);
+      log.error('Error checking term overlap:', { error: error.message });
       throw error;
     }
   },
@@ -176,7 +177,7 @@ export const Term = {
 
       return await query;
     } catch (error) {
-      console.error('Error checking term duplicate:', error);
+      log.error('Error checking term duplicate:', { error: error.message });
       throw error;
     }
   },
@@ -226,7 +227,7 @@ export const Term = {
 
       return term;
     } catch (error) {
-      console.error('Error creating term:', error);
+      log.error('Error creating term:', { error: error.message });
       throw error;
     }
   },
@@ -296,7 +297,7 @@ export const Term = {
       const result = await sql.unsafe(query, values);
       return result[0] || null;
     } catch (error) {
-      console.error('Error updating term:', error);
+      log.error('Error updating term:', { error: error.message });
       throw error;
     }
   },
@@ -315,7 +316,7 @@ export const Term = {
 
       return term;
     } catch (error) {
-      console.error('Error deactivating term:', error);
+      log.error('Error deactivating term:', { error: error.message });
       throw error;
     }
   }

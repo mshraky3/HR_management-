@@ -8,6 +8,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requireMainManager, checkBranchAccess, loadAssignedBranches } from '../middleware/authorization.js';
 import { validateRequired } from '../middleware/validation.js';
 import { isValidEmail, isValidPhone } from '../utils/validators.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
 
 const router = express.Router();
 
@@ -41,11 +42,7 @@ router.get('/', authenticate, loadAssignedBranches, async (req, res) => {
 
     res.json({ success: true, data: branches });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب الفروع',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل جلب الفروع');
   }
 });
 
@@ -131,11 +128,7 @@ router.put('/my-branch',
 
       res.json({ success: true, data: branch });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'فشل تحديث الفرع',
-        error: error.message
-      });
+      handleRouteError(error, req, res, 'فشل تحديث الفرع');
     }
   }
 );
@@ -155,11 +148,7 @@ router.get('/:id', authenticate, checkBranchAccess, async (req, res) => {
 
     res.json({ success: true, data: branch });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب الفرع',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل جلب الفرع');
   }
 });
 
@@ -202,11 +191,7 @@ router.post('/',
 
       res.status(201).json({ success: true, data: branch });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'فشل إنشاء الفرع',
-        error: error.message
-      });
+      handleRouteError(error, req, res, 'فشل إنشاء الفرع');
     }
   }
 );
@@ -256,11 +241,7 @@ router.put('/:id',
 
       res.json({ success: true, data: branch });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'فشل تحديث الفرع',
-        error: error.message
-      });
+      handleRouteError(error, req, res, 'فشل تحديث الفرع');
     }
   }
 );
@@ -305,11 +286,7 @@ router.delete('/:id',
         archivedEmployeesCount: archivedEmployees.length
       });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'فشل حذف الفرع',
-        error: error.message
-      });
+      handleRouteError(error, req, res, 'فشل حذف الفرع');
     }
   }
 );

@@ -7,6 +7,7 @@
  */
 
 import { parseHijriString, hijriToGregorian } from '../utils/dateConverter.js';
+import { log } from '../utils/logger.js';
 
 /**
  * Validate branch document dates
@@ -22,8 +23,8 @@ export const validateBranchDocumentDates = async (req, res, next) => {
 
     // Validate issue_date (Gregorian) - after date normalization from validateDateFields
     if (req.body.issue_date) {
-      const issueDateStr = req.body.issue_date.includes('T') 
-        ? req.body.issue_date.split('T')[0] 
+      const issueDateStr = req.body.issue_date.includes('T')
+        ? req.body.issue_date.split('T')[0]
         : req.body.issue_date;
       const issueDate = new Date(`${issueDateStr}T00:00:00`);
       if (!isNaN(issueDate.getTime())) {
@@ -46,17 +47,17 @@ export const validateBranchDocumentDates = async (req, res, next) => {
 
     // Validate expiry_date (Gregorian) - must be in the future
     if (req.body.expiry_date) {
-      const expiryDateStr = req.body.expiry_date.includes('T') 
-        ? req.body.expiry_date.split('T')[0] 
+      const expiryDateStr = req.body.expiry_date.includes('T')
+        ? req.body.expiry_date.split('T')[0]
         : req.body.expiry_date;
       const expiryDate = new Date(`${expiryDateStr}T00:00:00`);
       if (!isNaN(expiryDate.getTime())) {
         const year = expiryDate.getFullYear();
-        
+
         if (year < 1900) {
           errors.push(`تاريخ الانتهاء الميلادي (${year}) يجب أن يكون 1900 أو أكبر`);
         }
-        
+
         // Must be strictly after today
         if (expiryDate <= today) {
           errors.push('تاريخ الانتهاء الميلادي يجب أن يكون بعد تاريخ اليوم (غير منتهي الصلاحية)');
@@ -76,7 +77,7 @@ export const validateBranchDocumentDates = async (req, res, next) => {
         const gregorianExpiry = hijriToGregorian(hijriParts.day, hijriParts.month, hijriParts.year);
         if (gregorianExpiry) {
           const expiryDate = new Date(`${gregorianExpiry}T00:00:00`);
-          
+
           if (expiryDate <= today) {
             errors.push('تاريخ الانتهاء الهجري يجب أن يكون بعد تاريخ اليوم (غير منتهي الصلاحية)');
           }
@@ -94,7 +95,7 @@ export const validateBranchDocumentDates = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('[BRANCH DOC DATE VALIDATION] Error:', error);
+    log.error('[BRANCH DOC DATE VALIDATION] Error:', error);
     return res.status(500).json({
       success: false,
       message: 'خطأ في التحقق من التواريخ',

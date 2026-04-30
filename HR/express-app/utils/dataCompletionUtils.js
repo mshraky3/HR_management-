@@ -11,6 +11,7 @@
  */
 
 import sql from '../config/database.js';
+import { log } from '../utils/logger.js';
 
 /**
  * Get required branch documents for a branch type
@@ -207,7 +208,7 @@ export const getBranchDocuments = async (branchId) => {
     `;
     return documents || [];
   } catch (error) {
-    console.error('Error fetching branch documents:', error);
+    log.error('Error fetching branch documents:', { error: error.message });
     return [];
   }
 };

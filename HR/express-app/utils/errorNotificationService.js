@@ -3,22 +3,11 @@
  * Sends email notifications for critical system errors
  */
 
-import nodemailer from 'nodemailer';
 import { log } from './logger.js';
+import { emailTransporter } from './emailService.js';
 
 // Developer email for error notifications
 const DEVELOPER_EMAIL = 'alshraky3@gmail.com';
-
-// Create email transporter (using same config as emailService.js)
-const errorTransporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: 'alshrakynodeapp@gmail.com',
-    pass: 'ssjpnctdsyqxylxd', // Updated app password Feb 2026
-  },
-});
 
 // Rate limiting to prevent email spam
 const errorRateLimit = {
@@ -443,7 +432,7 @@ export async function sendErrorNotification(errorData) {
       text: `خطأ في النظام\n\nنوع الخطأ: ${errorType}\nالرسالة: ${errorData.message}\nEndpoint: ${errorData.method} ${endpoint}\nStatus: ${statusCode}\nالتكرار: ${errorCount} مرة\n\nالرجاء التحقق من سجلات الخادم.`,
     };
 
-    const result = await errorTransporter.sendMail(mailOptions);
+    const result = await emailTransporter.sendMail(mailOptions);
     markErrorSent(errorKey);
 
     log.info('Error notification email sent', {

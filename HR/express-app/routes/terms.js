@@ -10,6 +10,9 @@ import { Term } from '../models/Term.js';
 import { AcademicYear } from '../models/AcademicYear.js';
 import sql from '../config/database.js';
 import { sendNotificationEmail } from '../utils/emailService.js';
+import { getCurrentTermWithState } from '../services/termLifecycleService.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -37,12 +40,8 @@ router.get('/', async (req, res) => {
       data: terms
     });
   } catch (error) {
-    console.error('Error fetching terms:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب الفصول الدراسية',
-      error: error.message
-    });
+    log.error('Error fetching terms:', error);
+    handleRouteError(error, req, res, 'فشل جلب الفصول الدراسية');
   }
 });
 
@@ -63,19 +62,16 @@ router.get('/current/:branchType', async (req, res) => {
       });
     }
 
-    const term = await Term.getCurrentTerm(branchType);
+    const { term, lifecycleState } = await getCurrentTermWithState(branchType);
 
     res.json({
       success: true,
-      data: term
+      data: term,
+      lifecycle_state: lifecycleState
     });
   } catch (error) {
-    console.error('Error fetching current term:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب الفصل الحالي',
-      error: error.message
-    });
+    log.error('Error fetching current term:', error);
+    handleRouteError(error, req, res, 'فشل جلب الفصل الحالي');
   }
 });
 
@@ -100,12 +96,8 @@ router.get('/:id', async (req, res) => {
       data: term
     });
   } catch (error) {
-    console.error('Error fetching term:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب الفصل الدراسي',
-      error: error.message
-    });
+    log.error('Error fetching term:', error);
+    handleRouteError(error, req, res, 'فشل جلب الفصل الدراسي');
   }
 });
 
@@ -183,7 +175,7 @@ router.post('/', requireMainManager, async (req, res) => {
         });
       }
     } catch (emailError) {
-      console.error('Failed to send term creation emails:', emailError);
+      log.error('Failed to send term creation emails:', emailError);
     }
 
     res.status(201).json({
@@ -192,14 +184,8 @@ router.post('/', requireMainManager, async (req, res) => {
       data: term
     });
   } catch (error) {
-    console.error('Error creating term:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message.includes('overlap')
-        ? 'الفصل الدراسي يتداخل مع فصل موجود'
-        : 'فشل إنشاء الفصل الدراسي',
-      error: error.message
-    });
+    log.error('Error creating term:', error);
+    handleRouteError(error, req, res, 'حدث خطأ في الخادم');
   }
 });
 
@@ -236,14 +222,8 @@ router.put('/:id', requireMainManager, async (req, res) => {
       data: term
     });
   } catch (error) {
-    console.error('Error updating term:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message.includes('overlap')
-        ? 'التواريخ المحدثة تتداخل مع فصل موجود'
-        : 'فشل تحديث الفصل الدراسي',
-      error: error.message
-    });
+    log.error('Error updating term:', error);
+    handleRouteError(error, req, res, 'حدث خطأ في الخادم');
   }
 });
 
@@ -269,12 +249,8 @@ router.delete('/:id', requireMainManager, async (req, res) => {
       data: term
     });
   } catch (error) {
-    console.error('Error deactivating term:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل إلغاء تفعيل الفصل الدراسي',
-      error: error.message
-    });
+    log.error('Error deactivating term:', error);
+    handleRouteError(error, req, res, 'فشل إلغاء تفعيل الفصل الدراسي');
   }
 });
 
@@ -447,12 +423,8 @@ router.post('/create-academic-year', requireMainManager, async (req, res) => {
       data: result
     });
   } catch (error) {
-    console.error('Error creating academic year with terms:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل إنشاء الفصلين الدراسيين والسنة الدراسية',
-      error: error.message
-    });
+    log.error('Error creating academic year with terms:', error);
+    handleRouteError(error, req, res, 'فشل إنشاء الفصلين الدراسيين والسنة الدراسية');
   }
 });
 

@@ -10,6 +10,12 @@ import { AcademicYear } from '../models/AcademicYear.js';
 import { Term } from '../models/Term.js';
 import sql from '../config/database.js';
 import { sendNotificationEmail } from '../utils/emailService.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
+import {
+  getCurrentAcademicYearWithState,
+  endAcademicYearTransactional
+} from '../services/termLifecycleService.js';
 
 const router = express.Router();
 
@@ -36,12 +42,8 @@ router.get('/', async (req, res) => {
       data: years
     });
   } catch (error) {
-    console.error('Error fetching academic years:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب السنوات الدراسية',
-      error: error.message
-    });
+    log.error('Error fetching academic years:', error);
+    handleRouteError(error, req, res, 'فشل جلب السنوات الدراسية');
   }
 });
 
@@ -49,8 +51,12 @@ router.get('/', async (req, res) => {
  * GET /api/academic-years/:id
  * Get academic year by ID
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req, res, next) => {
   try {
+    if (req.params.id === 'current') {
+      return next('route');
+    }
+
     const year = await AcademicYear.findById(parseInt(req.params.id));
 
     if (!year) {
@@ -65,12 +71,8 @@ router.get('/:id', async (req, res) => {
       data: year
     });
   } catch (error) {
-    console.error('Error fetching academic year:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب السنة الدراسية',
-      error: error.message
-    });
+    log.error('Error fetching academic year:', error);
+    handleRouteError(error, req, res, 'فشل جلب السنة الدراسية');
   }
 });
 
@@ -89,19 +91,16 @@ router.get('/current/:branchType', async (req, res) => {
       });
     }
 
-    const year = await AcademicYear.getCurrentYear(branchType);
+    const { year, lifecycleState } = await getCurrentAcademicYearWithState(branchType);
 
     res.json({
       success: true,
-      data: year
+      data: year,
+      lifecycle_state: lifecycleState
     });
   } catch (error) {
-    console.error('Error fetching current academic year:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب السنة الدراسية الحالية',
-      error: error.message
-    });
+    log.error('Error fetching current academic year:', error);
+    handleRouteError(error, req, res, 'فشل جلب السنة الدراسية الحالية');
   }
 });
 
@@ -181,7 +180,7 @@ router.post('/', async (req, res) => {
         });
       }
     } catch (emailError) {
-      console.error('Failed to send academic year creation emails:', emailError);
+      log.error('Failed to send academic year creation emails:', emailError);
     }
 
     res.status(201).json({
@@ -190,14 +189,8 @@ router.post('/', async (req, res) => {
       data: year
     });
   } catch (error) {
-    console.error('Error creating academic year:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message.includes('already exists')
-        ? 'تسمية السنة الدراسية موجودة مسبقاً'
-        : 'فشل إنشاء السنة الدراسية',
-      error: error.message
-    });
+    log.error('Error creating academic year:', error);
+    handleRouteError(error, req, res, 'حدث خطأ في الخادم');
   }
 });
 
@@ -233,12 +226,8 @@ router.put('/:id', async (req, res) => {
       data: year
     });
   } catch (error) {
-    console.error('Error updating academic year:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل تحديث السنة الدراسية',
-      error: error.message
-    });
+    log.error('Error updating academic year:', error);
+    handleRouteError(error, req, res, 'فشل تحديث السنة الدراسية');
   }
 });
 
@@ -274,7 +263,7 @@ router.post('/:id/end-year', async (req, res) => {
       });
     }
 
-    const result = await AcademicYear.endYear(yearId, branch_type);
+    const result = await endAcademicYearTransactional(yearId, branch_type);
 
     res.json({
       success: true,
@@ -282,12 +271,8 @@ router.post('/:id/end-year', async (req, res) => {
       data: result
     });
   } catch (error) {
-    console.error('Error ending academic year:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل إنهاء السنة الدراسية',
-      error: error.message
-    });
+    log.error('Error ending academic year:', error);
+    handleRouteError(error, req, res, 'فشل إنهاء السنة الدراسية');
   }
 });
 
@@ -307,7 +292,7 @@ router.post('/:id/complete', async (req, res) => {
       });
     }
 
-    const result = await AcademicYear.endYear(yearId, year.branch_type);
+    const result = await endAcademicYearTransactional(yearId, year.branch_type);
 
     res.json({
       success: true,
@@ -315,12 +300,8 @@ router.post('/:id/complete', async (req, res) => {
       data: result
     });
   } catch (error) {
-    console.error('Error completing academic year:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل إتمام السنة الدراسية',
-      error: error.message
-    });
+    log.error('Error completing academic year:', error);
+    handleRouteError(error, req, res, 'فشل إتمام السنة الدراسية');
   }
 });
 

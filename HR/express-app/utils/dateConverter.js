@@ -3,6 +3,8 @@
  * Conversions between Hijri and Gregorian dates
  */
 
+import { log } from './logger.js';
+
 /**
  * Convert Gregorian date string (YYYY-MM-DD) to Hijri date object
  * @param {string} dateString - Gregorian date string (YYYY-MM-DD)
@@ -10,7 +12,7 @@
  */
 export const gregorianToHijri = (dateString) => {
   if (!dateString) return null;
-  
+
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return null;
 
@@ -35,7 +37,7 @@ export const gregorianToHijri = (dateString) => {
       year: parseInt(year)
     };
   } catch (e) {
-    console.warn('Islamic Umalqura calendar not supported, using approximation');
+    log.warn('Islamic Umalqura calendar not supported, using approximation');
     return approximateGregorianToHijri(date);
   }
 };
@@ -88,7 +90,7 @@ export const parseHijriString = (dateString) => {
  */
 export const formatDate = (date) => {
   if (!date) return '-';
-  
+
   // Handle string dates (YYYY-MM-DD format)
   let d;
   if (typeof date === 'string') {
@@ -102,15 +104,15 @@ export const formatDate = (date) => {
   } else {
     d = new Date(date);
   }
-  
+
   // Check if date is valid
   if (isNaN(d.getTime())) return '-';
-  
+
   // Format as dd/mm/yyyy (English numbers)
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const year = d.getFullYear();
-  
+
   return `${day}/${month}/${year}`;
 };
 
@@ -150,33 +152,33 @@ function kuwaitiHijriToGregorian(day, month, year) {
 
   // Hijri epoch: July 16, 622 CE = Julian Day 1948439.5
   const hijriEpoch = 1948439.5;
-  
+
   // Calculate days from start of Hijri year
   // Determine if it's a leap year (11 leap years in 30-year cycle: 2, 5, 7, 10, 13, 16, 18, 21, 24, 26, 29)
   const cycleYear = (iYear - 1) % 30;
   const leapYears = [2, 5, 7, 10, 13, 16, 18, 21, 24, 26, 29];
   const isLeapYear = leapYears.includes(cycleYear);
-  
+
   // Hijri month lengths (standard pattern: 30, 29, 30, 29...)
   const monthLengths = [30, 29, 30, 29, 30, 29, 30, 29, 30, 29, 30, 29];
   if (isLeapYear) {
     monthLengths[11] = 30; // Last month (Dhu al-Hijjah) is 30 days in leap year
   }
-  
+
   // Calculate days from start of year
   let daysFromYearStart = iDay - 1; // -1 because we count from 0
   for (let m = 0; m < iMonth - 1; m++) {
     daysFromYearStart += monthLengths[m];
   }
-  
+
   // Calculate total days since Hijri epoch
   // 30-year cycle has 11 leap years, so 354*19 + 355*11 = 10631 days
   const cycles = Math.floor((iYear - 1) / 30);
   const yearInCycle = (iYear - 1) % 30;
-  
+
   // Calculate days from completed cycles
   const daysFromCycles = cycles * 10631;
-  
+
   // Calculate days from completed years in current cycle
   let daysFromYears = 0;
   for (let y = 0; y < yearInCycle; y++) {
@@ -184,10 +186,10 @@ function kuwaitiHijriToGregorian(day, month, year) {
     const yIsLeap = leapYears.includes(yCycleYear);
     daysFromYears += yIsLeap ? 355 : 354;
   }
-  
+
   // Calculate Julian Day Number
   const jd = hijriEpoch + daysFromCycles + daysFromYears + daysFromYearStart;
-  
+
   // Convert Julian Day Number to Gregorian Date
   // Algorithm from "Astronomical Algorithms" by Jean Meeus
   const j = Math.floor(jd) + 0.5;
@@ -200,22 +202,22 @@ function kuwaitiHijriToGregorian(day, month, year) {
   const d = Math.floor(365.25 * c);
   const e = Math.floor((b - d) / 30.6001);
   const f = Math.floor(30.6001 * e);
-  
+
   let gDay = b - d - f;
   let gMonth = e < 14 ? e - 1 : e - 13;
   let gYear = gMonth > 2 ? c - 4716 : c - 4715;
 
   // Format YYYY-MM-DD
   const pad = (n) => n.toString().padStart(2, '0');
-  
+
   // Validate the resulting date - expanded range to handle historical dates
   if (gYear < 1000 || gYear > 2500) {
-    console.warn(`Hijri to Gregorian conversion resulted in year ${gYear} (outside 1000-2500 range) for input: ${day}/${month}/${year}`);
+    log.warn(`Hijri to Gregorian conversion resulted in year ${gYear} (outside 1000-2500 range) for input: ${day}/${month}/${year}`);
     return null;
   }
-  
+
   if (gMonth < 1 || gMonth > 12 || gDay < 1 || gDay > 31) {
-    console.warn(`Hijri to Gregorian conversion resulted in invalid date: ${gYear}-${gMonth}-${gDay} for input: ${day}/${month}/${year}`);
+    log.warn(`Hijri to Gregorian conversion resulted in invalid date: ${gYear}-${gMonth}-${gDay} for input: ${day}/${month}/${year}`);
     return null;
   }
 

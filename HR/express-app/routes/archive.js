@@ -10,6 +10,15 @@ import { Employee } from '../models/Employee.js';
 import { Branch } from '../models/Branch.js';
 import sql from '../config/database.js';
 import { formatDate } from '../utils/dateConverter.js';
+import { getScopedBranchFilter } from '../utils/policyScope.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
+import {
+  ArchivePolicyError,
+  assertArchivedEmployeeDocumentEligibleForPurge,
+  assertArchivedEmployeeEligibleForPurge,
+  applyArchiveEmployeeStatusTransition
+} from '../services/archiveLifecycleService.js';
 
 const router = express.Router();
 
@@ -48,20 +57,7 @@ router.use(requireMainManager);
  */
 router.get('/', async (req, res) => {
   try {
-    // Parse branch_id - support single value, array, or comma-separated string
-    let branchId = undefined;
-    if (req.query.branch_id) {
-      if (Array.isArray(req.query.branch_id)) {
-        branchId = req.query.branch_id.map(id => parseInt(id)).filter(id => !isNaN(id));
-      } else if (typeof req.query.branch_id === 'string' && req.query.branch_id.includes(',')) {
-        branchId = req.query.branch_id.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
-      } else {
-        const parsed = parseInt(req.query.branch_id);
-        if (!isNaN(parsed)) {
-          branchId = parsed;
-        }
-      }
-    }
+    const branchId = getScopedBranchFilter(req, { allowMultiple: true });
 
     // Date validation: ensure from <= to
     if (req.query.registration_date_from && req.query.registration_date_to) {
@@ -140,12 +136,8 @@ router.get('/', async (req, res) => {
       offset: filters.offset
     });
   } catch (error) {
-    console.error('Error fetching archived employees:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب الأرشيف',
-      error: error.message
-    });
+    log.error('Error fetching archived employees:', error);
+    handleRouteError(error, req, res, 'فشل جلب الأرشيف');
   }
 });
 
@@ -163,11 +155,11 @@ router.get('/branch-documents/all', async (req, res) => {
       WHERE bd.is_active = false
     `;
 
-    if (req.query.branch_id) {
-      const branchId = parseInt(req.query.branch_id);
-      if (!isNaN(branchId)) {
-        query = sql`${query} AND bd.branch_id = ${branchId}`;
-      }
+    const branchIdFilter = getScopedBranchFilter(req, { allowMultiple: true });
+    if (Array.isArray(branchIdFilter) && branchIdFilter.length > 0) {
+      query = sql`${query} AND bd.branch_id = ANY(${branchIdFilter})`;
+    } else if (!Array.isArray(branchIdFilter) && branchIdFilter) {
+      query = sql`${query} AND bd.branch_id = ${branchIdFilter}`;
     }
 
     if (req.query.document_type) {
@@ -184,12 +176,8 @@ router.get('/branch-documents/all', async (req, res) => {
       count: documents?.length || 0
     });
   } catch (error) {
-    console.error('Error fetching archived branch documents:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب مستندات الفرع المؤرشفة',
-      error: error.message
-    });
+    log.error('Error fetching archived branch documents:', error);
+    handleRouteError(error, req, res, 'فشل جلب مستندات الفرع المؤرشفة');
   }
 });
 
@@ -210,9 +198,10 @@ router.get('/employee-documents/all', async (req, res) => {
     }
 
     const { Document } = await import('../models/Document.js');
+    const scopedBranchId = getScopedBranchFilter(req, { allowMultiple: false });
 
     const filters = {
-      branch_id: req.query.branch_id ? parseInt(req.query.branch_id) : undefined,
+      branch_id: scopedBranchId || undefined,
       document_type: req.query.document_type,
       employee_id: req.query.employee_id ? parseInt(req.query.employee_id) : undefined
     };
@@ -230,12 +219,8 @@ router.get('/employee-documents/all', async (req, res) => {
       count: documents?.length || 0
     });
   } catch (error) {
-    console.error('Error fetching archived employee documents:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب المستندات المؤرشفة',
-      error: error.message
-    });
+    log.error('Error fetching archived employee documents:', error);
+    handleRouteError(error, req, res, 'فشل جلب المستندات المؤرشفة');
   }
 });
 
@@ -266,7 +251,7 @@ router.delete('/employee-documents/:id', async (req, res) => {
 
     // First check if document exists and is archived
     const existingDoc = await sql`
-      SELECT id, file_path, r2_file_path, is_active, employee_id
+      SELECT id, file_path, r2_file_path, is_active, employee_id, updated_at, uploaded_at
       FROM employee_documents
       WHERE id = ${documentId}
     `;
@@ -287,13 +272,15 @@ router.delete('/employee-documents/:id', async (req, res) => {
       });
     }
 
+    assertArchivedEmployeeDocumentEligibleForPurge(doc);
+
     // Delete file from blob storage if it exists
     if (doc.file_path && (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://'))) {
       try {
         const { deleteFromBlob } = await import('../utils/blobStorage.js');
         await deleteFromBlob(doc.file_path);
       } catch (deleteError) {
-        console.error('Error deleting file from blob storage:', deleteError);
+        log.error('Error deleting file from blob storage:', deleteError);
         // Continue with database deletion even if blob deletion fails
       }
     }
@@ -321,12 +308,17 @@ router.delete('/employee-documents/:id', async (req, res) => {
       data: deletedDocument
     });
   } catch (error) {
-    console.error('Error permanently deleting document:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل حذف المستند',
-      error: error.message
-    });
+    if (error instanceof ArchivePolicyError) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+        code: error.code,
+        details: error.details
+      });
+    }
+
+    log.error('Error permanently deleting document:', error);
+    handleRouteError(error, req, res, 'فشل حذف المستند');
   }
 });
 
@@ -363,6 +355,8 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
+    assertArchivedEmployeeEligibleForPurge(employee);
+
     // Get employee documents to delete from blob storage
     const documents = await sql`
       SELECT id, file_path, r2_file_path 
@@ -377,7 +371,7 @@ router.delete('/:id', async (req, res) => {
           const { deleteFromBlob } = await import('../utils/blobStorage.js');
           await deleteFromBlob(doc.file_path);
         } catch (deleteError) {
-          console.error('Error deleting file from blob storage:', deleteError);
+          log.error('Error deleting file from blob storage:', deleteError);
           // Continue with database deletion even if blob deletion fails
         }
       }
@@ -411,12 +405,17 @@ router.delete('/:id', async (req, res) => {
       data: deletedEmployee
     });
   } catch (error) {
-    console.error('Error permanently deleting employee:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل حذف الموظف',
-      error: error.message
-    });
+    if (error instanceof ArchivePolicyError) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+        code: error.code,
+        details: error.details
+      });
+    }
+
+    log.error('Error permanently deleting employee:', error);
+    handleRouteError(error, req, res, 'فشل حذف الموظف');
   }
 });
 
@@ -507,12 +506,8 @@ router.get('/statistics', async (req, res) => {
       data: organized
     });
   } catch (error) {
-    console.error('Error fetching archive statistics:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب إحصائيات الأرشيف',
-      error: error.message
-    });
+    log.error('Error fetching archive statistics:', error);
+    handleRouteError(error, req, res, 'فشل جلب إحصائيات الأرشيف');
   }
 });
 
@@ -521,8 +516,12 @@ router.get('/statistics', async (req, res) => {
  * Get archived employee details with documents
  * NOTE: This must come AFTER specific routes like /branch-documents/all
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req, res, next) => {
   try {
+    if (req.params.id === 'export') {
+      return next('route');
+    }
+
     const employeeId = parseInt(req.params.id);
     if (isNaN(employeeId)) {
       return res.status(400).json({
@@ -567,12 +566,8 @@ router.get('/:id', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching archived employee:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب بيانات الموظف',
-      error: error.message
-    });
+    log.error('Error fetching archived employee:', error);
+    handleRouteError(error, req, res, 'فشل جلب بيانات الموظف');
   }
 });
 
@@ -583,81 +578,37 @@ router.get('/:id', async (req, res) => {
  */
 router.put('/:id/status', async (req, res) => {
   try {
-    const { Employee } = await import('../models/Employee.js');
     const employeeId = parseInt(req.params.id);
     const { status, reason } = req.body;
 
-    // Validation
-    const validStatuses = ['active', 'pending', 'terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
-    if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'حالة غير صحيحة'
-      });
-    }
-
-    // Check if employee exists
-    const employee = await Employee.findById(employeeId);
-    if (!employee) {
-      return res.status(404).json({
-        success: false,
-        message: 'الموظف غير موجود'
-      });
-    }
-
-    // If changing from archived to active/pending, use restore logic (update is_active too)
-    const archivedStatuses = ['terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
-    const isCurrentlyArchived = archivedStatuses.includes(employee.status);
-
-    if (isCurrentlyArchived && (status === 'active' || status === 'pending')) {
-      // Check if the employee's branch is active before allowing restore
-      const { default: sql } = await import('../config/database.js');
-      const [branch] = await sql`SELECT is_active FROM branches WHERE id = ${employee.branch_id}`;
-      if (!branch || branch.is_active === false) {
-        return res.status(400).json({
-          success: false,
-          message: 'لا يمكن استعادة موظف فرعه محذوف. يجب استعادة الفرع أولاً'
-        });
-      }
-
-      const [restored] = await sql`
-        UPDATE employees
-        SET status = ${status},
-            is_active = true,
-            status_changed_at = CURRENT_TIMESTAMP,
-            status_changed_by = ${req.user.branch_id || employee.branch_id},
-            status_change_reason = ${reason || 'تم الاستعادة من الأرشيف'},
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ${employeeId}
-        RETURNING *
-      `;
-      return res.json({
-        success: true,
-        message: `تم استعادة الموظف بنجاح إلى حالة ${status === 'active' ? 'نشط' : 'قيد الانتظار'}`,
-        data: restored
-      });
-    }
-
-    // Update status
-    const updatedEmployee = await Employee.updateStatus(
+    const result = await applyArchiveEmployeeStatusTransition({
       employeeId,
       status,
-      req.user.branch_id || employee.branch_id,
-      reason || null
-    );
+      reason,
+      actor: req.user,
+      restoreOnly: false
+    });
 
     res.json({
       success: true,
-      message: 'تم تحديث حالة الموظف بنجاح',
-      data: updatedEmployee
+      message: result.action === 'restored'
+        ? `تم استعادة الموظف بنجاح إلى حالة ${status === 'active' ? 'نشط' : 'قيد الانتظار'}`
+        : 'تم تحديث حالة الموظف بنجاح',
+      data: result.employee
     });
   } catch (error) {
-    console.error('Error updating employee status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل تحديث حالة الموظف',
-      error: error.message
-    });
+    if (error instanceof ArchivePolicyError) {
+      const statusCode = error.code === 'EMPLOYEE_NOT_FOUND' ? 404 : 400;
+      return res.status(statusCode).json({
+        success: false,
+        message: error.message,
+        code: error.code,
+        details: error.details
+      });
+    }
+
+    log.error('Error updating employee status:', error);
+    handleRouteError(error, req, res, 'فشل تحديث حالة الموظف');
   }
 });
 
@@ -667,66 +618,35 @@ router.put('/:id/status', async (req, res) => {
  */
 router.post('/:id/restore', async (req, res) => {
   try {
-    const { Employee } = await import('../models/Employee.js');
     const employeeId = parseInt(req.params.id);
     const { status, reason } = req.body;
 
-    // Validation - must be active or pending
-    if (!status || (status !== 'active' && status !== 'pending')) {
-      return res.status(400).json({
-        success: false,
-        message: 'يجب اختيار حالة نشط أو قيد الانتظار للاستعادة'
-      });
-    }
-
-    // Check if employee exists
-    const employee = await Employee.findById(employeeId);
-    if (!employee) {
-      return res.status(404).json({
-        success: false,
-        message: 'الموظف غير موجود'
-      });
-    }
-
-    // Check if employee is archived
-    const archivedStatuses = ['terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
-    if (!archivedStatuses.includes(employee.status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'هذا الموظف غير موجود في الأرشيف'
-      });
-    }
-
-    // Check if the employee's branch is active before allowing restore
-    const { default: sql } = await import('../config/database.js');
-    const [branch] = await sql`SELECT is_active FROM branches WHERE id = ${employee.branch_id}`;
-    if (!branch || branch.is_active === false) {
-      return res.status(400).json({
-        success: false,
-        message: 'لا يمكن استعادة موظف فرعه محذوف. يجب استعادة الفرع أولاً'
-      });
-    }
-
-    // Restore employee
-    const updatedEmployee = await Employee.updateStatus(
+    const result = await applyArchiveEmployeeStatusTransition({
       employeeId,
       status,
-      req.user.branch_id || employee.branch_id,
-      reason || 'تم الاستعادة من الأرشيف'
-    );
+      reason: reason || 'تم الاستعادة من الأرشيف',
+      actor: req.user,
+      restoreOnly: true
+    });
 
     res.json({
       success: true,
       message: `تم استعادة الموظف بنجاح إلى حالة ${status === 'active' ? 'نشط' : 'قيد الانتظار'}`,
-      data: updatedEmployee
+      data: result.employee
     });
   } catch (error) {
-    console.error('Error restoring employee:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل استعادة الموظف',
-      error: error.message
-    });
+    if (error instanceof ArchivePolicyError) {
+      const statusCode = error.code === 'EMPLOYEE_NOT_FOUND' ? 404 : 400;
+      return res.status(statusCode).json({
+        success: false,
+        message: error.message,
+        code: error.code,
+        details: error.details
+      });
+    }
+
+    log.error('Error restoring employee:', error);
+    handleRouteError(error, req, res, 'فشل استعادة الموظف');
   }
 });
 
@@ -741,19 +661,7 @@ router.get('/export', async (req, res) => {
     const ExcelJS = (await import('exceljs')).default;
 
     // Use same filters as GET /api/archive
-    let branchId = undefined;
-    if (req.query.branch_id) {
-      if (Array.isArray(req.query.branch_id)) {
-        branchId = req.query.branch_id.map(id => parseInt(id)).filter(id => !isNaN(id));
-      } else if (typeof req.query.branch_id === 'string' && req.query.branch_id.includes(',')) {
-        branchId = req.query.branch_id.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
-      } else {
-        const parsed = parseInt(req.query.branch_id);
-        if (!isNaN(parsed)) {
-          branchId = parsed;
-        }
-      }
-    }
+    const branchId = getScopedBranchFilter(req, { allowMultiple: true });
 
     const filters = {
       branch_id: branchId,
@@ -912,12 +820,8 @@ router.get('/export', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="archived-employees-${new Date().toISOString().split('T')[0]}.xlsx"`);
     res.send(buffer);
   } catch (error) {
-    console.error('Error exporting archived employees:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل تصدير البيانات',
-      error: error.message
-    });
+    log.error('Error exporting archived employees:', error);
+    handleRouteError(error, req, res, 'فشل تصدير البيانات');
   }
 });
 

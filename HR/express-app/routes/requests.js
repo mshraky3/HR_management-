@@ -16,6 +16,7 @@ import { fixFilenameEncoding } from '../utils/fileUpload.js';
 import { sendNotificationEmail } from '../utils/emailService.js';
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
 
 const router = express.Router();
 
@@ -28,7 +29,6 @@ router.use(authenticate);
  */
 router.get('/main-managers', requireManager, async (req, res) => {
   try {
-    const { User } = await import('../models/User.js');
     const managers = await User.findAll({
       role: 'main_manager',
       is_active: true
@@ -40,11 +40,7 @@ router.get('/main-managers', requireManager, async (req, res) => {
     });
   } catch (error) {
     log.error('Error fetching main managers', { error: error.message, stack: error.stack });
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب قائمة المديرين الرئيسيين',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل جلب قائمة المديرين الرئيسيين');
   }
 });
 
@@ -74,7 +70,6 @@ router.post('/', requireManager, uploadSingle, async (req, res) => {
     }
 
     // Validate main manager exists and is active
-    const { User } = await import('../models/User.js');
     const mainManager = await User.findById(parseInt(main_manager_id));
     if (!mainManager || mainManager.role !== 'main_manager' || !mainManager.is_active) {
       return res.status(400).json({
@@ -187,11 +182,7 @@ router.post('/', requireManager, uploadSingle, async (req, res) => {
     });
   } catch (error) {
     log.error('Error creating request', { error: error.message, stack: error.stack });
-    res.status(500).json({
-      success: false,
-      message: 'فشل إنشاء الطلب',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'حدث خطأ أثناء إنشاء الطلب'
-    });
+    handleRouteError(error, req, res, 'فشل إنشاء الطلب');
   }
 });
 
@@ -236,11 +227,7 @@ router.get('/', requireManager, async (req, res) => {
     });
   } catch (error) {
     log.error('Error fetching requests', { error: error.message, stack: error.stack });
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب الطلبات',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل جلب الطلبات');
   }
 });
 
@@ -287,11 +274,7 @@ router.get('/:id', requireManager, async (req, res) => {
     });
   } catch (error) {
     log.error('Error fetching request', { error: error.message, stack: error.stack });
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب الطلب',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل جلب الطلب');
   }
 });
 
@@ -441,11 +424,7 @@ router.put('/:id/respond', requireMainManager, uploadSingle, async (req, res) =>
     });
   } catch (error) {
     log.error('Error responding to request', { error: error.message, stack: error.stack });
-    res.status(500).json({
-      success: false,
-      message: 'فشل الرد على الطلب',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل الرد على الطلب');
   }
 });
 
@@ -524,11 +503,7 @@ router.delete('/:id', requireManager, async (req, res) => {
     });
   } catch (error) {
     log.error('Error deleting request', { error: error.message, stack: error.stack });
-    res.status(500).json({
-      success: false,
-      message: 'فشل حذف الطلب',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل حذف الطلب');
   }
 });
 

@@ -4,7 +4,7 @@
  */
 
 import sql from '../config/database.js';
-import log from '../utils/logger.js';
+import { log } from '../utils/logger.js';
 
 const STATUS_OPTIONS = {
     pending: 'قيد الانتظار',

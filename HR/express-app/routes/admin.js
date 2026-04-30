@@ -30,6 +30,13 @@ import {
 import { BranchDocument } from '../models/BranchDocument.js';
 import { sendNotificationEmail } from '../utils/emailService.js';
 import { sendErrorNotification } from '../utils/errorNotificationService.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
+import {
+  getScopedBranchFilter,
+  getScopedTermFilter,
+  resolveBranchAccessFromScope
+} from '../utils/policyScope.js';
 
 const router = express.Router();
 router.use(authenticate);
@@ -38,10 +45,14 @@ router.use(requireMainManager);
 // Trigger background recalculation for a branch (admin only)
 router.post('/recalculate-branch', async (req, res) => {
   try {
-    const branchId = parseInt(req.body.branch_id);
-    if (isNaN(branchId)) {
+    const requestedBranchId = req.body?.branch_id ?? req.body?.branchId;
+    const access = resolveBranchAccessFromScope(req.scope, requestedBranchId);
+
+    if (!requestedBranchId || !access.allowed || !access.effectiveBranchId) {
       return res.status(400).json({ success: false, message: 'branch_id is required' });
     }
+
+    const branchId = access.effectiveBranchId;
 
     // Start asynchronous recalculation (do not block)
     (async () => {
@@ -51,14 +62,14 @@ router.post('/recalculate-branch', async (req, res) => {
         clearByPrefix(`dashboard:summary:${branchId}`);
         clearByPrefix('branch-statistics');
       } catch (err) {
-        console.error('Admin recalculation failed:', err);
+        log.error('Admin recalculation failed:', err);
       }
     })();
 
     return res.status(202).json({ success: true, message: 'Recalculation scheduled' });
   } catch (error) {
-    console.error('Error scheduling recalculation:', error);
-    return res.status(500).json({ success: false, message: 'Failed to schedule recalculation', error: error.message });
+    log.error('Error scheduling recalculation:', error);
+    return handleRouteError(error, req, res, 'Failed to schedule recalculation');
   }
 });
 
@@ -84,12 +95,8 @@ router.get('/employees-missing-dates', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching employees with missing dates:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch employees with missing dates',
-      error: error.message
-    });
+    log.error('Error fetching employees with missing dates:', error);
+    handleRouteError(error, req, res, 'Failed to fetch employees with missing dates');
   }
 });
 
@@ -125,12 +132,8 @@ router.post('/fix-employee-date', async (req, res) => {
       data: result
     });
   } catch (error) {
-    console.error('Error fixing employee date:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to fix employee date',
-      error: error.message
-    });
+    log.error('Error fixing employee date:', error);
+    handleRouteError(error, req, res, 'حدث خطأ في الخادم');
   }
 });
 
@@ -139,14 +142,14 @@ router.post('/fix-all-employee-dates', async (req, res) => {
   try {
     const { batch_size = 50, delay_ms = 100, auto_delete = false } = req.body;
 
-    console.log('Starting batch fix for all employees with missing/invalid dates...');
+    log.info('Starting batch fix for all employees with missing/invalid dates...');
     const results = await batchFixAllEmployees({
       batchSize: parseInt(batch_size) || 50,
       delayMs: parseInt(delay_ms) || 100,
       autoDelete: auto_delete === true
     });
 
-    console.log('Batch fix completed:', results);
+    log.info('Batch fix completed:', results);
 
     return res.json({
       success: true,
@@ -154,24 +157,35 @@ router.post('/fix-all-employee-dates', async (req, res) => {
       data: results
     });
   } catch (error) {
-    console.error('Error during batch fix:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'فشلت عملية المعالجة المجمعة',
-      error: error.message
-    });
+    log.error('Error during batch fix:', error);
+    return handleRouteError(error, req, res, 'فشلت عملية المعالجة المجمعة');
   }
 });
 
 // Get employees with invalid/incomplete data
 router.get('/employees-invalid-data', async (req, res) => {
   try {
+    if (req.scope?.access?.denied) {
+      return res.status(403).json({ success: false, message: 'غير مصرح لهذا الفرع' });
+    }
+
     const limit = parseInt(req.query.limit) || 100;
     const offset = parseInt(req.query.offset) || 0;
+    const branchIds = getScopedBranchFilter(req, { allowMultiple: true });
+    const termId = getScopedTermFilter(req);
+    const academicYear = req.query.academic_year;
+
+    const filterOptions = {
+      limit,
+      offset,
+      branchIds,
+      termId,
+      academicYear
+    };
 
     const [employees, totalCount] = await Promise.all([
-      getEmployeesWithInvalidData(limit, offset),
-      getEmployeesWithInvalidDataCount()
+      getEmployeesWithInvalidData(filterOptions),
+      getEmployeesWithInvalidDataCount({ branchIds, termId, academicYear })
     ]);
 
     res.json({
@@ -185,30 +199,42 @@ router.get('/employees-invalid-data', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching employees with invalid data:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب الموظفين ذوي البيانات غير الدقيقة',
-      error: error.message
-    });
+    log.error('Error fetching employees with invalid data:', error);
+    handleRouteError(error, req, res, 'فشل جلب الموظفين ذوي البيانات غير الدقيقة');
   }
 });
 
 // Notify branch about invalid employee data
 router.post('/notify-branch-invalid-data', async (req, res) => {
   try {
-    const { employee_id } = req.body;
+    if (req.scope?.access?.denied) {
+      return res.status(403).json({ success: false, message: 'غير مصرح لهذا الفرع' });
+    }
 
-    if (!employee_id) {
+    const { employee_id } = req.body;
+    const employeeId = parseInt(employee_id, 10);
+
+    if (!employee_id || Number.isNaN(employeeId)) {
       return res.status(400).json({
         success: false,
         message: 'employee_id is required'
       });
     }
 
+    const branchIds = getScopedBranchFilter(req, { allowMultiple: true });
+    const termId = getScopedTermFilter(req);
+    const academicYear = req.body?.academic_year || req.query?.academic_year;
+
     // Get employee with invalid data details
-    const employees = await getEmployeesWithInvalidData(1000, 0);
-    const employee = employees.find(emp => emp.id === parseInt(employee_id));
+    const employees = await getEmployeesWithInvalidData({
+      limit: 1,
+      offset: 0,
+      employeeId,
+      branchIds,
+      termId,
+      academicYear
+    });
+    const employee = employees[0];
 
     if (!employee) {
       return res.status(404).json({
@@ -217,16 +243,40 @@ router.post('/notify-branch-invalid-data', async (req, res) => {
       });
     }
 
+    const effectiveTermId = termId || employee.current_term_id || employee.registration_term_id || 'none';
+    const taskToken = `[INVALID_DATA_TASK:${employee.id}:${effectiveTermId}]`;
+
     // Get invalid fields
     const invalidFieldsText = employee.invalid_fields && employee.invalid_fields.length > 0
       ? employee.invalid_fields.join('، ')
       : 'بيانات غير صحيحة';
 
+    const [existingTaskNotification] = await sql`
+      SELECT n.id
+      FROM notifications n
+      INNER JOIN notification_branches nb ON nb.notification_id = n.id
+      WHERE nb.branch_id = ${employee.branch_id}
+        AND n.is_active = true
+        AND n.message LIKE ${`%${taskToken}%`}
+      ORDER BY n.created_at DESC
+      LIMIT 1
+    `;
+
+    if (existingTaskNotification) {
+      return res.json({
+        success: true,
+        message: 'يوجد إشعار مهمة مفتوح مسبقاً لهذا الموظف',
+        data: { notification_id: existingTaskNotification.id, reused: true, task_token: taskToken }
+      });
+    }
+
     // Create notification for the branch
     const notificationMessage = `يرجى مراجعة وتصحيح بيانات الموظف: ${employee.first_name} ${employee.second_name} ${employee.third_name} ${employee.fourth_name}
         
 المجالات غير الصحيحة:
-${invalidFieldsText}`;
+${invalidFieldsText}
+
+مرجع المهمة: ${taskToken}`;
 
     const notification = await Notification.create({
       message: notificationMessage,
@@ -238,15 +288,15 @@ ${invalidFieldsText}`;
     res.json({
       success: true,
       message: `تم إرسال إشعار للفرع بخصوص الموظف ${employee.first_name} ${employee.second_name}`,
-      data: notification
+      data: {
+        ...notification,
+        task_token: taskToken,
+        term_id: effectiveTermId
+      }
     });
   } catch (error) {
-    console.error('Error notifying branch:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل إرسال الإشعار للفرع',
-      error: error.message
-    });
+    log.error('Error notifying branch:', error);
+    handleRouteError(error, req, res, 'فشل إرسال الإشعار للفرع');
   }
 });
 
@@ -288,12 +338,8 @@ router.get('/branch-documents/date-status', async (req, res) => {
       count: documents?.length || 0
     });
   } catch (error) {
-    console.error('Error fetching branch documents date status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch branch documents date status',
-      error: error.message
-    });
+    log.error('Error fetching branch documents date status:', error);
+    handleRouteError(error, req, res, 'Failed to fetch branch documents date status');
   }
 });
 
@@ -355,12 +401,8 @@ router.get('/branch-documents/abnormal-dates', async (req, res) => {
       count: documents?.length || 0
     });
   } catch (error) {
-    console.error('Error fetching branch documents with abnormal dates:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch branch documents with abnormal dates',
-      error: error.message
-    });
+    log.error('Error fetching branch documents with abnormal dates:', error);
+    handleRouteError(error, req, res, 'Failed to fetch branch documents with abnormal dates');
   }
 });
 
@@ -466,12 +508,8 @@ router.post('/branch-documents/:id/convert-dates', async (req, res) => {
       data: updated
     });
   } catch (error) {
-    console.error('Error converting branch document dates:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to convert dates',
-      error: error.message
-    });
+    log.error('Error converting branch document dates:', error);
+    handleRouteError(error, req, res, 'Failed to convert dates');
   }
 });
 
@@ -520,12 +558,8 @@ router.put('/branch-documents/:id/dates', async (req, res) => {
       data: updated
     });
   } catch (error) {
-    console.error('Error updating branch document dates:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update dates',
-      error: error.message
-    });
+    log.error('Error updating branch document dates:', error);
+    handleRouteError(error, req, res, 'Failed to update dates');
   }
 });
 
@@ -577,8 +611,8 @@ router.post('/test-email', async (req, res) => {
       results
     });
   } catch (error) {
-    console.error('Test email error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    log.error('Test email error:', error);
+    handleRouteError(error, req, res, 'حدث خطأ في الخادم');
   }
 });
 

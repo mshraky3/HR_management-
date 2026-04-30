@@ -4,6 +4,7 @@
  */
 
 import sql from '../config/database.js';
+import { log } from '../utils/logger.js';
 
 export const NotificationResponse = {
   /**
@@ -19,7 +20,7 @@ export const NotificationResponse = {
       `;
       return response || null;
     } catch (error) {
-      console.error('Error finding notification response:', error);
+      log.error('Error finding notification response:', { error: error.message });
       throw error;
     }
   },
@@ -38,7 +39,7 @@ export const NotificationResponse = {
       `;
       return responses || [];
     } catch (error) {
-      console.error('Error finding notification responses:', error);
+      log.error('Error finding notification responses:', { error: error.message });
       throw error;
     }
   },
@@ -57,7 +58,7 @@ export const NotificationResponse = {
       `;
       return responses || [];
     } catch (error) {
-      console.error('Error finding branch responses:', error);
+      log.error('Error finding branch responses:', { error: error.message });
       throw error;
     }
   },
@@ -75,7 +76,7 @@ export const NotificationResponse = {
       `;
       return updated || null;
     } catch (error) {
-      console.error('Error marking response as seen:', error);
+      log.error('Error marking response as seen:', { error: error.message });
       throw error;
     }
   },
@@ -92,7 +93,7 @@ export const NotificationResponse = {
       `;
       return true;
     } catch (error) {
-      console.error('Error marking all responses as seen:', error);
+      log.error('Error marking all responses as seen:', { error: error.message });
       throw error;
     }
   },
@@ -128,7 +129,7 @@ export const NotificationResponse = {
       
       return response;
     } catch (error) {
-      console.error('Error creating/updating notification response:', error);
+      log.error('Error creating/updating notification response:', { error: error.message });
       throw error;
     }
   },
@@ -172,7 +173,7 @@ export const NotificationResponse = {
       seen_branches_count: seenCount?.seen_branches_count || 0
     };
     } catch (error) {
-      console.error('Error getting response statistics:', error);
+      log.error('Error getting response statistics:', { error: error.message });
       throw error;
     }
   }

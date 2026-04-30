@@ -9,6 +9,7 @@ import path from 'path';
 import apiRoutes from './routes/index.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { optionalAuth } from './middleware/auth.js';
+import { resolveRequestScope } from './middleware/requestScope.js';
 import { testConnection } from './config/database.js';
 import logger, { httpLogger, log } from './utils/logger.js';
 import { initializeDailyAlerts } from './utils/dailyAlerts.js';
@@ -46,21 +47,6 @@ app.use(cors({
   optionsSuccessStatus: 204
 }));
 
-// Ensure OPTIONS always returns CORS headers even if next handlers error
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
-  res.header('Vary', 'Origin');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Branch-Documents-Password, x-branch-documents-password');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
-  next();
-});
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -133,6 +119,14 @@ async function startup() {
       // Don't block startup - tables may already exist
       log.warn('Database initialization had issues (tables may already exist)', { error: error.message });
     }
+
+    try {
+      const { runMigrations } = await import('./database/migrationRunner.js');
+      await runMigrations();
+      log.info('Database migrations applied successfully');
+    } catch (error) {
+      log.warn('Migration runner had issues', { error: error.message });
+    }
   }
 
   // Initialize daily alerts for main manager
@@ -162,16 +156,16 @@ app.use('/api', (req, res, next) => {
       res.set('Expires', '0');
     } else if (req.path.includes('/employees')) {
       // Employee data - very short cache (5 seconds)
-      res.set('Cache-Control', 'public, max-age=5');
+      res.set('Cache-Control', 'private, max-age=5');
     } else if (req.path.includes('/documents') || req.path.includes('/branch-documents')) {
       // Documents - very short cache (5 seconds)
-      res.set('Cache-Control', 'public, max-age=5');
+      res.set('Cache-Control', 'private, max-age=5');
     } else if (req.path.includes('/branches') || req.path.includes('/terms') || req.path.includes('/academic-years')) {
       // Static data - reduced from 5 minutes to 10 seconds
-      res.set('Cache-Control', 'public, max-age=10');
+      res.set('Cache-Control', 'private, max-age=10');
     } else {
       // Other GET requests - very short cache (5 seconds)
-      res.set('Cache-Control', 'public, max-age=5');
+      res.set('Cache-Control', 'private, max-age=5');
     }
   }
   next();
@@ -187,12 +181,8 @@ app.get('/me', (req, res) => {
 });
 
 // API Routes
+app.use('/api', resolveRequestScope);
 app.use('/api', apiRoutes);
-
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ success: true, message: 'Server is running' });
-});
 
 // Root endpoint (no authentication required, but accepts optional auth for logging)
 app.get('/', optionalAuth, (req, res) => {

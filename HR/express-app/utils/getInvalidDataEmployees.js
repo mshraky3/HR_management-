@@ -9,6 +9,29 @@
 import sql from '../config/database.js';
 import { checkEmployeeDataCompletion } from './employeeDataCompletion.js';
 
+const normalizeOptions = (arg1, arg2) => {
+  // Backward compatibility: getEmployeesWithInvalidData(limit, offset)
+  if (typeof arg1 === 'number' || arg1 === undefined) {
+    return {
+      limit: typeof arg1 === 'number' ? arg1 : 100,
+      offset: typeof arg2 === 'number' ? arg2 : 0,
+      branchIds: undefined,
+      termId: undefined,
+      academicYear: undefined,
+      employeeId: undefined
+    };
+  }
+
+  return {
+    limit: Number.isInteger(arg1.limit) ? arg1.limit : 100,
+    offset: Number.isInteger(arg1.offset) ? arg1.offset : 0,
+    branchIds: Array.isArray(arg1.branchIds) ? arg1.branchIds : undefined,
+    termId: arg1.termId !== undefined && arg1.termId !== null ? parseInt(arg1.termId, 10) : undefined,
+    academicYear: arg1.academicYear,
+    employeeId: arg1.employeeId !== undefined && arg1.employeeId !== null ? parseInt(arg1.employeeId, 10) : undefined
+  };
+};
+
 /**
  * Calculate age from date of birth
  */
@@ -36,11 +59,25 @@ function calculateAge(dateOfBirth) {
 /**
  * Get employees with invalid data (not missing, but incorrect)
  */
-export async function getEmployeesWithInvalidData(limit = 100, offset = 0) {
+export async function getEmployeesWithInvalidData(arg1 = 100, arg2 = 0) {
+  const options = normalizeOptions(arg1, arg2);
+  const {
+    limit,
+    offset,
+    branchIds,
+    termId,
+    academicYear,
+    employeeId
+  } = options;
+
+  if (Array.isArray(branchIds) && branchIds.length === 0) {
+    return [];
+  }
+
   // Get employees with invalid dates (dates that exist but are wrong)
   // Exclude employees with missing dates - only show those with invalid/wrong dates
   // Only include active employees from active branches
-  const employees = await sql`
+  let query = sql`
     SELECT 
       e.id,
       e.employee_id_number,
@@ -52,6 +89,9 @@ export async function getEmployeesWithInvalidData(limit = 100, offset = 0) {
       e.date_of_birth_gregorian,
       e.nationality,
       e.branch_id,
+      e.academic_year,
+      e.current_term_id,
+      e.registration_term_id,
       e.data_completion_status,
       b.branch_name
     FROM employees e
@@ -65,10 +105,31 @@ export async function getEmployeesWithInvalidData(limit = 100, offset = 0) {
          -- Invalid date: too old (more than 150 years)
          OR e.date_of_birth_gregorian < (CURRENT_DATE - INTERVAL '150 years')
        )
+  `;
+
+  if (branchIds && branchIds.length > 0) {
+    query = sql`${query} AND e.branch_id = ANY(${branchIds})`;
+  }
+
+  if (termId && !Number.isNaN(termId)) {
+    query = sql`${query} AND (e.current_term_id = ${termId} OR e.registration_term_id = ${termId})`;
+  }
+
+  if (academicYear) {
+    query = sql`${query} AND e.academic_year = ${academicYear}`;
+  }
+
+  if (employeeId && !Number.isNaN(employeeId)) {
+    query = sql`${query} AND e.id = ${employeeId}`;
+  }
+
+  query = sql`${query}
     ORDER BY e.id
     LIMIT ${limit}
     OFFSET ${offset}
   `;
+
+  const employees = await query;
 
   // Get detailed completion info for each employee and check for other invalid data
   const employeesWithDetails = await Promise.all(
@@ -126,10 +187,19 @@ export async function getEmployeesWithInvalidData(limit = 100, offset = 0) {
 /**
  * Get count of employees with invalid data (not missing, but incorrect)
  */
-export async function getEmployeesWithInvalidDataCount() {
+export async function getEmployeesWithInvalidDataCount(options = {}) {
+  const branchIds = Array.isArray(options.branchIds) ? options.branchIds : undefined;
+  const termId = options.termId !== undefined && options.termId !== null ? parseInt(options.termId, 10) : undefined;
+  const academicYear = options.academicYear;
+  const employeeId = options.employeeId !== undefined && options.employeeId !== null ? parseInt(options.employeeId, 10) : undefined;
+
+  if (Array.isArray(branchIds) && branchIds.length === 0) {
+    return 0;
+  }
+
   // Count employees with invalid dates (dates that exist but are wrong)
   // Only include active employees from active branches
-  const [result] = await sql`
+  let query = sql`
     SELECT COUNT(*) as total
     FROM employees e
     LEFT JOIN branches b ON e.branch_id = b.id
@@ -143,5 +213,23 @@ export async function getEmployeesWithInvalidDataCount() {
          OR e.date_of_birth_gregorian < (CURRENT_DATE - INTERVAL '150 years')
        )
   `;
+
+  if (branchIds && branchIds.length > 0) {
+    query = sql`${query} AND e.branch_id = ANY(${branchIds})`;
+  }
+
+  if (termId && !Number.isNaN(termId)) {
+    query = sql`${query} AND (e.current_term_id = ${termId} OR e.registration_term_id = ${termId})`;
+  }
+
+  if (academicYear) {
+    query = sql`${query} AND e.academic_year = ${academicYear}`;
+  }
+
+  if (employeeId && !Number.isNaN(employeeId)) {
+    query = sql`${query} AND e.id = ${employeeId}`;
+  }
+
+  const [result] = await query;
   return parseInt(result.total, 10);
 }

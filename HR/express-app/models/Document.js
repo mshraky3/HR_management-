@@ -4,6 +4,7 @@
  */
 
 import sql from '../config/database.js';
+import { log } from '../utils/logger.js';
 
 export const Document = {
   /**
@@ -17,7 +18,7 @@ export const Document = {
       `;
       return document || null;
     } catch (error) {
-      console.error('Error finding document by ID:', error);
+      log.error('Error finding document by ID:', { error: error.message });
       throw error;
     }
   },
@@ -48,7 +49,7 @@ export const Document = {
 
       return await query;
     } catch (error) {
-      console.error('Error finding documents by employee ID:', error);
+      log.error('Error finding documents by employee ID:', { error: error.message });
       throw error;
     }
   },
@@ -71,7 +72,7 @@ export const Document = {
 
       return await query;
     } catch (error) {
-      console.error('Error searching documents:', error);
+      log.error('Error searching documents:', { error: error.message });
       throw error;
     }
   },
@@ -91,7 +92,7 @@ export const Document = {
 
       return result;
     } catch (error) {
-      console.error('Error finding expiring documents:', error);
+      log.error('Error finding expiring documents:', { error: error.message });
       throw error;
     }
   },
@@ -114,7 +115,7 @@ export const Document = {
 
       return await query;
     } catch (error) {
-      console.error('Error finding unverified documents:', error);
+      log.error('Error finding unverified documents:', { error: error.message });
       throw error;
     }
   },
@@ -146,7 +147,7 @@ export const Document = {
 
       return await query;
     } catch (error) {
-      console.error('Error finding documents by branch ID:', error);
+      log.error('Error finding documents by branch ID:', { error: error.message });
       throw error;
     }
   },
@@ -179,7 +180,7 @@ export const Document = {
 
       return document;
     } catch (error) {
-      console.error('Error creating document:', error);
+      log.error('Error creating document:', { error: error.message });
       throw error;
     }
   },
@@ -218,7 +219,7 @@ export const Document = {
       const result = await sql.unsafe(query, values);
       return result[0] || null;
     } catch (error) {
-      console.error('Error updating document:', error);
+      log.error('Error updating document:', { error: error.message });
       throw error;
     }
   },
@@ -237,7 +238,7 @@ export const Document = {
 
       return document || null;
     } catch (error) {
-      console.error('Error verifying document:', error);
+      log.error('Error verifying document:', { error: error.message });
       throw error;
     }
   },
@@ -256,7 +257,7 @@ export const Document = {
 
       return document || null;
     } catch (error) {
-      console.error('Error soft deleting document:', error);
+      log.error('Error soft deleting document:', { error: error.message });
       throw error;
     }
   },
@@ -291,7 +292,7 @@ export const Document = {
 
       return await query;
     } catch (error) {
-      console.error('Error finding archived documents:', error);
+      log.error('Error finding archived documents:', { error: error.message });
       throw error;
     }
   },
@@ -310,7 +311,7 @@ export const Document = {
 
       return document || null;
     } catch (error) {
-      console.error('Error permanently deleting document:', error);
+      log.error('Error permanently deleting document:', { error: error.message });
       throw error;
     }
   },
@@ -347,7 +348,7 @@ export const Document = {
         return result;
       }
     } catch (error) {
-      console.error('Error archiving documents by employee and type:', error);
+      log.error('Error archiving documents by employee and type:', { error: error.message });
       throw error;
     }
   }

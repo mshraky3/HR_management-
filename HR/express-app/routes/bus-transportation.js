@@ -5,10 +5,6 @@
 
 import express from 'express';
 import multer from 'multer';
-import PdfPrinter from '@digicole/pdfmake-rtl';
-import { fileURLToPath } from 'url';
-import path from 'path';
-import fs from 'fs';
 import { authenticate } from '../middleware/auth.js';
 import { requireAnyManager, checkBranchAccess, loadAssignedBranches } from '../middleware/authorization.js';
 import { validateRequired } from '../middleware/validation.js';
@@ -21,60 +17,9 @@ import { BusStudent } from '../models/BusStudent.js';
 import { Branch } from '../models/Branch.js';
 import { uploadBusRegistrationDocument, uploadDriverLicenseDocument, uploadBusLeaseContractDocument, deleteFromBlob } from '../utils/blobStorage.js';
 import { log } from '../utils/logger.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Set up fonts for PDF generation
-const fontsDir = path.join(__dirname, '..', 'fonts');
-const amiriDir = path.join(fontsDir, 'Amiri');
-const amiriRegular = path.join(amiriDir, 'Amiri-Regular.ttf');
-const amiriBold = path.join(amiriDir, 'Amiri-Bold.ttf');
-const amiriItalic = path.join(amiriDir, 'Amiri-Italic.ttf');
-const amiriBoldItalic = path.join(amiriDir, 'Amiri-BoldItalic.ttf');
-
-let arabicFontPath = null;
-try {
-  if (fs.existsSync(amiriRegular)) {
-    arabicFontPath = amiriRegular;
-  }
-} catch (error) {
-  console.warn('Font files not accessible:', error.message);
-}
-
-const hasArabicFont = arabicFontPath !== null;
-
-let fonts;
-if (hasArabicFont) {
-  fonts = {
-    Roboto: {
-      normal: path.join(fontsDir, 'Roboto-Regular.ttf'),
-      bold: path.join(fontsDir, 'Roboto-Bold.ttf'),
-    },
-    Amiri: {
-      normal: amiriRegular,
-      bold: amiriBold,
-      italics: amiriItalic,
-      bolditalics: amiriBoldItalic,
-    }
-  };
-  console.log('Using Amiri font for PDF generation');
-} else {
-  fonts = {
-    Roboto: {
-      normal: 'Helvetica',
-      bold: 'Helvetica-Bold',
-    },
-    Amiri: {
-      normal: 'Helvetica',
-      bold: 'Helvetica-Bold',
-      italics: 'Helvetica-Oblique',
-      bolditalics: 'Helvetica-BoldOblique',
-    }
-  };
-}
-
-const pdfPrinter = new PdfPrinter(fonts);
+import { getScopedBranchFilter, getScopedTermFilter } from '../utils/policyScope.js';
+import { printer as pdfPrinter } from '../utils/pdfFonts.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
 
 const router = express.Router();
 
@@ -105,16 +50,15 @@ router.get('/', async (req, res) => {
     };
 
     // Filter by term_id if provided
-    if (req.query.term_id) {
-      filters.term_id = parseInt(req.query.term_id);
+    const scopedTermId = getScopedTermFilter(req);
+    if (scopedTermId) {
+      filters.term_id = scopedTermId;
     }
 
     // Branch managers only see their own branch's buses
-    if (req.user.role === 'branch_manager' && req.user.branch_id) {
-      filters.branch_id = req.user.branch_id;
-    } else if (req.query.branch_id) {
-      // Main manager can filter by branch
-      filters.branch_id = parseInt(req.query.branch_id);
+    const scopedBranchId = getScopedBranchFilter(req, { allowMultiple: false });
+    if (scopedBranchId) {
+      filters.branch_id = scopedBranchId;
     }
 
     // Branch operations managers only see their assigned branches
@@ -124,12 +68,13 @@ router.get('/', async (req, res) => {
           return res.json({ success: true, data: [] });
         }
       } else {
-        // If no branch_id filter, return all buses for assigned branches
-        const allBuses = [];
-        for (const branchId of req.user.assigned_branches) {
-          const branchBuses = await BusTransportation.findAll({ ...filters, branch_id: branchId });
-          allBuses.push(...(branchBuses || []));
-        }
+        // If no branch_id filter, return all buses for assigned branches in parallel
+        const results = await Promise.all(
+          req.user.assigned_branches.map(branchId =>
+            BusTransportation.findAll({ ...filters, branch_id: branchId })
+          )
+        );
+        const allBuses = results.flat().filter(Boolean);
         return res.json({ success: true, data: allBuses });
       }
     }
@@ -143,11 +88,7 @@ router.get('/', async (req, res) => {
     res.json({ success: true, data: buses });
   } catch (error) {
     log.error('Error listing buses', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب بيانات الحافلات',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل جلب بيانات الحافلات');
   }
 });
 
@@ -180,11 +121,7 @@ router.get('/:id', checkBranchAccess, async (req, res) => {
     res.json({ success: true, data: bus });
   } catch (error) {
     log.error('Error getting bus', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب بيانات الحافلة',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل جلب بيانات الحافلة');
   }
 });
 
@@ -224,7 +161,6 @@ router.post('/', validateRequired(['branch_id', 'bus_number', 'term_id']), async
     }
 
     // Validate term matches branch type
-    const { Branch } = await import('../models/Branch.js');
     const branch = await Branch.findById(parseInt(branch_id));
     if (branch && branch.branch_type !== term.branch_type) {
       return res.status(400).json({
@@ -252,11 +188,7 @@ router.post('/', validateRequired(['branch_id', 'bus_number', 'term_id']), async
       });
     }
 
-    res.status(500).json({
-      success: false,
-      message: 'فشل إنشاء الحافلة',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل إنشاء الحافلة');
   }
 });
 
@@ -287,9 +219,9 @@ router.put('/:id', checkBranchAccess, async (req, res) => {
     }
 
     // Validate term_id if being updated
-    if (req.body.term_id && parseInt(req.body.term_id) !== bus.term_id) {
+    if (req.body.term_id && parseInt(req.body.term_id) !== bus.term_id) { // policy-scope:allow-direct: body term_id is entity-update validation, not scope bypass
       const { Term } = await import('../models/Term.js');
-      const term = await Term.findById(parseInt(req.body.term_id));
+      const term = await Term.findById(parseInt(req.body.term_id)); // policy-scope:allow-direct
       if (!term) {
         return res.status(400).json({
           success: false,
@@ -305,7 +237,6 @@ router.put('/:id', checkBranchAccess, async (req, res) => {
       }
 
       // Validate term matches branch type
-      const { Branch } = await import('../models/Branch.js');
       const branch = await Branch.findById(bus.branch_id);
       if (branch && branch.branch_type !== term.branch_type) {
         return res.status(400).json({
@@ -332,11 +263,7 @@ router.put('/:id', checkBranchAccess, async (req, res) => {
       });
     }
 
-    res.status(500).json({
-      success: false,
-      message: 'فشل تحديث الحافلة',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل تحديث الحافلة');
   }
 });
 
@@ -397,11 +324,7 @@ router.delete('/:id', async (req, res) => {
     res.json({ success: true, message: 'تم حذف الحافلة بنجاح', data: deleted });
   } catch (error) {
     log.error('Error deleting bus', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل حذف الحافلة',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل حذف الحافلة');
   }
 });
 
@@ -450,11 +373,7 @@ router.post('/:id/registration', checkBranchAccess, validateRequired([
       });
     }
 
-    res.status(500).json({
-      success: false,
-      message: 'فشل حفظ بيانات تسجيل الحافلة',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل حفظ بيانات تسجيل الحافلة');
   }
 });
 
@@ -537,11 +456,7 @@ router.post('/:id/registration/upload', checkBranchAccess, upload.single('file')
     });
   } catch (error) {
     log.error('Error uploading bus registration document', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل رفع مستند تسجيل الحافلة',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل رفع مستند تسجيل الحافلة');
   }
 });
 
@@ -596,11 +511,7 @@ router.post('/:id/driver-license', checkBranchAccess, validateRequired([
     res.json({ success: true, data: license });
   } catch (error) {
     log.error('Error saving driver license', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل حفظ بيانات رخصة السائق',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل حفظ بيانات رخصة السائق');
   }
 });
 
@@ -683,11 +594,7 @@ router.post('/:id/driver-license/upload', checkBranchAccess, upload.single('file
     });
   } catch (error) {
     log.error('Error uploading driver license document', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل رفع مستند رخصة السائق',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل رفع مستند رخصة السائق');
   }
 });
 
@@ -762,11 +669,7 @@ router.post('/:id/lease-contract/upload', checkBranchAccess, upload.single('file
     });
   } catch (error) {
     log.error('Error uploading lease contract document', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل رفع عقد التأجير',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل رفع عقد التأجير');
   }
 });
 
@@ -812,11 +715,7 @@ router.post('/:id/license-plates', checkBranchAccess, validateRequired(['plate_n
       });
     }
 
-    res.status(500).json({
-      success: false,
-      message: 'فشل إضافة لوحة الترخيص',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل إضافة لوحة الترخيص');
   }
 });
 
@@ -839,11 +738,7 @@ router.put('/:id/license-plates/:plateId', checkBranchAccess, async (req, res) =
     res.json({ success: true, data: updated });
   } catch (error) {
     log.error('Error updating license plate', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل تحديث لوحة الترخيص',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل تحديث لوحة الترخيص');
   }
 });
 
@@ -866,11 +761,7 @@ router.delete('/:id/license-plates/:plateId', checkBranchAccess, async (req, res
     res.json({ success: true, message: 'تم حذف لوحة الترخيص بنجاح', data: deleted });
   } catch (error) {
     log.error('Error deleting license plate', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل حذف لوحة الترخيص',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل حذف لوحة الترخيص');
   }
 });
 
@@ -904,11 +795,7 @@ router.post('/:id/details', checkBranchAccess, validateRequired(['number_of_seat
     res.json({ success: true, data: details });
   } catch (error) {
     log.error('Error saving bus details', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل حفظ تفاصيل الحافلة',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل حفظ تفاصيل الحافلة');
   }
 });
 
@@ -939,8 +826,9 @@ router.get('/:id/students', checkBranchAccess, async (req, res) => {
     }
 
     const filters = {};
-    if (req.query.term_id) {
-      filters.term_id = parseInt(req.query.term_id);
+    const scopedTermId = getScopedTermFilter(req);
+    if (scopedTermId) {
+      filters.term_id = scopedTermId;
     } else {
       // Default to bus's term_id
       filters.term_id = bus.term_id;
@@ -951,11 +839,7 @@ router.get('/:id/students', checkBranchAccess, async (req, res) => {
     res.json({ success: true, data: students });
   } catch (error) {
     log.error('Error getting bus students', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب بيانات الطلاب',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل جلب بيانات الطلاب');
   }
 });
 
@@ -1035,11 +919,7 @@ router.post('/:id/students', checkBranchAccess, validateRequired(['student_full_
       });
     }
 
-    res.status(500).json({
-      success: false,
-      message: 'فشل إضافة الطالب',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل إضافة الطالب');
   }
 });
 
@@ -1120,11 +1000,7 @@ router.put('/:id/students/:studentId', checkBranchAccess, async (req, res) => {
     res.json({ success: true, data: updated });
   } catch (error) {
     log.error('Error updating bus student', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل تحديث بيانات الطالب',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل تحديث بيانات الطالب');
   }
 });
 
@@ -1160,11 +1036,7 @@ router.delete('/:id/students/:studentId', checkBranchAccess, async (req, res) =>
     res.json({ success: true, message: 'تم حذف الطالب بنجاح', data: deleted });
   } catch (error) {
     log.error('Error deleting bus student', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل حذف الطالب',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل حذف الطالب');
   }
 });
 
@@ -1446,7 +1318,7 @@ router.post('/generate-pdf', authenticate, async (req, res) => {
     pdfDoc.end();
   } catch (error) {
     log.error('Error generating bus transportation PDF:', error);
-    res.status(500).json({ error: 'Failed to generate PDF' });
+    handleRouteError(error, req, res, 'حدث خطأ في الخادم');
   }
 });
 

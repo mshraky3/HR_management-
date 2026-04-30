@@ -4,6 +4,7 @@
  */
 
 import sql from '../config/database.js';
+import { log } from '../utils/logger.js';
 
 export const AcademicYear = {
   /**
@@ -22,7 +23,7 @@ export const AcademicYear = {
       `;
       return year || null;
     } catch (error) {
-      console.error('Error finding academic year by ID:', error);
+      log.error('Error finding academic year by ID:', { error: error.message });
       throw error;
     }
   },
@@ -75,7 +76,7 @@ export const AcademicYear = {
         } : null
       }));
     } catch (error) {
-      console.error('Error finding academic years:', error);
+      log.error('Error finding academic years:', { error: error.message });
       throw error;
     }
   },
@@ -95,6 +96,7 @@ export const AcademicYear = {
         LEFT JOIN terms t2 ON ay.term2_id = t2.id
         WHERE ay.branch_type = ${branchType}
         AND ay.is_current = true
+        ORDER BY ay.year_start DESC
         LIMIT 1
       `;
       if (flagged) return flagged;
@@ -117,7 +119,7 @@ export const AcademicYear = {
       `;
       return byDate || null;
     } catch (error) {
-      console.error('Error finding current academic year:', error);
+      log.error('Error finding current academic year:', { error: error.message });
       throw error;
     }
   },
@@ -142,7 +144,7 @@ export const AcademicYear = {
       `;
       return year || null;
     } catch (error) {
-      console.error('Error finding academic year for date:', error);
+      log.error('Error finding academic year for date:', { error: error.message });
       throw error;
     }
   },
@@ -191,7 +193,7 @@ export const AcademicYear = {
 
       return year;
     } catch (error) {
-      console.error('Error creating academic year:', error);
+      log.error('Error creating academic year:', { error: error.message });
       throw error;
     }
   },
@@ -254,7 +256,7 @@ export const AcademicYear = {
       const result = await sql.unsafe(query, values);
       return result[0] || null;
     } catch (error) {
-      console.error('Error updating academic year:', error);
+      log.error('Error updating academic year:', { error: error.message });
       throw error;
     }
   },
@@ -301,7 +303,7 @@ export const AcademicYear = {
         employeesUpdated: result.count || 0
       };
     } catch (error) {
-      console.error('Error ending academic year:', error);
+      log.error('Error ending academic year:', { error: error.message });
       throw error;
     }
   }

@@ -115,7 +115,7 @@ export const Employee = {
         if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
           const placeholders = filters.branch_id.map(() => `$${paramIndex++}`).join(', ');
           conditions.push(`(e.branch_id IN (${placeholders}) OR eb.branch_id IN (${placeholders}))`);
-          params.push(...filters.branch_id, ...filters.branch_id);
+          params.push(...filters.branch_id);
         } else if (!Array.isArray(filters.branch_id)) {
           conditions.push(`(e.branch_id = $${paramIndex} OR eb.branch_id = $${paramIndex})`);
           params.push(filters.branch_id);
@@ -294,7 +294,7 @@ export const Employee = {
         if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
           const placeholders = filters.branch_id.map(() => `$${paramIndex++}`).join(', ');
           conditions.push(`(e.branch_id IN (${placeholders}) OR eb.branch_id IN (${placeholders}))`);
-          params.push(...filters.branch_id, ...filters.branch_id);
+          params.push(...filters.branch_id);
         } else if (!Array.isArray(filters.branch_id)) {
           conditions.push(`(e.branch_id = $${paramIndex} OR eb.branch_id = $${paramIndex})`);
           params.push(filters.branch_id);
@@ -396,19 +396,7 @@ export const Employee = {
   /**
    * Create new employee
    */
-  async create(employeeData) {
-    console.log('[EMPLOYEE MODEL] create() called');
-    console.log('[EMPLOYEE MODEL] Received employee data keys:', Object.keys(employeeData));
-    console.log('[EMPLOYEE MODEL] Contract dates:', {
-      contract_start_date_hijri: employeeData.contract_start_date_hijri,
-      contract_start_date_gregorian: employeeData.contract_start_date_gregorian,
-      contract_end_date_hijri: employeeData.contract_end_date_hijri,
-      contract_end_date_gregorian: employeeData.contract_end_date_gregorian
-    });
-    console.log('[EMPLOYEE MODEL] Branch ID:', employeeData.branch_id);
-    console.log('[EMPLOYEE MODEL] Created by:', employeeData.created_by);
-    console.log('[EMPLOYEE MODEL] Updated by:', employeeData.updated_by);
-
+  async create(employeeData, db = sql) {
     try {
       const {
         employee_id_number, branch_id, first_name, second_name, third_name, fourth_name,
@@ -425,23 +413,18 @@ export const Employee = {
         job_title, data_completion_status, status, created_by, updated_by
       } = employeeData;
 
-      console.log('[EMPLOYEE MODEL] Destructured data successfully');
 
       // If updated_by is not provided, use created_by (for new records)
       const finalUpdatedBy = updated_by || created_by;
 
       if (!created_by || !finalUpdatedBy) {
-        console.log('[EMPLOYEE MODEL] ERROR: created_by or updated_by is missing');
-        console.log('[EMPLOYEE MODEL] created_by:', created_by, 'updated_by:', updated_by, 'finalUpdatedBy:', finalUpdatedBy);
         throw new Error('created_by and updated_by are required');
       }
 
       // Ensure status is set to 'active' for new employees (unless explicitly provided)
       const employeeStatus = status || 'active';
-      console.log('[EMPLOYEE MODEL] Employee status:', employeeStatus);
-      console.log('[EMPLOYEE MODEL] Executing INSERT query...');
 
-      const [employee] = await sql`
+      const [employee] = await db`
         INSERT INTO employees (
           employee_id_number, branch_id, first_name, second_name, third_name, fourth_name,
           occupation, nationality, date_of_birth_hijri, date_of_birth_gregorian,
@@ -479,21 +462,8 @@ export const Employee = {
         RETURNING *
       `;
 
-      console.log('[EMPLOYEE MODEL] INSERT query executed successfully');
-      console.log('[EMPLOYEE MODEL] Created employee ID:', employee?.id);
-      console.log('[EMPLOYEE MODEL] Employee data returned:', {
-        id: employee?.id,
-        employee_id_number: employee?.employee_id_number,
-        branch_id: employee?.branch_id,
-        name: `${employee?.first_name} ${employee?.second_name}`
-      });
-
       return employee;
     } catch (error) {
-      console.log('[EMPLOYEE MODEL] ERROR in create():', error.message);
-      console.log('[EMPLOYEE MODEL] Error code:', error.code);
-      console.log('[EMPLOYEE MODEL] Error detail:', error.detail);
-      console.log('[EMPLOYEE MODEL] Error stack:', error.stack);
       log.error('Error creating employee', { error: error.message, code: error.code, detail: error.detail });
       throw error;
     }
@@ -503,10 +473,6 @@ export const Employee = {
    * Update employee
    */
   async update(id, updates, updatedBy) {
-    console.log('[EMPLOYEE MODEL] update() called');
-    console.log('[EMPLOYEE MODEL] Employee ID:', id);
-    console.log('[EMPLOYEE MODEL] Updated by:', updatedBy);
-    console.log('[EMPLOYEE MODEL] Update fields received:', Object.keys(updates));
 
     try {
       const allowedFields = [
@@ -525,16 +491,13 @@ export const Employee = {
       ];
 
       const updateFields = Object.keys(updates).filter(key => allowedFields.includes(key));
-      console.log('[EMPLOYEE MODEL] Allowed update fields:', updateFields);
 
       if (updateFields.length === 0) {
-        console.log('[EMPLOYEE MODEL] ERROR: No valid fields to update');
         throw new Error('No valid fields to update');
       }
 
       updates.updated_at = new Date();
       updates.updated_by = updatedBy;
-      console.log('[EMPLOYEE MODEL] Executing UPDATE query...');
 
       // Ensure salary fields are 0 instead of null
       const salaryFields = ['base_salary', 'housing_allowance', 'transportation_allowance',
@@ -564,14 +527,8 @@ export const Employee = {
       values.push(updates.updated_at, updates.updated_by);
 
       const result = await sql.unsafe(query, values);
-      console.log('[EMPLOYEE MODEL] UPDATE query executed successfully');
-      console.log('[EMPLOYEE MODEL] Updated employee ID:', result[0]?.id);
       return result[0] || null;
     } catch (error) {
-      console.log('[EMPLOYEE MODEL] ERROR in update():', error.message);
-      console.log('[EMPLOYEE MODEL] Error code:', error.code);
-      console.log('[EMPLOYEE MODEL] Error detail:', error.detail);
-      console.log('[EMPLOYEE MODEL] Error stack:', error.stack);
       log.error('Error updating employee', { error: error.message, code: error.code, detail: error.detail });
       throw error;
     }
@@ -948,10 +905,10 @@ export const Employee = {
    * @param {number} addedBy - User ID who added the link (references users.id)
    * @returns {Promise<Object>} - The created employee_branches record
    */
-  async linkToBranch(employeeId, branchId, addedBy = null) {
+  async linkToBranch(employeeId, branchId, addedBy = null, db = sql) {
     try {
       // Check if link already exists
-      const [existing] = await sql`
+      const [existing] = await db`
         SELECT * FROM employee_branches
         WHERE employee_id = ${employeeId} AND branch_id = ${branchId}
       `;
@@ -961,7 +918,7 @@ export const Employee = {
       }
 
       // Check if this will be the first branch (make it primary)
-      const [firstBranch] = await sql`
+      const [firstBranch] = await db`
         SELECT COUNT(*) as count FROM employee_branches
         WHERE employee_id = ${employeeId}
       `;
@@ -969,7 +926,7 @@ export const Employee = {
       const isPrimary = parseInt(firstBranch.count) === 0;
 
       // Create the link
-      const [link] = await sql`
+      const [link] = await db`
         INSERT INTO employee_branches (employee_id, branch_id, is_primary, added_by)
         VALUES (${employeeId}, ${branchId}, ${isPrimary}, ${addedBy})
         RETURNING *
@@ -980,7 +937,7 @@ export const Employee = {
       // Handle unique constraint violation (employee already linked to branch)
       if (error.code === '23505') {
         log.warn('Employee already linked to branch (unique constraint)', { employeeId, branchId });
-        const [existing] = await sql`
+        const [existing] = await db`
           SELECT * FROM employee_branches
           WHERE employee_id = ${employeeId} AND branch_id = ${branchId}
         `;
@@ -989,12 +946,12 @@ export const Employee = {
       // Handle foreign key violation on added_by - retry without it
       if (error.code === '23503' && error.constraint?.includes('added_by')) {
         log.warn('FK violation on added_by, retrying with null', { employeeId, branchId, addedBy });
-        const [firstBranch] = await sql`
+        const [firstBranch] = await db`
           SELECT COUNT(*) as count FROM employee_branches
           WHERE employee_id = ${employeeId}
         `;
         const isPrimary = parseInt(firstBranch.count) === 0;
-        const [link] = await sql`
+        const [link] = await db`
           INSERT INTO employee_branches (employee_id, branch_id, is_primary, added_by)
           VALUES (${employeeId}, ${branchId}, ${isPrimary}, ${null})
           RETURNING *

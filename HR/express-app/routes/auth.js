@@ -13,6 +13,7 @@ import { generateToken } from '../utils/jwt.js';
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
 import { sendOTPEmail, sendNotificationEmail } from '../utils/emailService.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
 
 const router = express.Router();
 
@@ -22,7 +23,7 @@ const OTP_MAX_ATTEMPTS = 5;
 const OTP_RESEND_COOLDOWN_SECONDS = 60;
 
 function generateOTP() {
-  return crypto.randomInt(100000, 999999).toString();
+  return crypto.randomInt(1000, 9999).toString();
 }
 
 function hashOTP(code) {
@@ -91,11 +92,7 @@ router.post('/login', async (req, res) => {
       user = await User.findByUsername(username);
     } catch (dbError) {
       log.error('Database error in User.findByUsername', { error: dbError.message });
-      return res.status(500).json({
-        success: false,
-        message: 'خطأ في اتصال قاعدة البيانات. يرجى التحقق من إعدادات الخادم.',
-        error: process.env.NODE_ENV === 'development' ? dbError.message : undefined
-      });
+      return handleRouteError(dbError, req, res, 'خطأ في اتصال قاعدة البيانات. يرجى التحقق من إعدادات الخادم.');
     }
 
     // If not found in users table, check branches table
@@ -105,11 +102,7 @@ router.post('/login', async (req, res) => {
         branch = await Branch.findByUsername(username);
       } catch (dbError) {
         log.error('Database error in Branch.findByUsername', { error: dbError.message });
-        return res.status(500).json({
-          success: false,
-          message: 'خطأ في اتصال قاعدة البيانات. يرجى التحقق من إعدادات الخادم.',
-          error: process.env.NODE_ENV === 'development' ? dbError.message : undefined
-        });
+        return handleRouteError(dbError, req, res, 'خطأ في اتصال قاعدة البيانات. يرجى التحقق من إعدادات الخادم.');
       }
 
       if (branch) {
@@ -179,10 +172,7 @@ router.post('/login', async (req, res) => {
         const emailResult = await sendOTPEmail(branchEmail, code, branch.branch_name);
         if (!emailResult.success) {
           log.error('Failed to send OTP email', { branchId: branch.id, error: emailResult.error });
-          return res.status(500).json({
-            success: false,
-            message: 'فشل إرسال رمز التحقق. يرجى المحاولة مرة أخرى.'
-          });
+          return res.status(500).json({ success: false, message: 'فشل إرسال رمز التحقق. يرجى المحاولة مرة أخرى.' });
         }
 
         return res.json({
@@ -267,10 +257,7 @@ router.post('/login', async (req, res) => {
       const emailResult = await sendOTPEmail(userEmail, code, user.full_name || user.username);
       if (!emailResult.success) {
         log.error('Failed to send OTP email to user', { userId: user.id, error: emailResult.error });
-        return res.status(500).json({
-          success: false,
-          message: 'فشل إرسال رمز التحقق. يرجى المحاولة مرة أخرى.'
-        });
+        return res.status(500).json({ success: false, message: 'فشل إرسال رمز التحقق. يرجى المحاولة مرة أخرى.' });
       }
 
       return res.json({
@@ -294,7 +281,6 @@ router.post('/login', async (req, res) => {
     // Track login for branch managers (only track once per day per branch)
     if (user.role === 'branch_manager' && user.branch_id) {
       try {
-        const sql = (await import('../config/database.js')).default;
         const today = new Date().toISOString().split('T')[0];
         const ipAddress = req.ip || req.connection.remoteAddress || null;
         const userAgent = req.get('user-agent') || null;
@@ -337,13 +323,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     log.error('Login error', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل تسجيل الدخول',
-      error: process.env.NODE_ENV === 'production'
-        ? 'خطأ داخلي في الخادم. يرجى التحقق من سجلات الخادم.'
-        : error.message
-    });
+    handleRouteError(error, req, res, 'فشل تسجيل الدخول');
   }
 });
 
@@ -586,13 +566,7 @@ router.post('/verify-otp', async (req, res) => {
     });
   } catch (error) {
     log.error('OTP verification error', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل التحقق من الرمز',
-      error: process.env.NODE_ENV === 'production'
-        ? 'خطأ داخلي في الخادم.'
-        : error.message
-    });
+    handleRouteError(error, req, res, 'فشل التحقق من الرمز');
   }
 });
 
@@ -716,7 +690,7 @@ router.post('/resend-otp', async (req, res) => {
     });
   } catch (error) {
     log.error('Resend OTP error', { error: error.message });
-    res.status(500).json({ success: false, message: 'حدث خطأ أثناء إعادة إرسال الرمز.' });
+    handleRouteError(error, req, res, 'حدث خطأ أثناء إعادة إرسال الرمز.');
   }
 });
 
@@ -796,11 +770,7 @@ router.get('/me', authenticate, async (req, res) => {
     });
   } catch (error) {
     log.error('Get user error', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل الحصول على معلومات المستخدم',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل الحصول على معلومات المستخدم');
   }
 });
 
@@ -843,7 +813,7 @@ router.post('/request-email-update', async (req, res) => {
       SELECT id, email, full_name FROM users WHERE role = 'main_manager' AND is_active = true LIMIT 1
     `;
     if (!mainManager) {
-      return res.status(500).json({ success: false, message: 'لم يتم العثور على المسؤول الرئيسي' });
+      return res.status(404).json({ success: false, message: 'لم يتم العثور على المسؤول الرئيسي' });
     }
 
     // Create a request record
@@ -879,7 +849,7 @@ router.post('/request-email-update', async (req, res) => {
     res.json({ success: true, message: 'تم إرسال طلب تحديث البريد الإلكتروني للمسؤول بنجاح.' });
   } catch (error) {
     log.error('Request email update error', { error: error.message });
-    res.status(500).json({ success: false, message: 'حدث خطأ أثناء إرسال الطلب.' });
+    handleRouteError(error, req, res, 'حدث خطأ أثناء إرسال الطلب.');
   }
 });
 

@@ -18,6 +18,8 @@ import { getBlobToken } from '../config/blobStorage.js';
 import sql from '../config/database.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireMainManager } from '../middleware/authorization.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 const token = getBlobToken();
@@ -55,7 +57,7 @@ router.get('/read', async (req, res) => {
     const arrayBuffer = await response.arrayBuffer();
     res.send(Buffer.from(arrayBuffer));
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    handleRouteError(e, req, res, 'حدث خطأ في الخادم');
   }
 });
 
@@ -77,7 +79,7 @@ router.get('/test-copy', async (req, res) => {
 
     res.json({ success: true, result });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    handleRouteError(error, req, res, 'حدث خطأ في الخادم');
   }
 });
 
@@ -100,7 +102,7 @@ router.post('/fix-batch', async (req, res) => {
       OFFSET ${req.body?.offset || 0}
     `;
 
-    console.log(`Processing ${brokenFiles.length} files...`);
+    log.info(`Processing ${brokenFiles.length} files...`);
 
     for (const file of brokenFiles) {
       try {
@@ -118,7 +120,7 @@ router.post('/fix-batch', async (req, res) => {
           continue;
         }
 
-        console.log(`  Fixing ${file.id}: ${oldPathname} -> ${cleanPathname}`);
+        log.info(`  Fixing ${file.id}: ${oldPathname} -> ${cleanPathname}`);
 
         // Try copy() from within Vercel's network
         const copyResult = await copy(oldUrl, cleanPathname, {
@@ -141,7 +143,7 @@ router.post('/fix-batch', async (req, res) => {
           newUrl: copyResult.url
         });
       } catch (e) {
-        console.error(`  Failed ${file.id}: ${e.message}`);
+        log.error(`  Failed ${file.id}: ${e.message}`);
         results.failed.push({
           id: file.id,
           path: file.file_path,
@@ -158,7 +160,7 @@ router.post('/fix-batch', async (req, res) => {
       results
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    handleRouteError(error, req, res, 'حدث خطأ في الخادم');
   }
 });
 
@@ -181,7 +183,7 @@ router.get('/status', async (req, res) => {
       totalFiles: parseInt(total[0].total)
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    handleRouteError(error, req, res, 'حدث خطأ في الخادم');
   }
 });
 

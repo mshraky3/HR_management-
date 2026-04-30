@@ -4,6 +4,7 @@
  */
 
 import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { log } from './logger.js';
 import { getR2Client, getR2Bucket, getR2PublicUrl, isR2StorageConfigured } from '../config/r2Storage.js';
 
 /**
@@ -91,7 +92,7 @@ export async function deleteFromR2(r2Url) {
 
         return true;
     } catch (error) {
-        console.error('Error deleting from R2:', error.message);
+        log.error('Error deleting from R2:', { error: error.message });
         return false;
     }
 }

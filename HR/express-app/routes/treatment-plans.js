@@ -18,6 +18,8 @@ import { sendErrorNotification } from '../utils/errorNotificationService.js';
 import { handleUpload } from '@vercel/blob/client';
 import { getBlobToken } from '../config/blobStorage.js';
 import { uploadToR2Mirror } from '../utils/dualStorage.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -54,21 +56,8 @@ router.get('/branches', async (req, res) => {
     `;
         res.json({ success: true, data: branches });
     } catch (error) {
-        console.error('Error fetching healthcare branches:', error);
-        sendErrorNotification({
-            errorType: 'TREATMENT_PLAN_ERROR',
-            message: error.message,
-            endpoint: '/api/treatment-plans/branches',
-            method: 'GET',
-            statusCode: 500,
-            timestamp: new Date().toISOString(),
-            source: 'BACKEND',
-        }).catch(() => { });
-        res.status(500).json({
-            success: false,
-            message: 'فشل في جلب الفروع',
-            error: error.message
-        });
+        log.error('Error fetching healthcare branches:', error);
+        handleRouteError(error, req, res, 'فشل في جلب الفروع');
     }
 });
 
@@ -95,12 +84,12 @@ router.post('/client-upload', async (req, res) => {
                 };
             },
             onUploadCompleted: async ({ blob }) => {
-                console.log('Client upload completed:', blob.pathname);
+                log.info('Client upload completed:', blob.pathname);
             },
         });
         return res.json(jsonResponse);
     } catch (error) {
-        console.error('Client upload token error:', error);
+        log.error('Client upload token error:', error);
         return res.status(400).json({ error: error.message });
     }
 });
@@ -162,7 +151,7 @@ router.post('/submit-direct', async (req, res) => {
                     }
                 }
             } catch (r2Err) {
-                console.error('R2 mirror failed for client upload:', r2Err.message);
+                log.error('R2 mirror failed for client upload:', r2Err.message);
             }
         }
 
@@ -186,7 +175,7 @@ router.post('/submit-direct', async (req, res) => {
             data: { id: plan.id }
         });
     } catch (error) {
-        console.error('Error submitting treatment plan (direct):', error);
+        log.error('Error submitting treatment plan (direct):', error);
         sendErrorNotification({
             errorType: 'TREATMENT_PLAN_SUBMIT_ERROR',
             message: error.message,
@@ -201,11 +190,7 @@ router.post('/submit-direct', async (req, res) => {
             timestamp: new Date().toISOString(),
             source: 'BACKEND',
         }).catch(() => { });
-        res.status(500).json({
-            success: false,
-            message: 'فشل في إرسال الخطة',
-            error: error.message
-        });
+        handleRouteError(error, req, res, 'فشل في إرسال الخطة');
     }
 });
 
@@ -282,7 +267,7 @@ router.post('/submit', (req, res, next) => {
             data: { id: plan.id }
         });
     } catch (error) {
-        console.error('Error submitting treatment plan:', error);
+        log.error('Error submitting treatment plan:', error);
         sendErrorNotification({
             errorType: 'TREATMENT_PLAN_SUBMIT_ERROR',
             message: error.message,
@@ -300,11 +285,7 @@ router.post('/submit', (req, res, next) => {
             timestamp: new Date().toISOString(),
             source: 'BACKEND',
         }).catch(() => { });
-        res.status(500).json({
-            success: false,
-            message: 'فشل في إرسال الخطة',
-            error: error.message
-        });
+        handleRouteError(error, req, res, 'فشل في إرسال الخطة');
     }
 });
 
@@ -336,7 +317,7 @@ router.get('/', authenticate, requireManager, async (req, res) => {
 
         res.json({ success: true, data: plans });
     } catch (error) {
-        console.error('Error fetching treatment plans:', error);
+        log.error('Error fetching treatment plans:', error);
         sendErrorNotification({
             errorType: 'TREATMENT_PLAN_ERROR',
             message: error.message,
@@ -348,11 +329,7 @@ router.get('/', authenticate, requireManager, async (req, res) => {
             timestamp: new Date().toISOString(),
             source: 'BACKEND',
         }).catch(() => { });
-        res.status(500).json({
-            success: false,
-            message: 'فشل في جلب الخطط',
-            error: error.message
-        });
+        handleRouteError(error, req, res, 'فشل في جلب الخطط');
     }
 });
 
@@ -365,7 +342,7 @@ router.get('/stats', authenticate, requireMainManager, async (req, res) => {
         const stats = await TreatmentPlan.getStats();
         res.json({ success: true, data: stats });
     } catch (error) {
-        console.error('Error fetching treatment plan stats:', error);
+        log.error('Error fetching treatment plan stats:', error);
         sendErrorNotification({
             errorType: 'TREATMENT_PLAN_ERROR',
             message: error.message,
@@ -377,11 +354,7 @@ router.get('/stats', authenticate, requireMainManager, async (req, res) => {
             timestamp: new Date().toISOString(),
             source: 'BACKEND',
         }).catch(() => { });
-        res.status(500).json({
-            success: false,
-            message: 'فشل في جلب الإحصائيات',
-            error: error.message
-        });
+        handleRouteError(error, req, res, 'فشل في جلب الإحصائيات');
     }
 });
 
@@ -420,7 +393,7 @@ router.get('/:id/download', authenticate, requireManager, async (req, res) => {
         res.setHeader('Content-Disposition', `attachment; filename="plan.docx"; filename*=UTF-8''${encodedFilename}`);
         return res.send(buffer);
     } catch (error) {
-        console.error('Error downloading treatment plan:', error);
+        log.error('Error downloading treatment plan:', error);
         sendErrorNotification({
             errorType: 'TREATMENT_PLAN_DOWNLOAD_ERROR',
             message: error.message,
@@ -432,11 +405,7 @@ router.get('/:id/download', authenticate, requireManager, async (req, res) => {
             timestamp: new Date().toISOString(),
             source: 'BACKEND',
         }).catch(() => { });
-        res.status(500).json({
-            success: false,
-            message: 'فشل تحميل الملف',
-            error: error.message
-        });
+        handleRouteError(error, req, res, 'فشل تحميل الملف');
     }
 });
 
@@ -472,7 +441,7 @@ router.put('/:id/review', authenticate, requireMainManager, async (req, res) => 
             data: plan
         });
     } catch (error) {
-        console.error('Error reviewing treatment plan:', error);
+        log.error('Error reviewing treatment plan:', error);
         sendErrorNotification({
             errorType: 'TREATMENT_PLAN_ERROR',
             message: error.message,
@@ -484,11 +453,7 @@ router.put('/:id/review', authenticate, requireMainManager, async (req, res) => 
             timestamp: new Date().toISOString(),
             source: 'BACKEND',
         }).catch(() => { });
-        res.status(500).json({
-            success: false,
-            message: 'فشل في تحديث حالة الخطة',
-            error: error.message
-        });
+        handleRouteError(error, req, res, 'فشل في تحديث حالة الخطة');
     }
 });
 
@@ -515,7 +480,7 @@ router.get('/:id', authenticate, requireManager, async (req, res) => {
 
         res.json({ success: true, data: plan });
     } catch (error) {
-        console.error('Error fetching treatment plan:', error);
+        log.error('Error fetching treatment plan:', error);
         sendErrorNotification({
             errorType: 'TREATMENT_PLAN_ERROR',
             message: error.message,
@@ -527,11 +492,7 @@ router.get('/:id', authenticate, requireManager, async (req, res) => {
             timestamp: new Date().toISOString(),
             source: 'BACKEND',
         }).catch(() => { });
-        res.status(500).json({
-            success: false,
-            message: 'فشل في جلب الخطة',
-            error: error.message
-        });
+        handleRouteError(error, req, res, 'فشل في جلب الخطة');
     }
 });
 
@@ -558,7 +519,7 @@ router.delete('/:id', authenticate, requireMainManager, async (req, res) => {
             message: 'تم حذف الخطة بنجاح'
         });
     } catch (error) {
-        console.error('Error deleting treatment plan:', error);
+        log.error('Error deleting treatment plan:', error);
         sendErrorNotification({
             errorType: 'TREATMENT_PLAN_ERROR',
             message: error.message,
@@ -570,11 +531,7 @@ router.delete('/:id', authenticate, requireMainManager, async (req, res) => {
             timestamp: new Date().toISOString(),
             source: 'BACKEND',
         }).catch(() => { });
-        res.status(500).json({
-            success: false,
-            message: 'فشل في حذف الخطة',
-            error: error.message
-        });
+        handleRouteError(error, req, res, 'فشل في حذف الخطة');
     }
 });
 

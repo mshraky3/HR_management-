@@ -12,10 +12,12 @@ import { Branch } from '../models/Branch.js';
 import { User } from '../models/User.js';
 import { uploadSingle, validateUploadedFile } from '../middleware/upload.js';
 import { uploadNotificationAttachmentToBlob } from '../utils/blobStorage.js';
-import { fixFilenameEncoding } from '../utils/fileUpload.js';
-import { getExtensionFromMimeType } from '../utils/fileUpload.js';
+import { fixFilenameEncoding, getExtensionFromMimeType } from '../utils/fileUpload.js';
 import { sendNotificationEmail } from '../utils/emailService.js';
 import sql from '../config/database.js';
+import { resolveBranchAccessFromScope } from '../utils/policyScope.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -41,7 +43,7 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
       try {
         branch_ids = JSON.parse(branch_ids);
       } catch (parseError) {
-        console.error('Error parsing branch_ids JSON:', parseError);
+        log.error('Error parsing branch_ids JSON:', parseError);
         return res.status(400).json({
           success: false,
           message: 'خطأ في معالجة قائمة الفروع. يرجى المحاولة مرة أخرى.'
@@ -202,7 +204,7 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
           WHERE id = ${notification.id}
         `;
       } catch (uploadError) {
-        console.error('Error uploading attachment:', uploadError);
+        log.error('Error uploading attachment:', uploadError);
         // Don't fail the notification creation if upload fails
         // Just log the error
       }
@@ -232,7 +234,7 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
         }
       });
     } catch (emailError) {
-      console.error('Failed to send email notification:', emailError);
+      log.error('Failed to send email notification:', emailError);
       // Don't fail the notification creation if email fails
     }
 
@@ -254,7 +256,7 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
         }
       }
     } catch (branchEmailError) {
-      console.error('Failed to send branch email notifications:', branchEmailError);
+      log.error('Failed to send branch email notifications:', branchEmailError);
     }
 
     res.status(201).json({
@@ -263,13 +265,9 @@ router.post('/', requireMainManager, uploadSingle, async (req, res) => {
       data: updatedNotification
     });
   } catch (error) {
-    console.error('Error creating notification:', error);
-    console.error('Error stack:', error.stack);
-    res.status(500).json({
-      success: false,
-      message: 'فشل إنشاء الإشعار',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'حدث خطأ أثناء إنشاء الإشعار'
-    });
+    log.error('Error creating notification:', error);
+    log.error('Error stack:', error.stack);
+    handleRouteError(error, req, res, 'فشل إنشاء الإشعار');
   }
 });
 
@@ -304,12 +302,8 @@ router.get('/', requireMainManager, async (req, res) => {
       data: notificationsWithStats
     });
   } catch (error) {
-    console.error('Error fetching notifications:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب الإشعارات',
-      error: error.message
-    });
+    log.error('Error fetching notifications:', error);
+    handleRouteError(error, req, res, 'فشل جلب الإشعارات');
   }
 });
 
@@ -339,12 +333,8 @@ router.get('/:id', requireMainManager, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching notification:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب الإشعار',
-      error: error.message
-    });
+    log.error('Error fetching notification:', error);
+    handleRouteError(error, req, res, 'فشل جلب الإشعار');
   }
 });
 
@@ -354,26 +344,15 @@ router.get('/:id', requireMainManager, async (req, res) => {
  */
 router.get('/branch/:branchId', async (req, res) => {
   try {
-    const branchId = parseInt(req.params.branchId);
-
-    // Check access: branch managers can only access their own branch
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== branchId) {
+    const access = resolveBranchAccessFromScope(req.scope, req.params.branchId); // policy-scope:allow-direct
+    if (!access.allowed) {
       return res.status(403).json({
         success: false,
         message: 'غير مصرح لك بالوصول إلى هذا الفرع'
       });
     }
-    // branch_operations_manager: only assigned branches
-    if (req.user.role === 'branch_operations_manager') {
-      const { UserBranchAssignment } = await import('../models/User.js');
-      const assignedBranches = await UserBranchAssignment.getAssignedBranches(req.user.id);
-      if (!assignedBranches.includes(branchId)) {
-        return res.status(403).json({
-          success: false,
-          message: 'غير مصرح لك بالوصول إلى هذا الفرع'
-        });
-      }
-    }
+
+    const branchId = access.effectiveBranchId;
 
     const filters = {
       importance_level: req.query.importance_level ? parseInt(req.query.importance_level) : undefined,
@@ -387,12 +366,8 @@ router.get('/branch/:branchId', async (req, res) => {
       data: notifications
     });
   } catch (error) {
-    console.error('Error fetching branch notifications:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب إشعارات الفرع',
-      error: error.message
-    });
+    log.error('Error fetching branch notifications:', error);
+    handleRouteError(error, req, res, 'فشل جلب إشعارات الفرع');
   }
 });
 
@@ -421,12 +396,8 @@ router.get('/my-branch/notifications', async (req, res) => {
       data: notifications
     });
   } catch (error) {
-    console.error('Error fetching my branch notifications:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب الإشعارات',
-      error: error.message
-    });
+    log.error('Error fetching my branch notifications:', error);
+    handleRouteError(error, req, res, 'فشل جلب الإشعارات');
   }
 });
 
@@ -517,7 +488,7 @@ router.post('/:id/respond', async (req, res) => {
       });
 
     } catch (emailError) {
-      console.error('Error sending notification response email:', emailError);
+      log.error('Error sending notification response email:', emailError);
       // Don't fail the response if email fails
     }
 
@@ -527,12 +498,8 @@ router.post('/:id/respond', async (req, res) => {
       data: response
     });
   } catch (error) {
-    console.error('Error responding to notification:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل حفظ الرد',
-      error: error.message
-    });
+    log.error('Error responding to notification:', error);
+    handleRouteError(error, req, res, 'فشل حفظ الرد');
   }
 });
 
@@ -579,12 +546,8 @@ router.put('/:id', requireMainManager, async (req, res) => {
       data: notification
     });
   } catch (error) {
-    console.error('Error updating notification:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل تحديث الإشعار',
-      error: error.message
-    });
+    log.error('Error updating notification:', error);
+    handleRouteError(error, req, res, 'فشل تحديث الإشعار');
   }
 });
 
@@ -626,12 +589,8 @@ router.delete('/:id', requireMainManager, async (req, res) => {
       data: notification
     });
   } catch (error) {
-    console.error('Error deleting notification:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل حذف الإشعار',
-      error: error.message
-    });
+    log.error('Error deleting notification:', error);
+    handleRouteError(error, req, res, 'فشل حذف الإشعار');
   }
 });
 
@@ -686,10 +645,7 @@ router.post('/:id/mark-viewed', async (req, res) => {
     const result = await Notification.markBranchAsSeen(notificationId, branchId);
 
     if (!result) {
-      return res.status(500).json({
-        success: false,
-        message: 'فشل تمييز الإشعار كمقروء'
-      });
+      return handleRouteError(error, req, res, 'فشل تمييز الإشعار كمقروء');
     }
 
     res.json({
@@ -700,12 +656,8 @@ router.post('/:id/mark-viewed', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error marking notification as viewed:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل تمييز الإشعار كمقروء',
-      error: error.message
-    });
+    log.error('Error marking notification as viewed:', error);
+    handleRouteError(error, req, res, 'فشل تمييز الإشعار كمقروء');
   }
 });
 
@@ -731,12 +683,8 @@ router.patch('/:id/toggle-active', requireMainManager, async (req, res) => {
       data: notification
     });
   } catch (error) {
-    console.error('Error toggling notification active status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل تحديث حالة الإشعار',
-      error: error.message
-    });
+    log.error('Error toggling notification active status:', error);
+    handleRouteError(error, req, res, 'فشل تحديث حالة الإشعار');
   }
 });
 

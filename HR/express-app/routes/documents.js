@@ -15,6 +15,8 @@ import { Employee } from '../models/Employee.js';
 import { isValidDocumentType } from '../utils/validators.js';
 import { getExtensionFromMimeType } from '../utils/fileUpload.js';
 import { uploadToBlob, deleteFromBlob, fetchBlobWithFallback, copyBlob, fixDoubleExtensionUrl } from '../utils/blobStorage.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,7 +98,7 @@ router.get('/', async (req, res) => {
         try {
           documents = await Document.findByBranchId(req.user.branch_id, filters);
         } catch (error) {
-          console.error('Error fetching branch documents:', error);
+          log.error('Error fetching branch documents:', error);
           documents = [];
         }
       } else {
@@ -109,12 +111,8 @@ router.get('/', async (req, res) => {
     // Always return success with data array (even if empty)
     return res.json({ success: true, data: documents || [] });
   } catch (error) {
-    console.error('Error fetching documents:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب المستندات',
-      error: error.message
-    });
+    log.error('Error fetching documents:', error);
+    handleRouteError(error, req, res, 'فشل جلب المستندات');
   }
 });
 
@@ -179,12 +177,12 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       // Silently accept even if not allowed (UI prevents this, but we don't want to break anything)
       // Just log for debugging
       if (!validation.allowed) {
-        console.warn(`Document type ${document_type} not allowed for employee ${employee_id}, but accepting silently (UI should prevent this)`);
+        log.warn(`Document type ${document_type} not allowed for employee ${employee_id}, but accepting silently (UI should prevent this)`);
         // Continue with upload anyway - UI should have prevented this
       }
     } catch (validationError) {
       // If validation fails, silently allow (backward compatibility)
-      console.warn('Document type validation error:', validationError);
+      log.warn('Document type validation error:', validationError);
     }
 
     // Upload file to Vercel Blob Storage
@@ -196,53 +194,11 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       document_type
     );
 
-    // Set uploaded_by to user ID (must not be null and must reference valid user)
-    let uploadedById = null;
-    if (req.user && req.user.id) {
-      try {
-        // Check if user exists in database (without is_active check)
-        const sql = (await import('../config/database.js')).default;
-        const [user] = await sql`
-          SELECT id FROM users WHERE id = ${req.user.id}
-        `;
-        if (user && user.id) {
-          uploadedById = req.user.id;
-        }
-      } catch (error) {
-        console.error('Error verifying user:', error);
-      }
+    // Set uploaded_by to user ID — requires authenticated user, no fallback allowed
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ success: false, message: 'المصادقة مطلوبة لرفع المستندات' });
     }
-
-    // If user not found, find first active user as fallback (usually main manager)
-    if (!uploadedById) {
-      try {
-        const sql = (await import('../config/database.js')).default;
-        const [fallbackUser] = await sql`
-          SELECT id FROM users WHERE is_active = true ORDER BY id ASC LIMIT 1
-        `;
-        if (fallbackUser && fallbackUser.id) {
-          uploadedById = fallbackUser.id;
-        } else {
-          // Last resort: try to find any user
-          const [anyUser] = await sql`
-            SELECT id FROM users ORDER BY id ASC LIMIT 1
-          `;
-          if (anyUser && anyUser.id) {
-            uploadedById = anyUser.id;
-          }
-        }
-      } catch (error) {
-        console.error('Error finding fallback user:', error);
-      }
-    }
-
-    // If still no valid user found, throw error
-    if (!uploadedById) {
-      return res.status(500).json({
-        success: false,
-        message: 'لم يتم العثور على مستخدم صالح لحقل uploaded_by. يرجى التأكد من وجود مستخدم واحد على الأقل في النظام.'
-      });
-    }
+    const uploadedById = req.user.id;
 
     // Fix filename encoding for Arabic characters
     // Multer may receive filename in wrong encoding, so we need to decode it properly
@@ -257,7 +213,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
         fileName = buffer.toString('utf8');
       }
     } catch (error) {
-      console.warn('Error fixing filename encoding:', error);
+      log.warn('Error fixing filename encoding:', error);
       // If decoding fails, use original filename
     }
 
@@ -278,7 +234,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
         // We'll exclude the new document ID after creation, but for now archive all
         await Document.archiveByEmployeeAndType(parseInt(employee_id), document_type);
       } catch (archiveError) {
-        console.error('Error archiving old documents:', archiveError);
+        log.error('Error archiving old documents:', archiveError);
         // Continue with upload even if archiving fails
       }
     }
@@ -303,7 +259,7 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       const { updateEmployeeCompletionStatus } = await import('../utils/employeeDataCompletion.js');
       await updateEmployeeCompletionStatus(parseInt(employee_id));
     } catch (completionError) {
-      console.error('Error updating completion status after document upload:', completionError);
+      log.error('Error updating completion status after document upload:', completionError);
       // Don't fail the upload if completion status update fails
     }
 
@@ -313,12 +269,8 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       data: document
     });
   } catch (error) {
-    console.error('Error uploading document:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل رفع المستند',
-      error: error.message
-    });
+    log.error('Error uploading document:', error);
+    handleRouteError(error, req, res, 'فشل رفع المستند');
   }
 });
 
@@ -381,15 +333,15 @@ router.get('/:id/download', async (req, res) => {
                 const pathname = new URL(cleanUrl).pathname.replace(/^\//, '');
                 const newBlobUrl = await copyBlob(fixedUrl, pathname);
                 await Document.update(document.id, { file_path: newBlobUrl });
-                console.log(`Auto-fixed: copied blob to clean path for document ${document.id}`);
+                log.info(`Auto-fixed: copied blob to clean path for document ${document.id}`);
               }
             } else {
               // fixedUrl is the clean path (double extension was removed)
               await Document.update(document.id, { file_path: fixedUrl });
-              console.log(`Auto-fixed double-extension URL for document ${document.id}`);
+              log.info(`Auto-fixed double-extension URL for document ${document.id}`);
             }
           } catch (updateErr) {
-            console.warn(`Could not auto-fix URL for document ${document.id}:`, updateErr.message);
+            log.warn(`Could not auto-fix URL for document ${document.id}:`, updateErr.message);
           }
         }
 
@@ -397,7 +349,7 @@ router.get('/:id/download', async (req, res) => {
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(document.file_name || 'document')}"`);
         return res.send(buffer);
       } catch (blobError) {
-        console.error(`Blob fetch failed for document ${document.id}:`, blobError.message);
+        log.error(`Blob fetch failed for document ${document.id}:`, blobError.message);
         return res.status(404).json({
           success: false,
           message: 'الملف غير متوفر في التخزين السحابي. قد يحتاج هذا الملف إلى إعادة الرفع.',
@@ -447,12 +399,8 @@ router.get('/:id/download', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${document.file_name}"`);
     res.sendFile(path.resolve(filePath));
   } catch (error) {
-    console.error('Error downloading document:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل تحميل المستند',
-      error: error.message
-    });
+    log.error('Error downloading document:', error);
+    handleRouteError(error, req, res, 'فشل تحميل المستند');
   }
 });
 
@@ -498,16 +446,16 @@ router.get('/:id/preview', async (req, res) => {
           if (fixedUrl) {
             try {
               await Document.update(document.id, { file_path: fixedUrl });
-              console.log(`Auto-fixed preview URL for document ${document.id}`);
+              log.info(`Auto-fixed preview URL for document ${document.id}`);
             } catch (updateErr) {
-              console.warn(`Could not update fixed URL for document ${document.id}:`, updateErr.message);
+              log.warn(`Could not update fixed URL for document ${document.id}:`, updateErr.message);
             }
           }
 
           res.setHeader('Content-Type', document.mime_type || contentType);
           return res.send(buffer);
         } catch (fetchErr) {
-          console.error(`Preview fetch failed for document ${document.id}:`, fetchErr.message);
+          log.error(`Preview fetch failed for document ${document.id}:`, fetchErr.message);
           return res.status(404).json({
             success: false,
             message: 'الملف غير متوفر في التخزين السحابي. قد يحتاج هذا الملف إلى إعادة الرفع.',
@@ -570,12 +518,8 @@ router.get('/:id/preview', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting document preview:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل الحصول على معاينة المستند',
-      error: error.message
-    });
+    log.error('Error getting document preview:', error);
+    handleRouteError(error, req, res, 'فشل الحصول على معاينة المستند');
   }
 });
 
@@ -614,12 +558,8 @@ router.get('/:id', async (req, res) => {
 
     res.json({ success: true, data: document });
   } catch (error) {
-    console.error('Error fetching document:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب المستند',
-      error: error.message
-    });
+    log.error('Error fetching document:', error);
+    handleRouteError(error, req, res, 'فشل جلب المستند');
   }
 });
 
@@ -665,12 +605,8 @@ router.put('/:id', async (req, res) => {
       data: updatedDocument
     });
   } catch (error) {
-    console.error('Error updating document:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل تحديث المستند',
-      error: error.message
-    });
+    log.error('Error updating document:', error);
+    handleRouteError(error, req, res, 'فشل تحديث المستند');
   }
 });
 
@@ -708,10 +644,10 @@ router.post('/:id/verify', async (req, res) => {
         if (user && user.id) {
           verifiedByUserId = req.user.id;
         } else {
-          console.warn(`User with ID ${req.user.id} not found in database, setting verified_by to null`);
+          log.warn(`User with ID ${req.user.id} not found in database, setting verified_by to null`);
         }
       } catch (error) {
-        console.error('Error verifying user:', error);
+        log.error('Error verifying user:', error);
       }
     }
 
@@ -723,12 +659,8 @@ router.post('/:id/verify', async (req, res) => {
       data: verifiedDocument
     });
   } catch (error) {
-    console.error('Error verifying document:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to verify document',
-      error: error.message
-    });
+    log.error('Error verifying document:', error);
+    handleRouteError(error, req, res, 'Failed to verify document');
   }
 });
 
@@ -787,7 +719,7 @@ router.delete('/:id', async (req, res) => {
       const { updateEmployeeCompletionStatus } = await import('../utils/employeeDataCompletion.js');
       await updateEmployeeCompletionStatus(document.employee_id);
     } catch (completionError) {
-      console.error('Error updating completion status after document deletion:', completionError);
+      log.error('Error updating completion status after document deletion:', completionError);
       // Don't fail the deletion if completion status update fails
     }
 
@@ -797,12 +729,8 @@ router.delete('/:id', async (req, res) => {
       data: deletedDocument
     });
   } catch (error) {
-    console.error('Error deleting document:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete document',
-      error: error.message
-    });
+    log.error('Error deleting document:', error);
+    handleRouteError(error, req, res, 'Failed to delete document');
   }
 });
 

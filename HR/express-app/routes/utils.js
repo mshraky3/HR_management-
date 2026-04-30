@@ -6,6 +6,8 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { validateDate } from '../utils/unifiedDateValidator.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -84,19 +86,8 @@ router.post('/convert-date', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error in date conversion:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to convert date',
-      error: error.message,
-      data: {
-        valid: false,
-        errors: [`Server error: ${error.message}`],
-        warnings: [],
-        hijri: null,
-        gregorian: null
-      }
-    });
+    log.error('Error in date conversion:', error);
+    return handleRouteError(error, req, res, 'Failed to convert date');
   }
 });
 

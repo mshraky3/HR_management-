@@ -11,6 +11,8 @@ import { Notification } from '../models/Notification.js';
 import { sendNotificationEmail } from '../utils/emailService.js';
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
+import { getScopedBranchFilter } from '../utils/policyScope.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
 
 const router = express.Router();
 
@@ -56,14 +58,14 @@ router.use(authenticate);
  */
 router.get('/summary', requireManager, async (req, res) => {
     try {
-        const branchId = req.user.role === 'branch_manager' ? req.user.branch_id : (req.query.branch_id ? parseInt(req.query.branch_id) : undefined);
+        const branchId = getScopedBranchFilter(req, { allowMultiple: false }) ?? undefined;
 
         const summary = await getExpirySummary({ branchId });
 
         res.json({ success: true, data: summary });
     } catch (error) {
         log.error('Error fetching expiry summary', { error: error.message });
-        res.status(500).json({ success: false, message: 'فشل جلب ملخص التواريخ المنتهية' });
+        handleRouteError(error, req, res, 'فشل جلب ملخص التواريخ المنتهية');
     }
 });
 
@@ -74,9 +76,7 @@ router.get('/summary', requireManager, async (req, res) => {
  */
 router.get('/list', requireManager, async (req, res) => {
     try {
-        const branchId = req.user.role === 'branch_manager'
-            ? req.user.branch_id
-            : (req.query.branch_id ? parseInt(req.query.branch_id) : undefined);
+        const branchId = getScopedBranchFilter(req, { allowMultiple: false }) ?? undefined;
 
         const expiryType = req.query.expiry_type || undefined;
         const statusBucket = req.query.status_bucket || undefined;
@@ -107,7 +107,7 @@ router.get('/list', requireManager, async (req, res) => {
         });
     } catch (error) {
         log.error('Error fetching expiry list', { error: error.message });
-        res.status(500).json({ success: false, message: 'فشل جلب قائمة التواريخ المنتهية' });
+        handleRouteError(error, req, res, 'فشل جلب قائمة التواريخ المنتهية');
     }
 });
 
@@ -117,7 +117,7 @@ router.get('/list', requireManager, async (req, res) => {
  */
 router.get('/export', requireMainManager, async (req, res) => {
     try {
-        const branchId = req.query.branch_id ? parseInt(req.query.branch_id) : undefined;
+        const branchId = getScopedBranchFilter(req, { allowMultiple: false }) ?? undefined;
         const expiryType = req.query.expiry_type || undefined;
         const statusBucket = req.query.status_bucket || undefined;
 
@@ -205,7 +205,7 @@ router.get('/export', requireMainManager, async (req, res) => {
         res.send(buffer);
     } catch (error) {
         log.error('Error exporting expiry report', { error: error.message });
-        res.status(500).json({ success: false, message: 'فشل تصدير التقرير' });
+        handleRouteError(error, req, res, 'فشل تصدير التقرير');
     }
 });
 
@@ -298,7 +298,7 @@ router.post('/notify-branches', requireMainManager, async (req, res) => {
         });
     } catch (error) {
         log.error('Error notifying branches about expiry', { error: error.message });
-        res.status(500).json({ success: false, message: 'فشل إرسال التنبيهات' });
+        handleRouteError(error, req, res, 'فشل إرسال التنبيهات');
     }
 });
 
@@ -441,7 +441,7 @@ router.post('/request-update-task', requireMainManager, async (req, res) => {
         });
     } catch (error) {
         log.error('Error creating expiry update task', { error: error.message });
-        res.status(500).json({ success: false, message: 'فشل إنشاء مهمة تحديث التاريخ' });
+        handleRouteError(error, req, res, 'فشل إنشاء مهمة تحديث التاريخ');
     }
 });
 
@@ -540,7 +540,7 @@ router.put('/update-date', requireManager, async (req, res) => {
         });
     } catch (error) {
         log.error('Error updating expiry date', { error: error.message });
-        res.status(500).json({ success: false, message: 'فشل تحديث التاريخ' });
+        handleRouteError(error, req, res, 'فشل تحديث التاريخ');
     }
 });
 

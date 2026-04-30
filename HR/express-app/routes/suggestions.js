@@ -10,6 +10,9 @@ import { requireMainManager, requireManager } from '../middleware/authorization.
 import { sendNotificationEmail } from '../utils/emailService.js';
 import { User } from '../models/User.js';
 import { Branch } from '../models/Branch.js';
+import { resolveBranchAccessFromScope } from '../utils/policyScope.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -30,12 +33,8 @@ router.get('/options', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error getting options:', error);
-        res.status(500).json({
-            success: false,
-            message: 'فشل في جلب الخيارات',
-            error: error.message
-        });
+        log.error('Error getting options:', error);
+        handleRouteError(error, req, res, 'فشل في جلب الخيارات');
     }
 });
 
@@ -62,12 +61,8 @@ router.get('/stats', requireMainManager, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error getting stats:', error);
-        res.status(500).json({
-            success: false,
-            message: 'فشل في جلب الإحصائيات',
-            error: error.message
-        });
+        log.error('Error getting stats:', error);
+        handleRouteError(error, req, res, 'فشل في جلب الإحصائيات');
     }
 });
 
@@ -103,12 +98,8 @@ router.get('/', requireManager, async (req, res) => {
             data: suggestions
         });
     } catch (error) {
-        console.error('Error getting suggestions:', error);
-        res.status(500).json({
-            success: false,
-            message: 'فشل في جلب الاقتراحات',
-            error: error.message
-        });
+        log.error('Error getting suggestions:', error);
+        handleRouteError(error, req, res, 'فشل في جلب الاقتراحات');
     }
 });
 
@@ -147,12 +138,8 @@ router.get('/:id', requireManager, async (req, res) => {
             data: suggestion
         });
     } catch (error) {
-        console.error('Error getting suggestion:', error);
-        res.status(500).json({
-            success: false,
-            message: 'فشل في جلب الاقتراح',
-            error: error.message
-        });
+        log.error('Error getting suggestion:', error);
+        handleRouteError(error, req, res, 'فشل في جلب الاقتراح');
     }
 });
 
@@ -183,17 +170,15 @@ router.post('/', requireManager, async (req, res) => {
         }
 
         // Get branch_id from user (branch managers) or require it for main managers
-        let branch_id;
-        if (req.user.role === 'branch_manager') {
-            branch_id = req.user.branch_id;
-        } else if (req.body.branch_id) {
-            branch_id = parseInt(req.body.branch_id);
-        } else {
+        const requestedBranchId = req.user.role === 'branch_manager' ? req.user.branch_id : req.body.branch_id; // policy-scope:allow-direct
+        const branchAccess = resolveBranchAccessFromScope(req.scope, requestedBranchId);
+        if (!branchAccess.allowed) {
             return res.status(400).json({
                 success: false,
                 message: 'معرف الفرع مطلوب'
             });
         }
+        const branch_id = branchAccess.effectiveBranchId;
 
         const suggestion = await Suggestion.create({
             branch_id,
@@ -209,7 +194,7 @@ router.post('/', requireManager, async (req, res) => {
             const importanceLabel = Suggestion.getImportanceLevels()[importance_level || 'useful'];
             const mainManagerEmail = process.env.MAIN_MANAGER_EMAIL || 'Sharaksa@gmail.com';
 
-            console.log('Sending suggestion email', {
+            log.info('Sending suggestion email', {
                 to: mainManagerEmail,
                 branch: branchName,
                 importance: importanceLabel
@@ -229,9 +214,9 @@ router.post('/', requireManager, async (req, res) => {
                 }
             });
 
-            console.log('Suggestion email result', { emailResult });
+            log.info('Suggestion email result', { emailResult });
         } catch (emailError) {
-            console.error('Error sending suggestion notification email:', emailError);
+            log.error('Error sending suggestion notification email:', emailError);
             // Don't fail the request if email fails
         }
 
@@ -241,12 +226,8 @@ router.post('/', requireManager, async (req, res) => {
             data: suggestion
         });
     } catch (error) {
-        console.error('Error creating suggestion:', error);
-        res.status(500).json({
-            success: false,
-            message: 'فشل في إضافة الاقتراح',
-            error: error.message
-        });
+        log.error('Error creating suggestion:', error);
+        handleRouteError(error, req, res, 'فشل في إضافة الاقتراح');
     }
 });
 
@@ -343,7 +324,7 @@ router.put('/:id', requireManager, async (req, res) => {
                 });
             }
         } catch (emailError) {
-            console.error('Failed to send suggestion update email:', emailError);
+            log.error('Failed to send suggestion update email:', emailError);
         }
 
         res.json({
@@ -352,12 +333,8 @@ router.put('/:id', requireManager, async (req, res) => {
             data: suggestion
         });
     } catch (error) {
-        console.error('Error updating suggestion:', error);
-        res.status(500).json({
-            success: false,
-            message: 'فشل في تحديث الاقتراح',
-            error: error.message
-        });
+        log.error('Error updating suggestion:', error);
+        handleRouteError(error, req, res, 'فشل في تحديث الاقتراح');
     }
 });
 
@@ -398,12 +375,8 @@ router.delete('/:id', requireManager, async (req, res) => {
             message: 'تم حذف الاقتراح بنجاح'
         });
     } catch (error) {
-        console.error('Error deleting suggestion:', error);
-        res.status(500).json({
-            success: false,
-            message: 'فشل في حذف الاقتراح',
-            error: error.message
-        });
+        log.error('Error deleting suggestion:', error);
+        handleRouteError(error, req, res, 'فشل في حذف الاقتراح');
     }
 });
 

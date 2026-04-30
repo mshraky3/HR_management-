@@ -12,6 +12,7 @@ import {
   isBlobStorageConfigured as checkBlobStorageConfigured
 } from '../config/blobStorage.js';
 import { uploadToR2Mirror } from './dualStorage.js';
+import { log } from './logger.js';
 
 /**
  * Check if Blob Storage is properly configured
@@ -81,7 +82,7 @@ export async function uploadToBlob(fileBuffer, fileName, mimeType, employeeId, d
 
     // Validate URL length (database column is VARCHAR(500))
     if (blob.url && blob.url.length > 500) {
-      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+      log.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
     // Mirror to R2 (non-blocking — failure won't break upload)
@@ -89,7 +90,7 @@ export async function uploadToBlob(fileBuffer, fileName, mimeType, employeeId, d
 
     return { url: blob.url, r2Url };
   } catch (error) {
-    console.error('Error uploading to Blob:', error);
+    log.error('Error uploading to Blob:', { error: error.message });
 
     // Provide helpful error messages
     if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
@@ -141,14 +142,14 @@ export async function uploadBranchDocumentToBlob(fileBuffer, fileName, mimeType,
     });
 
     if (blob.url && blob.url.length > 500) {
-      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+      log.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
     const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
 
     return { url: blob.url, r2Url };
   } catch (error) {
-    console.error('Error uploading branch document to Blob:', error);
+    log.error('Error uploading branch document to Blob:', { error: error.message });
 
     // Provide helpful error messages
     if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
@@ -198,14 +199,14 @@ export async function uploadRequestAttachmentToBlob(fileBuffer, fileName, mimeTy
     });
 
     if (blob.url && blob.url.length > 500) {
-      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+      log.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
     const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
 
     return { url: blob.url, r2Url };
   } catch (error) {
-    console.error('Error uploading request attachment to Blob:', error);
+    log.error('Error uploading request attachment to Blob:', { error: error.message });
 
     // Provide helpful error messages
     if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
@@ -230,25 +231,25 @@ export async function deleteFromBlob(blobUrl) {
 
       const token = getBlobToken();
       if (!token) {
-        console.error('Error deleting from Blob: No blob token configured');
+        log.error('Error deleting from Blob: No blob token configured');
         return false;
       }
 
       try {
         await del(blobUrl, { token });
         if (process.env.LOG_BLOB_OPERATIONS === 'true') {
-          console.log(`Deleted blob: ${blobUrl.substring(0, 50)}...`);
+          log.info(`Deleted blob: ${blobUrl.substring(0, 50)}...`);
         }
         return true;
       } catch (error) {
-        console.error('Error deleting from Blob:', error.message);
+        log.error('Error deleting from Blob:', { error: error.message });
         return false;
       }
     }
     // If it's a local file path, return true (no action needed)
     return true;
   } catch (error) {
-    console.error('Error deleting from Blob:', error);
+    log.error('Error deleting from Blob:', { error: error.message });
     // Don't throw - deletion failures shouldn't break the app
     return false;
   }
@@ -306,7 +307,7 @@ export async function fetchFromBlob(blobUrl) {
 
     return { buffer, contentType };
   } catch (error) {
-    console.error('Error fetching from Blob:', error);
+    log.error('Error fetching from Blob:', { error: error.message });
     throw new Error(`Failed to fetch file from Blob: ${error.message}`);
   }
 }
@@ -350,14 +351,14 @@ export async function uploadNotificationAttachmentToBlob(fileBuffer, fileName, m
     });
 
     if (blob.url && blob.url.length > 500) {
-      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+      log.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
     const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
 
     return { url: blob.url, r2Url };
   } catch (error) {
-    console.error('Error uploading notification attachment to Blob:', error);
+    log.error('Error uploading notification attachment to Blob:', { error: error.message });
 
     // Provide helpful error messages
     if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
@@ -423,7 +424,7 @@ export async function copyBlob(sourceUrl, destinationPathname) {
     });
     return result.url;
   } catch (error) {
-    console.error('Error copying blob:', error);
+    log.error('Error copying blob:', { error: error.message });
     throw new Error(`Failed to copy blob: ${error.message}`);
   }
 }
@@ -549,14 +550,14 @@ export async function uploadBusRegistrationDocument(fileBuffer, fileName, mimeTy
     });
 
     if (blob.url && blob.url.length > 500) {
-      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+      log.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
     const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
 
     return { url: blob.url, r2Url };
   } catch (error) {
-    console.error('Error uploading bus registration document to Blob:', error);
+    log.error('Error uploading bus registration document to Blob:', { error: error.message });
 
     if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
       throw error;
@@ -602,14 +603,14 @@ export async function uploadDriverLicenseDocument(fileBuffer, fileName, mimeType
     });
 
     if (blob.url && blob.url.length > 500) {
-      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+      log.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
     const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
 
     return { url: blob.url, r2Url };
   } catch (error) {
-    console.error('Error uploading driver license document to Blob:', error);
+    log.error('Error uploading driver license document to Blob:', { error: error.message });
 
     if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
       throw error;
@@ -655,14 +656,14 @@ export async function uploadBusLeaseContractDocument(fileBuffer, fileName, mimeT
     });
 
     if (blob.url && blob.url.length > 500) {
-      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+      log.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
     const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
 
     return { url: blob.url, r2Url };
   } catch (error) {
-    console.error('Error uploading bus lease contract document to Blob:', error);
+    log.error('Error uploading bus lease contract document to Blob:', { error: error.message });
 
     if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
       throw error;
@@ -708,14 +709,14 @@ export async function uploadTreatmentPlanToBlob(fileBuffer, fileName, mimeType, 
     });
 
     if (blob.url && blob.url.length > 500) {
-      console.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
+      log.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
     const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
 
     return { url: blob.url, r2Url };
   } catch (error) {
-    console.error('Error uploading treatment plan to Blob:', error);
+    log.error('Error uploading treatment plan to Blob:', { error: error.message });
 
     if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
       throw error;

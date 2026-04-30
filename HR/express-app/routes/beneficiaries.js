@@ -11,7 +11,9 @@ import Beneficiary from '../models/Beneficiary.js';
 import { BusTransportation } from '../models/BusTransportation.js';
 import { BusStudent } from '../models/BusStudent.js';
 import sql from '../config/database.js';
-import log from '../utils/logger.js';
+import { log } from '../utils/logger.js';
+import { getScopedBranchFilter, getScopedTermFilter, resolveBranchAccessFromScope } from '../utils/policyScope.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
 
 const router = express.Router();
 
@@ -49,7 +51,7 @@ router.get('/', requireManager, async (req, res) => {
         res.json({ success: true, ...result });
     } catch (error) {
         log.error('Error fetching beneficiaries:', error);
-        res.status(500).json({ success: false, message: 'فشل في جلب بيانات المستفيدين' });
+        handleRouteError(error, req, res, 'فشل في جلب بيانات المستفيدين');
     }
 });
 
@@ -69,7 +71,7 @@ router.get('/stats', requireMainManager, async (req, res) => {
         res.json({ success: true, data: stats });
     } catch (error) {
         log.error('Error fetching beneficiary stats:', error);
-        res.status(500).json({ success: false, message: 'فشل في جلب الإحصائيات' });
+        handleRouteError(error, req, res, 'فشل في جلب الإحصائيات');
     }
 });
 
@@ -95,7 +97,7 @@ router.get('/stats/branch', async (req, res) => {
         res.json({ success: true, data: stats });
     } catch (error) {
         log.error('Error fetching branch beneficiary stats:', error);
-        res.status(500).json({ success: false, message: 'فشل في جلب إحصائيات الفرع' });
+        handleRouteError(error, req, res, 'فشل في جلب إحصائيات الفرع');
     }
 });
 
@@ -115,7 +117,7 @@ router.get('/submission-status', requireMainManager, async (req, res) => {
         res.json({ success: true, data: status });
     } catch (error) {
         log.error('Error fetching submission status:', error);
-        res.status(500).json({ success: false, message: 'فشل في جلب حالة الإدخال' });
+        handleRouteError(error, req, res, 'فشل في جلب حالة الإدخال');
     }
 });
 
@@ -129,7 +131,7 @@ router.get('/terms', requireMainManager, async (req, res) => {
         res.json({ success: true, data: terms });
     } catch (error) {
         log.error('Error fetching terms with data:', error);
-        res.status(500).json({ success: false, message: 'فشل في جلب الفصول' });
+        handleRouteError(error, req, res, 'فشل في جلب الفصول');
     }
 });
 
@@ -185,7 +187,7 @@ router.get('/active-term', async (req, res) => {
         res.json({ success: true, data: term });
     } catch (error) {
         log.error('Error fetching active term:', error);
-        res.status(500).json({ success: false, message: 'فشل في جلب الفصل النشط' });
+        handleRouteError(error, req, res, 'فشل في جلب الفصل النشط');
     }
 });
 
@@ -239,7 +241,7 @@ router.get('/branch-count', async (req, res) => {
         res.json({ success: true, data: { count: row.count, term: term } });
     } catch (error) {
         log.error('Error fetching branch beneficiary count:', error);
-        res.status(500).json({ success: false, message: 'فشل في جلب عدد المستفيدين' });
+        handleRouteError(error, req, res, 'فشل في جلب عدد المستفيدين');
     }
 });
 
@@ -358,7 +360,7 @@ router.get('/export', requireMainManager, async (req, res) => {
         res.send(buffer);
     } catch (error) {
         log.error('Error exporting beneficiaries:', error);
-        res.status(500).json({ success: false, message: 'فشل في تصدير البيانات' });
+        handleRouteError(error, req, res, 'فشل في تصدير البيانات');
     }
 });
 
@@ -382,7 +384,7 @@ router.get('/archive', requireMainManager, async (req, res) => {
         res.json({ success: true, ...result });
     } catch (error) {
         log.error('Error fetching archived beneficiaries:', error);
-        res.status(500).json({ success: false, message: 'فشل في جلب الأرشيف' });
+        handleRouteError(error, req, res, 'فشل في جلب الأرشيف');
     }
 });
 
@@ -448,7 +450,7 @@ router.post('/copy-from-term', requireManager, async (req, res) => {
         });
     } catch (error) {
         log.error('Error copying beneficiaries from term:', error);
-        res.status(500).json({ success: false, message: 'فشل في نسخ المستفيدين' });
+        handleRouteError(error, req, res, 'فشل في نسخ المستفيدين');
     }
 });
 
@@ -644,7 +646,7 @@ router.get('/staffing-requirements', requireMainManager, async (req, res) => {
         res.json({ success: true, data });
     } catch (error) {
         log.error('Error computing staffing requirements:', error);
-        res.status(500).json({ success: false, message: 'فشل في حساب متطلبات التوظيف' });
+        handleRouteError(error, req, res, 'فشل في حساب متطلبات التوظيف');
     }
 });
 
@@ -655,7 +657,7 @@ router.get('/staffing-requirements', requireMainManager, async (req, res) => {
  */
 router.get('/bus-students', requireManager, async (req, res) => {
     try {
-        const branchId = req.user.role === 'branch_manager' ? req.user.branch_id : req.query.branch_id;
+        const branchId = getScopedBranchFilter(req, { allowMultiple: false });
         if (!branchId) {
             return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
         }
@@ -667,7 +669,7 @@ router.get('/bus-students', requireManager, async (req, res) => {
         }
 
         // Get active term for healthcare_center
-        let termId = req.query.term_id;
+        let termId = getScopedTermFilter(req);
         if (!termId) {
             const now = new Date();
             let [term] = await sql`
@@ -732,7 +734,7 @@ router.get('/bus-students', requireManager, async (req, res) => {
         res.json({ success: true, data: importable });
     } catch (error) {
         log.error('Error fetching importable bus students:', error);
-        res.status(500).json({ success: false, message: 'فشل في جلب بيانات طلاب الباص' });
+        handleRouteError(error, req, res, 'فشل في جلب بيانات طلاب الباص');
     }
 });
 
@@ -742,7 +744,7 @@ router.get('/bus-students', requireManager, async (req, res) => {
  */
 router.get('/available-buses', requireManager, async (req, res) => {
     try {
-        const branchId = req.user.role === 'branch_manager' ? req.user.branch_id : req.query.branch_id;
+        const branchId = getScopedBranchFilter(req, { allowMultiple: false });
         if (!branchId) {
             return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
         }
@@ -753,7 +755,7 @@ router.get('/available-buses', requireManager, async (req, res) => {
             return res.status(400).json({ success: false, message: 'هذه الخدمة متاحة فقط لمراكز الرعاية الصحية' });
         }
 
-        let termId = req.query.term_id;
+        let termId = getScopedTermFilter(req);
         if (!termId) {
             const now = new Date();
             let [term] = await sql`
@@ -793,7 +795,7 @@ router.get('/available-buses', requireManager, async (req, res) => {
         res.json({ success: true, data: result });
     } catch (error) {
         log.error('Error fetching available buses:', error);
-        res.status(500).json({ success: false, message: 'فشل في جلب بيانات الباصات' });
+        handleRouteError(error, req, res, 'فشل في جلب بيانات الباصات');
     }
 });
 
@@ -887,7 +889,7 @@ router.post('/:id/assign-bus', requireManager, async (req, res) => {
         if (error.code === '23503') {
             return res.status(400).json({ success: false, message: 'الباص أو الفصل الدراسي غير موجود' });
         }
-        res.status(500).json({ success: false, message: 'فشل في تسجيل المستفيد في الباص' });
+        handleRouteError(error, req, res, 'فشل في تسجيل المستفيد في الباص');
     }
 });
 
@@ -910,7 +912,7 @@ router.get('/:id', async (req, res) => {
         res.json({ success: true, data: beneficiary });
     } catch (error) {
         log.error('Error fetching beneficiary:', error);
-        res.status(500).json({ success: false, message: 'فشل في جلب بيانات المستفيد' });
+        handleRouteError(error, req, res, 'فشل في جلب بيانات المستفيد');
     }
 });
 
@@ -934,10 +936,11 @@ router.post('/', requireManager, async (req, res) => {
         }
 
         // Determine branch_id
-        const branchId = req.user.role === 'branch_manager' ? req.user.branch_id : req.body.branch_id;
-        if (!branchId) {
+        const branchAccess = resolveBranchAccessFromScope(req.scope, req.body.branch_id); // policy-scope:allow-direct
+        if (!branchAccess.allowed) {
             return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
         }
+        const branchId = branchAccess.effectiveBranchId;
 
         // Verify branch is a healthcare center
         const [branch] = await sql`SELECT branch_type FROM branches WHERE id = ${branchId}`;
@@ -999,7 +1002,7 @@ router.post('/', requireManager, async (req, res) => {
         if (error.code === '23505') {
             return res.status(400).json({ success: false, message: 'السجل المدني مسجل بالفعل في هذا الفصل' });
         }
-        res.status(500).json({ success: false, message: 'فشل في إضافة المستفيد' });
+        handleRouteError(error, req, res, 'فشل في إضافة المستفيد');
     }
 });
 
@@ -1073,7 +1076,7 @@ router.put('/:id', requireManager, async (req, res) => {
         if (error.code === '23505') {
             return res.status(400).json({ success: false, message: 'السجل المدني مسجل بالفعل في هذا الفصل' });
         }
-        res.status(500).json({ success: false, message: 'فشل في تحديث بيانات المستفيد' });
+        handleRouteError(error, req, res, 'فشل في تحديث بيانات المستفيد');
     }
 });
 
@@ -1108,7 +1111,7 @@ router.delete('/:id', requireManager, async (req, res) => {
         res.json({ success: true, message: 'تم حذف المستفيد بنجاح' });
     } catch (error) {
         log.error('Error deleting beneficiary:', error);
-        res.status(500).json({ success: false, message: 'فشل في حذف المستفيد' });
+        handleRouteError(error, req, res, 'فشل في حذف المستفيد');
     }
 });
 
@@ -1139,7 +1142,7 @@ router.post('/archive/:termId', requireMainManager, async (req, res) => {
         });
     } catch (error) {
         log.error('Error archiving beneficiaries:', error);
-        res.status(500).json({ success: false, message: 'فشل في أرشفة البيانات' });
+        handleRouteError(error, req, res, 'فشل في أرشفة البيانات');
     }
 });
 

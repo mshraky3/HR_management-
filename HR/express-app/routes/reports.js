@@ -4,98 +4,17 @@
  */
 
 import express from 'express';
-import PdfPrinter from '@digicole/pdfmake-rtl';
 import ExcelJS from 'exceljs';
 import { authenticate } from '../middleware/auth.js';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { formatDate, gregorianToHijri as convertGregorianToHijri, formatHijriToString } from '../utils/dateConverter.js';
-// Note: fs is still used for reading font files, but not for saving report files
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Create pdfmake RTL printer with fonts
-// Check if Arabic font file exists, otherwise use Helvetica
-const fontsDir = path.join(__dirname, '..', 'fonts');
-// Use Amiri font
-const amiriDir = path.join(fontsDir, 'Amiri');
-const amiriRegular = path.join(amiriDir, 'Amiri-Regular.ttf');
-const amiriBold = path.join(amiriDir, 'Amiri-Bold.ttf');
-const amiriItalic = path.join(amiriDir, 'Amiri-Italic.ttf');
-const amiriBoldItalic = path.join(amiriDir, 'Amiri-BoldItalic.ttf');
-
-let arabicFontPath = null;
-
-// Check for Amiri font
-try {
-  if (fs.existsSync(amiriRegular)) {
-    arabicFontPath = amiriRegular;
-  }
-} catch (error) {
-  // On Vercel or if fonts are not accessible, will use fallback fonts
-  console.warn('Font files not accessible, will use fallback fonts:', error.message);
-}
-
-const hasArabicFont = arabicFontPath !== null;
-
-let fonts;
-if (hasArabicFont) {
-  // Use Amiri font
-  // Wrap fs.existsSync in try-catch for Vercel compatibility
-  const fontExists = (fontPath) => {
-    try {
-      return fs.existsSync(fontPath);
-    } catch {
-      return false;
-    }
-  };
-
-  const regular = amiriRegular;
-  const bold = fontExists(amiriBold) ? amiriBold : amiriRegular;
-  const italics = fontExists(amiriItalic) ? amiriItalic : amiriRegular;
-  const bolditalics = fontExists(amiriBoldItalic) ? amiriBoldItalic : (fontExists(amiriBold) ? amiriBold : amiriRegular);
-
-  fonts = {
-    Roboto: {
-      normal: regular,
-      bold: bold,
-      italics: italics,
-      bolditalics: bolditalics
-    },
-    Nillima: {
-      normal: regular,
-      bold: bold,
-      italics: italics,
-      bolditalics: bolditalics
-    }
-  };
-
-  console.log('Using Amiri font for PDF generation');
-} else {
-  // Fallback to Helvetica (limited Arabic support)
-  fonts = {
-    Roboto: {
-      normal: 'Helvetica',
-      bold: 'Helvetica-Bold',
-      italics: 'Helvetica-Oblique',
-      bolditalics: 'Helvetica-BoldOblique'
-    },
-    Nillima: {
-      normal: 'Helvetica',
-      bold: 'Helvetica-Bold',
-      italics: 'Helvetica-Oblique',
-      bolditalics: 'Helvetica-BoldOblique'
-    }
-  };
-}
-
-const printer = new PdfPrinter(fonts);
+import { getScopedBranchFilter } from '../utils/policyScope.js';
+import { printer } from '../utils/pdfFonts.js';
 
 import { Employee } from '../models/Employee.js';
 import { Branch } from '../models/Branch.js';
 import sql from '../config/database.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -659,7 +578,7 @@ router.post('/generate', async (req, res) => {
       branchIds = branch_ids.map(id => parseInt(id)).filter(id => !isNaN(id));
     } else {
       // Fallback to single branch_id for backward compatibility
-      const branchId = req.query.branch_id || req.body.branch_id;
+      const branchId = getScopedBranchFilter(req, { allowMultiple: false }) ?? req.body.branch_id; // policy-scope:allow-direct: POST body fallback for main_manager
       if (branchId) {
         branchIds = [parseInt(branchId)];
       }
@@ -729,7 +648,7 @@ router.post('/generate', async (req, res) => {
             documents: filteredDocuments || []
           };
         } catch (error) {
-          console.warn(`Failed to fetch documents for employee ${employee.id}:`, error);
+          log.warn(`Failed to fetch documents for employee ${employee.id}:`, error);
           // Return empty documents array if fetch fails
           return {
             employeeId: employee.id,
@@ -776,13 +695,9 @@ router.post('/generate', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error generating report:', error);
+    log.error('Error generating report:', error);
     if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: 'فشل إنشاء التقرير',
-        error: error.message
-      });
+      handleRouteError(error, req, res, 'فشل إنشاء التقرير');
     }
   }
 });
@@ -803,12 +718,8 @@ router.get('/preview/:filename', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error previewing report:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل عرض التقرير',
-      error: error.message
-    });
+    log.error('Error previewing report:', error);
+    handleRouteError(error, req, res, 'فشل عرض التقرير');
   }
 });
 

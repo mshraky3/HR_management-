@@ -4,7 +4,6 @@
  */
 
 import express from 'express';
-import PdfPrinter from '@digicole/pdfmake-rtl';
 import { authenticate } from '../middleware/auth.js';
 import { requireMainManager, requireManager } from '../middleware/authorization.js';
 import fs from 'fs';
@@ -13,89 +12,16 @@ import { fileURLToPath } from 'url';
 import { fetchBlobWithFallback } from '../utils/blobStorage.js';
 import { PDFDocument } from 'pdf-lib';
 import { formatDate, gregorianToHijri as convertGregorianToHijri, formatHijriToString } from '../utils/dateConverter.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Create pdfmake RTL printer with fonts (same as reports)
-// Note: Font files are included in Vercel deployment, but paths may differ
-// This code handles both local development and Vercel serverless environments
-const fontsDir = path.join(__dirname, '..', 'fonts');
-const amiriDir = path.join(fontsDir, 'Amiri');
-const amiriRegular = path.join(amiriDir, 'Amiri-Regular.ttf');
-const amiriBold = path.join(amiriDir, 'Amiri-Bold.ttf');
-const amiriItalic = path.join(amiriDir, 'Amiri-Italic.ttf');
-const amiriBoldItalic = path.join(amiriDir, 'Amiri-BoldItalic.ttf');
-let arabicFontPath = null;
-
-try {
-  if (fs.existsSync(amiriRegular)) {
-    arabicFontPath = amiriRegular;
-  }
-} catch (error) {
-  // On Vercel or if fonts are not accessible, will use fallback fonts
-  console.warn('Font files not accessible, will use fallback fonts:', error.message);
-}
-
-const hasArabicFont = arabicFontPath !== null;
-
-let fonts;
-if (hasArabicFont) {
-  // Use Amiri font
-  // Wrap fs.existsSync in try-catch for Vercel compatibility
-  const fontExists = (fontPath) => {
-    try {
-      return fs.existsSync(fontPath);
-    } catch {
-      return false;
-    }
-  };
-
-  const regular = amiriRegular;
-  const bold = fontExists(amiriBold) ? amiriBold : amiriRegular;
-  const italics = fontExists(amiriItalic) ? amiriItalic : amiriRegular;
-  const bolditalics = fontExists(amiriBoldItalic) ? amiriBoldItalic : (fontExists(amiriBold) ? amiriBold : amiriRegular);
-
-  fonts = {
-    Roboto: {
-      normal: regular,
-      bold: bold,
-      italics: italics,
-      bolditalics: bolditalics
-    },
-    Nillima: {
-      normal: regular,
-      bold: bold,
-      italics: italics,
-      bolditalics: bolditalics
-    }
-  };
-
-  // Using Amiri font for PDF generation
-} else {
-  // Fallback to Helvetica (limited Arabic support)
-  fonts = {
-    Roboto: {
-      normal: 'Helvetica',
-      bold: 'Helvetica-Bold',
-      italics: 'Helvetica-Oblique',
-      bolditalics: 'Helvetica-BoldOblique'
-    },
-    Nillima: {
-      normal: 'Helvetica',
-      bold: 'Helvetica-Bold',
-      italics: 'Helvetica-Oblique',
-      bolditalics: 'Helvetica-BoldOblique'
-    }
-  };
-}
-
-const printer = new PdfPrinter(fonts);
-
+import { printer } from '../utils/pdfFonts.js';
 import { Employee } from '../models/Employee.js';
 import { Document } from '../models/Document.js';
 import { Branch } from '../models/Branch.js';
 import sql from '../config/database.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
@@ -355,7 +281,7 @@ const mergePdfDocuments = async (mainPdfBuffer, documentFilesMap, documentsMap, 
             });
 
           } catch (error) {
-            console.error(`Error merging PDF document ${doc.id}:`, error);
+            log.error(`Error merging PDF document ${doc.id}:`, error);
             // Continue with other documents even if one fails
           }
         }
@@ -366,7 +292,7 @@ const mergePdfDocuments = async (mainPdfBuffer, documentFilesMap, documentsMap, 
     const mergedPdfBytes = await mainPdf.save();
     return Buffer.from(mergedPdfBytes);
   } catch (error) {
-    console.error('Error in mergePdfDocuments:', error);
+    log.error('Error in mergePdfDocuments:', error);
     throw error;
   }
 };
@@ -424,7 +350,7 @@ const loadDocumentFile = async (document) => {
       buffer: fileBuffer
     };
   } catch (error) {
-    console.error(`Error loading document file ${document.id}:`, error);
+    log.error(`Error loading document file ${document.id}:`, error);
     throw error;
   }
 };
@@ -464,7 +390,7 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
           const fileData = await loadDocumentFile(doc);
           documentFilesMap[doc.id] = fileData;
         } catch (error) {
-          console.error(`Failed to load document ${doc.id}:`, error.message);
+          log.error(`Failed to load document ${doc.id}:`, error.message);
           // Continue with other documents even if one fails
         }
       }
@@ -633,7 +559,7 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
                       });
                     }
                   } catch (error) {
-                    console.error(`Error embedding image for document ${doc.id}:`, error);
+                    log.error(`Error embedding image for document ${doc.id}:`, error);
                     try {
                       employeeContent.push({
                         image: docFileData.base64DataUri,
@@ -721,7 +647,7 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
                         });
                       }
                     } catch (error) {
-                      console.error(`Error embedding image for document ${doc.id}:`, error);
+                      log.error(`Error embedding image for document ${doc.id}:`, error);
                       try {
                         employeeContent.push({
                           image: docFileData.base64DataUri,
@@ -877,7 +803,7 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
                 finalPdf.addPage(page);
               });
             } catch (error) {
-              console.error(`Error merging PDF document ${doc.id}:`, error);
+              log.error(`Error merging PDF document ${doc.id}:`, error);
             }
           }
         }
@@ -912,12 +838,12 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
                     finalPdf.addPage(page);
                   });
                 } catch (error) {
-                  console.error(`Error merging PDF document ${doc.id}:`, error);
+                  log.error(`Error merging PDF document ${doc.id}:`, error);
                 }
               }
             }
           } catch (error) {
-            console.error(`Error creating PDF for employee ${employee.id}:`, error);
+            log.error(`Error creating PDF for employee ${employee.id}:`, error);
             // Continue with other employees even if one fails
           }
         }
@@ -926,7 +852,7 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
         const mergedPdfBytes = await finalPdf.save();
         return Buffer.from(mergedPdfBytes);
       } catch (error) {
-        console.error('Error in mergePdfDocuments:', error);
+        log.error('Error in mergePdfDocuments:', error);
         throw error;
       }
     };
@@ -937,7 +863,7 @@ export const generateEmployeeFilePDF = async (title, employees, selectedFields, 
         const finalPdfBuffer = await mergePdfDocuments();
         resolve(finalPdfBuffer);
       } catch (error) {
-        console.error('Error merging PDFs:', error);
+        log.error('Error merging PDFs:', error);
         reject(error);
       }
     });
@@ -1013,13 +939,9 @@ router.post('/generate-single/:employee_id', requireManager, async (req, res) =>
     res.send(pdfBuffer);
 
   } catch (error) {
-    console.error('Error generating employee file:', error);
+    log.error('Error generating employee file:', error);
     if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: 'فشل إنشاء الملف',
-        error: error.message
-      });
+      handleRouteError(error, req, res, 'فشل إنشاء الملف');
     }
   }
 });
@@ -1104,13 +1026,9 @@ router.post('/generate', requireMainManager, async (req, res) => {
     res.send(pdfBuffer);
 
   } catch (error) {
-    console.error('Error generating employee file:', error);
+    log.error('Error generating employee file:', error);
     if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: 'فشل إنشاء الملف',
-        error: error.message
-      });
+      handleRouteError(error, req, res, 'فشل إنشاء الملف');
     }
   }
 });

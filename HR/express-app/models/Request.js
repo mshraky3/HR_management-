@@ -4,6 +4,7 @@
  */
 
 import sql from '../config/database.js';
+import { log } from '../utils/logger.js';
 
 export const Request = {
   /**
@@ -27,7 +28,7 @@ export const Request = {
       `;
       return request || null;
     } catch (error) {
-      console.error('Error finding request by ID:', error);
+      log.error('Error finding request by ID:', { error: error.message });
       throw error;
     }
   },
@@ -72,7 +73,7 @@ export const Request = {
 
       return await query;
     } catch (error) {
-      console.error('Error finding requests:', error);
+      log.error('Error finding requests:', { error: error.message });
       throw error;
     }
   },
@@ -84,7 +85,7 @@ export const Request = {
     try {
       return await this.findAll({ ...filters, branch_id: branchId });
     } catch (error) {
-      console.error('Error finding requests by branch ID:', error);
+      log.error('Error finding requests by branch ID:', { error: error.message });
       throw error;
     }
   },
@@ -96,7 +97,7 @@ export const Request = {
     try {
       return await this.findAll({ ...filters, main_manager_id: mainManagerId });
     } catch (error) {
-      console.error('Error finding requests by main manager ID:', error);
+      log.error('Error finding requests by main manager ID:', { error: error.message });
       throw error;
     }
   },
@@ -120,7 +121,7 @@ export const Request = {
 
       return await this.findById(request.id);
     } catch (error) {
-      console.error('Error creating request:', error);
+      log.error('Error creating request:', { error: error.message });
       throw error;
     }
   },
@@ -177,7 +178,7 @@ export const Request = {
       const result = await sql.unsafe(query, values);
       return result[0] ? await this.findById(id) : null;
     } catch (error) {
-      console.error('Error updating request:', error);
+      log.error('Error updating request:', { error: error.message });
       throw error;
     }
   },
@@ -195,7 +196,7 @@ export const Request = {
 
       return request;
     } catch (error) {
-      console.error('Error deleting request:', error);
+      log.error('Error deleting request:', { error: error.message });
       throw error;
     }
   }

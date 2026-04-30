@@ -4,7 +4,7 @@
  */
 
 import sql from '../config/database.js';
-import log from '../utils/logger.js';
+import { log } from '../utils/logger.js';
 
 // Importance levels with Arabic labels
 const IMPORTANCE_LEVELS = {

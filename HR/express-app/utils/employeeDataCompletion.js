@@ -13,6 +13,7 @@
  */
 
 import sql from '../config/database.js';
+import { log } from '../utils/logger.js';
 
 /**
  * Check if employee data is complete
@@ -384,7 +385,7 @@ export async function updateEmployeeCompletionStatus(employeeId) {
       missingFields: completion.missingFields
     };
   } catch (error) {
-    console.error('Error updating employee completion status:', error);
+    log.error('Error updating employee completion status:', { error: error.message });
     throw error;
   }
 }

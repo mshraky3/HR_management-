@@ -7,7 +7,7 @@ import nodemailer from 'nodemailer';
 import { log } from './logger.js';
 
 // Create email transporter
-const emailTransporter = nodemailer.createTransport({
+export const emailTransporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
   secure: false,

@@ -24,86 +24,18 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import PdfPrinter from "@digicole/pdfmake-rtl";
 import { PDFDocument } from "pdf-lib";
 import {
   formatDate,
 } from "../utils/dateConverter.js";
+import { getScopedBranchFilter, resolveBranchAccessFromScope } from "../utils/policyScope.js";
+import { printer as certificatePrinter } from "../utils/pdfFonts.js";
+import { handleRouteError } from '../utils/routeErrorHandler.js';
 
 const router = express.Router();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Setup PDF fonts for certificate generation (similar to employee-file.js)
-const fontsDir = path.join(__dirname, '..', 'fonts');
-const amiriDir = path.join(fontsDir, 'Amiri');
-const amiriRegular = path.join(amiriDir, 'Amiri-Regular.ttf');
-const amiriBold = path.join(amiriDir, 'Amiri-Bold.ttf');
-const amiriItalic = path.join(amiriDir, 'Amiri-Italic.ttf');
-const amiriBoldItalic = path.join(amiriDir, 'Amiri-BoldItalic.ttf');
-let arabicFontPath = null;
-
-try {
-  if (fs.existsSync(amiriRegular)) {
-    arabicFontPath = amiriRegular;
-  }
-} catch (error) {
-  console.warn(
-    "Font files not accessible, will use fallback fonts:",
-    error.message,
-  );
-}
-
-const hasArabicFont = arabicFontPath !== null;
-
-let certificateFonts;
-if (hasArabicFont) {
-  const fontExists = (fontPath) => {
-    try {
-      return fs.existsSync(fontPath);
-    } catch {
-      return false;
-    }
-  };
-
-  const regular = amiriRegular;
-  const bold = fontExists(amiriBold) ? amiriBold : amiriRegular;
-  const italics = fontExists(amiriItalic) ? amiriItalic : amiriRegular;
-  const bolditalics = fontExists(amiriBoldItalic) ? amiriBoldItalic : (fontExists(amiriBold) ? amiriBold : amiriRegular);
-
-  certificateFonts = {
-    Roboto: {
-      normal: regular,
-      bold: bold,
-      italics: italics,
-      bolditalics: bolditalics,
-    },
-    Nillima: {
-      normal: regular,
-      bold: bold,
-      italics: italics,
-      bolditalics: bolditalics,
-    },
-  };
-} else {
-  certificateFonts = {
-    Roboto: {
-      normal: "Helvetica",
-      bold: "Helvetica-Bold",
-      italics: "Helvetica-Oblique",
-      bolditalics: "Helvetica-BoldOblique",
-    },
-    Nillima: {
-      normal: "Helvetica",
-      bold: "Helvetica-Bold",
-      italics: "Helvetica-Oblique",
-      bolditalics: "Helvetica-BoldOblique",
-    },
-  };
-}
-
-const certificatePrinter = new PdfPrinter(certificateFonts);
 
 /**
  * Calculate comprehensive employee statistics
@@ -359,11 +291,7 @@ router.get("/duplicates", requireMainManager, async (req, res) => {
     return res.json({ success: true, data: clusters });
   } catch (error) {
     log.error("Error listing duplicate employees", { error: error.message });
-    return res.status(500).json({
-      success: false,
-      message: "فشل جلب الموظفين المكررين",
-      error: error.message,
-    });
+    return handleRouteError(error, req, res, 'فشل جلب الموظفين المكررين');
   }
 });
 
@@ -393,11 +321,7 @@ router.post("/merge-duplicates", requireMainManager, async (req, res) => {
     });
   } catch (error) {
     log.error("Error merging duplicate employees", { error: error.message });
-    return res.status(500).json({
-      success: false,
-      message: "فشل دمج الموظفين المكررين",
-      error: error.message,
-    });
+    return handleRouteError(error, req, res, 'فشل دمج الموظفين المكررين');
   }
 });
 
@@ -441,11 +365,7 @@ router.get("/duplicate-documents", requireMainManager, async (req, res) => {
     return res.json({ success: true, data });
   } catch (error) {
     log.error("Error listing duplicate documents", { error: error.message });
-    return res.status(500).json({
-      success: false,
-      message: "فشل جلب المستندات المكررة",
-      error: error.message,
-    });
+    return handleRouteError(error, req, res, 'فشل جلب المستندات المكررة');
   }
 });
 
@@ -552,11 +472,7 @@ router.get(
       log.error("Error listing paper contract insurance docs", {
         error: error.message,
       });
-      return res.status(500).json({
-        success: false,
-        message: "فشل جلب المستندات غير المطلوبة",
-        error: error.message,
-      });
+      return handleRouteError(error, req, res, 'فشل جلب المستندات غير المطلوبة');
     }
   },
 );
@@ -597,11 +513,7 @@ router.post(
       log.error("Error deleting paper contract insurance docs", {
         error: error.message,
       });
-      return res.status(500).json({
-        success: false,
-        message: "فشل حذف المستندات",
-        error: error.message,
-      });
+      return handleRouteError(error, req, res, 'فشل حذف المستندات');
     }
   },
 );
@@ -613,12 +525,7 @@ const QUAL_DOC_LEVELS = ["دبلوم", "بكالوريوس", "ماجستير", "
 
 router.get("/missing-required-data", requireManager, async (req, res) => {
   try {
-    const branchFilter =
-      req.user.role === "branch_manager"
-        ? req.user.branch_id
-        : req.query.branch_id
-          ? parseInt(req.query.branch_id)
-          : null;
+    const branchFilter = getScopedBranchFilter(req, { allowMultiple: false });
     const rows = await sql`
       WITH qual_docs AS (
         SELECT employee_id, COUNT(*) FILTER (WHERE document_type = 'primary_qualification' AND is_active = true) AS qual_count
@@ -666,11 +573,7 @@ router.get("/missing-required-data", requireManager, async (req, res) => {
     });
   } catch (error) {
     log.error("Error fetching missing required data", { error: error.message });
-    return res.status(500).json({
-      success: false,
-      message: "فشل جلب البيانات الناقصة",
-      error: error.message,
-    });
+    return handleRouteError(error, req, res, 'فشل جلب البيانات الناقصة');
   }
 });
 
@@ -780,11 +683,7 @@ router.post(
       return res.json({ success: true, message: "تم حفظ البيانات الناقصة" });
     } catch (error) {
       log.error("Error saving missing required data", { error: error.message });
-      return res.status(500).json({
-        success: false,
-        message: "فشل حفظ البيانات",
-        error: error.message,
-      });
+      return handleRouteError(error, req, res, 'فشل حفظ البيانات');
     }
   },
 );
@@ -802,27 +701,7 @@ router.get("/paginated", async (req, res) => {
     );
 
     // Handle branch_id
-    let branchId = null;
-    if (req.user.role === "branch_manager") {
-      branchId = req.user.branch_id;
-    } else if (req.query.branch_id) {
-      if (Array.isArray(req.query.branch_id)) {
-        branchId = req.query.branch_id
-          .map((id) => parseInt(id))
-          .filter((id) => !isNaN(id));
-      } else if (
-        typeof req.query.branch_id === "string" &&
-        req.query.branch_id.includes(",")
-      ) {
-        branchId = req.query.branch_id
-          .split(",")
-          .map((id) => parseInt(id.trim()))
-          .filter((id) => !isNaN(id));
-      } else {
-        branchId = parseInt(req.query.branch_id);
-        if (isNaN(branchId)) branchId = null;
-      }
-    }
+    const branchId = getScopedBranchFilter(req, { allowMultiple: true });
 
     const filters = {
       branch_id: branchId,
@@ -842,11 +721,7 @@ router.get("/paginated", async (req, res) => {
     });
   } catch (error) {
     log.error("Error fetching paginated employees", { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: "فشل جلب الموظفين",
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل جلب الموظفين');
   }
 });
 
@@ -858,9 +733,10 @@ router.get("/paginated", async (req, res) => {
 router.get("/statistics", async (req, res) => {
   try {
     // Build cache key from query params and user context
-    const cacheKeyParts = ['stats', req.user.role, req.user.branch_id || 'all'];
-    if (req.query.branch_id) {
-      cacheKeyParts.push(Array.isArray(req.query.branch_id) ? req.query.branch_id.sort().join(',') : req.query.branch_id);
+    const scopedBranch = getScopedBranchFilter(req, { allowMultiple: true });
+    const cacheKeyParts = ['stats', req.user.role, req.scope?.branch?.primaryId || 'all'];
+    if (scopedBranch !== null && scopedBranch !== undefined) {
+      cacheKeyParts.push(Array.isArray(scopedBranch) ? [...scopedBranch].sort().join(',') : String(scopedBranch));
     }
     const cacheKey = cacheKeyParts.join(':');
 
@@ -870,37 +746,12 @@ router.get("/statistics", async (req, res) => {
       return res.json(cachedStats);
     }
 
-    // Determine branch filter
-    let branchId = null;
-    let branchIds = null;
-    if (req.user.role === "branch_manager") {
-      branchId = req.user.branch_id;
-    } else if (req.query.branch_id) {
-      // Support single branch or multiple branches for main managers
-      if (Array.isArray(req.query.branch_id)) {
-        branchIds = req.query.branch_id
-          .map((id) => parseInt(id))
-          .filter((id) => !isNaN(id));
-      } else if (
-        typeof req.query.branch_id === "string" &&
-        req.query.branch_id.includes(",")
-      ) {
-        branchIds = req.query.branch_id
-          .split(",")
-          .map((id) => parseInt(id.trim()))
-          .filter((id) => !isNaN(id));
-      } else {
-        branchId = parseInt(req.query.branch_id);
-        if (isNaN(branchId)) branchId = null;
-      }
-    }
-
-    // Build branch filter for SQL - include active branch filter for main manager
-    const branchFilter = branchId
-      ? sql`AND e.branch_id = ${branchId}`
-      : branchIds && branchIds.length > 0
-        ? sql`AND e.branch_id = ANY(${sql(branchIds)})`
-        : sql`AND e.branch_id IN (SELECT id FROM branches WHERE is_active = true)`;
+    // Build branch filter for SQL using scope
+    const branchFilter = scopedBranch === null || scopedBranch === undefined
+      ? sql`AND e.branch_id IN (SELECT id FROM branches WHERE is_active = true)`
+      : Array.isArray(scopedBranch)
+        ? sql`AND e.branch_id = ANY(${sql(scopedBranch)})`
+        : sql`AND e.branch_id = ${scopedBranch}`;
 
     // Helper: Total salary = computed total_salary column (sum of all allowances)
     // The total_salary column is automatically computed by the database
@@ -1089,7 +940,7 @@ router.get("/statistics", async (req, res) => {
 
     // Branch distribution (only if main manager)
     let branchDistributionQuery = null;
-    if (!branchId && (!branchIds || branchIds.length === 0)) {
+    if (scopedBranch === null || scopedBranch === undefined) {
       branchDistributionQuery = sql`
         SELECT
           b.branch_name,
@@ -1177,7 +1028,7 @@ router.get("/statistics", async (req, res) => {
 
     // Salary by branch (only if main manager) - using computed total_salary column
     let salaryByBranchQuery = null;
-    if (!branchId && (!branchIds || branchIds.length === 0)) {
+    if (scopedBranch === null || scopedBranch === undefined) {
       salaryByBranchQuery = sql`
         SELECT
           b.branch_name,
@@ -1240,7 +1091,7 @@ router.get("/statistics", async (req, res) => {
 
     // Gender distribution by branch (only if main manager)
     let genderByBranchQuery = null;
-    if (!branchId && (!branchIds || branchIds.length === 0)) {
+    if (scopedBranch === null || scopedBranch === undefined) {
       genderByBranchQuery = sql`
         SELECT
           b.branch_name,
@@ -1259,7 +1110,7 @@ router.get("/statistics", async (req, res) => {
 
     // Top 10 highest paid employees with job title and branch (only if main manager) - using computed total_salary column
     let topPaidEmployeesQuery = null;
-    if (!branchId && (!branchIds || branchIds.length === 0)) {
+    if (scopedBranch === null || scopedBranch === undefined) {
       topPaidEmployeesQuery = sql`
         SELECT
           e.employee_id_number as employee_id,
@@ -1786,11 +1637,7 @@ router.get("/statistics", async (req, res) => {
     res.json(response);
   } catch (error) {
     log.error("Error fetching employee statistics", { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: "فشل جلب إحصائيات الموظفين",
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل جلب إحصائيات الموظفين');
   }
 });
 
@@ -2269,11 +2116,7 @@ router.post("/statistics/generate-pdf", async (req, res) => {
     pdfDoc.end();
   } catch (error) {
     log.error('Error generating statistics PDF', { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: 'فشل إنشاء التقرير',
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل إنشاء التقرير');
   }
 });
 
@@ -2285,30 +2128,7 @@ router.get("/", async (req, res) => {
       await import("../utils/employeeDataCompletion.js");
 
     // Handle branch_id - support single value or array
-    let branchId = null;
-    if (req.user.role === "branch_manager") {
-      branchId = req.user.branch_id;
-    } else if (req.query.branch_id) {
-      // Check if it's an array (comma-separated values)
-      if (Array.isArray(req.query.branch_id)) {
-        branchId = req.query.branch_id
-          .map((id) => parseInt(id))
-          .filter((id) => !isNaN(id));
-      } else if (
-        typeof req.query.branch_id === "string" &&
-        req.query.branch_id.includes(",")
-      ) {
-        // Comma-separated string
-        branchId = req.query.branch_id
-          .split(",")
-          .map((id) => parseInt(id.trim()))
-          .filter((id) => !isNaN(id));
-      } else {
-        // Single value
-        branchId = parseInt(req.query.branch_id);
-        if (isNaN(branchId)) branchId = null;
-      }
-    }
+    const branchId = getScopedBranchFilter(req, { allowMultiple: true });
 
     // Helper to parse array filters from query params
     const parseArrayFilter = (value) => {
@@ -2359,11 +2179,7 @@ router.get("/", async (req, res) => {
     // or POST /api/employees/:id/update-completion-status for single employee updates.
     res.json({ success: true, data: employees });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "فشل جلب الموظفين",
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل جلب الموظفين');
   }
 });
 
@@ -2378,11 +2194,7 @@ router.post("/:id/update-completion-status", async (req, res) => {
     res.json({ success: true, data: updatedEmployee });
   } catch (error) {
     log.error("Error updating completion status", { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: "فشل تحديث حالة الإكمال",
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل تحديث حالة الإكمال');
   }
 });
 
@@ -2425,11 +2237,7 @@ router.get("/:id/documents", async (req, res) => {
     );
     res.json({ success: true, data: documents });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "فشل جلب مستندات الموظف",
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل جلب مستندات الموظف');
   }
 });
 
@@ -2484,11 +2292,7 @@ router.get("/:id/missing-data", async (req, res) => {
     });
   } catch (error) {
     log.error("Error fetching missing data", { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: "فشل جلب البيانات المفقودة",
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل جلب البيانات المفقودة');
   }
 });
 
@@ -2531,11 +2335,7 @@ router.get("/:id", async (req, res) => {
 
     res.json({ success: true, data: employee });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "فشل جلب الموظف",
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل جلب الموظف');
   }
 });
 
@@ -2569,11 +2369,7 @@ router.post("/check-duplicate", async (req, res) => {
     });
   } catch (error) {
     log.error("Error checking for duplicates", { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: "فشل التحقق من التكرار",
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل التحقق من التكرار');
   }
 });
 
@@ -2592,11 +2388,10 @@ router.post("/link-to-branch", async (req, res) => {
     }
 
     // Determine the branch to link to
-    let targetBranchId = req.body.branch_id ? parseInt(req.body.branch_id) : null;
-
-    // For branch managers, force to their branch
-    if (req.user.role === "branch_manager") {
-      targetBranchId = parseInt(req.user.branch_id);
+    let targetBranchId = getScopedBranchFilter(req, { allowMultiple: false });
+    if (!targetBranchId && req.body.branch_id) { // policy-scope:allow-direct
+      const ba = resolveBranchAccessFromScope(req.scope, parseInt(req.body.branch_id)); // policy-scope:allow-direct
+      if (ba.allowed) targetBranchId = ba.effectiveBranchId;
     }
 
     if (!targetBranchId) {
@@ -2660,11 +2455,7 @@ router.post("/link-to-branch", async (req, res) => {
 
   } catch (error) {
     log.error("Error linking employee to branch", { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: "فشل ربط الموظف بالفرع",
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل ربط الموظف بالفرع');
   }
 });
 
@@ -2700,23 +2491,23 @@ router.post(
     },
   }),
   async (req, res) => {
-    console.log("========================================");
-    console.log("[EMPLOYEE CREATE] Starting employee creation");
-    console.log("[EMPLOYEE CREATE] User:", {
+    log.info("========================================");
+    log.info("[EMPLOYEE CREATE] Starting employee creation");
+    log.info("[EMPLOYEE CREATE] User:", {
       id: req.user.id,
       role: req.user.role,
       branch_id: req.user.branch_id,
     });
-    console.log("[EMPLOYEE CREATE] Request body keys:", Object.keys(req.body));
-    console.log(
+    log.info("[EMPLOYEE CREATE] Request body keys:", Object.keys(req.body));
+    log.info(
       "[EMPLOYEE CREATE] Employee ID/Residency:",
       req.body.id_or_residency_number,
     );
-    console.log(
+    log.info(
       "[EMPLOYEE CREATE] Name:",
       `${req.body.first_name} ${req.body.second_name} ${req.body.third_name} ${req.body.fourth_name}`,
     );
-    console.log("[EMPLOYEE CREATE] Branch ID from body:", req.body.branch_id);
+    log.info("[EMPLOYEE CREATE] Branch ID from body:", req.body.branch_id); // policy-scope:allow-direct
 
     try {
       const { Employee } = await import("../models/Employee.js");
@@ -2724,35 +2515,27 @@ router.post(
         await import("../utils/employeeDataCompletion.js");
       const { isSaudi } = await import("../utils/employeeHelpers.js");
 
-      console.log("[EMPLOYEE CREATE] Imports loaded successfully");
+      log.info("[EMPLOYEE CREATE] Imports loaded successfully");
 
       // Date validation is handled by validateDateFields middleware
-      console.log("[EMPLOYEE CREATE] Date validation passed");
+      log.info("[EMPLOYEE CREATE] Date validation passed");
 
-      // For branch managers, force branch_id to their branch (prevent manipulation)
-      if (req.user.role === "branch_manager") {
-        console.log(
-          "[EMPLOYEE CREATE] Branch manager detected - checking branch access",
-        );
-        if (req.body.branch_id && req.body.branch_id !== req.user.branch_id) {
-          console.log(
-            "[EMPLOYEE CREATE] ERROR: Branch manager trying to add employee to different branch",
-          );
+      // Enforce branch access via scope
+      {
+        const _branchId = req.body.branch_id; // policy-scope:allow-direct
+        const branchAccess = resolveBranchAccessFromScope(req.scope, _branchId);
+        if (!branchAccess.allowed) {
           return res.status(403).json({
             success: false,
             message: "You can only add employees to your own branch",
           });
         }
-        // Force branch_id to their branch
-        req.body.branch_id = req.user.branch_id;
-        console.log(
-          "[EMPLOYEE CREATE] Branch ID forced to:",
-          req.body.branch_id,
-        );
+        req.body.branch_id = branchAccess.effectiveBranchId; // policy-scope:allow-direct
+        log.info("[EMPLOYEE CREATE] Branch ID resolved to:", req.body.branch_id); // policy-scope:allow-direct
       }
 
       // Date normalization is handled by validateDateFields middleware
-      console.log("[EMPLOYEE CREATE] Starting field length validation");
+      log.info("[EMPLOYEE CREATE] Starting field length validation");
 
       // Validate field lengths before insertion
       const fieldLengths = {
@@ -2780,7 +2563,7 @@ router.post(
           typeof req.body[field] === "string" &&
           req.body[field].length > maxLength
         ) {
-          console.log(
+          log.info(
             "[EMPLOYEE CREATE] ERROR: Field length validation failed:",
             field,
             "length:",
@@ -2794,13 +2577,13 @@ router.post(
           });
         }
       }
-      console.log("[EMPLOYEE CREATE] Field length validation passed");
+      log.info("[EMPLOYEE CREATE] Field length validation passed");
 
       // Set created_by to branch_id (never null)
       // For branch managers: use their branch_id
       // For main managers: use the employee's branch_id
-      let createdByBranchId = req.body.branch_id ? parseInt(req.body.branch_id) : null;
-      console.log(
+      let createdByBranchId = req.body.branch_id ? parseInt(req.body.branch_id) : null; // policy-scope:allow-direct
+      log.info(
         "[EMPLOYEE CREATE] Initial createdByBranchId:",
         createdByBranchId,
       );
@@ -2808,7 +2591,7 @@ router.post(
       // If branch manager, force to their branch_id
       if (req.user.role === "branch_manager" && req.user.branch_id) {
         createdByBranchId = parseInt(req.user.branch_id);
-        console.log(
+        log.info(
           "[EMPLOYEE CREATE] Updated createdByBranchId for branch manager:",
           createdByBranchId,
         );
@@ -2816,7 +2599,7 @@ router.post(
 
       // Ensure branch_id is set (should never be null at this point)
       if (!createdByBranchId) {
-        console.log(
+        log.info(
           "[EMPLOYEE CREATE] ERROR: createdByBranchId is null or undefined",
         );
         return res.status(400).json({
@@ -2824,7 +2607,20 @@ router.post(
           message: "لا يمكن تحديد الفرع. الرجاء المحاولة مرة أخرى.",
         });
       }
-      console.log(
+
+      // Guard: reject assignment to an inactive branch
+      {
+        const [branchCheck] = await sql`
+          SELECT is_active FROM branches WHERE id = ${createdByBranchId}
+        `;
+        if (!branchCheck || !branchCheck.is_active) {
+          return res.status(400).json({
+            success: false,
+            message: "لا يمكن إنشاء موظف في فرع غير نشط أو غير موجود.",
+          });
+        }
+      }
+      log.info(
         "[EMPLOYEE CREATE] Final createdByBranchId:",
         createdByBranchId,
       );
@@ -2832,7 +2628,7 @@ router.post(
       // ========== PROACTIVE DUPLICATE CHECK ==========
       // Check for existing employees BEFORE attempting to create
       // This prevents hitting database constraints and provides better UX
-      console.log("[EMPLOYEE CREATE] Checking for existing employees with same ID...");
+      log.info("[EMPLOYEE CREATE] Checking for existing employees with same ID...");
 
       const { Branch } = await import("../models/Branch.js");
 
@@ -2842,7 +2638,7 @@ router.post(
 
         if (existingByIdNumber && existingByIdNumber.length > 0) {
           const existingEmployee = existingByIdNumber[0];
-          console.log("[EMPLOYEE CREATE] Found existing employee with same ID:", existingEmployee.id);
+          log.info("[EMPLOYEE CREATE] Found existing employee with same ID:", existingEmployee.id);
 
           // Get all branches the employee is linked to
           let existingBranches = [];
@@ -2876,7 +2672,7 @@ router.post(
           const isAlreadyLinked = existingBranches.some(b => Number(b.id) === Number(createdByBranchId));
 
           if (isAlreadyLinked) {
-            console.log("[EMPLOYEE CREATE] Employee already exists in this branch");
+            log.info("[EMPLOYEE CREATE] Employee already exists in this branch");
             return res.status(409).json({
               success: false,
               message: `⚠️ الموظف "${existingEmployee.first_name} ${existingEmployee.second_name} ${existingEmployee.third_name} ${existingEmployee.fourth_name}" مسجل بالفعل في هذا الفرع.\n\nرقم الهوية/الإقامة: ${existingEmployee.id_or_residency_number}\nالرقم الوظيفي: ${existingEmployee.employee_id_number || 'غير محدد'}\n\nيمكنك البحث عن الموظف في قائمة الموظفين لتعديل بياناته.`,
@@ -2893,7 +2689,7 @@ router.post(
           } else {
             // Employee exists in other branch(es), offer to link
             const branchNames = existingBranches.map(b => b.name).join('، ');
-            console.log("[EMPLOYEE CREATE] Employee exists in other branches:", branchNames);
+            log.info("[EMPLOYEE CREATE] Employee exists in other branches:", branchNames);
             return res.status(409).json({
               success: false,
               message: `📋 الموظف "${existingEmployee.first_name} ${existingEmployee.second_name} ${existingEmployee.third_name} ${existingEmployee.fourth_name}" مسجل مسبقاً في فرع آخر.\n\n🏢 الفروع الحالية: ${branchNames}\n📝 رقم الهوية/الإقامة: ${existingEmployee.id_or_residency_number}\n🔢 الرقم الوظيفي: ${existingEmployee.employee_id_number || 'غير محدد'}\n\n❓ هل تريد ربط هذا الموظف بفرعك أيضاً؟`,
@@ -2916,7 +2712,7 @@ router.post(
         const existingByEmployeeId = await Employee.findByEmployeeId(req.body.employee_id_number);
 
         if (existingByEmployeeId) {
-          console.log("[EMPLOYEE CREATE] Found existing employee with same employee_id_number:", existingByEmployeeId.id);
+          log.info("[EMPLOYEE CREATE] Found existing employee with same employee_id_number:", existingByEmployeeId.id);
 
           // Get full employee info with branches
           const fullEmployee = await Employee.findById(existingByEmployeeId.id);
@@ -2969,12 +2765,12 @@ router.post(
         }
       }
 
-      console.log("[EMPLOYEE CREATE] No duplicates found, proceeding with creation");
+      log.info("[EMPLOYEE CREATE] No duplicates found, proceeding with creation");
       // ========== END PROACTIVE DUPLICATE CHECK ==========
 
       // Check if this is linking to an existing employee (via existing_employee_id)
       if (req.body.existing_employee_id && req.body.link_to_branch) {
-        console.log(
+        log.info(
           "[EMPLOYEE CREATE] Linking to existing employee:",
           req.body.existing_employee_id,
         );
@@ -2984,7 +2780,7 @@ router.post(
 
         if (linkBranchId) {
           try {
-            console.log(
+            log.info(
               "[EMPLOYEE CREATE] Attempting to link employee to branch",
             );
             await Employee.linkToBranch(
@@ -2995,7 +2791,7 @@ router.post(
             const updatedEmployee = await Employee.findById(existingEmployeeId);
             clearByPrefix(`dashboard:summary:${linkBranchId}`);
             clearByPrefix("branch-statistics");
-            console.log(
+            log.info(
               "[EMPLOYEE CREATE] Successfully linked existing employee to branch",
             );
             return res.status(200).json({
@@ -3004,7 +2800,7 @@ router.post(
               message: "تم ربط الموظف بالفرع الجديد بنجاح",
             });
           } catch (linkError) {
-            console.log(
+            log.info(
               "[EMPLOYEE CREATE] WARNING: Could not link employee to branch:",
               linkError.message,
             );
@@ -3016,10 +2812,10 @@ router.post(
         }
       }
 
-      console.log("[EMPLOYEE CREATE] Creating new employee in database...");
-      console.log("[EMPLOYEE CREATE] Employee data being sent to model:", {
+      log.info("[EMPLOYEE CREATE] Creating new employee in database...");
+      log.info("[EMPLOYEE CREATE] Employee data being sent to model:", {
         employee_id_number: req.body.employee_id_number,
-        branch_id: req.body.branch_id,
+        branch_id: req.body.branch_id, // policy-scope:allow-direct
         first_name: req.body.first_name,
         id_or_residency_number: req.body.id_or_residency_number,
         created_by: createdByBranchId,
@@ -3028,57 +2824,52 @@ router.post(
         contract_end_date_hijri: req.body.contract_end_date_hijri,
       });
 
-      const employee = await Employee.create({
-        ...req.body,
-        created_by: createdByBranchId,
-        updated_by: createdByBranchId, // For new records, updated_by = created_by
-        data_completion_status: "incomplete", // Default to incomplete
-      });
+      let employee;
+      await sql.begin(async (tx) => {
+        employee = await Employee.create(
+          {
+            ...req.body,
+            created_by: req.user.id,
+            updated_by: req.user.id, // For new records, updated_by = created_by
+            data_completion_status: "incomplete", // Default to incomplete
+          },
+          tx,
+        );
 
-      console.log(
-        "[EMPLOYEE CREATE] Employee created successfully with ID:",
-        employee.id,
-      );
+        log.info(
+          "[EMPLOYEE CREATE] Employee created successfully with ID:",
+          employee.id,
+        );
 
-      // Link employee to branch in employee_branches table
-      try {
-        console.log(
+        log.info(
           "[EMPLOYEE CREATE] Linking employee to branch in employee_branches table",
         );
         await Employee.linkToBranch(
           employee.id,
           createdByBranchId,
           req.user.id,
+          tx,
         );
-        console.log("[EMPLOYEE CREATE] Successfully linked employee to branch");
-      } catch (linkError) {
-        console.log(
-          "[EMPLOYEE CREATE] WARNING: Could not link employee to branch (table may not exist yet):",
-          linkError.message,
-        );
-        log.warn(
-          "Could not link employee to branch (table may not exist yet)",
-          { error: linkError.message },
-        );
-      }
+        log.info("[EMPLOYEE CREATE] Successfully linked employee to branch");
+      });
 
       // Check and update completion status
       try {
-        console.log("[EMPLOYEE CREATE] Updating employee completion status");
+        log.info("[EMPLOYEE CREATE] Updating employee completion status");
         await updateEmployeeCompletionStatus(employee.id);
         // Reload employee to get updated status
         const updatedEmployee = await Employee.findById(employee.id);
-        console.log("[EMPLOYEE CREATE] Employee completion status updated");
+        log.info("[EMPLOYEE CREATE] Employee completion status updated");
         // Invalidate caches for this branch and branch statistics
         clearByPrefix(`dashboard:summary:${updatedEmployee.branch_id}`);
         clearByPrefix("branch-statistics");
-        console.log(
+        log.info(
           "[EMPLOYEE CREATE] SUCCESS: Employee created and processed successfully",
         );
-        console.log("========================================");
+        log.info("========================================");
         res.status(201).json({ success: true, data: updatedEmployee });
       } catch (completionError) {
-        console.log(
+        log.info(
           "[EMPLOYEE CREATE] WARNING: Error checking completion status:",
           completionError.message,
         );
@@ -3089,16 +2880,16 @@ router.post(
         clearByPrefix(`dashboard:summary:${createdByBranchId}`);
         clearByPrefix("branch-statistics");
         // Still return success, but with original employee data
-        console.log(
+        log.info(
           "[EMPLOYEE CREATE] SUCCESS: Employee created (completion status check failed)",
         );
-        console.log("========================================");
+        log.info("========================================");
         res.status(201).json({ success: true, data: employee });
       }
     } catch (error) {
-      console.log("[EMPLOYEE CREATE] ERROR:", error.message);
-      console.log("[EMPLOYEE CREATE] Error stack:", error.stack);
-      console.log("========================================");
+      log.info("[EMPLOYEE CREATE] ERROR:", error.message);
+      log.info("[EMPLOYEE CREATE] Error stack:", error.stack);
+      log.info("========================================");
       log.error("Error creating employee", {
         error: error.message,
         stack: error.stack,
@@ -3158,7 +2949,7 @@ router.post(
             }
 
             // Check if already linked to the current branch
-            const currentBranchId = req.body.branch_id || req.user.branch_id;
+            const currentBranchId = req.body.branch_id || req.user.branch_id; // policy-scope:allow-direct
             const isAlreadyLinked = existingBranches.some(b => b.id === currentBranchId);
 
             if (isAlreadyLinked) {
@@ -3199,7 +2990,7 @@ router.post(
             }
           }
         } catch (lookupError) {
-          console.log("[EMPLOYEE CREATE] Error looking up existing employee:", lookupError.message);
+          log.info("[EMPLOYEE CREATE] Error looking up existing employee:", lookupError.message);
           // Continue with generic error message
         }
 
@@ -3219,11 +3010,7 @@ router.post(
         });
       }
 
-      res.status(500).json({
-        success: false,
-        message: "فشل إنشاء الموظف",
-        error: error.message,
-      });
+      handleRouteError(error, req, res, 'فشل إنشاء الموظف');
     }
   },
 );
@@ -3255,30 +3042,30 @@ router.put(
     },
   }),
   async (req, res) => {
-    console.log("========================================");
-    console.log("[EMPLOYEE UPDATE] Starting employee update");
-    console.log("[EMPLOYEE UPDATE] Employee ID:", req.params.id);
-    console.log("[EMPLOYEE UPDATE] User:", {
+    log.info("========================================");
+    log.info("[EMPLOYEE UPDATE] Starting employee update");
+    log.info("[EMPLOYEE UPDATE] Employee ID:", req.params.id);
+    log.info("[EMPLOYEE UPDATE] User:", {
       id: req.user.id,
       role: req.user.role,
       branch_id: req.user.branch_id,
     });
-    console.log("[EMPLOYEE UPDATE] Update fields:", Object.keys(req.body));
+    log.info("[EMPLOYEE UPDATE] Update fields:", Object.keys(req.body));
 
     try {
       const { Employee } = await import("../models/Employee.js");
 
       // Check if employee exists and user has access
-      console.log("[EMPLOYEE UPDATE] Checking if employee exists...");
+      log.info("[EMPLOYEE UPDATE] Checking if employee exists...");
       const existingEmployee = await Employee.findById(parseInt(req.params.id));
       if (!existingEmployee) {
-        console.log("[EMPLOYEE UPDATE] ERROR: Employee not found");
+        log.info("[EMPLOYEE UPDATE] ERROR: Employee not found");
         return res.status(404).json({
           success: false,
           message: "الموظف غير موجود",
         });
       }
-      console.log(
+      log.info(
         "[EMPLOYEE UPDATE] Employee found:",
         existingEmployee.id,
         existingEmployee.branch_id,
@@ -3288,7 +3075,7 @@ router.put(
         req.user.role === "branch_manager" &&
         !employeeHasBranchAccess(existingEmployee, req.user.branch_id)
       ) {
-        console.log(
+        log.info(
           "[EMPLOYEE UPDATE] ERROR: Branch manager trying to update employee from different branch",
         );
         return res.status(403).json({
@@ -3297,67 +3084,53 @@ router.put(
         });
       }
 
-      // For branch managers, prevent changing branch_id (force it to their branch)
-      if (req.user.role === "branch_manager") {
-        if (req.body.branch_id && req.body.branch_id !== req.user.branch_id) {
+      // Enforce branch access via scope
+      {
+        const _branchId = req.body.branch_id; // policy-scope:allow-direct
+        const branchAccess = resolveBranchAccessFromScope(req.scope, _branchId);
+        if (_branchId && !branchAccess.allowed) {
           return res.status(403).json({
             success: false,
             message: "لا يمكنك تغيير فرع الموظف",
           });
         }
-        req.body.branch_id = req.user.branch_id;
-      }
-
-      // Set updated_by to branch_id (never null)
-      // For branch managers: use their branch_id
-      // For main managers: use the employee's branch_id (from existing employee or request)
-      let updatedByBranchId = req.body.branch_id || existingEmployee.branch_id;
-
-      // If branch manager, force to their branch_id
-      if (req.user.role === "branch_manager" && req.user.branch_id) {
-        updatedByBranchId = req.user.branch_id;
-      }
-
-      // Ensure branch_id is set (should never be null at this point)
-      if (!updatedByBranchId) {
-        return res.status(400).json({
-          success: false,
-          message: "لا يمكن تحديد الفرع. الرجاء المحاولة مرة أخرى.",
-        });
+        if (branchAccess.effectiveBranchId) {
+          req.body.branch_id = branchAccess.effectiveBranchId; // policy-scope:allow-direct
+        }
       }
 
       // Date normalization is handled by validateDateFields middleware
-      console.log("[EMPLOYEE UPDATE] Updated by branch ID:", updatedByBranchId);
-      console.log("[EMPLOYEE UPDATE] Calling Employee.update()...");
+      log.info("[EMPLOYEE UPDATE] Updated by user ID:", req.user.id);
+      log.info("[EMPLOYEE UPDATE] Calling Employee.update()...");
 
       const employee = await Employee.update(
         parseInt(req.params.id),
         req.body,
-        updatedByBranchId,
+        req.user.id,
       );
 
-      console.log(
+      log.info(
         "[EMPLOYEE UPDATE] Employee updated successfully:",
         employee.id,
       );
 
       // Check and update completion status after update
       try {
-        console.log("[EMPLOYEE UPDATE] Updating completion status...");
+        log.info("[EMPLOYEE UPDATE] Updating completion status...");
         const { updateEmployeeCompletionStatus } =
           await import("../utils/employeeDataCompletion.js");
         await updateEmployeeCompletionStatus(employee.id);
         // Reload employee to get updated status
         const updatedEmployee = await Employee.findById(employee.id);
-        console.log("[EMPLOYEE UPDATE] Completion status updated");
+        log.info("[EMPLOYEE UPDATE] Completion status updated");
         // Invalidate caches for this branch and branch statistics
         clearByPrefix(`dashboard:summary:${updatedEmployee.branch_id}`);
         clearByPrefix("branch-statistics");
-        console.log("[EMPLOYEE UPDATE] SUCCESS: Employee updated successfully");
-        console.log("========================================");
+        log.info("[EMPLOYEE UPDATE] SUCCESS: Employee updated successfully");
+        log.info("========================================");
         res.json({ success: true, data: updatedEmployee });
       } catch (completionError) {
-        console.log(
+        log.info(
           "[EMPLOYEE UPDATE] WARNING: Error checking completion status:",
           completionError.message,
         );
@@ -3366,25 +3139,21 @@ router.put(
         });
         // Invalidate caches for safety
         clearByPrefix(
-          `dashboard:summary:${req.body.branch_id || existingEmployee.branch_id}`,
+          `dashboard:summary:${req.body.branch_id || existingEmployee.branch_id}`, // policy-scope:allow-direct
         );
         clearByPrefix("branch-statistics");
         // Still return success, but with original employee data
-        console.log(
+        log.info(
           "[EMPLOYEE UPDATE] SUCCESS: Employee updated (completion status check failed)",
         );
-        console.log("========================================");
+        log.info("========================================");
         res.json({ success: true, data: employee });
       }
     } catch (error) {
-      console.log("[EMPLOYEE UPDATE] ERROR:", error.message);
-      console.log("[EMPLOYEE UPDATE] Error stack:", error.stack);
-      console.log("========================================");
-      res.status(500).json({
-        success: false,
-        message: "فشل تحديث الموظف",
-        error: error.message,
-      });
+      log.info("[EMPLOYEE UPDATE] ERROR:", error.message);
+      log.info("[EMPLOYEE UPDATE] Error stack:", error.stack);
+      log.info("========================================");
+      handleRouteError(error, req, res, 'فشل تحديث الموظف');
     }
   },
 );
@@ -3436,11 +3205,7 @@ router.delete("/:id", async (req, res) => {
     });
   } catch (error) {
     log.error("Error deleting employee", { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: "فشل إلغاء تفعيل الموظف",
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل إلغاء تفعيل الموظف');
   }
 });
 
@@ -3512,11 +3277,7 @@ router.put("/:id/status", async (req, res) => {
     });
   } catch (error) {
     log.error("Error updating employee status", { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: "فشل تحديث حالة الموظف",
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل تحديث حالة الموظف');
   }
 });
 
@@ -3647,11 +3408,7 @@ router.post("/:id/renew", async (req, res) => {
     });
   } catch (error) {
     log.error("Error renewing employee", { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: "فشل تجديد العقد",
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل تجديد العقد');
   }
 });
 
@@ -3727,11 +3484,7 @@ router.post("/:id/non-renewal", async (req, res) => {
     });
   } catch (error) {
     log.error("Error processing non-renewal", { error: error.message });
-    res.status(500).json({
-      success: false,
-      message: "فشل تحديد عدم التجديد",
-      error: error.message,
-    });
+    handleRouteError(error, req, res, 'فشل تحديد عدم التجديد');
   }
 });
 
@@ -3913,10 +3666,10 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
         try {
           backgroundImageBytes = fs.readFileSync(backgroundPngPath);
           usePngBackground = true;
-          console.log(`✓ Background PNG loaded from: ${backgroundPngPath}`);
+          log.info(`✓ Background PNG loaded from: ${backgroundPngPath}`);
           break;
         } catch (error) {
-          console.error(
+          log.error(
             `✗ Error reading PNG from ${backgroundPngPath}:`,
             error.message,
           );
@@ -3931,10 +3684,10 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
         if (fs.existsSync(backgroundPdfPath)) {
           try {
             backgroundPdfBytes = fs.readFileSync(backgroundPdfPath);
-            console.log(`✓ Background PDF loaded from: ${backgroundPdfPath}`);
+            log.info(`✓ Background PDF loaded from: ${backgroundPdfPath}`);
             break;
           } catch (error) {
-            console.error(
+            log.error(
               `✗ Error reading PDF from ${backgroundPdfPath}:`,
               error.message,
             );
@@ -3945,7 +3698,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
 
     // Log warning if assets are missing (but continue - PDF will still be generated)
     if (!backgroundImageBytes && !backgroundPdfBytes) {
-      console.warn(
+      log.warn(
         "⚠ Warning: No background image found. Certificate will be generated without background.",
       );
     }
@@ -4555,11 +4308,8 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
         certificateDocDefinition,
       );
     } catch (error) {
-      console.error("Error creating certificate PDF:", error);
-      return res.status(500).json({
-        message: "تعذر إنشاء ملف الشهادة، يرجى المحاولة لاحقًا",
-        details: error?.message || "pdfmake header/content issue",
-      });
+      log.error("Error creating certificate PDF:", error);
+      return handleRouteError(error, req, res, 'تعذر إنشاء ملف الشهادة، يرجى المحاولة لاحقًا');
     }
     const chunks = [];
 
@@ -4605,7 +4355,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
           // A4 size in points (595.28 x 841.89)
           bgPageSize = { width: 595.28, height: 841.89 };
         } catch (error) {
-          console.warn("Error embedding background PNG:", error.message);
+          log.warn("Error embedding background PNG:", error.message);
         }
       } else if (backgroundPdfBytes) {
         try {
@@ -4627,8 +4377,8 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
             );
           }
         } catch (error) {
-          console.warn("Error loading background PDF:", error.message);
-          console.error("Full error:", error);
+          log.warn("Error loading background PDF:", error.message);
+          log.error("Full error:", error);
         }
       }
 
@@ -4651,7 +4401,7 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
               height: height,
             });
           } catch (error) {
-            console.warn(
+            log.warn(
               "Error drawing background PNG on page:",
               error.message,
             );
@@ -4668,11 +4418,11 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
               yScale: height / bgPageSize.height,
             });
           } catch (error) {
-            console.warn(
+            log.warn(
               "Error drawing background PDF on page:",
               error.message,
             );
-            console.error("Full error:", error);
+            log.error("Full error:", error);
           }
         }
 
@@ -4694,8 +4444,8 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
             height: height,
           });
         } catch (error) {
-          console.warn("Error embedding content page:", error.message);
-          console.error("Full error:", error);
+          log.warn("Error embedding content page:", error.message);
+          log.error("Full error:", error);
         }
       }
 
@@ -4719,13 +4469,9 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
     res.send(Buffer.from(finalPdfBytes));
   } catch (error) {
     log.error("Error generating certificate", { error: error.message });
-    console.error("Certificate generation error:", error);
+    log.error("Certificate generation error:", error);
     if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: "فشل إنشاء الشهادة",
-        error: error.message,
-      });
+      handleRouteError(error, req, res, 'فشل إنشاء الشهادة');
     }
   }
 });
@@ -4787,7 +4533,7 @@ router.put("/:id/transfer", async (req, res) => {
     });
   } catch (error) {
     log.error("Error transferring employee", { error: error.message });
-    res.status(500).json({ success: false, message: 'فشل نقل الموظف', error: error.message });
+    handleRouteError(error, req, res, 'فشل نقل الموظف');
   }
 });
 
@@ -4810,7 +4556,7 @@ router.get("/:id/branches", async (req, res) => {
     });
   } catch (error) {
     log.error("Error getting employee branches", { error: error.message });
-    res.status(500).json({ success: false, message: 'فشل جلب فروع الموظف', error: error.message });
+    handleRouteError(error, req, res, 'فشل جلب فروع الموظف');
   }
 });
 
@@ -4824,7 +4570,7 @@ router.delete("/:id/branches/:branchId", async (req, res) => {
 
     const { Employee } = await import("../models/Employee.js");
     const employeeId = parseInt(req.params.id);
-    const branchId = parseInt(req.params.branchId);
+    const branchId = parseInt(req.params.branchId); // policy-scope:allow-direct
 
     const employee = await Employee.findById(employeeId);
     if (!employee) {

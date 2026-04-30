@@ -7,8 +7,11 @@ import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { requireMainManager } from '../middleware/authorization.js';
 import { validateRequired, validateEmail } from '../middleware/validation.js';
-import { UserBranchAssignment } from '../models/User.js';
+import { UserBranchAssignment, User } from '../models/User.js';
 import sql from '../config/database.js';
+import { resolveBranchAccessFromScope } from '../utils/policyScope.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -19,7 +22,6 @@ router.use(requireMainManager);
 // Get all users — supports filtering by role (main_manager or branch_operations_manager)
 router.get('/', async (req, res) => {
   try {
-    const { User } = await import('../models/User.js');
     const allowedRoles = ['main_manager', 'branch_operations_manager'];
     const role = req.query.role && allowedRoles.includes(req.query.role) ? req.query.role : null;
     const filters = {
@@ -31,11 +33,7 @@ router.get('/', async (req, res) => {
     const users = await User.findAll(filters);
     res.json({ success: true, data: users });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب المستخدمين',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل جلب المستخدمين');
   }
 });
 
@@ -43,7 +41,6 @@ router.get('/', async (req, res) => {
 // IMPORTANT: must be before /:id routes to avoid matching "branch-ops" as an id
 router.get('/branch-ops/list', async (req, res) => {
   try {
-    const { User } = await import('../models/User.js');
     const users = await User.findAll({ role: 'branch_operations_manager', is_active: true });
 
     const enriched = await Promise.all(users.map(async (u) => {
@@ -71,14 +68,13 @@ router.get('/branch-ops/list', async (req, res) => {
 
     res.json({ success: true, data: enriched });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to get branch ops accounts', error: error.message });
+    handleRouteError(error, req, res, 'Failed to get branch ops accounts');
   }
 });
 
 // Get user by ID
 router.get('/:id', async (req, res) => {
   try {
-    const { User } = await import('../models/User.js');
     const user = await User.findById(parseInt(req.params.id));
 
     if (!user) {
@@ -87,11 +83,7 @@ router.get('/:id', async (req, res) => {
 
     res.json({ success: true, data: user });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب المستخدم',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'فشل جلب المستخدم');
   }
 });
 
@@ -100,7 +92,6 @@ router.post('/',
   validateRequired(['username', 'password', 'full_name']),
   async (req, res) => {
     try {
-      const { User } = await import('../models/User.js');
       const allowedRoles = ['main_manager', 'branch_operations_manager'];
       const role = req.body.role && allowedRoles.includes(req.body.role) ? req.body.role : 'main_manager';
 
@@ -136,12 +127,8 @@ router.post('/',
       const user = await User.create(userData);
       res.status(201).json({ success: true, data: user });
     } catch (error) {
-      console.error('Error creating user:', error.message);
-      res.status(500).json({
-        success: false,
-        message: 'فشل إنشاء الحساب',
-        error: error.message
-      });
+      log.error('Error creating user:', error.message);
+      handleRouteError(error, req, res, 'فشل إنشاء الحساب');
     }
   }
 );
@@ -149,7 +136,6 @@ router.post('/',
 // Update user — supports main_manager and branch_operations_manager
 router.put('/:id', validateEmail, async (req, res) => {
   try {
-    const { User } = await import('../models/User.js');
     const allowedRoles = ['main_manager', 'branch_operations_manager'];
 
     const existingUser = await User.findById(parseInt(req.params.id));
@@ -186,18 +172,13 @@ router.put('/:id', validateEmail, async (req, res) => {
 
     res.json({ success: true, data: user });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update user',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'Failed to update user');
   }
 });
 
 // Soft delete user — supports main_manager and branch_operations_manager
 router.delete('/:id', async (req, res) => {
   try {
-    const { User } = await import('../models/User.js');
     const allowedRoles = ['main_manager', 'branch_operations_manager'];
 
     const existingUser = await User.findById(parseInt(req.params.id));
@@ -216,11 +197,7 @@ router.delete('/:id', async (req, res) => {
 
     res.json({ success: true, message: 'User deactivated successfully', data: user });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete user',
-      error: error.message
-    });
+    handleRouteError(error, req, res, 'Failed to delete user');
   }
 });
 
@@ -228,11 +205,11 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/assign-branch', async (req, res) => {
   try {
     const userId = parseInt(req.params.id);
-    const branchId = parseInt(req.body.branch_id);
+    const branchAccess = resolveBranchAccessFromScope(req.scope, req.body.branch_id); // policy-scope:allow-direct
+    const branchId = branchAccess.effectiveBranchId;
     if (!userId || !branchId) {
       return res.status(400).json({ success: false, message: 'user_id and branch_id required' });
     }
-    const { User } = await import('../models/User.js');
     const user = await User.findById(userId);
     if (!user || user.role !== 'branch_operations_manager') {
       return res.status(400).json({ success: false, message: 'User must be branch_operations_manager' });
@@ -240,7 +217,7 @@ router.post('/:id/assign-branch', async (req, res) => {
     const assignment = await UserBranchAssignment.assign(userId, branchId, req.user.id);
     res.json({ success: true, data: assignment });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to assign branch', error: error.message });
+    handleRouteError(error, req, res, 'Failed to assign branch');
   }
 });
 
@@ -248,11 +225,11 @@ router.post('/:id/assign-branch', async (req, res) => {
 router.post('/:id/unassign-branch', async (req, res) => {
   try {
     const userId = parseInt(req.params.id);
-    const branchId = parseInt(req.body.branch_id);
+    const branchAccess = resolveBranchAccessFromScope(req.scope, req.body.branch_id); // policy-scope:allow-direct
+    const branchId = branchAccess.effectiveBranchId;
     if (!userId || !branchId) {
       return res.status(400).json({ success: false, message: 'user_id and branch_id required' });
     }
-    const { User } = await import('../models/User.js');
     const user = await User.findById(userId);
     if (!user || user.role !== 'branch_operations_manager') {
       return res.status(400).json({ success: false, message: 'User must be branch_operations_manager' });
@@ -260,7 +237,7 @@ router.post('/:id/unassign-branch', async (req, res) => {
     await UserBranchAssignment.unassign(userId, branchId);
     res.json({ success: true, message: 'Branch unassigned' });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to unassign branch', error: error.message });
+    handleRouteError(error, req, res, 'Failed to unassign branch');
   }
 });
 
@@ -271,7 +248,7 @@ router.get('/:id/assigned-branches', async (req, res) => {
     const branchIds = await UserBranchAssignment.getAssignedBranches(userId);
     res.json({ success: true, data: branchIds });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to get assigned branches', error: error.message });
+    handleRouteError(error, req, res, 'Failed to get assigned branches');
   }
 });
 

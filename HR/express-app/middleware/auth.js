@@ -6,6 +6,7 @@
 import { verifyToken } from '../utils/jwt.js';
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
+import { attachRequestScope } from './requestScope.js';
 
 /**
  * Authenticate user via JWT token
@@ -15,7 +16,7 @@ import { log } from '../utils/logger.js';
 export const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       log.warn('Authentication failed: No Bearer token provided', { path: req.path });
       return res.status(401).json({
@@ -25,10 +26,10 @@ export const authenticate = async (req, res, next) => {
     }
 
     const token = authHeader.replace('Bearer ', '');
-    
+
     // Verify token
     const decoded = verifyToken(token);
-    
+
     // Validate user exists in database (even if inactive)
     // If user doesn't exist, still allow authentication but mark user as invalid
     let user = null;
@@ -45,7 +46,7 @@ export const authenticate = async (req, res, next) => {
         user_id: decoded.id
       });
     }
-    
+
     // Attach user info to request
     // If user doesn't exist in DB, still set req.user but mark it as invalid
     req.user = {
@@ -56,6 +57,8 @@ export const authenticate = async (req, res, next) => {
       existsInDb: !!user // Flag to indicate if user exists in database
     };
 
+    await attachRequestScope(req);
+
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
@@ -65,7 +68,7 @@ export const authenticate = async (req, res, next) => {
         message: 'Token has expired. Please login again.'
       });
     }
-    
+
     if (error.name === 'JsonWebTokenError') {
       log.warn('Authentication failed: Invalid token', { path: req.path });
       return res.status(401).json({
@@ -90,10 +93,10 @@ export const authenticate = async (req, res, next) => {
 export const optionalAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.replace('Bearer ', '');
-      
+
       try {
         const decoded = verifyToken(token);
         req.user = {
@@ -106,7 +109,9 @@ export const optionalAuth = async (req, res, next) => {
         // Invalid token, but continue without user (optional auth)
       }
     }
-    
+
+    await attachRequestScope(req);
+
     next();
   } catch (error) {
     // Continue even if there's an error (optional auth)

@@ -9,6 +9,9 @@ import { requireMainManager, requireAnyManager, loadAssignedBranches } from '../
 import sql from '../config/database.js';
 import { calculateEmployeeCompletion } from '../utils/dataCompletionUtils.js';
 import { formatDate } from '../utils/dateConverter.js';
+import { getScopedBranchFilter } from '../utils/policyScope.js';
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -32,15 +35,16 @@ router.get('/', async (req, res) => {
     const lastDayOfMonth = new Date(currentYear, currentMonth, 0).toISOString().split('T')[0];
 
     // Get all branches (including number_of_employees for accurate completion calculation)
+    const scopedBranch = getScopedBranchFilter(req, { allowMultiple: true });
     let branches;
-    if (req.user.role === 'branch_operations_manager' && req.user.assigned_branches) {
-      if (req.user.assigned_branches.length === 0) {
-        return res.json({ success: true, data: [], period: { month: currentMonth, year: currentYear, first_day: firstDayOfMonth, last_day: lastDayOfMonth } });
-      }
+    if (Array.isArray(scopedBranch) && scopedBranch.length === 0) {
+      return res.json({ success: true, data: [], period: { month: currentMonth, year: currentYear, first_day: firstDayOfMonth, last_day: lastDayOfMonth } });
+    } else if (scopedBranch !== null && scopedBranch !== undefined) {
+      const ids = Array.isArray(scopedBranch) ? scopedBranch : [scopedBranch];
       branches = await sql`
         SELECT id, branch_name, branch_type, username, is_active, number_of_employees
         FROM branches
-        WHERE is_active = true AND id = ANY(${req.user.assigned_branches}::int[])
+        WHERE is_active = true AND id = ANY(${ids}::int[])
         ORDER BY branch_name
       `;
     } else {
@@ -256,7 +260,7 @@ router.get('/', async (req, res) => {
           const employeeMetrics = calculateEmployeeCompletion(safeStats, branch);
           completionPercentage = employeeMetrics?.percentage || 0;
         } catch (calcError) {
-          console.error(`Error calculating completion for branch ${branch.id}:`, calcError);
+          log.error(`Error calculating completion for branch ${branch.id}:`, calcError);
         }
 
         const employeeUpdatesCount = parseInt(employeeUpdatesMap.get(branch.id)?.update_count || 0, 10) || 0;
@@ -280,7 +284,7 @@ router.get('/', async (req, res) => {
             }
           }
         } catch (e) {
-          console.warn(`Error parsing last_login for branch ${branch.id}:`, e);
+          log.warn(`Error parsing last_login for branch ${branch.id}:`, e);
         }
 
         try {
@@ -291,7 +295,7 @@ router.get('/', async (req, res) => {
             }
           }
         } catch (e) {
-          console.warn(`Error parsing last_activity for branch ${branch.id}:`, e);
+          log.warn(`Error parsing last_activity for branch ${branch.id}:`, e);
         }
 
         const isOperational = (
@@ -328,7 +332,7 @@ router.get('/', async (req, res) => {
           days_since_last_activity: daysSinceLastActivity
         };
       } catch (branchError) {
-        console.error(`Error processing branch ${branch?.id || 'unknown'}:`, branchError);
+        log.error(`Error processing branch ${branch?.id || 'unknown'}:`, branchError);
         return {
           branch_id: branch?.id || null,
           branch_name: branch?.branch_name || 'غير محدد',
@@ -370,14 +374,10 @@ router.get('/', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching branch statistics:', error);
+    log.error('Error fetching branch statistics:', error);
     // Log full error details for debugging
-    console.error('Error stack:', error.stack);
-    res.status(500).json({
-      success: false,
-      message: 'فشل جلب إحصائيات الفروع',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'خطأ داخلي في الخادم'
-    });
+    log.error('Error stack:', error.stack);
+    handleRouteError(error, req, res, 'فشل جلب إحصائيات الفروع');
   }
 });
 
@@ -579,12 +579,8 @@ router.post('/performance-report', async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Error generating performance report:', error);
-    res.status(500).json({
-      success: false,
-      message: 'فشل إنشاء تقرير الأداء',
-      error: error.message
-    });
+    log.error('Error generating performance report:', error);
+    handleRouteError(error, req, res, 'فشل إنشاء تقرير الأداء');
   }
 });
 

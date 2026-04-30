@@ -4,6 +4,7 @@
 */
 
 import sql from '../config/database.js';
+import { log } from '../utils/logger.js';
 
 export const BranchDocument = {
   /**
@@ -17,7 +18,7 @@ export const BranchDocument = {
       `;
       return document || null;
     } catch (error) {
-      console.error('Error finding branch document by ID:', error);
+      log.error('Error finding branch document by ID:', { error: error.message });
       throw error;
     }
   },
@@ -54,7 +55,7 @@ export const BranchDocument = {
 
       return await query;
     } catch (error) {
-      console.error('Error finding branch documents:', error);
+      log.error('Error finding branch documents:', { error: error.message });
       throw error;
     }
   },
@@ -87,7 +88,7 @@ export const BranchDocument = {
 
       return await query;
     } catch (error) {
-      console.error('Error finding branch documents by branch ID:', error);
+      log.error('Error finding branch documents by branch ID:', { error: error.message });
       throw error;
     }
   },
@@ -106,7 +107,7 @@ export const BranchDocument = {
       `;
       return documents;
     } catch (error) {
-      console.error('Error finding branch documents by branch and type:', error);
+      log.error('Error finding branch documents by branch and type:', { error: error.message });
       throw error;
     }
   },
@@ -131,7 +132,7 @@ export const BranchDocument = {
       const result = await query;
       return result;
     } catch (error) {
-      console.error('Error deactivating branch documents:', error);
+      log.error('Error deactivating branch documents:', { error: error.message });
       throw error;
     }
   },
@@ -172,7 +173,7 @@ export const BranchDocument = {
       `;
       return document;
     } catch (error) {
-      console.error('Error creating branch document:', error);
+      log.error('Error creating branch document:', { error: error.message });
       throw error;
     }
   },
@@ -201,7 +202,7 @@ export const BranchDocument = {
       `;
       return document || null;
     } catch (error) {
-      console.error('Error updating branch document:', error);
+      log.error('Error updating branch document:', { error: error.message });
       throw error;
     }
   },
@@ -233,7 +234,7 @@ export const BranchDocument = {
       `;
       return document || null;
     } catch (error) {
-      console.error('Error updating branch document file:', error);
+      log.error('Error updating branch document file:', { error: error.message });
       throw error;
     }
   },
@@ -254,7 +255,7 @@ export const BranchDocument = {
       `;
       return document || null;
     } catch (error) {
-      console.error('Error verifying branch document:', error);
+      log.error('Error verifying branch document:', { error: error.message });
       throw error;
     }
   },
@@ -272,7 +273,7 @@ export const BranchDocument = {
       `;
       return document || null;
     } catch (error) {
-      console.error('Error deleting branch document:', error);
+      log.error('Error deleting branch document:', { error: error.message });
       throw error;
     }
   },
@@ -290,7 +291,7 @@ export const BranchDocument = {
       `;
       return documents;
     } catch (error) {
-      console.error('Error finding expiring branch documents:', error);
+      log.error('Error finding expiring branch documents:', { error: error.message });
       throw error;
     }
   },
@@ -313,7 +314,7 @@ export const BranchDocument = {
 
       return await query;
     } catch (error) {
-      console.error('Error finding unverified branch documents:', error);
+      log.error('Error finding unverified branch documents:', { error: error.message });
       throw error;
     }
   },
@@ -386,7 +387,7 @@ export const BranchDocument = {
         archivedIds: expiredIds
       };
     } catch (error) {
-      console.error('Error archiving expired branch documents:', error);
+      log.error('Error archiving expired branch documents:', { error: error.message });
       throw error;
     }
   }

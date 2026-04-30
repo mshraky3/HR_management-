@@ -7,7 +7,6 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import PdfPrinter from "@digicole/pdfmake-rtl";
 import { PDFDocument } from "pdf-lib";
 import sql from "../config/database.js";
 import { authenticate } from "../middleware/auth.js";
@@ -30,87 +29,13 @@ import { clearByPrefix } from "../utils/simpleCache.js";
 import { formatDate } from "../utils/dateConverter.js";
 import { validateDateFields } from "../middleware/dateValidation.js";
 import { validateBranchDocumentDates } from "../middleware/branchDocumentDateValidation.js";
+import { getScopedBranchFilter, resolveBranchAccessFromScope } from "../utils/policyScope.js";
+import { printer } from "../utils/pdfFonts.js";
+import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { log } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Create pdfmake RTL printer with fonts (same setup as reports.js)
-// Note: Font files are included in Vercel deployment, but paths may differ
-// This code handles both local development and Vercel serverless environments
-const fontsDir = path.join(__dirname, '..', 'fonts');
-const amiriDir = path.join(fontsDir, 'Amiri');
-const amiriRegular = path.join(amiriDir, 'Amiri-Regular.ttf');
-const amiriBold = path.join(amiriDir, 'Amiri-Bold.ttf');
-const amiriItalic = path.join(amiriDir, 'Amiri-Italic.ttf');
-const amiriBoldItalic = path.join(amiriDir, 'Amiri-BoldItalic.ttf');
-let arabicFontPath = null;
-
-try {
-  if (fs.existsSync(amiriRegular)) {
-    arabicFontPath = amiriRegular;
-  }
-} catch (error) {
-  // On Vercel or if fonts are not accessible, will use fallback fonts
-  console.warn(
-    "Font files not accessible, will use fallback fonts:",
-    error.message,
-  );
-}
-
-const hasArabicFont = arabicFontPath !== null;
-
-let fonts;
-if (hasArabicFont) {
-  // Use Amiri font
-  // Wrap fs.existsSync in try-catch for Vercel compatibility
-  const fontExists = (fontPath) => {
-    try {
-      return fs.existsSync(fontPath);
-    } catch {
-      return false;
-    }
-  };
-
-  const regular = amiriRegular;
-  const bold = fontExists(amiriBold) ? amiriBold : amiriRegular;
-  const italics = fontExists(amiriItalic) ? amiriItalic : amiriRegular;
-  const bolditalics = fontExists(amiriBoldItalic) ? amiriBoldItalic : (fontExists(amiriBold) ? amiriBold : amiriRegular);
-
-  fonts = {
-    Roboto: {
-      normal: regular,
-      bold: bold,
-      italics: italics,
-      bolditalics: bolditalics,
-    },
-    Nillima: {
-      normal: regular,
-      bold: bold,
-      italics: italics,
-      bolditalics: bolditalics,
-    },
-  };
-
-  console.log("Using Amiri font for PDF generation");
-} else {
-  // Fallback to Helvetica (limited Arabic support)
-  fonts = {
-    Roboto: {
-      normal: "Helvetica",
-      bold: "Helvetica-Bold",
-      italics: "Helvetica-Oblique",
-      bolditalics: "Helvetica-BoldOblique",
-    },
-    Nillima: {
-      normal: "Helvetica",
-      bold: "Helvetica-Bold",
-      italics: "Helvetica-Oblique",
-      bolditalics: "Helvetica-BoldOblique",
-    },
-  };
-}
-
-const printer = new PdfPrinter(fonts);
 
 const router = express.Router();
 
@@ -121,16 +46,14 @@ const getUploadedByUserId = async (userId) => {
   if (!userId) return null;
 
   try {
-    const sql = (await import("../config/database.js")).default;
     const [user] = await sql`SELECT id FROM users WHERE id = ${userId}`;
     if (user?.id) return user.id;
   } catch (error) {
-    console.error("Error verifying user:", error);
+    log.error("Error verifying user:", error);
   }
 
   // Fallback: find first active user
   try {
-    const sql = (await import("../config/database.js")).default;
     const [fallbackUser] = await sql`
       SELECT id FROM users WHERE is_active = true ORDER BY id ASC LIMIT 1
     `;
@@ -140,7 +63,7 @@ const getUploadedByUserId = async (userId) => {
     const [anyUser] = await sql`SELECT id FROM users ORDER BY id ASC LIMIT 1`;
     return anyUser?.id || null;
   } catch (error) {
-    console.error("Error finding fallback user:", error);
+    log.error("Error finding fallback user:", error);
     return null;
   }
 };
@@ -213,32 +136,34 @@ const buildFilters = (query) => {
 };
 
 /**
- * Get documents based on user role
+ * Get documents based on user scope
  */
-const getDocumentsByRole = async (user, filters) => {
-  if (user.role === "branch_manager" && user.branch_id) {
-    return await BranchDocument.findByBranchId(user.branch_id, filters);
-  }
-  if (user.role === "main_manager") {
+const getDocumentsByRole = async (req, filters) => {
+  const scopedBranch = getScopedBranchFilter(req, { allowMultiple: true });
+
+  if (scopedBranch === null || scopedBranch === undefined) {
+    // main_manager: no restriction
     return await BranchDocument.findAll(filters);
   }
-  if (user.role === "branch_operations_manager" && user.assigned_branches) {
-    if (filters.branch_id) {
-      // Ensure requested branch is in assigned list
-      if (!user.assigned_branches.includes(parseInt(filters.branch_id))) {
-        return [];
-      }
-      return await BranchDocument.findByBranchId(filters.branch_id, filters);
-    }
-    // Return documents for all assigned branches
-    const allDocs = [];
-    for (const branchId of user.assigned_branches) {
-      const docs = await BranchDocument.findByBranchId(branchId, filters);
-      allDocs.push(...(docs || []));
-    }
-    return allDocs;
+
+  const allowedIds = Array.isArray(scopedBranch) ? scopedBranch : [scopedBranch];
+
+  if (filters.branch_id) {
+    if (!allowedIds.includes(parseInt(filters.branch_id))) return [];
+    return await BranchDocument.findByBranchId(filters.branch_id, filters);
   }
-  return [];
+
+  if (allowedIds.length === 1) {
+    return await BranchDocument.findByBranchId(allowedIds[0], filters);
+  }
+
+  // Multiple branches (ops_manager)
+  const allDocs = [];
+  for (const branchId of allowedIds) {
+    const docs = await BranchDocument.findByBranchId(branchId, filters);
+    allDocs.push(...(docs || []));
+  }
+  return allDocs;
 };
 
 router.get("/", async (req, res) => {
@@ -246,13 +171,13 @@ router.get("/", async (req, res) => {
     // Archive expired documents before loading (on-demand check)
     const archiveResult = await BranchDocument.archiveExpiredDocuments();
     if (archiveResult.archivedCount > 0) {
-      console.log(
+      log.info(
         `[BRANCH DOCS] Auto-archived ${archiveResult.archivedCount} expired documents`,
       );
     }
 
     const filters = buildFilters(req.query);
-    const documents = await getDocumentsByRole(req.user, filters);
+    const documents = await getDocumentsByRole(req, filters);
 
     // Filter documents to only include those with valid file paths
     // This ensures uploaded files are actually present
@@ -276,12 +201,8 @@ router.get("/", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error fetching branch documents:", error);
-    res.status(500).json({
-      success: false,
-      message: "فشل جلب مستندات الفرع",
-      error: error.message,
-    });
+    log.error("Error fetching branch documents:", error);
+    handleRouteError(error, req, res, 'فشل جلب مستندات الفرع');
   }
 });
 
@@ -345,25 +266,12 @@ router.post(
         });
       }
 
-      // Branch managers can only upload to their branch
-      if (
-        req.user.role === "branch_manager" &&
-        req.user.branch_id !== parseInt(branch_id)
-      ) {
+      // Enforce branch access via scope
+      const uploadBranchAccess = resolveBranchAccessFromScope(req.scope, parseInt(branch_id));
+      if (!uploadBranchAccess.allowed) {
         return res.status(403).json({
           success: false,
-          message: "You can only upload documents for your branch",
-        });
-      }
-
-      // Branch operations managers can only upload to assigned branches
-      if (
-        req.user.role === "branch_operations_manager" &&
-        (!req.user.assigned_branches || !req.user.assigned_branches.includes(parseInt(branch_id)))
-      ) {
-        return res.status(403).json({
-          success: false,
-          message: "You can only upload documents for your assigned branches",
+          message: "ليس لديك صلاحية رفع مستندات لهذا الفرع",
         });
       }
 
@@ -430,11 +338,7 @@ router.post(
       // Get valid user ID for uploaded_by field
       const uploadedById = await getUploadedByUserId(req.user?.id);
       if (!uploadedById) {
-        return res.status(500).json({
-          success: false,
-          message:
-            "No valid user found for uploaded_by field. Please ensure at least one user exists in the system.",
-        });
+        return handleRouteError(error, req, res, 'No valid user found for uploaded_by field. Please ensure at least one user exists in the system.');
       }
 
       // Use the fixed filename for database record
@@ -449,7 +353,7 @@ router.post(
       const finalExpiryDateHijri = req.body.expiry_date_hijri || null;
 
       // Log date conversion for verification
-      console.log("[BRANCH DOC UPLOAD] Dates after validation:", {
+      log.info("[BRANCH DOC UPLOAD] Dates after validation:", {
         issue_date: finalIssueDate,
         issue_date_hijri: finalIssueDateHijri,
         expiry_date: finalExpiryDate,
@@ -487,12 +391,8 @@ router.post(
         data: document,
       });
     } catch (error) {
-      console.error("Error uploading branch document:", error);
-      res.status(500).json({
-        success: false,
-        message: "فشل رفع مستند الفرع",
-        error: error.message,
-      });
+      log.error("Error uploading branch document:", error);
+      handleRouteError(error, req, res, 'فشل رفع مستند الفرع');
     }
   },
 );
@@ -564,14 +464,14 @@ router.get("/:id/download", async (req, res) => {
                 const pathname = new URL(cleanUrl).pathname.replace(/^\//, '');
                 const newBlobUrl = await copyBlob(fixedUrl, pathname);
                 await sql`UPDATE branch_documents SET file_path = ${newBlobUrl}, updated_at = CURRENT_TIMESTAMP WHERE id = ${document.id}`;
-                console.log(`Auto-fixed: copied blob to clean path for branch document ${document.id}`);
+                log.info(`Auto-fixed: copied blob to clean path for branch document ${document.id}`);
               }
             } else {
               await sql`UPDATE branch_documents SET file_path = ${fixedUrl}, updated_at = CURRENT_TIMESTAMP WHERE id = ${document.id}`;
-              console.log(`Auto-fixed double-extension URL for branch document ${document.id}`);
+              log.info(`Auto-fixed double-extension URL for branch document ${document.id}`);
             }
           } catch (updateErr) {
-            console.warn(`Could not auto-fix URL for branch document ${document.id}:`, updateErr.message);
+            log.warn(`Could not auto-fix URL for branch document ${document.id}:`, updateErr.message);
           }
         }
 
@@ -583,12 +483,8 @@ router.get("/:id/download", async (req, res) => {
         );
         return res.send(buffer);
       } catch (error) {
-        console.error("Error fetching blob file:", error);
-        return res.status(500).json({
-          success: false,
-          message: "فشل جلب ملف المستند",
-          error: error.message,
-        });
+        log.error("Error fetching blob file:", error);
+        return handleRouteError(error, req, res, 'فشل جلب ملف المستند');
       }
     }
 
@@ -609,12 +505,8 @@ router.get("/:id/download", async (req, res) => {
     );
     res.sendFile(path.resolve(filePath));
   } catch (error) {
-    console.error("Error downloading branch document:", error);
-    res.status(500).json({
-      success: false,
-      message: "فشل تحميل المستند",
-      error: error.message,
-    });
+    log.error("Error downloading branch document:", error);
+    handleRouteError(error, req, res, 'فشل تحميل المستند');
   }
 });
 
@@ -667,16 +559,16 @@ router.get("/:id/preview", async (req, res) => {
           if (fixedUrl) {
             try {
               await BranchDocument.update(document.id, { file_path: fixedUrl });
-              console.log(`Auto-fixed preview URL for branch document ${document.id}`);
+              log.info(`Auto-fixed preview URL for branch document ${document.id}`);
             } catch (updateErr) {
-              console.warn(`Could not update fixed URL for branch document ${document.id}:`, updateErr.message);
+              log.warn(`Could not update fixed URL for branch document ${document.id}:`, updateErr.message);
             }
           }
 
           res.setHeader("Content-Type", document.mime_type || contentType);
           return res.send(buffer);
         } catch (fetchErr) {
-          console.error(`Preview fetch failed for branch document ${document.id}:`, fetchErr.message);
+          log.error(`Preview fetch failed for branch document ${document.id}:`, fetchErr.message);
           return res.status(404).json({
             success: false,
             message: "الملف غير متوفر في التخزين السحابي. قد يحتاج هذا الملف إلى إعادة الرفع.",
@@ -712,12 +604,8 @@ router.get("/:id/preview", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error getting branch document preview:", error);
-    res.status(500).json({
-      success: false,
-      message: "فشل الحصول على معاينة المستند",
-      error: error.message,
-    });
+    log.error("Error getting branch document preview:", error);
+    handleRouteError(error, req, res, 'فشل الحصول على معاينة المستند');
   }
 });
 
@@ -757,12 +645,8 @@ router.get("/:id", async (req, res) => {
 
     res.json({ success: true, data: document });
   } catch (error) {
-    console.error("Error fetching branch document:", error);
-    res.status(500).json({
-      success: false,
-      message: "فشل جلب المستند",
-      error: error.message,
-    });
+    log.error("Error fetching branch document:", error);
+    handleRouteError(error, req, res, 'فشل جلب المستند');
   }
 });
 
@@ -804,12 +688,8 @@ router.post("/:id/verify", async (req, res) => {
       data: verifiedDocument,
     });
   } catch (error) {
-    console.error("Error verifying branch document:", error);
-    res.status(500).json({
-      success: false,
-      message: "فشل التحقق من المستند",
-      error: error.message,
-    });
+    log.error("Error verifying branch document:", error);
+    handleRouteError(error, req, res, 'فشل التحقق من المستند');
   }
 });
 
@@ -1016,12 +896,8 @@ router.put(
         data: updatedDocument,
       });
     } catch (error) {
-      console.error("Error updating branch document:", error);
-      res.status(500).json({
-        success: false,
-        message: "فشل تحديث المستند",
-        error: error.message,
-      });
+      log.error("Error updating branch document:", error);
+      handleRouteError(error, req, res, 'فشل تحديث المستند');
     }
   },
 );
@@ -1063,12 +939,8 @@ router.delete("/:id", async (req, res) => {
       message: "Document deleted successfully",
     });
   } catch (error) {
-    console.error("Error deleting branch document:", error);
-    res.status(500).json({
-      success: false,
-      message: "فشل حذف المستند",
-      error: error.message,
-    });
+    log.error("Error deleting branch document:", error);
+    handleRouteError(error, req, res, 'فشل حذف المستند');
   }
 });
 
@@ -1168,7 +1040,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
     for (const doc of currentMonthDocuments) {
       try {
         if (!doc.file_path) {
-          console.warn(`Document ${doc.id} has no file_path`);
+          log.warn(`Document ${doc.id} has no file_path`);
           continue;
         }
 
@@ -1183,7 +1055,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
             const result = await fetchBlobWithFallback(doc.file_path, doc.r2_file_path);
             fileBuffer = result.buffer;
           } catch (blobError) {
-            console.error(
+            log.error(
               `Failed to fetch from blob for document ${doc.id}:`,
               blobError.message,
             );
@@ -1193,7 +1065,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
           // Local file path (backward compatibility)
           // Note: On Vercel serverless, local files are not accessible
           if (process.env.VERCEL === "1") {
-            console.warn(
+            log.warn(
               `Document ${doc.id} uses local file path which is not accessible on Vercel: ${doc.file_path}`,
             );
             continue;
@@ -1217,7 +1089,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
           }
 
           if (!fs.existsSync(filePath)) {
-            console.warn(
+            log.warn(
               `File not found for document ${doc.id}: ${doc.file_path}`,
             );
             continue;
@@ -1226,7 +1098,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
           try {
             fileBuffer = fs.readFileSync(filePath);
           } catch (readError) {
-            console.error(
+            log.error(
               `Failed to read file for document ${doc.id}:`,
               readError.message,
             );
@@ -1235,7 +1107,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
         }
 
         if (!fileBuffer || fileBuffer.length === 0) {
-          console.warn(`Empty file buffer for document ${doc.id}`);
+          log.warn(`Empty file buffer for document ${doc.id}`);
           continue;
         }
 
@@ -1257,7 +1129,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
           images[imageKey] = `data:${mimeType};base64,${base64}`;
         }
       } catch (error) {
-        console.error(`Failed to load document file ${doc.id}:`, error.message);
+        log.error(`Failed to load document file ${doc.id}:`, error.message);
         // Continue with other documents even if one fails
       }
     }
@@ -1390,7 +1262,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
                     fit: [500, 700],
                   });
                 } catch (error) {
-                  console.error(
+                  log.error(
                     `Error embedding image for document ${document.id}:`,
                     error,
                   );
@@ -1526,7 +1398,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
                     finalPdf.addPage(page);
                   });
                 } catch (error) {
-                  console.error(
+                  log.error(
                     `Error merging PDF document ${document.id}:`,
                     error,
                   );
@@ -1534,7 +1406,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
               }
             }
           } catch (error) {
-            console.error(`Error creating PDF for branch ${branch.id}:`, error);
+            log.error(`Error creating PDF for branch ${branch.id}:`, error);
             // Continue with other branches even if one fails
           }
         }
@@ -1543,7 +1415,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
         const mergedPdfBytes = await finalPdf.save();
         return Buffer.from(mergedPdfBytes);
       } catch (error) {
-        console.error("Error in mergePdfDocuments:", error);
+        log.error("Error in mergePdfDocuments:", error);
         throw error;
       }
     };
@@ -1555,17 +1427,13 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
       const sendError = (error) => {
         if (!responseSent) {
           responseSent = true;
-          console.error("PDF generation error:", error);
+          log.error("PDF generation error:", error);
           try {
             if (!res.headersSent) {
-              res.status(500).json({
-                success: false,
-                message: "فشل إنشاء تقرير PDF",
-                error: error.message,
-              });
+              handleRouteError(error, req, res, 'فشل إنشاء تقرير PDF');
             }
           } catch (sendErr) {
-            console.error("Error sending error response:", sendErr);
+            log.error("Error sending error response:", sendErr);
           }
           reject(error);
         }
@@ -1590,7 +1458,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
               try {
                 finalPdfBuffer = await mergePdfDocuments(mainPdfBuffer);
               } catch (mergeError) {
-                console.error(
+                log.error(
                   "Error merging PDFs, using main PDF only:",
                   mergeError,
                 );
@@ -1608,7 +1476,7 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
               }
               resolve();
             } catch (error) {
-              console.error("Error sending PDF response:", error);
+              log.error("Error sending PDF response:", error);
               reject(error);
             }
           }
@@ -1624,13 +1492,9 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Error generating payroll report:", error);
+    log.error("Error generating payroll report:", error);
     if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: "فشل إنشاء التقرير",
-        error: error.message,
-      });
+      handleRouteError(error, req, res, 'فشل إنشاء التقرير');
     }
   }
 });
@@ -1874,7 +1738,7 @@ router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
             }
 
           } catch (err) {
-            console.error(`Error fetching document ${doc.id}:`, err);
+            log.error(`Error fetching document ${doc.id}:`, err);
             content.push({
               text: "[خطأ في جلب الملف]",
               style: "documentDescription",
@@ -1962,11 +1826,11 @@ router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
             const attachmentPages = await finalPdf.copyPages(attachmentPdf, attachmentPdf.getPageIndices());
             attachmentPages.forEach((page) => finalPdf.addPage(page));
           } catch (pdfErr) {
-            console.error("Error merging attached PDF:", pdfErr);
+            log.error("Error merging attached PDF:", pdfErr);
           }
         }
       } catch (genError) {
-        console.error("Error generating cover page:", genError);
+        log.error("Error generating cover page:", genError);
       }
     }
 
@@ -1983,13 +1847,9 @@ router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
     res.send(buffer);
 
   } catch (error) {
-    console.error("Error generating PDF by type:", error);
+    log.error("Error generating PDF by type:", error);
     if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: "فشل إنشاء ملف PDF",
-        error: error.message,
-      });
+      handleRouteError(error, req, res, 'فشل إنشاء ملف PDF');
     }
   }
 });
@@ -2176,7 +2036,7 @@ router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
       const pages = await finalPdf.copyPages(summaryDoc, summaryDoc.getPageIndices());
       pages.forEach(page => finalPdf.addPage(page));
     } catch (err) {
-      console.error("Error creating summary page:", err);
+      log.error("Error creating summary page:", err);
     }
 
     // Now iterate required documents
@@ -2288,7 +2148,7 @@ router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
               });
             }
           } catch (err) {
-            console.error(`Error fetching doc ${doc.id}:`, err);
+            log.error(`Error fetching doc ${doc.id}:`, err);
             content.push({ text: "[خطأ في جلب الملف]", style: "documentDescription", color: "#d32f2f" });
           }
         }
@@ -2330,11 +2190,11 @@ router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
             const attachmentPages = await finalPdf.copyPages(attachmentPdf, attachmentPdf.getPageIndices());
             attachmentPages.forEach((page) => finalPdf.addPage(page));
           } catch (pdfErr) {
-            console.error("Error merging attached PDF:", pdfErr);
+            log.error("Error merging attached PDF:", pdfErr);
           }
         }
       } catch (genError) {
-        console.error("Error generating doc page:", genError);
+        log.error("Error generating doc page:", genError);
       }
     }
 
@@ -2350,13 +2210,9 @@ router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
     res.send(buffer);
 
   } catch (error) {
-    console.error("Error generating PDF by branch:", error);
+    log.error("Error generating PDF by branch:", error);
     if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: "فشل إنشاء ملف PDF",
-        error: error.message,
-      });
+      handleRouteError(error, req, res, 'فشل إنشاء ملف PDF');
     }
   }
 });
@@ -2508,13 +2364,9 @@ router.post("/generate-pdf-stats", authenticate, async (req, res) => {
     res.send(pdfBuffer);
 
   } catch (error) {
-    console.error("Error generating stats PDF:", error);
+    log.error("Error generating stats PDF:", error);
     if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: "فشل إنشاء ملف PDF",
-        error: error.message,
-      });
+      handleRouteError(error, req, res, 'فشل إنشاء ملف PDF');
     }
   }
 });
@@ -2666,13 +2518,9 @@ router.post("/generate-pdf-documents", authenticate, async (req, res) => {
     res.send(pdfBuffer);
 
   } catch (error) {
-    console.error("Error generating documents PDF:", error);
+    log.error("Error generating documents PDF:", error);
     if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: "فشل إنشاء ملف PDF",
-        error: error.message,
-      });
+      handleRouteError(error, req, res, 'فشل إنشاء ملف PDF');
     }
   }
 });

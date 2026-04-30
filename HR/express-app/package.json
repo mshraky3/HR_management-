@@ -19,7 +19,9 @@
     "backup:blobs": "node scripts/backup-all-blobs.js",
     "report:unfixable": "node scripts/generate-unfixable-report.js",
     "check:blobs": "node scripts/check-blob-status.js",
-    "test:email": "node scripts/test-email-send.mjs"
+    "test:email": "node scripts/test-email-send.mjs",
+    "policy:report": "node scripts/policy-scope-report.mjs",
+    "policy:check": "node scripts/policy-scope-report.mjs --strict"
   },
   "keywords": [],
   "author": "",
