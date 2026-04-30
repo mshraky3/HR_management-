@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { payrollAbsenceAPI } from '../utils/api';
+import { downloadFile } from '../utils/downloadFile';
 import './PayrollAbsence.css';
 
 // Format date as dd/mm/yyyy (Gregorian calendar only)
@@ -194,13 +195,7 @@ const PayrollAbsenceAdmin = () => {
         cycle_id: selectedCycleId,
         branch_ids: Array.from(selectedBranches)
       });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'branch-absences.xlsx');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      downloadFile(new Blob([res.data]), 'branch-absences.xlsx');
       setSuccess('تم إنشاء ملف الإكسل');
     } catch (err) {
       setError(err?.response?.data?.message || 'فشل إنشاء ملف الإكسل');

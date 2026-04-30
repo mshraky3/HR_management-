@@ -4,12 +4,14 @@
  * Single employee only
  */
 
-import { useState, useEffect, useRef } from 'react';
-import { employeesAPI, documentsAPI, branchesAPI } from '../utils/api';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { employeesAPI, documentsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { getDocumentTypeLabel } from '../utils/employeeConstants';
 import { formatDate } from '../utils/dateConverters';
+import { downloadFile } from '../utils/downloadFile';
+import { useBranches } from '../hooks/useBranches';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 import './EmployeeFile.css';
 
@@ -17,7 +19,11 @@ const EmployeeFile = () => {
   const { isMainManager } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const [employees, setEmployees] = useState([]);
-  const [branches, setBranches] = useState([]);
+  const { branches: rawBranches } = useBranches();
+  const branches = useMemo(
+    () => [...rawBranches].sort((a, b) => (a.branch_name || '').localeCompare(b.branch_name || '', 'ar')),
+    [rawBranches]
+  );
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null); // Single employee only
@@ -105,25 +111,6 @@ const EmployeeFile = () => {
     }
   }, [isMainManager]);
 
-  // Load branches and sort alphabetically
-  useEffect(() => {
-    const loadBranches = async () => {
-      try {
-        const response = await branchesAPI.getAll({ is_active: true });
-        if (response.data.success) {
-          // Sort branches alphabetically by branch_name
-          const sortedBranches = (response.data.data || []).sort((a, b) => {
-            return (a.branch_name || '').localeCompare(b.branch_name || '', 'ar');
-          });
-          setBranches(sortedBranches);
-        }
-      } catch (error) {
-        console.error('Error loading branches:', error);
-      }
-    };
-    loadBranches();
-  }, []);
-
   // Don't auto-load employees - only load when user explicitly searches
 
   const loadEmployees = async () => {
@@ -161,7 +148,7 @@ const EmployeeFile = () => {
 
       const response = await employeesAPI.getAll(filters);
       if (response.data.success) {
-        setEmployees(response.data.data);
+        setEmployees(response.data.data || []);
       }
     } catch (error) {
       console.error('Error loading employees:', error);
@@ -334,14 +321,7 @@ const EmployeeFile = () => {
       const blob = response.data instanceof Blob
         ? response.data
         : new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${fileTitle}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      downloadFile(blob, `${fileTitle}.pdf`);
 
       showSuccess('تم إنشاء الملف بنجاح');
 

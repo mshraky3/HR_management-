@@ -4,6 +4,7 @@
  */
 import { useState, useEffect } from 'react';
 import { treatmentPlansAPI } from '../utils/api';
+import { downloadFile } from '../utils/downloadFile';
 import { reportApiError } from '../utils/errorTracking';
 import { useNotification } from '../contexts/NotificationContext';
 import {
@@ -100,14 +101,7 @@ const TreatmentPlanMonitor = () => {
             const blob = new Blob([response.data], {
                 type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
             });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = normalizeFilename(plan.original_filename);
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            downloadFile(blob, normalizeFilename(plan.original_filename));
         } catch (error) {
             console.error('Error downloading:', error);
             const msg = error.response?.data?.message || 'فشل تحميل الملف. تأكد من وجود الملف وحاول مرة أخرى';

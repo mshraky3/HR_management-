@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { employeesAPI } from '../utils/api';
+import { downloadFile } from '../utils/downloadFile';
 import './EmployeeStatisticsReport.css';
 
 const EmployeeStatisticsReport = () => {
@@ -122,14 +123,7 @@ const EmployeeStatisticsReport = () => {
             const blob = response.data instanceof Blob
                 ? response.data
                 : new Blob([response.data], { type: 'application/pdf' });
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `تقرير_احصائيات_الموظفين_${new Date().toLocaleDateString('ar-SA')}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
+            downloadFile(blob, `تقرير_احصائيات_الموظفين_${new Date().toLocaleDateString('ar-SA')}.pdf`);
 
             showSuccess('تم إنشاء التقرير بنجاح');
         } catch (error) {

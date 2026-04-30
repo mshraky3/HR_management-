@@ -65,8 +65,8 @@ const Login = () => {
 
   const handleOTPSubmit = async (e) => {
     e.preventDefault();
-    if (otp.length !== 6) {
-      setError('أدخل الرمز المكوّن من 6 أرقام');
+    if (otp.length !== 4) {
+      setError('أدخل الرمز المكوّن من 4 أرقام');
       return;
     }
 
@@ -188,19 +188,19 @@ const Login = () => {
                 id="otp"
                 type="text"
                 inputMode="numeric"
-                pattern="[0-9]{6}"
-                maxLength={6}
+                pattern="[0-9]{4}"
+                maxLength={4}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                 required
                 disabled={loading}
-                placeholder="xxxxxx"
+                placeholder="xxxx"
                 autoComplete="one-time-code"
                 style={{ letterSpacing: '0.4em', fontSize: '1.5rem', textAlign: 'center' }}
               />
             </div>
 
-            <button type="submit" disabled={loading || otp.length !== 6} className="login-button">
+            <button type="submit" disabled={loading || otp.length !== 4} className="login-button">
               {loading ? 'جاري التحقق...' : 'تأكيد الدخول'}
             </button>
 

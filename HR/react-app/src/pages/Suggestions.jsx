@@ -135,7 +135,7 @@ const Suggestions = () => {
 
             const res = await suggestionsAPI.getAll(params);
             if (res.data.success) {
-                setSuggestions(res.data.data);
+                setSuggestions(res.data.data || []);
             }
         } catch (error) {
             console.error('Error loading suggestions:', error);

@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
 import { employeeExpiryAPI, branchesAPI } from "../utils/api";
+import { downloadFile } from "../utils/downloadFile";
 import "./EmployeeExpiry.css";
 
 const STATUS_LABELS = {
@@ -163,9 +164,8 @@ const EmployeeExpiry = () => {
             if (res?.data?.success) {
                 showSuccess("تم تحديث التاريخ بنجاح");
                 cancelEdit();
-                // Refresh
-                await loadList();
-                const summaryRes = await employeeExpiryAPI.getSummary();
+                // Refresh both in parallel
+                const [, summaryRes] = await Promise.all([loadList(), employeeExpiryAPI.getSummary()]);
                 if (summaryRes?.data?.success) setSummary(summaryRes.data.data);
             }
         } catch (err) {
@@ -185,14 +185,7 @@ const EmployeeExpiry = () => {
             if (filterStatus) params.status_bucket = filterStatus;
 
             const res = await employeeExpiryAPI.exportExcel(params);
-            const url = window.URL.createObjectURL(new Blob([res.data]));
-            const link = document.createElement("a");
-            link.href = url;
-            link.setAttribute("download", `employee-expiry-report-${new Date().toISOString().split("T")[0]}.xlsx`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
+            downloadFile(new Blob([res.data]), `employee-expiry-report-${new Date().toISOString().split("T")[0]}.xlsx`);
             showSuccess("تم تحميل التقرير بنجاح");
         } catch (err) {
             showError("فشل تحميل التقرير");

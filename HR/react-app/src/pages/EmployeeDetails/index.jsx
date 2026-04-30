@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { employeesAPI, documentsAPI, branchesAPI, clearCache } from '../../utils/api';
+import { downloadFile } from '../../utils/downloadFile';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { DATA_COMPLETION_STATUS } from '../../utils/employeeConstants';
@@ -196,14 +197,7 @@ const EmployeeDetails = () => {
       }
 
       if (response.data instanceof Blob) {
-        const blobUrl = window.URL.createObjectURL(response.data);
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.setAttribute('download', filename);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(blobUrl);
+        downloadFile(response.data, filename);
       } else {
         throw new Error('Invalid response format');
       }
@@ -245,15 +239,8 @@ const EmployeeDetails = () => {
       });
 
       const blob = response.data instanceof Blob ? response.data : new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
       const fileName = `ملف_موظف_${employee?.first_name}_${employee?.second_name}_${employee?.third_name}_${employee?.fourth_name}.pdf`;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      downloadFile(blob, fileName);
 
       showSuccess('تم إنشاء ملف الموظف بنجاح');
     } catch (error) {

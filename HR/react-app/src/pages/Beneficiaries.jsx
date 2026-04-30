@@ -10,6 +10,7 @@ import { beneficiariesAPI, branchesAPI, termsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import SearchableSelect from '../components/SearchableSelect';
+import { downloadFile } from '../utils/downloadFile';
 import './Beneficiaries.css';
 
 const SERVICE_LABELS = {
@@ -198,7 +199,7 @@ const Beneficiaries = () => {
                     // Load staffing/stats directly — don't rely on useEffect (race condition with loading flag)
                     const termId = currentTerm.id.toString();
                     Promise.all([
-                        beneficiariesAPI.getStaffingRequirements({ term_id: termId, include_free: includeFreeStudents, merge_therapy: mergeTherapy }).then(r => { if (r.data.success) setStaffingData(r.data.data); }),
+                        beneficiariesAPI.getStaffingRequirements({ term_id: termId, include_free: includeFreeStudents, merge_therapy: mergeTherapy }).then(r => { if (r.data.success) setStaffingData(r.data.data || []); }),
                         beneficiariesAPI.getStats({ term_id: termId, include_free: includeFreeStudents }).then(r => { if (r.data.success) setStats(r.data.data); }),
                         beneficiariesAPI.getSubmissionStatus({ term_id: termId, include_free: includeFreeStudents }).then(r => { if (r.data.success) setSubmissionStatus(r.data.data || []); }),
                     ]).catch(err => console.error('Error loading main manager data:', err));
@@ -261,7 +262,7 @@ const Beneficiaries = () => {
             setStaffingLoading(true);
             const res = await beneficiariesAPI.getStaffingRequirements({ term_id: termId, include_free: includeFreeStudents, merge_therapy: mergeTherapy });
             if (res.data.success) {
-                setStaffingData(res.data.data);
+                setStaffingData(res.data.data || []);
             }
         } catch (error) {
             console.error('Error loading staffing requirements:', error);
@@ -450,14 +451,7 @@ const Beneficiaries = () => {
             const blob = new Blob([res.data], {
                 type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `beneficiaries-${filters.term_id}.xlsx`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            a.remove();
+            downloadFile(blob, `beneficiaries-${filters.term_id}.xlsx`);
             showSuccess('تم تصدير البيانات بنجاح');
         } catch (error) {
             showError('فشل في تصدير البيانات');
@@ -489,14 +483,7 @@ const Beneficiaries = () => {
             }
         }
         const blob = new Blob([BOM + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `staffing-requirements-${filters.term_id}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        URL.revokeObjectURL(url);
-        a.remove();
+        downloadFile(blob, `staffing-requirements-${filters.term_id}.csv`);
         showSuccess('تم تصدير متطلبات التوظيف بنجاح');
     };
 

@@ -377,7 +377,7 @@ const Employees = () => {
       // The local UI dropdown for filtering branches will still only show active ones.
       const response = await branchesAPI.getAll({});
       if (response.data.success) {
-        setBranches(response.data.data);
+        setBranches(response.data.data || []);
       }
     } catch (error) {
       console.error("Error loading branches:", error);

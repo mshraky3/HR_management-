@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { branchDocumentsAPI, branchesAPI, setDocumentBranchMapping } from '../utils/api';
+import { downloadFile } from '../utils/downloadFile';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import BankSelect from '../components/BankSelect';
@@ -71,7 +72,7 @@ const BranchDocuments = () => {
 
       const response = await branchesAPI.getAll(filters);
       if (response.data.success) {
-        setBranches(response.data.data);
+        setBranches(response.data.data || []);
         // Auto-set branch_id for branch managers
         if (!isMainManager() && user?.branch_id) {
           setUploadData(prev => ({ ...prev, branch_id: user.branch_id }));
@@ -405,14 +406,7 @@ const BranchDocuments = () => {
       }
 
       if (response.data instanceof Blob) {
-        const blobUrl = window.URL.createObjectURL(response.data);
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.setAttribute('download', filename);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(blobUrl);
+        downloadFile(response.data, filename);
       } else {
         throw new Error('Invalid response format');
       }

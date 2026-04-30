@@ -36,7 +36,7 @@ const BranchOpsAccounts = () => {
                 usersAPI.getBranchOpsList(),
                 branchesAPI.getAll({ is_active: true }),
             ]);
-            if (accountsRes.data.success) setAccounts(accountsRes.data.data);
+            if (accountsRes.data.success) setAccounts(accountsRes.data.data || []);
             if (branchesRes.data.success) setAllBranches(branchesRes.data.data || []);
         } catch (error) {
             console.error('Error loading data:', error);
@@ -65,8 +65,10 @@ const BranchOpsAccounts = () => {
                 const toAssign = formBranchIds.filter(id => !oldIds.includes(id));
                 const toUnassign = oldIds.filter(id => !formBranchIds.includes(id));
                 setBranchSaving(true);
-                for (const bid of toAssign) await usersAPI.assignBranch(userId, bid);
-                for (const bid of toUnassign) await usersAPI.unassignBranch(userId, bid);
+                await Promise.all([
+                    ...toAssign.map(bid => usersAPI.assignBranch(userId, bid)),
+                    ...toUnassign.map(bid => usersAPI.unassignBranch(userId, bid)),
+                ]);
                 setBranchSaving(false);
                 showSuccess('تم تحديث الحساب بنجاح');
             } else {
@@ -75,7 +77,7 @@ const BranchOpsAccounts = () => {
                 // Assign branches for new account
                 if (userId && formBranchIds.length > 0) {
                     setBranchSaving(true);
-                    for (const bid of formBranchIds) await usersAPI.assignBranch(userId, bid);
+                    await Promise.all(formBranchIds.map(bid => usersAPI.assignBranch(userId, bid)));
                     setBranchSaving(false);
                 }
                 showSuccess('تم إنشاء الحساب بنجاح');

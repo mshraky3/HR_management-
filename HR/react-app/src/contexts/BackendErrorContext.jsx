@@ -29,19 +29,6 @@ export const BackendErrorProvider = ({ children }) => {
   const [error, setError] = useState(null);
 
   const setBackendError = useCallback((errorObj) => {
-    console.error('Backend/Database Error Detected:', {
-      message: errorObj?.message || 'Unknown error',
-      stack: errorObj?.stack,
-      response: errorObj?.response ? {
-        status: errorObj.response.status,
-        statusText: errorObj.response.statusText,
-        data: errorObj.response.data,
-        url: errorObj.config?.url,
-        method: errorObj.config?.method,
-      } : null,
-      code: errorObj?.code,
-      name: errorObj?.name,
-    });
     setError(errorObj);
     setIsBackendDown(true);
   }, []);

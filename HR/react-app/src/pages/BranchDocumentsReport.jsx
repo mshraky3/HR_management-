@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { formatDate } from '../utils/dateConverters';
 import { API_URL } from '../config/api';
+import { downloadFile } from '../utils/downloadFile';
 import './BranchDocumentsReport.css';
 
 const BranchDocumentsReport = () => {
@@ -170,14 +171,7 @@ const BranchDocumentsReport = () => {
             }
 
             const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `تقرير-مستندات-الفروع-${formatDate(new Date())}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
+            downloadFile(blob, `تقرير-مستندات-الفروع-${formatDate(new Date())}.pdf`);
             showSuccess('تم إنشاء التقرير بنجاح');
         } catch (err) {
             showError('فشل في إنشاء التقرير');
@@ -216,14 +210,7 @@ const BranchDocumentsReport = () => {
             }
 
             const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `مستندات-الفروع-${formatDate(new Date())}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
+            downloadFile(blob, `مستندات-الفروع-${formatDate(new Date())}.pdf`);
             showSuccess('تم إنشاء التقرير بنجاح');
         } catch (err) {
             showError('فشل في إنشاء التقرير');

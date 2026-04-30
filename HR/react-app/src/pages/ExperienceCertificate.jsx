@@ -4,11 +4,13 @@
  * Main Manager only
  */
 
-import { useState, useEffect, useRef } from "react";
-import { employeesAPI, branchesAPI, notificationsAPI } from "../utils/api";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { employeesAPI, notificationsAPI } from "../utils/api";
+import { downloadFile } from '../utils/downloadFile';
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
 import { formatDate } from "../utils/dateConverters";
+import { useBranches } from "../hooks/useBranches";
 import UnifiedDatePicker from "../components/UnifiedDatePicker";
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 import "./ExperienceCertificate.css";
@@ -17,7 +19,11 @@ const ExperienceCertificate = () => {
   const { isMainManager } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const [employees, setEmployees] = useState([]);
-  const [branches, setBranches] = useState([]);
+  const { branches: rawBranches } = useBranches();
+  const branches = useMemo(
+    () => [...rawBranches].sort((a, b) => (a.branch_name || "").localeCompare(b.branch_name || "", "ar")),
+    [rawBranches]
+  );
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
@@ -90,26 +96,6 @@ const ExperienceCertificate = () => {
   }, [isMainManager]);
 
   // Load branches and sort alphabetically
-  useEffect(() => {
-    const loadBranches = async () => {
-      try {
-        const response = await branchesAPI.getAll({ is_active: true });
-        if (response.data.success) {
-          const sortedBranches = (response.data.data || []).sort((a, b) => {
-            return (a.branch_name || "").localeCompare(
-              b.branch_name || "",
-              "ar",
-            );
-          });
-          setBranches(sortedBranches);
-        }
-      } catch (error) {
-        console.error("Error loading branches:", error);
-      }
-    };
-    loadBranches();
-  }, []);
-
   const loadEmployees = async () => {
     // Check if at least one search filter is filled
     const hasSearchCriteria =
@@ -145,7 +131,7 @@ const ExperienceCertificate = () => {
 
       const response = await employeesAPI.getAll(filters);
       if (response.data.success) {
-        setEmployees(response.data.data);
+        setEmployees(response.data.data || []);
       }
     } catch (error) {
       console.error("Error loading employees:", error);
@@ -444,9 +430,6 @@ const ExperienceCertificate = () => {
   const handleDownloadCertificate = () => {
     if (!generatedPdfBlob) return;
 
-    const url = window.URL.createObjectURL(generatedPdfBlob);
-    const link = document.createElement("a");
-    link.href = url;
     const employeeName =
       certificateData.full_name ||
       (selectedEmployee ? getFullName(selectedEmployee) : "موظف");
@@ -454,11 +437,7 @@ const ExperienceCertificate = () => {
       certificateType === "salary"
         ? `تعريف_راتب_${employeeName}.pdf`
         : `شهادة_خبرة_${employeeName}.pdf`;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+    downloadFile(generatedPdfBlob, fileName);
   };
 
   if (!isMainManager()) {

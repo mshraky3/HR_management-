@@ -11,6 +11,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { archiveAPI, branchesAPI, documentsAPI, branchDocumentsAPI } from '../utils/api';
 import { getDocumentTypeLabel, getBranchDocumentTypeLabel } from '../utils/employeeConstants';
 import { formatDate } from '../utils/dateConverters';
+import { downloadFile } from '../utils/downloadFile';
 import './Archive.css';
 
 const Archive = () => {
@@ -513,14 +514,7 @@ const Archive = () => {
     try {
       const response = await branchDocumentsAPI.download(doc.id);
       const blob = await response.data;
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = doc.file_name || 'document';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      downloadFile(blob, doc.file_name || 'document');
       showSuccess('تم تحميل المستند بنجاح');
     } catch (error) {
       console.error('Error downloading document:', error);
@@ -574,14 +568,7 @@ const Archive = () => {
       const blob = new Blob([response.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `archived-employees-${new Date().toISOString().split('T')[0]}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      downloadFile(blob, `archived-employees-${new Date().toISOString().split('T')[0]}.xlsx`);
       showSuccess('تم تصدير البيانات بنجاح');
     } catch (error) {
       console.error('Error exporting to Excel:', error);

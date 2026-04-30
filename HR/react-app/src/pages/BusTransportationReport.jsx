@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { busTransportationReportAPI, branchesAPI } from '../utils/api';
+import { busTransportationReportAPI } from '../utils/api';
 import { useNotification } from '../contexts/NotificationContext';
+import { downloadFile } from '../utils/downloadFile';
+import { useBranches } from '../hooks/useBranches';
 import '../styles/BusTransportationReport.css';
 export default function BusTransportationReport() {
-    const [branches, setBranches] = useState([]);
+    const { branches } = useBranches({});
     const [selectedBranches, setSelectedBranches] = useState([]);
     const [branchesFilter, setBranchesFilter] = useState('');
     const [showBranchesDropdown, setShowBranchesDropdown] = useState(false);
@@ -29,22 +31,6 @@ export default function BusTransportationReport() {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-
-    useEffect(() => {
-        loadBranches();
-    }, []);
-
-    const loadBranches = async () => {
-        try {
-            const response = await branchesAPI.getAll();
-            const branchesData = Array.isArray(response.data) ? response.data : (response.data?.data || []);
-            setBranches(branchesData);
-        } catch (error) {
-            console.error('Error loading branches:', error);
-            showError('فشل تحميل الفروع');
-            setBranches([]);
-        }
-    };
 
     const handleDataToggle = (key) => {
         setSelectedData(prev => ({
@@ -108,14 +94,7 @@ export default function BusTransportationReport() {
             const blob = response.data instanceof Blob
                 ? response.data
                 : new Blob([response.data], { type: 'application/pdf' });
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `تقرير-النقل-بالحافلات-${new Date().toLocaleDateString('ar-SA')}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
+            downloadFile(blob, `تقرير-النقل-بالحافلات-${new Date().toLocaleDateString('ar-SA')}.pdf`);
 
             showSuccess('تم إنشاء التقرير بنجاح');
         } catch (error) {
@@ -180,7 +159,7 @@ export default function BusTransportationReport() {
                                 </span>
                                 <span className={`dropdown-arrow ${showBranchesDropdown ? 'open' : ''}`}>▼</span>
                             </button>
-                            
+
                             {showBranchesDropdown && (
                                 <div className="filter-dropdown-wrapper-modern">
                                     <div className="dropdown-header-modern">

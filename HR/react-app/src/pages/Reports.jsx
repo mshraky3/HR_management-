@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { branchesAPI, employeesAPI, reportsAPI, branchDocumentsAPI, documentsAPI } from '../utils/api';
+import { downloadFile } from '../utils/downloadFile';
 import BranchBadge from '../components/BranchBadge';
 import { DATA_COMPLETION_STATUS, getDocumentTypeLabel, DOCUMENT_TYPE_LABELS } from '../utils/employeeConstants';
 import { formatDate } from '../utils/dateConverters';
@@ -750,14 +751,7 @@ const Reports = () => {
             const blob = response.data instanceof Blob
                 ? response.data
                 : new Blob([response.data], { type: mimeType });
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `${reportTitle}.${fileExtension}`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
+            downloadFile(blob, `${reportTitle}.${fileExtension}`);
 
             setShowSuccessAnimation(true);
             setTimeout(() => {

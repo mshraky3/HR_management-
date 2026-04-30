@@ -3440,12 +3440,6 @@ const DriverLicenseFormTab = ({ formData, setFormData, busId }) => {
           hijriValue={formData.issue_date_hijri || ""}
           gregorianValue={formData.issue_date_gregorian || ""}
           onChange={(hijri, gregorian) => {
-            console.log("[DATE_DEBUG] Driver issue date onChange", {
-              hijri,
-              gregorian,
-              oldHijri: formData.issue_date_hijri,
-              oldGregorian: formData.issue_date_gregorian,
-            });
             setFormData({
               ...formData,
               issue_date_hijri: hijri || null,
@@ -3460,12 +3454,6 @@ const DriverLicenseFormTab = ({ formData, setFormData, busId }) => {
           hijriValue={formData.expiry_date_hijri || ""}
           gregorianValue={formData.expiry_date_gregorian || ""}
           onChange={(hijri, gregorian) => {
-            console.log("[DATE_DEBUG] Driver expiry date onChange", {
-              hijri,
-              gregorian,
-              oldHijri: formData.expiry_date_hijri,
-              oldGregorian: formData.expiry_date_gregorian,
-            });
             setFormData({
               ...formData,
               expiry_date_hijri: hijri || null,
@@ -3894,12 +3882,6 @@ const BusDetailsFormTab = ({ formData, setFormData, isMainManager }) => {
               hijriValue={formData.lease_end_date_hijri || ""}
               gregorianValue={formData.lease_end_date_gregorian || ""}
               onChange={(hijri, gregorian) => {
-                console.log("[DATE_DEBUG] Lease end date onChange", {
-                  hijri,
-                  gregorian,
-                  oldHijri: formData.lease_end_date_hijri,
-                  oldGregorian: formData.lease_end_date_gregorian,
-                });
                 setFormData({
                   ...formData,
                   lease_end_date_hijri: hijri || "",
@@ -4908,12 +4890,6 @@ const DriverLicenseTab = ({ bus, onReload }) => {
           hijriValue={formData.issue_date_hijri || ""}
           gregorianValue={formData.issue_date_gregorian || ""}
           onChange={(hijri, gregorian) => {
-            console.log("[DATE_DEBUG] Registration issue date onChange", {
-              hijri,
-              gregorian,
-              oldHijri: formData.issue_date_hijri,
-              oldGregorian: formData.issue_date_gregorian,
-            });
             setFormData({
               ...formData,
               issue_date_hijri: hijri || null,
@@ -4928,12 +4904,6 @@ const DriverLicenseTab = ({ bus, onReload }) => {
           hijriValue={formData.expiry_date_hijri || ""}
           gregorianValue={formData.expiry_date_gregorian || ""}
           onChange={(hijri, gregorian) => {
-            console.log("[DATE_DEBUG] Registration expiry date onChange", {
-              hijri,
-              gregorian,
-              oldHijri: formData.expiry_date_hijri,
-              oldGregorian: formData.expiry_date_gregorian,
-            });
             setFormData({
               ...formData,
               expiry_date_hijri: hijri || null,
@@ -4974,15 +4944,6 @@ const DriverLicenseTab = ({ bus, onReload }) => {
           hijriValue={formData.driver_date_of_birth_hijri || ""}
           gregorianValue={formData.driver_date_of_birth_gregorian || ""}
           onChange={(hijri, gregorian) => {
-            console.log(
-              "[DATE_DEBUG] Driver date of birth onChange (legacy form)",
-              {
-                hijri,
-                gregorian,
-                oldHijri: formData.driver_date_of_birth_hijri,
-                oldGregorian: formData.driver_date_of_birth_gregorian,
-              },
-            );
             setFormData({
               ...formData,
               driver_date_of_birth_hijri: hijri || null,
@@ -5300,15 +5261,6 @@ const BusDetailsTab = ({ bus, onReload }) => {
               hijriValue={formData.lease_start_date_hijri || ""}
               gregorianValue={formData.lease_start_date_gregorian || ""}
               onChange={(hijri, gregorian) => {
-                console.log(
-                  "[DATE_DEBUG] Lease start date onChange (main manager)",
-                  {
-                    hijri,
-                    gregorian,
-                    oldHijri: formData.lease_start_date_hijri,
-                    oldGregorian: formData.lease_start_date_gregorian,
-                  },
-                );
                 setFormData({
                   ...formData,
                   lease_start_date_hijri: hijri || "",
@@ -5323,15 +5275,6 @@ const BusDetailsTab = ({ bus, onReload }) => {
               hijriValue={formData.lease_end_date_hijri || ""}
               gregorianValue={formData.lease_end_date_gregorian || ""}
               onChange={(hijri, gregorian) => {
-                console.log(
-                  "[DATE_DEBUG] Lease end date onChange (main manager)",
-                  {
-                    hijri,
-                    gregorian,
-                    oldHijri: formData.lease_end_date_hijri,
-                    oldGregorian: formData.lease_end_date_gregorian,
-                  },
-                );
                 setFormData({
                   ...formData,
                   lease_end_date_hijri: hijri || "",
@@ -5438,6 +5381,7 @@ const StudentsTab = ({
 
 const StudentFormModal = ({ bus, student, onClose, onSave }) => {
   const digitsOnly = (value) => String(value || "").replace(/\D/g, "");
+  const { showWarning } = useNotification();
   const [formData, setFormData] = useState({
     student_full_name: student?.student_full_name || "",
     contact_mobile_number: student?.contact_mobile_number || "",
@@ -5453,7 +5397,7 @@ const StudentFormModal = ({ bus, student, onClose, onSave }) => {
       !formData.contact_mobile_number ||
       !formData.address
     ) {
-      alert("يرجى ملء جميع الحقول المطلوبة");
+      showWarning("يرجى ملء جميع الحقول المطلوبة");
       return;
     }
 

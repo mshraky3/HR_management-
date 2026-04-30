@@ -11,6 +11,7 @@ const AccountManagement = () => {
   const { showError, showSuccess } = useNotification();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [formData, setFormData] = useState({
@@ -29,7 +30,7 @@ const AccountManagement = () => {
       setLoading(true);
       const response = await usersAPI.getAll({ role: 'main_manager', is_active: true });
       if (response.data.success) {
-        setAccounts(response.data.data);
+        setAccounts(response.data.data || []);
       }
     } catch (error) {
       console.error('Error loading accounts:', error);
@@ -42,6 +43,7 @@ const AccountManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      setSaving(true);
       if (editingAccount) {
         const updateData = { ...formData };
         if (!updateData.password || updateData.password.trim() === '') {
@@ -58,6 +60,8 @@ const AccountManagement = () => {
       showSuccess(editingAccount ? 'تم تحديث الحساب بنجاح' : 'تم إنشاء الحساب بنجاح');
     } catch (error) {
       showError(error.response?.data?.message || 'فشل حفظ الحساب');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -146,7 +150,7 @@ const AccountManagement = () => {
                 </div>
               </div>
               <div className="form-actions">
-                <button type="submit" className="btn-primary btn-lg">حفظ</button>
+                <button type="submit" className="btn-primary btn-lg" disabled={saving}>{saving ? 'جاري الحفظ...' : 'حفظ'}</button>
                 <button type="button" onClick={() => { setShowForm(false); resetForm(); setEditingAccount(null); }} className="btn-secondary btn-lg">
                   إلغاء
                 </button>

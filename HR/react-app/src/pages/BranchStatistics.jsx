@@ -11,6 +11,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import { branchStatisticsAPI, branchDocumentsAPI } from '../utils/api';
 import { calculateOverallProgress, calculateDocumentsCompletion } from '../utils/dataCompletionUtils';
 import { formatDate } from '../utils/dateConverters';
+import { downloadFile } from '../utils/downloadFile';
 import BranchesOverallProgressChart from '../components/BranchesOverallProgressChart';
 import './BranchStatistics.css';
 
@@ -96,14 +97,7 @@ const BranchStatistics = () => {
           throw new Error('تنسيق الاستجابة غير صحيح');
         }
 
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `performance-report-${selectedYear}-${selectedMonth}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+        downloadFile(blob, `performance-report-${selectedYear}-${selectedMonth}.xlsx`);
         showSuccess('تم تحميل التقرير بنجاح');
       } else {
         // Handle PDF or other formats

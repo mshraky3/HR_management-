@@ -108,14 +108,6 @@ if (!rootElement) {
     '<div style="padding: 20px; font-family: Arial; color: red;">Error: Root element not found. Please check the HTML structure.</div>';
 } else {
   try {
-    console.log("[MAIN] About to render app...");
-    console.log("[MAIN] Pre-render React check:", {
-      React: typeof React,
-      ReactDOM: typeof ReactDOM,
-      createRoot: typeof createRoot,
-      StrictMode: typeof StrictMode,
-    });
-
     createRoot(rootElement).render(
       <StrictMode>
         <ErrorBoundary>

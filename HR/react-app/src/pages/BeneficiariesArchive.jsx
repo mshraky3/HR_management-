@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import { beneficiariesAPI, branchesAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { downloadFile } from '../utils/downloadFile';
 import './Beneficiaries.css';
 
 const SERVICE_LABELS = {
@@ -109,14 +110,7 @@ const BeneficiariesArchive = () => {
             const blob = new Blob([res.data], {
                 type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `beneficiaries-archive-${filters.term_id}.xlsx`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            a.remove();
+            downloadFile(blob, `beneficiaries-archive-${filters.term_id}.xlsx`);
             showSuccess('تم تصدير البيانات بنجاح');
         } catch (error) {
             showError('فشل في تصدير البيانات');
@@ -147,7 +141,7 @@ const BeneficiariesArchive = () => {
                         {filters.term_id && (
                             <>
                                 <button className="btn btn-success" onClick={handleExport}>
-                                    📥 تصدير Excel
+                                    تصدير Excel
                                 </button>
                                 <button className="btn btn-secondary" onClick={() => setShowStats(!showStats)}>
                                     {showStats ? '📋 عرض الجدول' : '📊 عرض الإحصائيات'}

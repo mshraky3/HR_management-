@@ -23,6 +23,7 @@ import {
   getMonthlyRequiredBranchDocuments,
 } from "../utils/employeeHelpers";
 import { RESTRICTED_DOCUMENT_TYPES } from "../utils/documentRestrictions";
+import { downloadFile } from "../utils/downloadFile";
 import "./BranchDocumentsManagement.css";
 
 const BranchDocumentsManagement = () => {
@@ -468,16 +469,9 @@ const BranchDocumentsManagement = () => {
 
       // Get the PDF blob
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
       const docLabel =
         documentTypeLabels[pdfSelectedDocType] || pdfSelectedDocType;
-      a.download = `${docLabel}_جميع_الفروع.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      downloadFile(blob, `${docLabel}_جميع_الفروع.pdf`);
 
       showSuccess("تم إنشاء ملف PDF بنجاح");
       setPdfSelectedDocType("");
@@ -521,16 +515,9 @@ const BranchDocumentsManagement = () => {
 
       // Get the PDF blob
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
       const branch = branches.find((b) => b.id === parseInt(pdfSelectedBranch));
       const branchName = branch?.branch_name || "فرع";
-      a.download = `مستندات_${branchName}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      downloadFile(blob, `مستندات_${branchName}.pdf`);
 
       showSuccess("تم إنشاء ملف PDF بنجاح");
       setPdfSelectedBranch("");
@@ -750,14 +737,7 @@ const BranchDocumentsManagement = () => {
     try {
       const response = await branchDocumentsAPI.download(doc.id);
       const blob = new Blob([response.data]);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = doc.file_name || "document";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      downloadFile(blob, doc.file_name || "document");
       showSuccess("تم تحميل المستند");
     } catch (error) {
       const errorMsg = error.response?.data?.message || "فشل تحميل المستند";
