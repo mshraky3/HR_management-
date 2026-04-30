@@ -25,7 +25,18 @@ export async function up() {
     try {
         console.log('=== Starting Migration 010: Remove deductions column ===');
 
-        // First, check if any employees have non-zero deductions
+        // Check if deductions column exists before doing anything
+        const colCheck = await sql`
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'employees' AND column_name = 'deductions'
+    `;
+
+        if (colCheck.length === 0) {
+            console.log('✓ deductions column already removed — skipping migration');
+            return { success: true };
+        }
+
+        // Check if any employees have non-zero deductions
         const check = await sql`
       SELECT COUNT(*) as count FROM employees WHERE deductions > 0
     `;

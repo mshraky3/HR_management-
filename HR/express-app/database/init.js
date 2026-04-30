@@ -4,12 +4,13 @@
  */
 
 import { createTable, executeQuery, sql } from '../db-helpers.js';
+import { log } from '../utils/logger.js';
 
 /**
  * Create all database tables
  */
 export async function initializeDatabase() {
-  console.log('Starting database initialization...');
+  log.info('Starting database initialization...');
 
   try {
     // 1. Create branches table (no dependencies - must be first)
@@ -205,12 +206,12 @@ export async function initializeDatabase() {
       is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      created_by INTEGER NOT NULL,
-      updated_by INTEGER NOT NULL,
+      created_by INTEGER,
+      updated_by INTEGER,
       FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE RESTRICT,
-      FOREIGN KEY (created_by) REFERENCES branches(id) ON DELETE RESTRICT,
-      FOREIGN KEY (updated_by) REFERENCES branches(id) ON DELETE RESTRICT,
-      FOREIGN KEY (status_changed_by) REFERENCES branches(id) ON DELETE SET NULL,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (status_changed_by) REFERENCES users(id) ON DELETE SET NULL,
       FOREIGN KEY (registration_term_id) REFERENCES terms(id) ON DELETE SET NULL,
       FOREIGN KEY (current_term_id) REFERENCES terms(id) ON DELETE SET NULL
     `);
@@ -1126,7 +1127,7 @@ export async function initializeDatabase() {
         'Added expires_at column to notifications'
       );
     } catch (error) {
-      console.error('Error adding expires_at column to notifications:', error.message);
+      log.error('Error adding expires_at column to notifications:', error.message);
     }
 
     // notifications.one_time
@@ -1136,7 +1137,7 @@ export async function initializeDatabase() {
         'Added one_time column to notifications'
       );
     } catch (error) {
-      console.error('Error adding one_time column to notifications:', error.message);
+      log.error('Error adding one_time column to notifications:', error.message);
     }
 
     // Add seen_by_branches column to existing notifications table if it doesn't exist
@@ -1154,7 +1155,7 @@ export async function initializeDatabase() {
         'Added seen_by_branches column to notifications table'
       );
     } catch (error) {
-      console.error('Error adding seen_by_branches column to notifications:', error.message);
+      log.error('Error adding seen_by_branches column to notifications:', error.message);
     }
 
     // Update importance_level constraint to allow level 5
@@ -1175,7 +1176,7 @@ export async function initializeDatabase() {
         'Updated importance_level constraint to allow level 5'
       );
     } catch (error) {
-      console.error('Error updating importance_level constraint:', error.message);
+      log.error('Error updating importance_level constraint:', error.message);
     }
 
     // notification_views table (for one-time notifications)
@@ -1201,7 +1202,7 @@ export async function initializeDatabase() {
         'Created index on notification_views.user_id'
       );
     } catch (error) {
-      console.error('Error creating notification_views table:', error.message);
+      log.error('Error creating notification_views table:', error.message);
     }
 
     // Payroll absence feature tables
@@ -1281,7 +1282,7 @@ export async function initializeDatabase() {
         'Created index on employee_absences employee_id'
       );
     } catch (error) {
-      console.error('Error creating payroll absence tables:', error.message);
+      log.error('Error creating payroll absence tables:', error.message);
     }
 
     // Excused/unexcused absences columns
@@ -1295,7 +1296,7 @@ export async function initializeDatabase() {
         'Add unexcused_absences to employee_absences'
       );
     } catch (error) {
-      console.error('Error adding excused/unexcused absences columns:', error.message);
+      log.error('Error adding excused/unexcused absences columns:', error.message);
     }
 
     // Migration: Add term_id to bus_transportation and bus_students (if tables exist)
@@ -1537,7 +1538,7 @@ export async function initializeDatabase() {
         );
       }
     } catch (error) {
-      console.error('Error in bus transportation term migration:', error.message);
+      log.error('Error in bus transportation term migration:', error.message);
       // Don't throw - allow database to continue initializing
     }
 
@@ -1642,7 +1643,7 @@ export async function initializeDatabase() {
         'Added ownership_type check constraint (owned/leased)'
       );
     } catch (error) {
-      console.error('Error in bus transportation field cleanup migration:', error.message);
+      log.error('Error in bus transportation field cleanup migration:', error.message);
       // Don't throw - allow database to continue initializing
     }
 
@@ -1722,10 +1723,10 @@ export async function initializeDatabase() {
       if (checkBeneficiaryNumber.length === 0) {
         await sql`ALTER TABLE beneficiaries ADD COLUMN beneficiary_number VARCHAR(7) NOT NULL DEFAULT '000000'`;
         await sql`ALTER TABLE beneficiaries ALTER COLUMN beneficiary_number DROP DEFAULT`;
-        console.log('Added beneficiary_number column to beneficiaries table');
+        log.info('Added beneficiary_number column to beneficiaries table');
       }
     } catch (error) {
-      console.log('beneficiary_number column migration skipped or already exists');
+      log.info('beneficiary_number column migration skipped or already exists');
     }
 
     // Migration: Add free_student and notes columns, widen beneficiary_number to VARCHAR(7)
@@ -1737,10 +1738,10 @@ export async function initializeDatabase() {
       `;
       if (checkFreeStudent.length === 0) {
         await sql`ALTER TABLE beneficiaries ADD COLUMN free_student BOOLEAN NOT NULL DEFAULT false`;
-        console.log('Added free_student column to beneficiaries table');
+        log.info('Added free_student column to beneficiaries table');
       }
     } catch (error) {
-      console.log('free_student column migration skipped or already exists');
+      log.info('free_student column migration skipped or already exists');
     }
 
     try {
@@ -1751,17 +1752,17 @@ export async function initializeDatabase() {
       `;
       if (checkNotes.length === 0) {
         await sql`ALTER TABLE beneficiaries ADD COLUMN notes TEXT DEFAULT NULL`;
-        console.log('Added notes column to beneficiaries table');
+        log.info('Added notes column to beneficiaries table');
       }
     } catch (error) {
-      console.log('notes column migration skipped or already exists');
+      log.info('notes column migration skipped or already exists');
     }
 
     try {
       await sql`ALTER TABLE beneficiaries ALTER COLUMN beneficiary_number TYPE VARCHAR(7)`;
-      console.log('Widened beneficiary_number column to VARCHAR(7)');
+      log.info('Widened beneficiary_number column to VARCHAR(7)');
     } catch (error) {
-      console.log('beneficiary_number column width migration skipped');
+      log.info('beneficiary_number column width migration skipped');
     }
 
     // Migration: Remove old 'salary' field from employees table
@@ -1776,13 +1777,13 @@ export async function initializeDatabase() {
       if (checkSalaryColumn.length > 0) {
         if (process.env.ALLOW_DESTRUCTIVE_DB_MIGRATIONS === 'true') {
           await sql`ALTER TABLE employees DROP COLUMN salary CASCADE`;
-          console.log('[Migration] Removed old salary column from employees table');
+          log.info('[Migration] Removed old salary column from employees table');
         } else {
-          console.log('[Migration] salary column exists but ALLOW_DESTRUCTIVE_DB_MIGRATIONS is not set - skipping removal');
+          log.info('[Migration] salary column exists but ALLOW_DESTRUCTIVE_DB_MIGRATIONS is not set - skipping removal');
         }
       }
     } catch (error) {
-      console.error('Error removing salary column:', error.message);
+      log.error('Error removing salary column:', error.message);
       // Don't throw - allow database to continue initializing
     }
 
@@ -1802,10 +1803,10 @@ export async function initializeDatabase() {
         RETURNING e.id
       `;
       if (orphaned.length > 0) {
-        console.log(`[Migration] Archived ${orphaned.length} orphaned employees from deactivated branches`);
+        log.info(`[Migration] Archived ${orphaned.length} orphaned employees from deactivated branches`);
       }
     } catch (error) {
-      console.error('Error fixing orphaned employees:', error.message);
+      log.error('Error fixing orphaned employees:', error.message);
     }
 
     // =============================================
@@ -1850,7 +1851,7 @@ export async function initializeDatabase() {
         'Created index on treatment_plans(created_at DESC)'
       );
     } catch (error) {
-      console.log('Treatment plans indexes already exist or skipped');
+      log.info('Treatment plans indexes already exist or skipped');
     }
 
     // Create branch_otp_tokens table for email OTP login
@@ -1873,7 +1874,7 @@ export async function initializeDatabase() {
         'Created index on branch_otp_tokens.expires_at'
       );
     } catch (error) {
-      console.log('branch_otp_tokens indexes already exist or skipped');
+      log.info('branch_otp_tokens indexes already exist or skipped');
     }
 
     // Create user_otp_tokens table for email OTP login (branch_operations_manager)
@@ -1896,13 +1897,13 @@ export async function initializeDatabase() {
         'Created index on user_otp_tokens.expires_at'
       );
     } catch (error) {
-      console.log('user_otp_tokens indexes already exist or skipped');
+      log.info('user_otp_tokens indexes already exist or skipped');
     }
 
     return { success: true, message: 'Database initialization completed successfully' };
 
   } catch (error) {
-    console.error('Error initializing database:', error);
+    log.error('Error initializing database:', error);
     throw error;
   }
 }
@@ -1914,7 +1915,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       process.exit(0);
     })
     .catch((error) => {
-      console.error('Database setup failed:', error);
+      log.error('Database setup failed:', error);
       process.exit(1);
     });
 }
