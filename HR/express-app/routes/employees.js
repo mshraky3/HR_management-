@@ -2818,8 +2818,8 @@ router.post(
         branch_id: req.body.branch_id, // policy-scope:allow-direct
         first_name: req.body.first_name,
         id_or_residency_number: req.body.id_or_residency_number,
-        created_by: createdByBranchId,
-        updated_by: createdByBranchId,
+        created_by: req.user.id,
+        updated_by: req.user.id,
         contract_start_date_hijri: req.body.contract_start_date_hijri,
         contract_end_date_hijri: req.body.contract_end_date_hijri,
       });
