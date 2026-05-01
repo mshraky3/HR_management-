@@ -17,11 +17,7 @@ if (process.env.DATABASE_URL) {
   // Use DATABASE_URL if available (Vercel, Heroku, etc.)
   log.info("Connecting to database using DATABASE_URL");
   sql = postgres(process.env.DATABASE_URL, {
-    ssl:
-      process.env.DATABASE_SSL === "true" ||
-        process.env.DATABASE_SSL === "require"
-        ? "require"
-        : false,
+    ssl: "require",
     // Reduced default pool size for serverless (Vercel) compatibility
     // Neon free tier: 10 connections, Vercel serverless: best with 5-10
     max: parseInt(process.env.DB_POOL_MAX || "8", 10),
