@@ -2829,8 +2829,8 @@ router.post(
         employee = await Employee.create(
           {
             ...req.body,
-            created_by: req.user.id,
-            updated_by: req.user.id, // For new records, updated_by = created_by
+            created_by: req.user.existsInDb ? req.user.id : null,
+            updated_by: req.user.existsInDb ? req.user.id : null, // For new records, updated_by = created_by
             data_completion_status: "incomplete", // Default to incomplete
           },
           tx,
@@ -3106,7 +3106,7 @@ router.put(
       const employee = await Employee.update(
         parseInt(req.params.id),
         req.body,
-        req.user.id,
+        req.user.existsInDb ? req.user.id : null,
       );
 
       log.info(
