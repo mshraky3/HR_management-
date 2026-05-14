@@ -31,7 +31,7 @@ export const authenticate = async (req, res, next) => {
     const decoded = verifyToken(token);
 
     // Validate user exists in database (even if inactive)
-    // If user doesn't exist, still allow authentication but mark user as invalid
+    // Validate user exists in database
     let user = null;
     try {
       const [dbUser] = await sql`
@@ -45,16 +45,28 @@ export const authenticate = async (req, res, next) => {
         error: userCheckError.message,
         user_id: decoded.id
       });
+      // DB unreachable — cannot verify identity, reject safely
+      return res.status(503).json({
+        success: false,
+        message: 'Service temporarily unavailable. Please try again.'
+      });
+    }
+
+    if (!user) {
+      log.warn('Authentication failed: User no longer exists in database', { user_id: decoded.id });
+      return res.status(401).json({
+        success: false,
+        message: 'User account not found. Please login again.'
+      });
     }
 
     // Attach user info to request
-    // If user doesn't exist in DB, still set req.user but mark it as invalid
     req.user = {
       id: decoded.id,
       username: decoded.username,
       role: decoded.role,
       branch_id: decoded.branch_id,
-      existsInDb: !!user // Flag to indicate if user exists in database
+      existsInDb: true
     };
 
     await attachRequestScope(req);

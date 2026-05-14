@@ -23,7 +23,8 @@ if (process.env.DATABASE_URL) {
     max: parseInt(process.env.DB_POOL_MAX || "8", 10),
     idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "20", 10),
     connect_timeout: 10,
-    max_lifetime: 60 * 30,
+    // Neon auto-suspends idle connections after ~5 min; keep max_lifetime below that
+    max_lifetime: 60 * 4,
     transform: {
       undefined: null,
     },
@@ -65,7 +66,8 @@ if (process.env.DATABASE_URL) {
     max: parseInt(process.env.DB_POOL_MAX || "8", 10),
     idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "20", 10),
     connect_timeout: 10,
-    max_lifetime: 60 * 30,
+    // Neon auto-suspends idle connections after ~5 min; keep max_lifetime below that
+    max_lifetime: 60 * 4,
     transform: {
       undefined: null,
     },
