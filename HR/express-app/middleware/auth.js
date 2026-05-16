@@ -31,7 +31,6 @@ export const authenticate = async (req, res, next) => {
     const decoded = verifyToken(token);
 
     // Validate user exists in database (even if inactive)
-    // Validate user exists in database
     let user = null;
     try {
       const [dbUser] = await sql`
@@ -50,6 +49,29 @@ export const authenticate = async (req, res, next) => {
         success: false,
         message: 'Service temporarily unavailable. Please try again.'
       });
+    }
+
+    // Branch managers are stored in the branches table, not users
+    if (!user && decoded.role === 'branch_manager') {
+      try {
+        const [branch] = await sql`
+          SELECT id, username, is_active
+          FROM branches
+          WHERE id = ${decoded.id}
+        `;
+        if (branch) {
+          user = { id: branch.id, username: branch.username, role: 'branch_manager', branch_id: branch.id, is_active: branch.is_active };
+        }
+      } catch (branchCheckError) {
+        log.error('Error checking branch during authentication', {
+          error: branchCheckError.message,
+          branch_id: decoded.id
+        });
+        return res.status(503).json({
+          success: false,
+          message: 'Service temporarily unavailable. Please try again.'
+        });
+      }
     }
 
     if (!user) {
