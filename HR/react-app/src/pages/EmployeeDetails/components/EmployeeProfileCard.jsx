@@ -88,8 +88,8 @@ const EmployeeProfileCard = ({
           <p>هذا الموظف يحتاج إلى إكمال البيانات التالية:</p>
           {missingData?.missingFields && missingData.missingFields.length > 0 ? (
             <ul>
-              {missingData.missingFields.map((field, index) => (
-                <li key={index}>{field}</li>
+              {missingData.missingFields.map((field) => (
+                <li key={field}>{field}</li>
               ))}
             </ul>
           ) : (

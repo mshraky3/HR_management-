@@ -86,6 +86,10 @@ const Dashboard = () => {
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0); // Track current task being shown
   const [branchOpsTasksLoading, setBranchOpsTasksLoading] = useState(false);
 
+  // Track whether the component is still mounted to avoid state updates after unmount
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const loadStats = useCallback(async () => {
     try {
       if (isBranchOpsUser) {
@@ -183,6 +187,9 @@ const Dashboard = () => {
 
       // Execute all API calls in parallel
       const results = await Promise.all(apiPromises);
+
+      // Guard: component may have unmounted while awaiting
+      if (!mountedRef.current) return;
 
       // Extract results
       const branchesRes = results[0];

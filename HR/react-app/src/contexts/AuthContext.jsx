@@ -159,7 +159,7 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem("forceLogout", String(Date.now()));
       } catch (err) { }
     }, remaining + 50); // small buffer
-  }, [IDLE_TIMEOUT_MS, WARNING_MS, clearTimers]);
+  }, [IDLE_TIMEOUT_MS, WARNING_MS, clearTimers, logout]);
 
   const userActivityHandler = useCallback(() => {
     // On any user activity, reset timers and hide warning
@@ -187,7 +187,7 @@ export const AuthProvider = ({ children }) => {
 
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, [scheduleTimers, WARNING_MS]);
+  }, [scheduleTimers, WARNING_MS, logout]);
 
   // Set up activity listeners on mount
   useEffect(() => {
@@ -364,7 +364,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     // Prevent multiple simultaneous logout calls
     if (logoutInProgressRef.current) {
       return;
@@ -389,7 +389,7 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       logoutInProgressRef.current = false;
     }
-  };
+  }, []);
 
   // Keep-alive helper to mark activity (useful for API calls)
   const markActivity = useCallback(() => {

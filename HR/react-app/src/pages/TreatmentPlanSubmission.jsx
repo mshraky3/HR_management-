@@ -698,7 +698,7 @@ const TreatmentPlanSubmission = () => {
                         {files.length > 0 && (
                             <div className="tp-file-list">
                                 {files.map((file, index) => (
-                                    <div key={index} className="tp-file-item">
+                                    <div key={`${file.name}-${index}`} className="tp-file-item">
                                         <div className="tp-file-item-info">
                                             <span>📎</span>
                                             <span className="tp-file-item-name">{file.name}</span>

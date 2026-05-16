@@ -5,12 +5,17 @@ export function useBranches(options = { is_active: true }) {
     const [branches, setBranches] = useState([]);
     const [loadingBranches, setLoadingBranches] = useState(false);
 
+    // Serialize options so the effect re-runs when options change,
+    // without requiring callers to memoize the object reference.
+    const optionsKey = JSON.stringify(options);
+
     useEffect(() => {
+        const currentOptions = JSON.parse(optionsKey);
         let cancelled = false;
         const load = async () => {
             try {
                 setLoadingBranches(true);
-                const res = await branchesAPI.getAll(options);
+                const res = await branchesAPI.getAll(currentOptions);
                 if (!cancelled && res.data.success) {
                     setBranches(res.data.data || []);
                 }
@@ -22,8 +27,7 @@ export function useBranches(options = { is_active: true }) {
         };
         load();
         return () => { cancelled = true; };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [optionsKey]);
 
     return { branches, loadingBranches };
 }

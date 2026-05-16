@@ -1184,9 +1184,8 @@ const EmployeeStatistics = () => {
                       const totalCount = maleCount + femaleCount;
                       const malePercentage = totalCount > 0 ? ((maleCount / totalCount) * 100).toFixed(1) : 0;
                       return (
-                        <tr key={index} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                        <tr key={item.branch_name} style={{ borderBottom: "1px solid #e2e8f0" }}>
                           <td style={{ padding: "10px", textAlign: "right" }}>{item.branch_name}</td>
-                          <td style={{ padding: "10px", textAlign: "center", color: genderColors.male, fontWeight: "600" }}>
                             {formatNumber(maleCount)}
                           </td>
                           <td style={{ padding: "10px", textAlign: "center", color: genderColors.female, fontWeight: "600" }}>
@@ -1226,7 +1225,7 @@ const EmployeeStatistics = () => {
                   </thead>
                   <tbody>
                     {topPaidEmployees.map((item, index) => (
-                      <tr key={index} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                      <tr key={item.name} style={{ borderBottom: "1px solid #e2e8f0" }}>
                         <td style={{ padding: "10px", textAlign: "right", fontWeight: "600" }}>{index + 1}</td>
                         <td style={{ padding: "10px", textAlign: "right" }}>{item.name}</td>
                         <td style={{ padding: "10px", textAlign: "center" }}>{item.job_title || "غير محدد"}</td>
@@ -1623,8 +1622,7 @@ const EmployeeStatistics = () => {
                       const totalCount = maleCount + femaleCount;
                       const malePercentage = totalCount > 0 ? ((maleCount / totalCount) * 100).toFixed(1) : 0;
                       return (
-                        <tr key={index} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                          <td style={{ padding: "10px", textAlign: "right", fontWeight: "600" }}>{item.job_title}</td>
+                        <tr key={item.job_title} style={{ borderBottom: "1px solid #e2e8f0" }}>
                           <td style={{ padding: "10px", textAlign: "center", color: genderColors.male, fontWeight: "600" }}>
                             {formatNumber(maleCount)}
                           </td>
