@@ -415,11 +415,8 @@ export const Employee = {
 
 
       // If updated_by is not provided, use created_by (for new records)
-      const finalUpdatedBy = updated_by || created_by;
-
-      if (!created_by || !finalUpdatedBy) {
-        throw new Error('created_by and updated_by are required');
-      }
+      // Both may be null for branch managers (no row in users table — FK is nullable)
+      const finalUpdatedBy = updated_by ?? created_by ?? null;
 
       // Ensure status is set to 'active' for new employees (unless explicitly provided)
       const employeeStatus = status || 'active';
