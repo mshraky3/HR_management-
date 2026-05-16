@@ -115,8 +115,8 @@ const BankSelect = ({
             required={required}
           >
             <option value={DEFAULT_BANK_PLACEHOLDER}>{DEFAULT_BANK_PLACEHOLDER}</option>
-            {BANKS.map((bank, index) => (
-              <option key={index} value={bank.nameAr}>
+            {BANKS.map((bank) => (
+              <option key={bank.nameAr} value={bank.nameAr}>
                 {bank.nameAr}
               </option>
             ))}

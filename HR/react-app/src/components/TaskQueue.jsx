@@ -73,7 +73,7 @@ const TaskQueue = ({ tasks }) => {
         <h3 className="task-queue-title">المهام القادمة</h3>
         <button
           className="task-queue-toggle"
-          onClick={() => setCollapsed(true)}
+          onClick={() => { setCollapsed(true); setExpanded(false); }}
         >
           إخفاء
         </button>
@@ -131,6 +131,14 @@ const TaskQueue = ({ tasks }) => {
         ))}
 
         {/* Remaining Tasks (collapsible) */}
+        {remainingTasks.length > 0 && (
+          <button
+            className="task-queue-show-more"
+            onClick={() => setExpanded(prev => !prev)}
+          >
+            {expanded ? 'إخفاء المزيد' : `عرض ${remainingTasks.length} مهام إضافية`}
+          </button>
+        )}
         {expanded && remainingTasks.length > 0 && (
           <div className="task-queue-remaining">
             {remainingTasks.map((task) => (
