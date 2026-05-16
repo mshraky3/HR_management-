@@ -83,12 +83,15 @@ export const authenticate = async (req, res, next) => {
     }
 
     // Attach user info to request
+    // existsInDb reflects whether this actor has a row in the users table.
+    // Branch managers are stored in branches, not users — so their ID cannot
+    // be used as a FK referencing users(id).
     req.user = {
       id: decoded.id,
       username: decoded.username,
       role: decoded.role,
       branch_id: decoded.branch_id,
-      existsInDb: true
+      existsInDb: decoded.role !== 'branch_manager'
     };
 
     await attachRequestScope(req);

@@ -875,7 +875,8 @@ router.post('/:id/assign-bus', requireManager, async (req, res) => {
             student_full_name: beneficiary.beneficiary_name,
             contact_mobile_number: contactNumber,
             address: '',
-            created_by: req.user.id
+            // created_by is FK to users(id) — branch managers have no users row, use null
+            created_by: req.user.role === 'branch_manager' ? null : req.user.id
         });
 
         res.status(201).json({ success: true, data: student, message: 'تم تسجيل المستفيد في الباص بنجاح' });

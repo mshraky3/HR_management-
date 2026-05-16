@@ -2786,7 +2786,7 @@ router.post(
             await Employee.linkToBranch(
               existingEmployeeId,
               linkBranchId,
-              req.user.id,
+              auditUserId,
             );
             const updatedEmployee = await Employee.findById(existingEmployeeId);
             clearByPrefix(`dashboard:summary:${linkBranchId}`);
@@ -2851,7 +2851,7 @@ router.post(
         await Employee.linkToBranch(
           employee.id,
           createdByBranchId,
-          req.user.id,
+          auditUserId,
           tx,
         );
         log.info("[EMPLOYEE CREATE] Successfully linked employee to branch");
@@ -3391,11 +3391,12 @@ router.post("/:id/renew", async (req, res) => {
     }
 
     // Renew employee
+    // status_changed_by is FK to users(id) — branch managers have no users row, use null
     const renewedEmployee = await Employee.renewEmployee(
       employeeId,
       currentYear.year_label,
       currentTerm.id,
-      req.user.branch_id,
+      null,
     );
 
     if (!renewedEmployee) {

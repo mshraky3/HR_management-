@@ -110,9 +110,11 @@ export const assertArchivedEmployeeDocumentEligibleForPurge = (document) => {
     return { ageDays, retentionDays, archivedAt };
 };
 
-const getStatusActorId = (actor, employee) => {
-    // status_changed_by is FK to branches(id) — always resolve to branch_id
-    return actor?.branch_id || employee?.branch_id || null;
+const getStatusActorId = (actor) => {
+    // status_changed_by is FK to users(id) — branch managers have no users row, use null
+    if (!actor) return null;
+    if (actor.role === 'branch_manager') return null;
+    return actor.id || null;
 };
 
 const ensureValidTargetStatus = (status) => {
@@ -157,7 +159,7 @@ export const applyArchiveEmployeeStatusTransition = async ({
 
     const isCurrentArchived = ARCHIVED_STATUSES.includes(employee.status);
     const isTargetRestoreState = ACTIVE_STATUSES.includes(status);
-    const actorId = getStatusActorId(actor, employee);
+    const actorId = getStatusActorId(actor);
 
     if (isTargetRestoreState) {
         if (!isCurrentArchived) {
