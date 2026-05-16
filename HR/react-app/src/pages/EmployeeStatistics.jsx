@@ -1186,6 +1186,7 @@ const EmployeeStatistics = () => {
                       return (
                         <tr key={item.branch_name} style={{ borderBottom: "1px solid #e2e8f0" }}>
                           <td style={{ padding: "10px", textAlign: "right" }}>{item.branch_name}</td>
+                          <td style={{ padding: "10px", textAlign: "center", color: genderColors.male, fontWeight: "600" }}>
                             {formatNumber(maleCount)}
                           </td>
                           <td style={{ padding: "10px", textAlign: "center", color: genderColors.female, fontWeight: "600" }}>
