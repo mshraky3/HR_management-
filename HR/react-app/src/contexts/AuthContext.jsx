@@ -93,6 +93,8 @@ export const AuthProvider = ({ children }) => {
   const warningTimerRef = useRef(null);
   const logoutTimerRef = useRef(null);
   const countdownIntervalRef = useRef(null);
+  // Ref to always hold the latest logout function, avoiding TDZ in callbacks declared before logout
+  const logoutRef = useRef(null);
 
   const setLastActivity = useCallback((ts = Date.now()) => {
     try {
@@ -150,7 +152,7 @@ export const AuthProvider = ({ children }) => {
       // Force logout
       setIdleWarningVisible(false);
       try {
-        await logout();
+        await logoutRef.current?.();
       } catch (err) {
         // ignore
       }
@@ -159,7 +161,7 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem("forceLogout", String(Date.now()));
       } catch (err) { }
     }, remaining + 50); // small buffer
-  }, [IDLE_TIMEOUT_MS, WARNING_MS, clearTimers, logout]);
+  }, [IDLE_TIMEOUT_MS, WARNING_MS, clearTimers]);
 
   const userActivityHandler = useCallback(() => {
     // On any user activity, reset timers and hide warning
@@ -181,13 +183,13 @@ export const AuthProvider = ({ children }) => {
       }
       if (e.key === "forceLogout") {
         // Another tab forced logout
-        logout();
+        logoutRef.current?.();
       }
     };
 
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, [scheduleTimers, WARNING_MS, logout]);
+  }, [scheduleTimers, WARNING_MS]);
 
   // Set up activity listeners on mount
   useEffect(() => {
@@ -390,6 +392,8 @@ export const AuthProvider = ({ children }) => {
       logoutInProgressRef.current = false;
     }
   }, []);
+  // Keep ref in sync so scheduleTimers/onStorage always call the latest logout
+  logoutRef.current = logout;
 
   // Keep-alive helper to mark activity (useful for API calls)
   const markActivity = useCallback(() => {
