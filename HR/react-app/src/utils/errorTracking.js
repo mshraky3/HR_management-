@@ -145,7 +145,9 @@ function getUserInfo() {
         if (!token) return null;
 
         // Decode JWT payload (without verification)
-        const payload = JSON.parse(atob(token.split('.')[1]));
+        const parts = token.split('.');
+        if (parts.length !== 3) return null;
+        const payload = JSON.parse(atob(parts[1]));
         return {
             userId: payload.id,
             username: payload.username,
