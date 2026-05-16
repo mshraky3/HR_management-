@@ -2825,12 +2825,16 @@ router.post(
       });
 
       let employee;
+      // Branch managers have req.user.id = branch.id (not a users table FK)
+      // created_by/updated_by reference users(id), so use null for branch managers
+      const auditUserId = req.user.role === 'branch_manager' ? null : req.user.id;
+
       await sql.begin(async (tx) => {
         employee = await Employee.create(
           {
             ...req.body,
-            created_by: req.user.id,
-            updated_by: req.user.id, // For new records, updated_by = created_by
+            created_by: auditUserId,
+            updated_by: auditUserId, // For new records, updated_by = created_by
             data_completion_status: "incomplete", // Default to incomplete
           },
           tx,
@@ -3100,13 +3104,15 @@ router.put(
       }
 
       // Date normalization is handled by validateDateFields middleware
-      log.info("[EMPLOYEE UPDATE] Updated by user ID:", req.user.id);
+      // Branch managers have req.user.id = branch.id (not a users table FK)
+      const auditUserIdForUpdate = req.user.role === 'branch_manager' ? null : req.user.id;
+      log.info("[EMPLOYEE UPDATE] Updated by user ID:", auditUserIdForUpdate);
       log.info("[EMPLOYEE UPDATE] Calling Employee.update()...");
 
       const employee = await Employee.update(
         parseInt(req.params.id),
         req.body,
-        req.user.id,
+        auditUserIdForUpdate,
       );
 
       log.info(
