@@ -86,7 +86,6 @@ router.post('/login', async (req, res) => {
 
     // First, try to find user in users table
     let user;
-    let isBranchLogin = false;
 
     try {
       user = await User.findByUsername(username);
@@ -192,16 +191,16 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Check if user is active (for regular user logins)
-    if (!isBranchLogin && !user.is_active) {
+    // Check if user is active
+    if (!user.is_active) {
       return res.status(403).json({
         success: false,
         message: 'الحساب معطل. يرجى الاتصال بالمسؤول.'
       });
     }
 
-    // Compare password (for regular user logins)
-    if (!isBranchLogin && user.password !== password) {
+    // Compare password
+    if (user.password !== password) {
       return res.status(401).json({
         success: false,
         message: 'اسم المستخدم أو كلمة المرور غير صحيحة'
@@ -297,7 +296,7 @@ router.post('/login', async (req, res) => {
         if (!existingLogin) {
           await sql`
             INSERT INTO user_logins (user_id, branch_id, login_date, ip_address, user_agent)
-            VALUES (${isBranchLogin ? null : user.id}, ${user.branch_id}, ${today}, ${ipAddress}, ${userAgent})
+            VALUES (${user.id}, ${user.branch_id}, ${today}, ${ipAddress}, ${userAgent})
           `;
         }
       } catch (loginTrackingError) {

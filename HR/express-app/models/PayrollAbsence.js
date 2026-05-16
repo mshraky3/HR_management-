@@ -44,8 +44,8 @@ const getActiveCycleDate = (now = new Date()) => {
 
   // If we're in the first few days of the month, check if previous month's entry is still open
   if (currentDay <= ENTRY_OPEN_DAYS) {
-    // Get previous month
-    const prevMonth = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 1, 15));
+    // Get previous month (use day 1 to avoid month-boundary edge cases)
+    const prevMonth = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() - 1, 1));
     return prevMonth;
   }
 

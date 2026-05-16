@@ -34,6 +34,13 @@ export const errorHandler = (err, req, res, next) => {
     });
   }
 
+  if (err.code === '57P01') { // admin_shutdown — transient DB connection loss (e.g. Neon auto-suspend)
+    return res.status(503).json({
+      success: false,
+      message: 'Database connection was interrupted. Please try again.',
+    });
+  }
+
   // Validation errors
   if (err.name === 'ValidationError') {
     return res.status(400).json({

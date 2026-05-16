@@ -51,60 +51,17 @@ const Suggestion = {
         WHERE 1=1
       `;
 
-            // Apply filters
             if (filters.branch_id) {
-                query = sql`
-          SELECT 
-            s.*,
-            b.branch_name
-          FROM suggestions s
-          LEFT JOIN branches b ON s.branch_id = b.id
-          WHERE s.branch_id = ${filters.branch_id}
-          ${filters.importance_level ? sql`AND s.importance_level = ${filters.importance_level}` : sql``}
-          ${filters.status ? sql`AND s.status = ${filters.status}` : sql``}
-          ORDER BY s.created_at DESC
-        `;
-            } else if (filters.importance_level && filters.status) {
-                query = sql`
-          SELECT 
-            s.*,
-            b.branch_name
-          FROM suggestions s
-          LEFT JOIN branches b ON s.branch_id = b.id
-          WHERE s.importance_level = ${filters.importance_level}
-          AND s.status = ${filters.status}
-          ORDER BY s.created_at DESC
-        `;
-            } else if (filters.importance_level) {
-                query = sql`
-          SELECT 
-            s.*,
-            b.branch_name
-          FROM suggestions s
-          LEFT JOIN branches b ON s.branch_id = b.id
-          WHERE s.importance_level = ${filters.importance_level}
-          ORDER BY s.created_at DESC
-        `;
-            } else if (filters.status) {
-                query = sql`
-          SELECT 
-            s.*,
-            b.branch_name
-          FROM suggestions s
-          LEFT JOIN branches b ON s.branch_id = b.id
-          WHERE s.status = ${filters.status}
-          ORDER BY s.created_at DESC
-        `;
-            } else {
-                query = sql`
-          SELECT 
-            s.*,
-            b.branch_name
-          FROM suggestions s
-          LEFT JOIN branches b ON s.branch_id = b.id
-          ORDER BY s.created_at DESC
-        `;
+                query = sql`${query} AND s.branch_id = ${filters.branch_id}`;
             }
+            if (filters.importance_level) {
+                query = sql`${query} AND s.importance_level = ${filters.importance_level}`;
+            }
+            if (filters.status) {
+                query = sql`${query} AND s.status = ${filters.status}`;
+            }
+
+            query = sql`${query} ORDER BY s.created_at DESC`;
 
             const suggestions = await query;
             return suggestions;

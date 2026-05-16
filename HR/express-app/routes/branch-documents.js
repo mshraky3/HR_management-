@@ -338,7 +338,10 @@ router.post(
       // Get valid user ID for uploaded_by field
       const uploadedById = await getUploadedByUserId(req.user?.id);
       if (!uploadedById) {
-        return handleRouteError(error, req, res, 'No valid user found for uploaded_by field. Please ensure at least one user exists in the system.');
+        return res.status(500).json({
+          success: false,
+          message: 'No valid user found for uploaded_by field. Please ensure at least one user exists in the system.',
+        });
       }
 
       // Use the fixed filename for database record

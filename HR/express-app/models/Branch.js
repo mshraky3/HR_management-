@@ -97,8 +97,9 @@ export const Branch = {
    */
   async findAll(filters = {}) {
     try {
-      // Create cache key based on filters
-      const cacheKey = `branches:list:${JSON.stringify(filters)}`;
+      // Create cache key based on filters (sort keys so key order doesn't create duplicates)
+      const sortedFilters = Object.keys(filters).sort().reduce((acc, k) => { acc[k] = filters[k]; return acc; }, {});
+      const cacheKey = `branches:list:${JSON.stringify(sortedFilters)}`;
       const cached = getCache(cacheKey);
       if (cached !== null) {
         return cached;

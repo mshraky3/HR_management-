@@ -197,8 +197,8 @@ export const Employee = {
       }
 
       // Search by name (partial match on full name or any individual name field)
-      if (filters.search_name) {
-        const namePattern = `%${filters.search_name}%`;
+      if (filters.search_name && filters.search_name.trim()) {
+        const namePattern = `%${filters.search_name.trim()}%`;
         conditions.push(`(
           TRIM(COALESCE(first_name, '') || ' ' || COALESCE(second_name, '') || ' ' || COALESCE(third_name, '') || ' ' || COALESCE(fourth_name, '')) ILIKE $${paramIndex} OR
           first_name ILIKE $${paramIndex} OR 
@@ -319,8 +319,8 @@ export const Employee = {
         params.push(filters.data_completion_status);
       }
 
-      if (filters.search_name) {
-        const namePattern = `%${filters.search_name}%`;
+      if (filters.search_name && filters.search_name.trim()) {
+        const namePattern = `%${filters.search_name.trim()}%`;
         conditions.push(`(
           TRIM(COALESCE(e.first_name, '') || ' ' || COALESCE(e.second_name, '') || ' ' || COALESCE(e.third_name, '') || ' ' || COALESCE(e.fourth_name, '')) ILIKE $${paramIndex} OR
           e.first_name ILIKE $${paramIndex} OR 
@@ -707,8 +707,8 @@ export const Employee = {
         params.push(filters.status_change_date_to);
       }
       // Server-side search by name (using ILIKE for partial match on full name or individual fields)
-      if (filters.search_name) {
-        const namePattern = `%${filters.search_name}%`;
+      if (filters.search_name && filters.search_name.trim()) {
+        const namePattern = `%${filters.search_name.trim()}%`;
         conditions.push(`(
           TRIM(COALESCE(e.first_name, '') || ' ' || COALESCE(e.second_name, '') || ' ' || COALESCE(e.third_name, '') || ' ' || COALESCE(e.fourth_name, '')) ILIKE $${paramIndex} OR
           e.first_name ILIKE $${paramIndex} OR 

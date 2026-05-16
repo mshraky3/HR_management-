@@ -63,9 +63,11 @@ const Beneficiary = {
             let limitClause = '';
             let offsetClause = '';
             if (page && limit) {
-                const offset = (parseInt(page) - 1) * parseInt(limit);
+                const pageNum = Math.max(1, parseInt(page) || 1);
+                const limitNum = Math.min(Math.max(1, parseInt(limit) || 1), 1000);
+                const offset = (pageNum - 1) * limitNum;
                 limitClause = `LIMIT $${paramIndex++}`;
-                values.push(parseInt(limit));
+                values.push(limitNum);
                 offsetClause = `OFFSET $${paramIndex++}`;
                 values.push(offset);
             }

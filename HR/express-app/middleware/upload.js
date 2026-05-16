@@ -11,17 +11,9 @@ import { isValidMimeType, isValidFileSize } from '../utils/validators.js';
 // Files are stored in memory as buffers, then uploaded to Blob Storage
 const storage = multer.memoryStorage();
 
-// File filter - only allow PDF and images
+// File filter - uses the same isValidMimeType validator as validateUploadedFile (single source of truth)
 const fileFilter = (req, file, cb) => {
-  const allowedMimes = [
-    'application/pdf',
-    'image/jpeg',
-    'image/jpg',
-    'image/png',
-    'image/gif'
-  ];
-
-  if (allowedMimes.includes(file.mimetype)) {
+  if (isValidMimeType(file.mimetype)) {
     cb(null, true);
   } else {
     cb(new Error('نوع الملف غير مدعوم. يُسمح فقط بملفات PDF و JPEG و PNG و GIF.'), false);

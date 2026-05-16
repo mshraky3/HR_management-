@@ -161,17 +161,15 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
     // This is a safety net - the UI should prevent invalid document types from being uploaded
     try {
       const { validateDocumentType } = await import('../utils/employeeHelpers.js');
-      const sql = (await import('../config/database.js')).default;
 
-      // Get branch type
-      const [branch] = await sql`
-        SELECT branch_type FROM branches WHERE id = ${employee.branch_id}
-      `;
+      // Derive branch_type from already-loaded employee.branches (avoids extra DB query)
+      const primaryBranch = employee.branches?.find(b => b.branch_id === employee.branch_id)
+        || employee.branches?.[0];
 
       const validation = validateDocumentType(document_type, {
         nationality: employee.nationality,
         job_title: employee.job_title,
-        branch_type: branch?.branch_type || null
+        branch_type: primaryBranch?.branch_type || null
       });
 
       // Silently accept even if not allowed (UI prevents this, but we don't want to break anything)

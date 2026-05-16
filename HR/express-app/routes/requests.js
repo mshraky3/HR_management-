@@ -6,7 +6,7 @@
 
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { requireMainManager, requireManager } from '../middleware/authorization.js';
+import { requireMainManager, requireManager, requireRole } from '../middleware/authorization.js';
 import { Request } from '../models/Request.js';
 import { Branch } from '../models/Branch.js';
 import { User } from '../models/User.js';
@@ -49,7 +49,7 @@ router.get('/main-managers', requireManager, async (req, res) => {
  * Create a new request (Branch Manager only)
  * Form data: main_manager_id, employee_id (optional), request_name, request_text, file (optional)
  */
-router.post('/', requireManager, uploadSingle, async (req, res) => {
+router.post('/', requireRole('branch_manager'), uploadSingle, async (req, res) => {
   try {
     const { main_manager_id, employee_id, request_name, request_text } = req.body;
 
