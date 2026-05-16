@@ -3192,11 +3192,11 @@ router.delete("/:id", async (req, res) => {
     const reason = req.body?.reason || "تم إلغاء التفعيل";
 
     // Archive employee by setting status to 'other' with deletion reason
-    // Use employee's branch_id as statusChangedBy
+    // Use req.user.id (main manager's user ID) for the FK to users(id)
     const updatedEmployee = await Employee.updateStatus(
       employeeId,
       "other",
-      employee.branch_id,
+      req.user.id,
       reason,
     );
 
@@ -3263,10 +3263,8 @@ router.put("/:id/status", async (req, res) => {
     }
 
     // Determine who changed the status
-    let statusChangedBy = employee.branch_id; // Default to employee's branch
-    if (req.user.role === "branch_manager" && req.user.branch_id) {
-      statusChangedBy = req.user.branch_id;
-    }
+    // status_changed_by has FK to users(id) — branch managers don't have a users row, use null
+    let statusChangedBy = req.user.role === 'branch_manager' ? null : req.user.id;
 
     // Update status
     const updatedEmployee = await Employee.updateStatus(
@@ -3476,10 +3474,11 @@ router.post("/:id/non-renewal", async (req, res) => {
     }
 
     // Update status to archived status
+    // status_changed_by has FK to users(id) — branch managers don't have a users row, use null
     const updatedEmployee = await Employee.updateStatus(
       employeeId,
       status,
-      req.user.branch_id,
+      null,
       reason || "عدم تجديد العقد",
     );
 
