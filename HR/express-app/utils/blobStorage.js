@@ -12,6 +12,7 @@ import {
   isBlobStorageConfigured as checkBlobStorageConfigured
 } from '../config/blobStorage.js';
 import { uploadToR2Mirror } from './dualStorage.js';
+import { uploadToR2 } from './r2Storage.js';
 import { log } from './logger.js';
 
 /**
@@ -45,56 +46,54 @@ function validateBlobConfig() {
  * @returns {Promise<string>} - Blob URL
  */
 export async function uploadToBlob(fileBuffer, fileName, mimeType, employeeId, documentType) {
+  // Validate inputs before try so blobPath is available for R2 fallback
+  validateBlobConfig();
+  if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+    throw new Error('Invalid file buffer provided');
+  }
+  if (!fileName || !mimeType || !employeeId || !documentType) {
+    throw new Error('Missing required parameters for blob upload');
+  }
+
+  let uniqueFileName = generateFileName(fileName);
+  uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.(\2)$/i, '$1');
+  const blobPath = `employees/${employeeId}/${documentType}/${uniqueFileName}`;
+
   try {
-    // Validate Blob Storage configuration
-    validateBlobConfig();
-
-    // Validate inputs
-    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
-      throw new Error('Invalid file buffer provided');
-    }
-    if (!fileName || !mimeType || !employeeId || !documentType) {
-      throw new Error('Missing required parameters for blob upload');
-    }
-
-    // Generate unique filename
-    let uniqueFileName = generateFileName(fileName);
-
-    // Guard against double extensions (e.g. .pdf.pdf, .jpg.jpg)
-    uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.(\2)$/i, '$1');
-
-    // Create blob path: employees/{employeeId}/{documentType}/{filename}
-    const blobPath = `employees/${employeeId}/${documentType}/${uniqueFileName}`;
-
-    // Get blob token from configuration
     const token = getBlobToken();
     if (!token) {
       throw new Error('Blob storage token is not configured');
     }
 
-    // Upload to Vercel Blob
     const blob = await put(blobPath, fileBuffer, {
-      access: 'public', // Make files publicly accessible
+      access: 'public',
       contentType: mimeType,
-      addRandomSuffix: false, // We already have unique names
+      addRandomSuffix: false,
       token: token
     });
 
-    // Validate URL length (database column is VARCHAR(500))
     if (blob.url && blob.url.length > 500) {
       log.warn(`Warning: Blob URL length (${blob.url.length}) exceeds database VARCHAR(500) limit`);
     }
 
-    // Mirror to R2 (non-blocking — failure won't break upload)
     const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
-
     return { url: blob.url, r2Url };
   } catch (error) {
     log.error('Error uploading to Blob:', { error: error.message });
 
-    // Provide helpful error messages
     if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
-      throw error; // Re-throw configuration errors as-is
+      throw error;
+    }
+
+    // Fall back to R2 if Vercel Blob quota is exceeded
+    if (error.message.toLowerCase().includes('quota')) {
+      log.warn('Vercel Blob quota exceeded — falling back to R2 as primary storage');
+      try {
+        const r2Url = await uploadToR2(blobPath, fileBuffer, mimeType);
+        return { url: r2Url, r2Url };
+      } catch (r2Error) {
+        throw new Error(`Upload failed: Vercel Blob quota exceeded and R2 fallback also failed: ${r2Error.message}`);
+      }
     }
 
     throw new Error(`Failed to upload file to Blob: ${error.message}`);
@@ -111,24 +110,19 @@ export async function uploadToBlob(fileBuffer, fileName, mimeType, employeeId, d
  * @returns {Promise<string>} - Blob URL
  */
 export async function uploadBranchDocumentToBlob(fileBuffer, fileName, mimeType, branchId, documentType) {
+  validateBlobConfig();
+  if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+    throw new Error('Invalid file buffer provided');
+  }
+  if (!fileName || !mimeType || !branchId || !documentType) {
+    throw new Error('Missing required parameters for blob upload');
+  }
+
+  let uniqueFileName = generateFileName(fileName);
+  uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.\2$/i, '$1');
+  const blobPath = `branches/${branchId}/${documentType}/${uniqueFileName}`;
+
   try {
-    // Validate Blob Storage configuration
-    validateBlobConfig();
-
-    // Validate inputs
-    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
-      throw new Error('Invalid file buffer provided');
-    }
-    if (!fileName || !mimeType || !branchId || !documentType) {
-      throw new Error('Missing required parameters for blob upload');
-    }
-
-    let uniqueFileName = generateFileName(fileName);
-    // Guard against double extensions (e.g. .pdf.pdf, .jpg.jpg)
-    uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.\2$/i, '$1');
-    const blobPath = `branches/${branchId}/${documentType}/${uniqueFileName}`;
-
-    // Get blob token from configuration
     const token = getBlobToken();
     if (!token) {
       throw new Error('Blob storage token is not configured');
@@ -146,14 +140,22 @@ export async function uploadBranchDocumentToBlob(fileBuffer, fileName, mimeType,
     }
 
     const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
-
     return { url: blob.url, r2Url };
   } catch (error) {
     log.error('Error uploading branch document to Blob:', { error: error.message });
 
-    // Provide helpful error messages
     if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
-      throw error; // Re-throw configuration errors as-is
+      throw error;
+    }
+
+    if (error.message.toLowerCase().includes('quota')) {
+      log.warn('Vercel Blob quota exceeded — falling back to R2 as primary storage');
+      try {
+        const r2Url = await uploadToR2(blobPath, fileBuffer, mimeType);
+        return { url: r2Url, r2Url };
+      } catch (r2Error) {
+        throw new Error(`Upload failed: Vercel Blob quota exceeded and R2 fallback also failed: ${r2Error.message}`);
+      }
     }
 
     throw new Error(`Failed to upload file to Blob: ${error.message}`);
@@ -169,23 +171,19 @@ export async function uploadBranchDocumentToBlob(fileBuffer, fileName, mimeType,
  * @returns {Promise<string>} - Blob URL
  */
 export async function uploadRequestAttachmentToBlob(fileBuffer, fileName, mimeType, requestId) {
+  validateBlobConfig();
+  if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+    throw new Error('Invalid file buffer provided');
+  }
+  if (!fileName || !mimeType || !requestId) {
+    throw new Error('Missing required parameters for blob upload');
+  }
+
+  let uniqueFileName = generateFileName(fileName);
+  uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.(\2)$/i, '$1');
+  const blobPath = `requests/${requestId}/attachments/${uniqueFileName}`;
+
   try {
-    // Validate Blob Storage configuration
-    validateBlobConfig();
-
-    // Validate inputs
-    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
-      throw new Error('Invalid file buffer provided');
-    }
-    if (!fileName || !mimeType || !requestId) {
-      throw new Error('Missing required parameters for blob upload');
-    }
-
-    let uniqueFileName = generateFileName(fileName);
-    uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.(\2)$/i, '$1');
-    const blobPath = `requests/${requestId}/attachments/${uniqueFileName}`;
-
-    // Get blob token from configuration
     const token = getBlobToken();
     if (!token) {
       throw new Error('Blob storage token is not configured');
@@ -203,14 +201,22 @@ export async function uploadRequestAttachmentToBlob(fileBuffer, fileName, mimeTy
     }
 
     const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
-
     return { url: blob.url, r2Url };
   } catch (error) {
     log.error('Error uploading request attachment to Blob:', { error: error.message });
 
-    // Provide helpful error messages
     if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
-      throw error; // Re-throw configuration errors as-is
+      throw error;
+    }
+
+    if (error.message.toLowerCase().includes('quota')) {
+      log.warn('Vercel Blob quota exceeded — falling back to R2 as primary storage');
+      try {
+        const r2Url = await uploadToR2(blobPath, fileBuffer, mimeType);
+        return { url: r2Url, r2Url };
+      } catch (r2Error) {
+        throw new Error(`Upload failed: Vercel Blob quota exceeded and R2 fallback also failed: ${r2Error.message}`);
+      }
     }
 
     throw new Error(`Failed to upload file to Blob: ${error.message}`);
@@ -321,23 +327,19 @@ export async function fetchFromBlob(blobUrl) {
  * @returns {Promise<string>} - Blob URL
  */
 export async function uploadNotificationAttachmentToBlob(fileBuffer, fileName, mimeType, notificationId) {
+  validateBlobConfig();
+  if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
+    throw new Error('Invalid file buffer provided');
+  }
+  if (!fileName || !mimeType || !notificationId) {
+    throw new Error('Missing required parameters for blob upload');
+  }
+
+  let uniqueFileName = generateFileName(fileName);
+  uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.(\2)$/i, '$1');
+  const blobPath = `notifications/${notificationId}/attachments/${uniqueFileName}`;
+
   try {
-    // Validate Blob Storage configuration
-    validateBlobConfig();
-
-    // Validate inputs
-    if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
-      throw new Error('Invalid file buffer provided');
-    }
-    if (!fileName || !mimeType || !notificationId) {
-      throw new Error('Missing required parameters for blob upload');
-    }
-
-    let uniqueFileName = generateFileName(fileName);
-    uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.(\2)$/i, '$1');
-    const blobPath = `notifications/${notificationId}/attachments/${uniqueFileName}`;
-
-    // Get blob token from configuration
     const token = getBlobToken();
     if (!token) {
       throw new Error('Blob storage token is not configured');
@@ -355,14 +357,22 @@ export async function uploadNotificationAttachmentToBlob(fileBuffer, fileName, m
     }
 
     const r2Url = await uploadToR2Mirror(blobPath, fileBuffer, mimeType);
-
     return { url: blob.url, r2Url };
   } catch (error) {
     log.error('Error uploading notification attachment to Blob:', { error: error.message });
 
-    // Provide helpful error messages
     if (error.message.includes('BLOB_READ_WRITE_TOKEN')) {
-      throw error; // Re-throw configuration errors as-is
+      throw error;
+    }
+
+    if (error.message.toLowerCase().includes('quota')) {
+      log.warn('Vercel Blob quota exceeded — falling back to R2 as primary storage');
+      try {
+        const r2Url = await uploadToR2(blobPath, fileBuffer, mimeType);
+        return { url: r2Url, r2Url };
+      } catch (r2Error) {
+        throw new Error(`Upload failed: Vercel Blob quota exceeded and R2 fallback also failed: ${r2Error.message}`);
+      }
     }
 
     throw new Error(`Failed to upload file to Blob: ${error.message}`);
