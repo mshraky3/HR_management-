@@ -665,14 +665,15 @@ router.post(
                 file.originalname.split(".").pop() || ""
               ).toLowerCase();
 
+              const uploadedByForDoc = req.user?.existsInDb ? req.user.id : null;
               await trx`
               INSERT INTO employee_documents (
                 employee_id, document_type, file_name, file_path, file_size,
-                mime_type, file_extension, is_active, uploaded_at
+                mime_type, file_extension, is_active, uploaded_at, uploaded_by
               )
               VALUES (
                 ${employeeId}, 'primary_qualification', ${fileName}, ${filePath}, ${fileSize},
-                ${mimeType}, ${extension}, true, CURRENT_TIMESTAMP
+                ${mimeType}, ${extension}, true, CURRENT_TIMESTAMP, ${uploadedByForDoc}
               )
             `;
             }
@@ -2430,7 +2431,9 @@ router.post("/link-to-branch", async (req, res) => {
     }
 
     // Link the employee to the new branch
-    await Employee.linkToBranch(existingEmployee.id, targetBranchId, req.user.id);
+    // Branch managers are stored in branches table, not users — pass null to avoid FK violation
+    const addedByUserId = req.user?.existsInDb ? req.user.id : null;
+    await Employee.linkToBranch(existingEmployee.id, targetBranchId, addedByUserId);
 
     // Reload employee with updated branch info
     const updatedEmployee = await Employee.findById(existingEmployee.id);
