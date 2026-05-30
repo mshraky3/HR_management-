@@ -75,3 +75,25 @@ export async function deleteFromR2Mirror(r2Url) {
         return false;
     }
 }
+
+/**
+ * Background-mirror a Vercel-served file to R2 using its already-fetched buffer.
+ * Call fire-and-forget (no await) from download/preview handlers.
+ * Returns the R2 public URL, or null on failure.
+ *
+ * @param {string} vercelUrl - Original Vercel Blob URL
+ * @param {Buffer} fileBuffer - Already-fetched file content
+ * @param {string} contentType - MIME type
+ * @returns {Promise<string|null>} - R2 public URL or null
+ */
+export async function mirrorVercelFileToR2(vercelUrl, fileBuffer, contentType) {
+    if (!isR2StorageConfigured()) return null;
+    try {
+        const key = new URL(vercelUrl).pathname.slice(1);
+        if (!key) return null;
+        return await uploadToR2(key, fileBuffer, contentType);
+    } catch (error) {
+        log.error('R2 lazy-mirror failed (non-blocking):', error.message);
+        return null;
+    }
+}
