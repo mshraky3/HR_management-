@@ -15,6 +15,7 @@ import { Employee } from '../models/Employee.js';
 import { isValidDocumentType } from '../utils/validators.js';
 import { getExtensionFromMimeType } from '../utils/fileUpload.js';
 import { uploadToBlob, deleteFromBlob, fetchBlobWithFallback, copyBlob, fixDoubleExtensionUrl } from '../utils/blobStorage.js';
+import { mirrorVercelFileToR2 } from '../utils/dualStorage.js';
 import { handleRouteError } from '../utils/routeErrorHandler.js';
 import { log } from '../utils/logger.js';
 
@@ -314,7 +315,7 @@ router.get('/:id/download', async (req, res) => {
     // If file_path is a URL (Blob), proxy the content through the backend
     if (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) {
       try {
-        const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
+        const { buffer, contentType, fixedUrl, source } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
 
         // If a fixed URL was used, try to permanently fix the blob path
         if (fixedUrl) {
@@ -341,6 +342,16 @@ router.get('/:id/download', async (req, res) => {
           } catch (updateErr) {
             log.warn(`Could not auto-fix URL for document ${document.id}:`, updateErr.message);
           }
+        }
+
+        // Lazy migration: mirror to R2 on first Vercel hit
+        if (source === 'vercel' && !document.r2_file_path) {
+          setImmediate(async () => {
+            try {
+              const r2Url = await mirrorVercelFileToR2(document.file_path, buffer, contentType);
+              if (r2Url) await Document.update(document.id, { r2_file_path: r2Url });
+            } catch (e) { /* non-blocking */ }
+          });
         }
 
         res.setHeader('Content-Type', document.mime_type || contentType);
@@ -438,7 +449,7 @@ router.get('/:id/preview', async (req, res) => {
       // If file_path is a URL (Blob Storage), fetch via authenticated fetchBlobWithFallback
       if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
         try {
-          const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
+          const { buffer, contentType, fixedUrl, source } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
 
           // If a fixed URL was used, update DB for future requests
           if (fixedUrl) {
@@ -448,6 +459,16 @@ router.get('/:id/preview', async (req, res) => {
             } catch (updateErr) {
               log.warn(`Could not update fixed URL for document ${document.id}:`, updateErr.message);
             }
+          }
+
+          // Lazy migration: mirror to R2 on first Vercel preview hit
+          if (source === 'vercel' && !document.r2_file_path) {
+            setImmediate(async () => {
+              try {
+                const r2Url = await mirrorVercelFileToR2(document.file_path, buffer, contentType);
+                if (r2Url) await Document.update(document.id, { r2_file_path: r2Url });
+              } catch (e) { /* non-blocking */ }
+            });
           }
 
           res.setHeader('Content-Type', document.mime_type || contentType);

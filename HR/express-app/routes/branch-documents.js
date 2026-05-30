@@ -25,6 +25,7 @@ import {
   copyBlob,
   fixDoubleExtensionUrl,
 } from "../utils/blobStorage.js";
+import { mirrorVercelFileToR2 } from "../utils/dualStorage.js";
 import { clearByPrefix } from "../utils/simpleCache.js";
 import { formatDate } from "../utils/dateConverter.js";
 import { validateDateFields } from "../middleware/dateValidation.js";
@@ -454,7 +455,7 @@ router.get("/:id/download", async (req, res) => {
       document.file_path.startsWith("https://")
     ) {
       try {
-        const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
+        const { buffer, contentType, fixedUrl, source } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
 
         // Auto-fix double-extension URL in database
         if (fixedUrl) {
@@ -476,6 +477,16 @@ router.get("/:id/download", async (req, res) => {
           } catch (updateErr) {
             log.warn(`Could not auto-fix URL for branch document ${document.id}:`, updateErr.message);
           }
+        }
+
+        // Lazy migration: mirror to R2 on first Vercel hit
+        if (source === 'vercel' && !document.r2_file_path) {
+          setImmediate(async () => {
+            try {
+              const r2Url = await mirrorVercelFileToR2(document.file_path, buffer, contentType);
+              if (r2Url) await sql`UPDATE branch_documents SET r2_file_path = ${r2Url}, updated_at = CURRENT_TIMESTAMP WHERE id = ${document.id}`;
+            } catch (e) { /* non-blocking */ }
+          });
         }
 
         const safeFilename = sanitizeFilename(document.file_name);
@@ -556,7 +567,7 @@ router.get("/:id/preview", async (req, res) => {
           document.file_path.startsWith("https://"))
       ) {
         try {
-          const { buffer, contentType, fixedUrl } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
+          const { buffer, contentType, fixedUrl, source } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
 
           // If a fixed URL was used, update DB for future requests
           if (fixedUrl) {
@@ -566,6 +577,16 @@ router.get("/:id/preview", async (req, res) => {
             } catch (updateErr) {
               log.warn(`Could not update fixed URL for branch document ${document.id}:`, updateErr.message);
             }
+          }
+
+          // Lazy migration: mirror to R2 on first Vercel preview hit
+          if (source === 'vercel' && !document.r2_file_path) {
+            setImmediate(async () => {
+              try {
+                const r2Url = await mirrorVercelFileToR2(document.file_path, buffer, contentType);
+                if (r2Url) await sql`UPDATE branch_documents SET r2_file_path = ${r2Url}, updated_at = CURRENT_TIMESTAMP WHERE id = ${document.id}`;
+              } catch (e) { /* non-blocking */ }
+            });
           }
 
           res.setHeader("Content-Type", document.mime_type || contentType);

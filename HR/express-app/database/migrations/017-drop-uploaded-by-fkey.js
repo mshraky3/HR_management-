@@ -15,15 +15,15 @@
 import sql from '../../config/database.js';
 
 export async function up(db) {
-  await db.unsafe(`ALTER TABLE employee_documents DROP CONSTRAINT IF EXISTS employee_documents_uploaded_by_fkey`);
+    await db.unsafe(`ALTER TABLE employee_documents DROP CONSTRAINT IF EXISTS employee_documents_uploaded_by_fkey`);
 }
 
 // Standalone execution
 const isMain = process.argv[1] && import.meta.url.includes(process.argv[1].split('\\').join('/').split('/').pop());
 if (isMain) {
-  console.log('Running migration 017 standalone...');
-  up(sql)
-    .then(() => console.log('Migration 017 completed.'))
-    .catch(err => { console.error('Migration 017 failed:', err.message); process.exit(1); })
-    .finally(() => sql.end());
+    console.log('Running migration 017 standalone...');
+    up(sql)
+        .then(() => console.log('Migration 017 completed.'))
+        .catch(err => { console.error('Migration 017 failed:', err.message); process.exit(1); })
+        .finally(() => sql.end());
 }

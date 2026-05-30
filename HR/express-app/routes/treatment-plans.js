@@ -17,7 +17,7 @@ import {
 import { sendErrorNotification } from '../utils/errorNotificationService.js';
 import { handleUpload } from '@vercel/blob/client';
 import { getBlobToken } from '../config/blobStorage.js';
-import { uploadToR2Mirror } from '../utils/dualStorage.js';
+import { uploadToR2Mirror, mirrorVercelFileToR2 } from '../utils/dualStorage.js';
 import { handleRouteError } from '../utils/routeErrorHandler.js';
 import { log } from '../utils/logger.js';
 
@@ -383,7 +383,17 @@ router.get('/:id/download', authenticate, requireManager, async (req, res) => {
             return res.status(404).json({ success: false, message: 'الملف غير موجود' });
         }
 
-        const { buffer, contentType } = await fetchBlobWithFallback(plan.file_url, plan.r2_url);
+        const { buffer, contentType, source } = await fetchBlobWithFallback(plan.file_url, plan.r2_url);
+
+        // Lazy migration: mirror to R2 on first Vercel hit
+        if (source === 'vercel' && !plan.r2_url) {
+          setImmediate(async () => {
+            try {
+              const r2Url = await mirrorVercelFileToR2(plan.file_url, buffer, contentType);
+              if (r2Url) await sql`UPDATE treatment_plans SET r2_url = ${r2Url} WHERE id = ${plan.id}`;
+            } catch (e) { /* non-blocking */ }
+          });
+        }
 
         const safeFilename = (plan.original_filename || 'plan.docx')
             .replace(/[\x00-\x1F\x7F-\x9F\r\n]/g, '');

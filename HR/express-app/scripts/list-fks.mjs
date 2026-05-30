@@ -9,10 +9,10 @@ const fks = await sql`
   ORDER BY tc.table_name, kcu.column_name
 `;
 fks.forEach(r => console.log(
-  r.table_name.padEnd(30),
-  r.column_name.padEnd(25),
-  '->',
-  r.ref_table.padEnd(20),
-  '|', r.constraint_name
+    r.table_name.padEnd(30),
+    r.column_name.padEnd(25),
+    '->',
+    r.ref_table.padEnd(20),
+    '|', r.constraint_name
 ));
 await sql.end();
