@@ -49,6 +49,45 @@ const calculateAge = (dateOfBirth) => {
 };
 
 /**
+ * Days remaining until contract end (from Gregorian end date). Negative = expired.
+ */
+const calculateDaysRemaining = (endDate) => {
+  if (!endDate) return null;
+  const end = new Date(endDate);
+  if (isNaN(end.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  return Math.round((end - today) / (1000 * 60 * 60 * 24));
+};
+
+/**
+ * Whether a days-remaining value falls in a given expiry bucket
+ */
+const matchesContractBucket = (daysRemaining, bucket) => {
+  if (daysRemaining === null) return false;
+  switch (bucket) {
+    case 'expired': return daysRemaining < 0;
+    case 'within_30': return daysRemaining >= 0 && daysRemaining <= 30;
+    case 'within_60': return daysRemaining >= 31 && daysRemaining <= 60;
+    case 'within_90': return daysRemaining >= 61 && daysRemaining <= 90;
+    case 'over_90': return daysRemaining > 90;
+    default: return false;
+  }
+};
+
+/**
+ * Filter employees by selected contract-expiry buckets (union of buckets)
+ */
+const filterByContractExpiry = (employees, buckets) => {
+  if (!buckets || !Array.isArray(buckets) || buckets.length === 0) return employees;
+  return employees.filter(emp => {
+    const daysRemaining = calculateDaysRemaining(emp.contract_end_date_gregorian);
+    return buckets.some(bucket => matchesContractBucket(daysRemaining, bucket));
+  });
+};
+
+/**
  * Helper function to ensure numbers are in English (LTR)
  */
 const formatNumberForPDF = (value) => {
@@ -188,6 +227,11 @@ const getFieldLabel = (field) => {
     phone_number: 'رقم الهاتف',
     national_address: 'العنوان الوطني',
     contract_type: 'نوع العقد',
+    contract_start_date_hijri: 'تاريخ بداية العقد (هجري)',
+    contract_start_date_gregorian: 'تاريخ بداية العقد (ميلادي)',
+    contract_end_date_hijri: 'تاريخ نهاية العقد (هجري)',
+    contract_end_date_gregorian: 'تاريخ نهاية العقد (ميلادي)',
+    contract_days_remaining: 'الأيام المتبقية للعقد',
     years_of_experience_in_same_institution: 'سنوات الخبرة في نفس المؤسسة',
     years_of_experience_in_company: 'سنوات الخبرة في الشركة',
     salary: 'الراتب',
@@ -221,6 +265,13 @@ const getFieldValue = (employee, field, branches) => {
       return branch ? branch.branch_name : formatNumberForPDF(employee.branch_id);
     case 'age':
       return formatNumberForPDF(calculateAge(employee.date_of_birth_gregorian)) || '-';
+    case 'contract_days_remaining': {
+      const daysRemaining = calculateDaysRemaining(employee.contract_end_date_gregorian);
+      if (daysRemaining === null) return '-';
+      if (daysRemaining < 0) return 'منتهي';
+      if (daysRemaining === 0) return 'ينتهي اليوم';
+      return `${formatNumberForPDF(daysRemaining)} يوم متبقي`;
+    }
     case 'id_type':
       return employee.id_type === 'citizen' ? 'مواطن' : 'مقيم';
     case 'gender':
@@ -230,11 +281,15 @@ const getFieldValue = (employee, field, branches) => {
     case 'date_of_birth_gregorian':
       return formatDate(employee.date_of_birth_gregorian);
     case 'id_expiry_date_hijri':
+    case 'contract_start_date_hijri':
+    case 'contract_end_date_hijri':
       return employee[field] || '-';
     case 'id_expiry_date_gregorian':
     case 'passport_issue_date':
     case 'passport_expiry_date':
     case 'residency_issue_date':
+    case 'contract_start_date_gregorian':
+    case 'contract_end_date_gregorian':
       return formatDate(employee[field]);
     case 'base_salary':
     case 'housing_allowance':
@@ -609,6 +664,11 @@ router.post('/generate', async (req, res) => {
     // Filter by age if specified
     if (filters?.min_age || filters?.max_age) {
       employees = filterByAge(employees, filters.min_age, filters.max_age);
+    }
+
+    // Filter by contract-expiry buckets if specified
+    if (filters?.contract_expiry && Array.isArray(filters.contract_expiry) && filters.contract_expiry.length > 0) {
+      employees = filterByContractExpiry(employees, filters.contract_expiry);
     }
 
     if (employees.length === 0) {
