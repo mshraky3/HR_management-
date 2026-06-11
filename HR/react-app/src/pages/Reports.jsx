@@ -42,6 +42,11 @@ const availableFields = [
     { value: 'graduation_year', label: 'سنة التخرج' },
     { value: 'university_gpa', label: 'المعدل التراكمي' },
     { value: 'contract_type', label: 'نوع العقد' },
+    { value: 'contract_start_date_hijri', label: 'تاريخ بداية العقد (هجري)' },
+    { value: 'contract_start_date_gregorian', label: 'تاريخ بداية العقد (ميلادي)' },
+    { value: 'contract_end_date_hijri', label: 'تاريخ نهاية العقد (هجري)' },
+    { value: 'contract_end_date_gregorian', label: 'تاريخ نهاية العقد (ميلادي)' },
+    { value: 'contract_days_remaining', label: 'الأيام المتبقية للعقد' },
     { value: 'national_address', label: 'العنوان الوطني' },
     { value: 'years_of_experience_in_same_institution', label: 'سنوات الخبرة في نفس المؤسسة' },
     { value: 'years_of_experience_in_company', label: 'سنوات الخبرة في الشركة' },
@@ -61,6 +66,27 @@ const availableFields = [
     { value: 'status', label: 'الحالة' },
     { value: 'data_completion_status', label: 'حالة إكمال البيانات' }
 ];
+
+// Contract-expiry filter buckets — computed from contract_end_date_gregorian (days remaining)
+const CONTRACT_EXPIRY_OPTIONS = [
+    { value: 'expired', label: 'منتهي' },
+    { value: 'within_30', label: '0 - 30 يوم' },
+    { value: 'within_60', label: '31 - 60 يوم' },
+    { value: 'within_90', label: '61 - 90 يوم' },
+    { value: 'over_90', label: 'أكثر من 90 يوم' },
+];
+
+const matchesContractBucket = (daysRemaining, bucket) => {
+    if (daysRemaining === null) return false;
+    switch (bucket) {
+        case 'expired': return daysRemaining < 0;
+        case 'within_30': return daysRemaining >= 0 && daysRemaining <= 30;
+        case 'within_60': return daysRemaining >= 31 && daysRemaining <= 60;
+        case 'within_90': return daysRemaining >= 61 && daysRemaining <= 90;
+        case 'over_90': return daysRemaining > 90;
+        default: return false;
+    }
+};
 
 const Reports = () => {
     const { isMainManager, user } = useAuth();
@@ -101,6 +127,7 @@ const Reports = () => {
         educational_qualification: [],
         contract_type: [],
         data_completion_status: [],
+        contract_expiry: [],
         min_age: '',
         max_age: '',
     });
@@ -290,6 +317,7 @@ const Reports = () => {
             educational_qualification: [],
             contract_type: [],
             data_completion_status: [],
+            contract_expiry: [],
             min_age: '',
             max_age: '',
         });
@@ -396,6 +424,17 @@ const Reports = () => {
         return age;
     };
 
+    // Days remaining until contract end (from Gregorian end date). Negative = expired.
+    const calculateDaysRemaining = (endDate) => {
+        if (!endDate) return null;
+        const end = new Date(endDate);
+        if (isNaN(end.getTime())) return null;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        end.setHours(0, 0, 0, 0);
+        return Math.round((end - today) / (1000 * 60 * 60 * 24));
+    };
+
     // Filter employees by age
     const filterByAge = (employees) => {
         if (!filters.min_age && !filters.max_age) return employees;
@@ -409,6 +448,17 @@ const Reports = () => {
             if (minAge !== null && age < minAge) return false;
             if (maxAge !== null && age > maxAge) return false;
             return true;
+        });
+    };
+
+    // Filter by selected contract-expiry buckets (union of buckets)
+    const filterByContractExpiry = (employees) => {
+        const buckets = filters.contract_expiry;
+        if (!buckets || buckets.length === 0) return employees;
+
+        return employees.filter(emp => {
+            const daysRemaining = calculateDaysRemaining(emp.contract_end_date_gregorian);
+            return buckets.some(bucket => matchesContractBucket(daysRemaining, bucket));
         });
     };
 
@@ -459,6 +509,9 @@ const Reports = () => {
 
                 // Filter by age
                 employeesData = filterByAge(employeesData);
+
+                // Filter by contract expiry buckets
+                employeesData = filterByContractExpiry(employeesData);
 
                 // Sort employees alphabetically by full name
                 employeesData = employeesData.sort((a, b) => {
@@ -710,6 +763,7 @@ const Reports = () => {
                     if (employeesResponse.data.success) {
                         let employeesList = employeesResponse.data.data || [];
                         employeesList = filterByAge(employeesList);
+                        employeesList = filterByContractExpiry(employeesList);
                         const missingInfo = await checkMissingDocuments(employeesList, selectedDocuments);
                         if (missingInfo) {
                             setMissingDocumentsInfo(missingInfo);
@@ -1354,6 +1408,26 @@ const Reports = () => {
                                         </div>
                                     </div>
 
+                                    {/* Contract Expiry Filter */}
+                                    <div className="filter-group">
+                                        <div className="filter-group-header">
+                                            <span>انتهاء العقد</span>
+                                            <button className="btn btn-link btn-sm" onClick={() => clearFilter('contract_expiry')}>مسح</button>
+                                        </div>
+                                        <div className="filter-grid">
+                                            {CONTRACT_EXPIRY_OPTIONS.map(opt => (
+                                                <button
+                                                    key={opt.value}
+                                                    type="button"
+                                                    className={`filter-btn ${filters.contract_expiry.includes(opt.value) ? 'selected' : ''}`}
+                                                    onClick={() => toggleFilter('contract_expiry', opt.value)}
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
                                     {/* Age Filters */}
                                     <div className="filter-group" style={{ minWidth: '280px', maxWidth: 'none' }}>
                                         <div className="filter-group-header">
@@ -1556,6 +1630,14 @@ const Reports = () => {
                                                     return age !== null ? age.toString() : '-';
                                                 }
 
+                                                if (field === 'contract_days_remaining') {
+                                                    const d = calculateDaysRemaining(emp.contract_end_date_gregorian);
+                                                    if (d === null) return '-';
+                                                    if (d < 0) return 'منتهي';
+                                                    if (d === 0) return 'ينتهي اليوم';
+                                                    return `${d} يوم متبقي`;
+                                                }
+
                                                 if (field === 'total_salary') {
                                                     // Use computed total_salary column if available, otherwise calculate manually
                                                     if (emp.total_salary != null) {
@@ -1576,7 +1658,8 @@ const Reports = () => {
 
                                                 if (field === 'date_of_birth_gregorian' || field === 'id_expiry_date_gregorian' ||
                                                     field === 'passport_issue_date' || field === 'passport_expiry_date' ||
-                                                    field === 'residency_issue_date') {
+                                                    field === 'residency_issue_date' ||
+                                                    field === 'contract_start_date_gregorian' || field === 'contract_end_date_gregorian') {
                                                     if (value) {
                                                         return formatDate(value);
                                                     }

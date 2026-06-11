@@ -1160,7 +1160,6 @@ const EmployeeStatistics = () => {
             </div>
           </div>
         )}
-
         {/* Gender Distribution by Branch - Main Manager Only */}
         {isMainManager() && genderByBranch && genderByBranch.length > 0 && (
           <div className="chart-section chart-section-large">
