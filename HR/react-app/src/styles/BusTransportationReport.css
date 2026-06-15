@@ -320,6 +320,13 @@
     margin-top: 2rem;
 }
 
+.report-hint {
+    margin: 0.25rem 0 0.5rem;
+    color: #64748b;
+    font-size: 0.9rem;
+    line-height: 1.7;
+}
+
 /* Buttons */
 .btn {
     border: none;

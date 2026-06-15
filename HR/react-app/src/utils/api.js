@@ -1102,6 +1102,14 @@ export const busTransportationReportAPI = {
       ...config,
       responseType: config.responseType || 'blob',
     }),
+
+  // Driver-licenses report: drivers' info + license data with each uploaded
+  // license document (image/PDF) embedded as page(s).
+  generateDriverLicenses: (data, config = {}) =>
+    api.post('/api/bus-transportation-report/driver-licenses', data, {
+      ...config,
+      responseType: config.responseType || 'blob',
+    }),
 };
 
 // Beneficiaries API (المستفيدين)

@@ -19,6 +19,7 @@ export default function BusTransportationReport() {
         students: true,
     });
     const [generating, setGenerating] = useState(false);
+    const [generatingLicenses, setGeneratingLicenses] = useState(false);
     const { showError, showSuccess } = useNotification();
 
     // Close dropdown when clicking outside
@@ -103,6 +104,43 @@ export default function BusTransportationReport() {
             showError(errorMessage);
         } finally {
             setGenerating(false);
+        }
+    };
+
+    const generateDriverLicensesReport = async () => {
+        if (selectedBranches.length === 0) {
+            showError('الرجاء اختيار فرع واحد على الأقل');
+            return;
+        }
+
+        setGeneratingLicenses(true);
+        try {
+            const response = await busTransportationReportAPI.generateDriverLicenses({
+                branchIds: selectedBranches.map(id => Number(id)),
+            }, { responseType: 'blob' });
+
+            const blob = response.data instanceof Blob
+                ? response.data
+                : new Blob([response.data], { type: 'application/pdf' });
+            downloadFile(blob, `تقرير-رخص-السائقين-${new Date().toLocaleDateString('ar-SA')}.pdf`);
+
+            showSuccess('تم إنشاء تقرير رخص السائقين بنجاح');
+        } catch (error) {
+            console.error('Error generating driver licenses report:', error);
+            // With responseType 'blob', error bodies arrive as a Blob — parse it for the Arabic message.
+            let errorMessage = 'فشل إنشاء تقرير رخص السائقين';
+            const data = error.response?.data;
+            if (data instanceof Blob) {
+                try {
+                    const parsed = JSON.parse(await data.text());
+                    errorMessage = parsed.error || parsed.message || errorMessage;
+                } catch { /* keep default message */ }
+            } else if (data?.error || data?.message) {
+                errorMessage = data.error || data.message;
+            }
+            showError(errorMessage);
+        } finally {
+            setGeneratingLicenses(false);
         }
     };
 
@@ -276,12 +314,12 @@ export default function BusTransportationReport() {
                     </div>
                 </div>
 
-                {/* Generate Button */}
+                {/* Generate Buttons */}
                 <div className="form-actions">
                     <button
                         type="submit"
                         className="btn btn-primary btn-lg"
-                        disabled={generating || selectedBranches.length === 0}
+                        disabled={generating || generatingLicenses || selectedBranches.length === 0}
                     >
                         {generating ? (
                             <>
@@ -295,6 +333,37 @@ export default function BusTransportationReport() {
                             </>
                         )}
                     </button>
+                </div>
+
+                {/* Driver licenses report (with embedded documents) */}
+                <div className="form-section">
+                    <div className="section-header">
+                        <h2>🪪 تقرير رخص السائقين</h2>
+                    </div>
+                    <p className="report-hint">
+                        تقرير مستقل يحتوي على بيانات جميع السائقين ورخص القيادة للفروع المحددة،
+                        مع إرفاق صورة/ملف رخصة كل سائق كصفحة داخل التقرير.
+                    </p>
+                    <div className="form-actions">
+                        <button
+                            type="button"
+                            className="btn btn-secondary btn-lg"
+                            onClick={generateDriverLicensesReport}
+                            disabled={generating || generatingLicenses || selectedBranches.length === 0}
+                        >
+                            {generatingLicenses ? (
+                                <>
+                                    <span className="spinner"></span>
+                                    جاري إنشاء تقرير الرخص...
+                                </>
+                            ) : (
+                                <>
+                                    <span>🪪</span>
+                                    تحميل رخص السائقين + المستندات
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>
