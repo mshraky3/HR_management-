@@ -18,12 +18,18 @@ if (process.env.DATABASE_URL) {
   log.info("Connecting to database using DATABASE_URL");
   sql = postgres(process.env.DATABASE_URL, {
     ssl: "require",
-    // Reduced default pool size for serverless (Vercel) compatibility
-    // Neon free tier: 10 connections, Vercel serverless: best with 5-10
+    // Reduced default pool size for serverless (Vercel) compatibility.
+    // The provider is a scale-to-zero Postgres (Koyeb); keep the pool small.
     max: parseInt(process.env.DB_POOL_MAX || "8", 10),
     idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "20", 10),
-    connect_timeout: 10,
-    // Neon auto-suspends idle connections after ~5 min; keep max_lifetime below that
+    // The DB suspends when idle, so the first request after an idle period must
+    // wake the instance — that cold start can take ~15-25s. The previous 10s
+    // connect_timeout caused `write CONNECT_TIMEOUT ...:5432` 500 errors on cold
+    // starts. 20s lets a single attempt cover most cold starts; withDbRetry()
+    // retries the rest. Kept below Vercel's 60s maxDuration. Override with
+    // DB_CONNECT_TIMEOUT.
+    connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || "20", 10),
+    // Provider suspends idle connections after a few minutes; keep max_lifetime below that
     max_lifetime: 60 * 4,
     transform: {
       undefined: null,
@@ -62,11 +68,18 @@ if (process.env.DATABASE_URL) {
     username: process.env.DATABASE_USER || "",
     password: process.env.DATABASE_PASSWORD || "",
     ssl: "require",
-    // Reduced default pool size for serverless (Vercel) compatibility
+    // Reduced default pool size for serverless (Vercel) compatibility.
+    // The provider is a scale-to-zero Postgres (Koyeb); keep the pool small.
     max: parseInt(process.env.DB_POOL_MAX || "8", 10),
     idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "20", 10),
-    connect_timeout: 10,
-    // Neon auto-suspends idle connections after ~5 min; keep max_lifetime below that
+    // The DB suspends when idle, so the first request after an idle period must
+    // wake the instance — that cold start can take ~15-25s. The previous 10s
+    // connect_timeout caused `write CONNECT_TIMEOUT ...:5432` 500 errors on cold
+    // starts. 20s lets a single attempt cover most cold starts; withDbRetry()
+    // retries the rest. Kept below Vercel's 60s maxDuration. Override with
+    // DB_CONNECT_TIMEOUT.
+    connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || "20", 10),
+    // Provider suspends idle connections after a few minutes; keep max_lifetime below that
     max_lifetime: 60 * 4,
     transform: {
       undefined: null,

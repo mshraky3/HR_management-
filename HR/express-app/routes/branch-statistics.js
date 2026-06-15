@@ -11,6 +11,7 @@ import { calculateEmployeeCompletion } from '../utils/dataCompletionUtils.js';
 import { formatDate } from '../utils/dateConverter.js';
 import { getScopedBranchFilter } from '../utils/policyScope.js';
 import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { withDbRetry } from '../utils/dbRetry.js';
 import { log } from '../utils/logger.js';
 
 const router = express.Router();
@@ -41,19 +42,19 @@ router.get('/', async (req, res) => {
       return res.json({ success: true, data: [], period: { month: currentMonth, year: currentYear, first_day: firstDayOfMonth, last_day: lastDayOfMonth } });
     } else if (scopedBranch !== null && scopedBranch !== undefined) {
       const ids = Array.isArray(scopedBranch) ? scopedBranch : [scopedBranch];
-      branches = await sql`
+      branches = await withDbRetry(() => sql`
         SELECT id, branch_name, branch_type, username, is_active, number_of_employees
         FROM branches
         WHERE is_active = true AND id = ANY(${ids}::int[])
         ORDER BY branch_name
-      `;
+      `, { label: 'branch-statistics:branches' });
     } else {
-      branches = await sql`
+      branches = await withDbRetry(() => sql`
         SELECT id, branch_name, branch_type, username, is_active, number_of_employees
         FROM branches
         WHERE is_active = true
         ORDER BY branch_name
-      `;
+      `, { label: 'branch-statistics:branches' });
     }
 
     // If no branches, return early
@@ -95,7 +96,7 @@ router.get('/', async (req, res) => {
       lastActivityRows,
       lastLoginRows,
       monthlyLoginRows
-    ] = await Promise.all([
+    ] = await withDbRetry(() => Promise.all([
       // 1. Login days this month
       sql`
         SELECT branch_id, COUNT(DISTINCT login_date)::int AS login_count
@@ -207,7 +208,7 @@ router.get('/', async (req, res) => {
         GROUP BY branch_id, DATE_TRUNC('month', login_date)
         ORDER BY month DESC
       `
-    ]);
+    ]), { label: 'branch-statistics:aggregate' });
 
     const toMap = (rows, key) => {
       const m = new Map();

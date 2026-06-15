@@ -1,12 +1,17 @@
 import express from 'express';
+import { PDFDocument } from 'pdf-lib';
 import { authenticate } from '../middleware/auth.js';
 import { log } from '../utils/logger.js';
+import sql from '../config/database.js';
 import { BusTransportation } from '../models/BusTransportation.js';
 import { BusStudent } from '../models/BusStudent.js';
 import { BusDetails } from '../models/BusDetails.js';
 import { Branch } from '../models/Branch.js';
 import { getScopedBranchFilter } from '../utils/policyScope.js';
 import { printer as certificatePrinter } from '../utils/pdfFonts.js';
+import { fetchBlobWithFallback } from '../utils/blobStorage.js';
+import { formatDate } from '../utils/dateConverter.js';
+import { withDbRetry } from '../utils/dbRetry.js';
 import { handleRouteError } from '../utils/routeErrorHandler.js';
 
 const router = express.Router();
@@ -424,6 +429,274 @@ router.post('/generate-pdf', authenticate, async (req, res) => {
     } catch (error) {
         log.error('Error generating bus transportation PDF:', error);
         handleRouteError(error, req, res, 'حدث خطأ في الخادم');
+    }
+});
+
+/**
+ * Render a pdfmake document definition to a Buffer (instead of streaming it).
+ * Used so individual data pages can be merged with uploaded documents via pdf-lib.
+ */
+function pdfmakeToBuffer(docDefinition) {
+    return new Promise((resolve, reject) => {
+        try {
+            const pdfDoc = certificatePrinter.createPdfKitDocument(docDefinition);
+            const chunks = [];
+            pdfDoc.on('data', (chunk) => chunks.push(chunk));
+            pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
+            pdfDoc.on('error', reject);
+            pdfDoc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
+/**
+ * Detect file type from a buffer's magic bytes. pdf-lib can only merge PDF pages
+ * and embed JPG/PNG images, so we sniff the bytes rather than trust a stored mime.
+ */
+function sniffFileType(buffer) {
+    if (!buffer || buffer.length < 4) return 'unknown';
+    if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) return 'pdf'; // %PDF
+    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'png'; // \x89PNG
+    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpg'; // JPEG
+    return 'unknown';
+}
+
+const reportStyles = {
+    title: { fontSize: 24, bold: true, alignment: 'center', margin: [0, 0, 0, 10], color: '#1e293b', font: 'Amiri' },
+    subtitle: { fontSize: 12, alignment: 'center', color: '#64748b', font: 'Amiri' },
+    heading: { fontSize: 16, bold: true, alignment: 'center', margin: [0, 15, 0, 10], color: '#2c3e50', font: 'Amiri' },
+    subheading: { fontSize: 13, bold: true, color: '#2c3e50', font: 'Amiri' },
+};
+
+const safeFormatDate = (value) => {
+    if (!value) return '—';
+    try {
+        return formatDate(value) || '—';
+    } catch {
+        return '—';
+    }
+};
+
+const isLicenseExpired = (value) => {
+    if (!value) return false;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return d < today;
+};
+
+/**
+ * POST /api/bus-transportation-report/driver-licenses
+ * Generate a PDF of every driver + driving-license record for the selected
+ * branch(es). Each driver's uploaded license document (image or PDF) is embedded
+ * as page(s) immediately after that driver's data page.
+ * Body: { branchIds: number[] }
+ */
+router.post('/driver-licenses', authenticate, async (req, res) => {
+    try {
+        const { branchIds } = req.body;
+
+        if (!branchIds || !Array.isArray(branchIds) || branchIds.length === 0) {
+            return res.status(400).json({ error: 'يجب اختيار فرع واحد على الأقل' });
+        }
+
+        const normalizedBranchIds = Array.from(
+            new Set(branchIds.map((id) => parseInt(id, 10)).filter((id) => !Number.isNaN(id)))
+        );
+
+        if (normalizedBranchIds.length === 0) {
+            return res.status(400).json({ error: 'يجب اختيار فرع واحد على الأقل' });
+        }
+
+        // Validate requested branches against the user's scope
+        const scopedBranch = getScopedBranchFilter(req, { allowMultiple: true });
+        if (scopedBranch !== null && scopedBranch !== undefined) {
+            const allowedIds = Array.isArray(scopedBranch) ? scopedBranch : [scopedBranch];
+            const unauthorized = normalizedBranchIds.filter((id) => !allowedIds.includes(id));
+            if (unauthorized.length > 0) {
+                return res.status(403).json({ error: 'تم رفض الوصول لبعض الفروع المطلوبة' });
+            }
+        }
+
+        // Fetch every driver-license record for buses in the requested branches.
+        const licenses = await withDbRetry(() => sql`
+            SELECT
+                dld.*,
+                bt.bus_number,
+                bt.branch_id,
+                b.branch_name,
+                (SELECT plate_number FROM license_plate_data lpd
+                   WHERE lpd.bus_id = bt.id AND lpd.is_primary = true LIMIT 1) AS primary_plate
+            FROM bus_transportation bt
+            INNER JOIN branches b ON bt.branch_id = b.id
+            INNER JOIN driver_license_data dld ON dld.bus_id = bt.id
+            WHERE bt.branch_id = ANY(${normalizedBranchIds}::int[])
+            ORDER BY b.branch_name, dld.driver_full_name
+        `, { label: 'driver-licenses-report' });
+
+        if (!licenses || licenses.length === 0) {
+            return res.status(404).json({ error: 'لا توجد بيانات سائقين أو رخص قيادة للفروع المحددة' });
+        }
+
+        // Fetch all license documents in parallel. Best-effort: a failed fetch is
+        // recorded on the data page but does not abort the whole report.
+        const documents = await Promise.all(
+            licenses.map(async (lic) => {
+                if (!lic.license_document_url) return null;
+                try {
+                    const { buffer } = await fetchBlobWithFallback(
+                        lic.license_document_url,
+                        lic.r2_license_document_url || null
+                    );
+                    return { buffer, type: sniffFileType(buffer) };
+                } catch (err) {
+                    log.warn('Failed to fetch driver license document for report', {
+                        busId: lic.bus_id,
+                        error: err.message,
+                    });
+                    return { error: true };
+                }
+            })
+        );
+
+        // Build the merged PDF with pdf-lib.
+        const finalPdf = await PDFDocument.create();
+
+        const appendPdfBuffer = async (buf) => {
+            const src = await PDFDocument.load(buf, { ignoreEncryption: true });
+            const pages = await finalPdf.copyPages(src, src.getPageIndices());
+            pages.forEach((p) => finalPdf.addPage(p));
+        };
+
+        const appendImagePage = async (buf, type) => {
+            const img = type === 'png' ? await finalPdf.embedPng(buf) : await finalPdf.embedJpg(buf);
+            const A4_W = 595.28;
+            const A4_H = 841.89;
+            const margin = 28;
+            const { width: iw, height: ih } = img.size();
+            const ratio = Math.min((A4_W - margin * 2) / iw, (A4_H - margin * 2) / ih, 1);
+            const w = iw * ratio;
+            const h = ih * ratio;
+            const page = finalPdf.addPage([A4_W, A4_H]);
+            page.drawImage(img, { x: (A4_W - w) / 2, y: (A4_H - h) / 2, width: w, height: h });
+        };
+
+        const now = new Date();
+        const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+        const branchNames = Array.from(new Set(licenses.map((l) => l.branch_name).filter(Boolean)));
+        const withDocsCount = documents.filter((d) => d && d.buffer).length;
+
+        // Cover page
+        await appendPdfBuffer(await pdfmakeToBuffer({
+            content: [
+                { text: 'تقرير رخص السائقين', style: 'title' },
+                { text: `التاريخ: ${dateStr}`, style: 'subtitle', margin: [0, 0, 0, 4] },
+                { text: branchNames.length === 1 ? `الفرع: ${branchNames[0]}` : `عدد الفروع: ${branchNames.length}`, style: 'subtitle', margin: [0, 0, 0, 4] },
+                { text: `عدد السائقين: ${licenses.length}`, style: 'subtitle', margin: [0, 0, 0, 4] },
+                { text: `عدد المستندات المرفقة: ${withDocsCount}`, style: 'subtitle' },
+            ],
+            styles: reportStyles,
+            defaultStyle: { font: 'Amiri', fontSize: 11, color: '#1e293b' },
+            pageSize: 'A4',
+            pageMargins: [40, 60, 40, 40],
+        }));
+
+        // One data page per driver, followed by the embedded license document.
+        for (let i = 0; i < licenses.length; i++) {
+            const lic = licenses[i];
+            const doc = documents[i];
+            const expired = isLicenseExpired(lic.expiry_date_gregorian);
+
+            let documentStatus;
+            if (!lic.license_document_url) {
+                documentStatus = 'لا يوجد مستند رخصة مرفوع';
+            } else if (!doc || doc.error) {
+                documentStatus = 'تعذر تحميل المستند من التخزين السحابي';
+            } else if (doc.type === 'unknown') {
+                documentStatus = 'صيغة المستند غير مدعومة للعرض داخل التقرير';
+            } else {
+                documentStatus = 'مرفق في الصفحة التالية';
+            }
+
+            const rows = [
+                ['اسم السائق', lic.driver_full_name || '—'],
+                ['رقم الهوية', lic.driver_id_number || '—'],
+                ['رقم الرخصة', lic.license_number || '—'],
+                ['تاريخ إصدار الرخصة', safeFormatDate(lic.issue_date_gregorian)],
+                ['تاريخ انتهاء الرخصة', `${safeFormatDate(lic.expiry_date_gregorian)}${expired ? '  (منتهية)' : ''}`],
+                ['الجنسية', lic.driver_nationality || '—'],
+                ['رقم الجوال', lic.driver_phone_number || '—'],
+                ['تاريخ الميلاد', safeFormatDate(lic.driver_date_of_birth_gregorian)],
+                ['الفرع', lic.branch_name || '—'],
+                ['الحافلة / اللوحة', lic.primary_plate || lic.bus_number || '—'],
+                ['يوجد مرافق', lic.has_assistant ? 'نعم' : 'لا'],
+            ];
+            if (lic.has_assistant) {
+                rows.push(['اسم المرافق', lic.assistant_full_name || '—']);
+                rows.push(['جوال المرافق', lic.assistant_phone_number || '—']);
+            }
+            rows.push(['حالة التوثيق', lic.is_verified ? 'موثّقة' : 'غير موثّقة']);
+            rows.push(['المستند', documentStatus]);
+
+            const tableBody = rows.map(([label, value]) => {
+                const isExpiryRow = label === 'تاريخ انتهاء الرخصة' && expired;
+                return [
+                    { text: label, bold: true, alignment: 'right', fillColor: '#f1f5f9', color: '#334155', margin: [4, 3, 4, 3] },
+                    { text: String(value), alignment: 'right', color: isExpiryRow ? '#dc2626' : '#1e293b', bold: isExpiryRow, margin: [4, 3, 4, 3] },
+                ];
+            });
+
+            await appendPdfBuffer(await pdfmakeToBuffer({
+                content: [
+                    { text: 'بيانات السائق ورخصة القيادة', style: 'heading', margin: [0, 0, 0, 6] },
+                    { text: lic.driver_full_name || '—', style: 'subheading', alignment: 'right', margin: [0, 0, 0, 10] },
+                    {
+                        table: { widths: ['35%', '65%'], body: tableBody },
+                        layout: {
+                            hLineColor: () => '#e2e8f0',
+                            vLineColor: () => '#e2e8f0',
+                            hLineWidth: () => 0.5,
+                            vLineWidth: () => 0.5,
+                        },
+                    },
+                ],
+                styles: reportStyles,
+                defaultStyle: { font: 'Amiri', fontSize: 11, color: '#1e293b' },
+                pageSize: 'A4',
+                pageMargins: [40, 50, 40, 40],
+            }));
+
+            // Embed the actual uploaded license document right after the data page.
+            if (doc && doc.buffer && !doc.error) {
+                try {
+                    if (doc.type === 'pdf') {
+                        await appendPdfBuffer(doc.buffer);
+                    } else if (doc.type === 'png' || doc.type === 'jpg') {
+                        await appendImagePage(doc.buffer, doc.type);
+                    }
+                } catch (embedErr) {
+                    log.warn('Failed to embed license document into report', {
+                        busId: lic.bus_id,
+                        error: embedErr.message,
+                    });
+                }
+            }
+        }
+
+        const pdfBytes = await finalPdf.save();
+
+        const displayFilename = `تقرير-رخص-السائقين-${dateStr.replace(/\//g, '-')}.pdf`;
+        const asciiFilename = `driver-licenses-report-${dateStr.replace(/\//g, '-')}.pdf`;
+        const encodedFilename = encodeURIComponent(displayFilename);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`);
+        res.end(Buffer.from(pdfBytes));
+    } catch (error) {
+        log.error('Error generating driver licenses report:', error);
+        handleRouteError(error, req, res, 'فشل إنشاء تقرير رخص السائقين');
     }
 });
 
