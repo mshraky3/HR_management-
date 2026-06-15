@@ -177,6 +177,20 @@ export async function initializeDatabase() {
       marital_status VARCHAR(50),
       educational_qualification VARCHAR(200),
       specialization VARCHAR(200),
+      -- Columns present in production via historical migrations (no longer in this
+      -- repo). Also ensured idempotently by migration 018; declared here so a freshly
+      -- built database has them immediately, since the numbered migration chain may
+      -- not reach 018 on a fresh DB. All VARCHAR: passport/residency/graduation dates
+      -- are stored as strings (see note further below), and university_gpa may be a
+      -- non-numeric grade, so DECIMAL would reject valid input.
+      job_title VARCHAR(200),
+      graduation_year VARCHAR(50),
+      university_gpa VARCHAR(50),
+      passport_number VARCHAR(100),
+      passport_issue_date VARCHAR(50),
+      passport_expiry_date VARCHAR(50),
+      passport_issue_place VARCHAR(200),
+      residency_issue_date VARCHAR(50),
       bank_iban VARCHAR(50),
       bank_name VARCHAR(200),
       email VARCHAR(255),
@@ -211,9 +225,12 @@ export async function initializeDatabase() {
       FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE RESTRICT,
       FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
       FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL,
-      FOREIGN KEY (status_changed_by) REFERENCES users(id) ON DELETE SET NULL,
-      FOREIGN KEY (registration_term_id) REFERENCES terms(id) ON DELETE SET NULL,
-      FOREIGN KEY (current_term_id) REFERENCES terms(id) ON DELETE SET NULL
+      FOREIGN KEY (status_changed_by) REFERENCES users(id) ON DELETE SET NULL
+      -- NOTE: FKs for registration_term_id / current_term_id are intentionally
+      -- NOT declared inline here: the terms table is created later in this file,
+      -- so an inline reference fails on a fresh database ("relation terms does not
+      -- exist"). They are added after terms exists via the guarded ALTER TABLE
+      -- statements below (fk_employees_registration_term / fk_employees_current_term).
     `);
 
     // Create indexes for employees
