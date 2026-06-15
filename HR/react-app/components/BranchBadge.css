@@ -1,0 +1,10 @@
+.branch-badge-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.branch-badge-name {
+    font-weight: 600;
+    color: var(--text);
+}

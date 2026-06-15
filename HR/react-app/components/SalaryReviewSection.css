@@ -1,0 +1,354 @@
+/* Salary Review Section Styles */
+.salary-review-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm, 0 10px 30px rgba(0, 0, 0, 0.04));
+}
+
+.salary-review-card h2 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  color: var(--text-primary, #1f2937);
+}
+
+.helper-text {
+  color: var(--text-secondary, #6b7280);
+  font-size: 14px;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.salary-group-section {
+  margin-bottom: 24px;
+}
+
+.salary-group-section:last-of-type {
+  margin-bottom: 16px;
+}
+
+.salary-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.salary-group-title.low-salary {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fbbf24;
+}
+
+.salary-group-title.high-salary {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #60a5fa;
+}
+
+.group-icon {
+  font-size: 20px;
+}
+
+.group-count {
+  margin-right: auto;
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.salary-table-wrapper {
+  overflow-x: auto;
+}
+
+.salary-review-table {
+  width: 100%;
+  border-collapse: collapse;
+  direction: rtl;
+}
+
+.salary-review-table th,
+.salary-review-table td {
+  border: 1px solid #e5e7eb;
+  padding: 12px;
+  text-align: right;
+  vertical-align: middle;
+}
+
+.salary-review-table th {
+  background: #f5f6f8;
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
+}
+
+.salary-review-table tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+.salary-review-table tbody tr:hover {
+  background-color: #f9fafb;
+}
+
+.salary-amount {
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
+  font-family: 'Courier New', monospace;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-warning {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fbbf24;
+}
+
+.badge-info {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #60a5fa;
+}
+
+.salary-review-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary, #4988C4) 0%, var(--primary-hover, #3a6fa0) 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(73, 136, 196, 0.2);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 4px 12px rgba(73, 136, 196, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: #f3f4f6;
+  color: var(--text-primary, #1f2937);
+  border: 1px solid #d1d5db;
+}
+
+.btn-secondary:hover {
+  background: #e5e7eb;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .salary-review-table {
+    font-size: 13px;
+  }
+
+  .salary-review-table th,
+  .salary-review-table td {
+    padding: 8px;
+  }
+
+  .salary-group-title {
+    font-size: 14px;
+    flex-wrap: wrap;
+  }
+}
+
+/* ============================================
+   MOBILE RESPONSIVE - Tables to Cards (480px)
+   ============================================ */
+
+@media (max-width: 480px) {
+  .salary-review-card {
+    padding: 8px;
+    border-radius: 8px;
+    overflow-x: hidden !important;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .salary-review-card h2 {
+    font-size: 14px;
+    margin-bottom: 8px;
+    word-wrap: break-word;
+  }
+
+  .helper-text {
+    font-size: 11px;
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+
+  /* Remove any wrapper constraints */
+  .salary-table-wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .salary-group-section {
+    margin-bottom: 10px;
+    width: 100%;
+  }
+
+  .salary-group-title {
+    font-size: 11px;
+    padding: 4px 8px;
+    gap: 4px;
+  }
+
+  .group-icon {
+    font-size: 12px;
+  }
+
+  .group-count {
+    font-size: 10px;
+  }
+
+  /* Hide table, show cards */
+  .salary-review-table thead {
+    display: none;
+  }
+
+  .salary-review-table {
+    display: block;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: unset !important;
+    overflow: visible !important;
+    box-sizing: border-box;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .salary-review-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    width: 100% !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Employee card - vertical layout */
+  .salary-review-table tbody tr {
+    display: block;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 10px;
+    max-width: 270px;
+    width: calc(100% - 20px);
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .salary-review-table td {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 6px 0;
+    border: none;
+    font-size: 13px;
+  }
+
+  .salary-review-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #6b7280;
+    font-size: 10px;
+    margin-bottom: 3px;
+    text-align: right;
+  }
+
+  /* Employee name */
+  .salary-review-table td:first-child {
+    font-weight: 700;
+    font-size: 14px;
+    color: #1f2937;
+    border-bottom: 2px solid #e5e7eb;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+
+  .salary-review-table td:first-child::before {
+    display: none;
+  }
+
+  /* Salary amount */
+  .salary-amount {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  /* Badge */
+  .badge {
+    padding: 2px 6px;
+    font-size: 9px;
+    border-radius: 4px;
+  }
+
+  /* Action button - full width */
+  .salary-review-table td[data-label="إجراءات"] {
+    padding-top: 8px;
+    border-top: 1px solid #e5e7eb;
+    margin-top: 8px;
+  }
+
+  .salary-review-table .btn-sm {
+    padding: 8px 16px;
+    font-size: 12px;
+    width: 100%;
+    border-radius: 6px;
+    justify-content: center;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Bottom actions */
+  .salary-review-actions {
+    margin-top: 10px;
+    gap: 6px;
+  }
+
+  .salary-review-actions .btn {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}
