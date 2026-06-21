@@ -11,7 +11,7 @@ export const DEFAULT_BANK_PLACEHOLDER = 'اختر البنك';
 
 // List of Saudi banks with Arabic names
 const BANKS = [
-  { nameAr: 'البنك الأهلي السعودي (SNB)' },
+  { nameAr: 'البنك الأهلي السعودي' },
   { nameAr: 'مصرف الراجحي' },
   { nameAr: 'مصرف الإنماء' },
   { nameAr: 'بنك الرياض' },
