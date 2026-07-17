@@ -361,7 +361,7 @@ function sanitizeData(data) {
     if (!data) return null;
 
     try {
-        const str = typeof data === 'string' ? data : JSON.stringify(data);
+        const _str = typeof data === 'string' ? data : JSON.stringify(data);
         const parsed = typeof data === 'string' ? JSON.parse(data) : data;
 
         if (typeof parsed !== 'object') return parsed;

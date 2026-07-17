@@ -3,9 +3,9 @@
  * Displays the primary task in a large, prominent card
  */
 
-import { Link } from 'react-router-dom';
-import TaskIcon from './TaskIcon';
 import './FocusTaskCard.css';
+import { Link } from "react-router-dom";
+import TaskIcon from "./TaskIcon.jsx";
 
 const FocusTaskCard = ({ task, onSkip }) => {
   if (!task) return null;

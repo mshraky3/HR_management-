@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { calculateDocumentsCompletion, calculateOverallProgress } from '../utils/dataCompletionUtils';
 import '../pages/BranchStatistics.css';
 import getBranchColor from '../utils/branchColors';

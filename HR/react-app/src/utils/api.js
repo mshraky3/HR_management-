@@ -5,7 +5,7 @@
  */
 
 import axios from 'axios';
-import { API_URL, getCurrentApiUrl } from '../config/api.js';
+import { getCurrentApiUrl } from '../config/api.js';
 import { reportApiError } from './errorTracking.js';
 
 // API Response Cache - stores successful GET requests
@@ -14,7 +14,7 @@ const apiCache = new Map();
 
 // Request Deduplication - prevents duplicate concurrent requests
 // Key: request key, Value: Promise
-const pendingRequests = new Map();
+const _pendingRequests = new Map();
 
 // Cache configuration - Aggressive reduction for maximum freshness
 const CACHE_TTL = {
@@ -251,7 +251,7 @@ const api = axios.create({
 });
 
 // Update baseURL when it changes (for localhost fallback)
-const updateApiBaseUrl = () => {
+const _updateApiBaseUrl = () => {
   api.defaults.baseURL = getCurrentApiUrl();
 };
 
@@ -277,7 +277,7 @@ api.interceptors.request.use(
     // Request Deduplication and Caching for GET requests
     const methodLower = method.toLowerCase();
     if (methodLower === 'get') {
-      const requestKey = getRequestKey(config);
+      const _requestKey = getRequestKey(config);
       const cacheTTL = getCacheTTL(url);
 
       // Skip caching entirely for endpoints with CACHE_TTL.NONE (dashboard/notifications)
@@ -354,8 +354,8 @@ api.interceptors.response.use(
   },
   (error) => {
     const config = error.config;
-    const url = config?.url || '';
-    const method = (config?.method || 'get').toUpperCase();
+    const _url = config?.url || '';
+    const _method = (config?.method || 'get').toUpperCase();
 
     // No auto-switching - if connection fails, show the error
     // To switch environments, change API_CONFIG.CURRENT in config/api.js

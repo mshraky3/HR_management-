@@ -3,8 +3,8 @@
  * Redirects to login if not authenticated
  */
 
-import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { Navigate } from "react-router-dom";
 
 const ProtectedRoute = ({ children, requireMainManager = false }) => {
   const { isAuthenticated, loading, isMainManager } = useAuth();

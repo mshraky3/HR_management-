@@ -3,13 +3,14 @@
  * Main layout with navigation - Main Manager only
  */
 
-import { useState, useEffect, useCallback } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import "./Layout.css";
+import { Link } from "react-router-dom";
 
 const Layout = ({ children }) => {
-  const { user, logout, isMainManager } = useAuth();
+  const { user, logout, _isMainManager } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

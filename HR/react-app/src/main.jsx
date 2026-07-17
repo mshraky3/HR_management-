@@ -1,4 +1,3 @@
-import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 // Load critical CSS first - before any components
@@ -6,9 +5,10 @@ import "./index.css";
 // Load shared styles immediately to prevent FOUC (Flash of Unstyled Content)
 import "./styles/buttons.css";
 import "./styles/containers.css";
-import App from "./App.jsx";
-import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import { initErrorTracking } from "./utils/errorTracking.js";
+import { StrictMode } from "react";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import App from "./App.jsx";
 
 // Initialize error tracking for email notifications on critical errors
 initErrorTracking();

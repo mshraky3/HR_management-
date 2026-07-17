@@ -4,9 +4,9 @@
  */
 
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import TaskIcon from './TaskIcon';
 import './TaskQueue.css';
+import { Link } from "react-router-dom";
+import TaskIcon from "./TaskIcon.jsx";
 
 const TaskQueue = ({ tasks }) => {
   const [expanded, setExpanded] = useState(false);
@@ -23,8 +23,8 @@ const TaskQueue = ({ tasks }) => {
     );
   }
 
-  const primaryTask = tasks[0];
-  const secondaryTasks = tasks.slice(1, 3);
+  const _primaryTask = tasks[0];
+  const _secondaryTasks = tasks.slice(1, 3);
   const remainingTasks = tasks.slice(3);
 
   const getPriorityColor = (priority) => {
@@ -81,7 +81,7 @@ const TaskQueue = ({ tasks }) => {
 
       <div className="task-queue-list">
         {/* Show secondary tasks (primary is in FocusTaskCard) */}
-        {queueTasks.slice(0, 2).map((task, index) => (
+        {queueTasks.slice(0, 2).map((task, _index) => (
           <div
             key={task.id}
             className={`task-queue-item secondary ${getPriorityColor(task.priority)}`}

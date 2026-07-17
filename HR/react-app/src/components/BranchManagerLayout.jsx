@@ -3,10 +3,11 @@
  * Different UI for branch managers with limited features
  */
 
-import { useState, useEffect } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import "./BranchManagerLayout.css";
+import { Link } from "react-router-dom";
 
 const BranchManagerLayout = ({ children }) => {
   const { user, logout } = useAuth();

@@ -9,15 +9,11 @@
 import {
   isSaudiNationality,
   getNationalityRequirements,
-  getBranchTypeRules,
   jobTitleMatchesRule,
-  getRequiredDocumentsForJobTitle,
   getAllRequiredDocuments,
-  getAvailableDocumentTypes,
   getRequiredBranchDocuments as getRequiredBranchDocumentsFromRules,
   validateDocumentType as validateDocumentTypeFromRules,
-  MONTHLY_BRANCH_DOCUMENTS,
-  JOB_TITLE_RULES
+  MONTHLY_BRANCH_DOCUMENTS
 } from './employeeRules.js';
 
 // ============================================================================

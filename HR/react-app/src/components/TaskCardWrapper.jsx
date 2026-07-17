@@ -4,10 +4,10 @@
  */
 
 import { useState } from 'react';
-import TaskIcon from './TaskIcon';
 import './TaskCardWrapper.css';
+import TaskIcon from "./TaskIcon.jsx";
 
-const TaskCardWrapper = ({ task, children, collapsed: initialCollapsed, defaultExpanded = false, onComplete }) => {
+const TaskCardWrapper = ({ task, children, collapsed: initialCollapsed, defaultExpanded = false, _onComplete }) => {
   // If defaultExpanded is true, start expanded; otherwise use initialCollapsed (defaults to true/collapsed)
   const [collapsed, setCollapsed] = useState(defaultExpanded ? false : (initialCollapsed !== undefined ? initialCollapsed : true));
 
@@ -42,7 +42,7 @@ const TaskCardWrapper = ({ task, children, collapsed: initialCollapsed, defaultE
   const priorityClass = getPriorityColor(task.priority);
   const priorityLabel = getPriorityLabel(task.priority);
 
-  const handleScrollToSection = () => {
+  const _handleScrollToSection = () => {
     const sectionId = task.actionUrl.replace('#', '');
     const element = document.getElementById(sectionId);
     if (element) {

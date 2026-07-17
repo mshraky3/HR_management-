@@ -5,7 +5,7 @@ import { useNotification } from '../contexts/NotificationContext';
 import './MissingEmployeeDataSection.css';
 
 const MissingEmployeeDataSection = ({ onComplete }) => {
-  const { isMainManager, user } = useAuth();
+  const { _isMainManager, _user } = useAuth();
   const { showError, showSuccess } = useNotification();
 
   const [rows, setRows] = useState([]);

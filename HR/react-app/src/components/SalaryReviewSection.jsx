@@ -6,7 +6,7 @@
 import { useNavigate } from 'react-router-dom';
 import './SalaryReviewSection.css';
 
-const SalaryReviewSection = ({ employeeList = [], onComplete }) => {
+const SalaryReviewSection = ({ employeeList = [], _onComplete }) => {
   const navigate = useNavigate();
   if (!employeeList || employeeList.length === 0) {
     return null;

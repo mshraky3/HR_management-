@@ -6,7 +6,7 @@
 import { useNavigate } from 'react-router-dom';
 import './SalaryReviewSection.css'; // Reuse same styles
 
-const IBANReviewSection = ({ employeeList = [], onComplete }) => {
+const IBANReviewSection = ({ employeeList = [], _onComplete }) => {
     const navigate = useNavigate();
 
     if (!employeeList || employeeList.length === 0) {

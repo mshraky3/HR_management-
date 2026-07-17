@@ -129,7 +129,7 @@ export const NON_SAUDI_DOCUMENT_TYPES = [
  * @returns {Array<string>} - Array of available document types
  */
 export const getAvailableDocumentTypes = (employee) => {
-  const { nationality, job_title, branch_type } = employee;
+  const { nationality, _job_title, branch_type } = employee;
   const available = [...COMMON_DOCUMENT_TYPES];
 
   // Add nationality-specific documents

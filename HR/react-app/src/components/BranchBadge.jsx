@@ -1,7 +1,6 @@
-import React from 'react';
 import './BranchBadge.css';
 
-const BranchBadge = ({ branch, size = 18, showName = false }) => {
+const BranchBadge = ({ branch, _size = 18, showName = false }) => {
     const style = {
         display: 'inline-flex',
         alignItems: 'center',

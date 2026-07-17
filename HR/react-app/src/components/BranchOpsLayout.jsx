@@ -4,9 +4,10 @@
  */
 
 import { useState } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import "./BranchManagerLayout.css";
+import { Link } from "react-router-dom";
 
 const NAV_ITEMS = [
     { path: "/dashboard", label: "لوحة التحكم" },

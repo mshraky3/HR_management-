@@ -78,7 +78,7 @@ export const NotificationProvider = ({ children }) => {
 
   // Special notification for server errors (500) - longer duration, friendlier message
   const showServerError = useCallback(
-    (originalMessage) => {
+    (_originalMessage) => {
       const friendlyMessage = "حدث خطأ في النظام. تم إرسال تقرير تلقائي للإدارة وسيتم حل المشكلة خلال ٢-٣ ساعات. يرجى المحاولة لاحقاً.";
       return showNotification(friendlyMessage, "server-error", 12000); // 12 seconds
     },

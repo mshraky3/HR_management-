@@ -4,32 +4,31 @@
  * Performance Optimization: Code Splitting & Lazy Loading
  * All page components are lazy-loaded to reduce initial bundle size by 50-70%
  */
-import { Analytics } from "@vercel/analytics/react";
-import { lazy, Suspense } from "react";
+import { lazy } from "react";
+
+
+import { useAuth } from "./contexts/AuthContext";
 import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import { NotificationProvider } from "./contexts/NotificationContext";
-import {
-  BackendErrorProvider,
   useBackendError,
 } from "./contexts/BackendErrorContext";
-import ProtectedRoute from "./components/ProtectedRoute";
-import Layout from "./components/Layout";
-import BranchManagerLayout from "./components/BranchManagerLayout";
-import BranchOpsLayout from "./components/BranchOpsLayout";
-import MaintenancePage from "./pages/MaintenancePage";
 import "./App.css";
 // Load shared page CSS immediately to prevent FOUC (Flash of Unstyled Content)
 // This ensures table styles are available before lazy-loaded pages render
 import "./pages/TablePage.css";
+import { BrowserRouter as Router, Navigate, Route, Routes } from "react-router-dom";
+import { Suspense } from "react";
+import { Analytics } from "@vercel/analytics/react";
+import Layout from "./components/Layout.jsx";
+import BranchOpsLayout from "./components/BranchOpsLayout.jsx";
+import BranchManagerLayout from "./components/BranchManagerLayout.jsx";
+import MaintenancePage from "./pages/MaintenancePage.jsx";
+import Login from "./pages/Login.jsx";
+import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import { BackendErrorProvider } from "./contexts/BackendErrorContext.jsx";
+import { AuthProvider } from "./contexts/AuthContext.jsx";
+import { NotificationProvider } from "./contexts/NotificationContext.jsx";
 
 // Login page - loaded immediately (critical for first render)
-import Login from "./pages/Login";
 
 // Loading component for Suspense fallback
 // This is shown while lazy-loaded components are being fetched
