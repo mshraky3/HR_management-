@@ -37,34 +37,53 @@ function maskEmail(email) {
   return `${visible}***@${domain}`;
 }
 
-async function ensureBranchOtpTableExists() {
-  await sql`
-    CREATE TABLE IF NOT EXISTS branch_otp_tokens (
-      id SERIAL PRIMARY KEY,
-      branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
-      otp_hash VARCHAR(128) NOT NULL,
-      expires_at TIMESTAMP NOT NULL,
-      attempts INTEGER DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `;
-  await sql`CREATE INDEX IF NOT EXISTS idx_branch_otp_branch_id ON branch_otp_tokens(branch_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_branch_otp_expires ON branch_otp_tokens(expires_at)`;
+// Memoized: the DDL runs once per process (cold start), not on every OTP
+// request — previously each login/verify/resend paid 3 DDL round-trips.
+// On failure the memo resets so a later request can retry.
+let _branchOtpTableReady = null;
+function ensureBranchOtpTableExists() {
+  if (_branchOtpTableReady) return _branchOtpTableReady;
+  _branchOtpTableReady = (async () => {
+    await sql`
+      CREATE TABLE IF NOT EXISTS branch_otp_tokens (
+        id SERIAL PRIMARY KEY,
+        branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        otp_hash VARCHAR(128) NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        attempts INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS idx_branch_otp_branch_id ON branch_otp_tokens(branch_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_branch_otp_expires ON branch_otp_tokens(expires_at)`;
+  })().catch((err) => {
+    _branchOtpTableReady = null;
+    throw err;
+  });
+  return _branchOtpTableReady;
 }
 
-async function ensureUserOtpTableExists() {
-  await sql`
-    CREATE TABLE IF NOT EXISTS user_otp_tokens (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      otp_hash VARCHAR(128) NOT NULL,
-      expires_at TIMESTAMP NOT NULL,
-      attempts INTEGER DEFAULT 0,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `;
-  await sql`CREATE INDEX IF NOT EXISTS idx_user_otp_user_id ON user_otp_tokens(user_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_user_otp_expires ON user_otp_tokens(expires_at)`;
+let _userOtpTableReady = null;
+function ensureUserOtpTableExists() {
+  if (_userOtpTableReady) return _userOtpTableReady;
+  _userOtpTableReady = (async () => {
+    await sql`
+      CREATE TABLE IF NOT EXISTS user_otp_tokens (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        otp_hash VARCHAR(128) NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        attempts INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS idx_user_otp_user_id ON user_otp_tokens(user_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_user_otp_expires ON user_otp_tokens(expires_at)`;
+  })().catch((err) => {
+    _userOtpTableReady = null;
+    throw err;
+  });
+  return _userOtpTableReady;
 }
 
 /**

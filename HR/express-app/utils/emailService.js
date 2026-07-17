@@ -12,8 +12,8 @@ export const emailTransporter = nodemailer.createTransport({
   port: 587,
   secure: false,
   auth: {
-    user: 'alshrakynodeapp@gmail.com',
-    pass: 'ssjpnctdsyqxylxd', // Updated app password Feb 2026
+    user: 'smle.sqb@gmail.com',
+    pass: 'ilpkkbzqratazaqa', // Updated app password Jul 2026
   },
 });
 
@@ -41,7 +41,7 @@ export async function sendNotificationEmail({ to, subject, message, notification
     const htmlContent = generateEmailHtml({ subject, message, notificationType, appUrl, data });
 
     const mailOptions = {
-      from: '"HR system" <alshrakynodeapp@gmail.com>',
+      from: '"HR system" <smle.sqb@gmail.com>',
       to,
       subject,
       html: htmlContent,
@@ -241,7 +241,7 @@ export async function sendOTPEmail(toEmail, code, branchName) {
 
   try {
     const result = await emailTransporter.sendMail({
-      from: '"HR system" <alshrakynodeapp@gmail.com>',
+      from: '"HR system" <smle.sqb@gmail.com>',
       to: toEmail,
       subject,
       html: htmlContent,
