@@ -4,7 +4,7 @@
  * Marks older duplicates as inactive, keeping the most recent one active
  */
 
-import sql from '../config/database.js';
+import sql from '../../config/database.js';
 import { log } from '../../utils/logger.js';
 
 export async function fixDuplicateTerms() {

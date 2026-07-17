@@ -4,7 +4,7 @@
  * Reports issues but doesn't automatically fix them (manual review required)
  */
 
-import sql from '../config/database.js';
+import sql from '../../config/database.js';
 import { log } from '../../utils/logger.js';
 
 export async function auditTermsAndAcademicYears() {
