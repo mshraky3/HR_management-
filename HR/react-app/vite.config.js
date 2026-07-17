@@ -29,28 +29,38 @@ export default defineConfig({
       // Enable tree shaking for better optimization
       // Only disable if absolutely necessary for specific dependencies
       output: {
-        // Manual chunks for better caching and code splitting
+        // Manual chunks for better caching and code splitting.
+        // IMPORTANT: match on the package name AFTER node_modules/, not on the
+        // whole path — the project folder is named "react-app", so a naive
+        // id.includes("react") matched EVERY module and shoved the entire
+        // vendor tree (recharts, d3, axios, ...) into one react-vendor chunk
+        // that every page had to download.
         manualChunks: (id) => {
-          // Separate vendor chunks for better caching
-          if (id.includes("node_modules")) {
-            // Keep React in a single chunk to avoid duplication
-            if (id.includes("react") || id.includes("react-dom")) {
-              return "react-vendor";
-            }
-            if (id.includes("react-router")) {
-              return "react-router-vendor";
-            }
-            if (id.includes("axios")) {
-              return "axios-vendor";
-            }
-            if (id.includes("recharts")) {
-              return "charts-vendor";
-            }
-            // Other vendor libraries
-            return "vendor";
+          const normalized = id.replace(/\\/g, "/");
+          if (!normalized.includes("node_modules/")) {
+            return undefined; // app code — let Vite handle it
           }
-          // Return undefined for app code (let Vite handle it)
-          return undefined;
+          const pkg = normalized.split("node_modules/").pop().split("/")[0];
+          if (["react", "react-dom", "scheduler", "react-is"].includes(pkg)) {
+            return "react-vendor";
+          }
+          if (pkg === "react-router" || pkg === "react-router-dom") {
+            return "react-router-vendor";
+          }
+          if (pkg === "axios") {
+            return "axios-vendor";
+          }
+          // recharts and its heavy runtime deps only load on chart pages
+          if (
+            pkg === "recharts" ||
+            pkg.startsWith("d3-") ||
+            pkg === "victory-vendor" ||
+            pkg === "react-smooth"
+          ) {
+            return "charts-vendor";
+          }
+          // Other vendor libraries
+          return "vendor";
         },
         // Optimize chunk file names for better caching
         chunkFileNames: "assets/[name]-[hash].js",
