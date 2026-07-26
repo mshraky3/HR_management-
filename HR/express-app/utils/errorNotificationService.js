@@ -425,7 +425,7 @@ export async function sendErrorNotification(errorData) {
     }, frequencyInfo);
 
     const mailOptions = {
-      from: '"نظام الإنذارات - HR System" <smle.sqb@gmail.com>',
+      from: `"نظام الإنذارات - HR System" <${process.env.MAIL_FROM_ADDRESS}>`,
       to: DEVELOPER_EMAIL,
       subject,
       html: htmlContent,

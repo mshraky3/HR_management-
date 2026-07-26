@@ -4,18 +4,23 @@
  */
 
 import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
 import { log } from './logger.js';
+
+dotenv.config();
 
 // Create email transporter
 export const emailTransporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT),
+  secure: true,
   auth: {
-    user: 'smle.sqb@gmail.com',
-    pass: 'ilpkkbzqratazaqa', // Updated app password Jul 2026
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
   },
 });
+
+const MAIL_FROM_ADDRESS = process.env.MAIL_FROM_ADDRESS;
 
 // Verify email connection
 emailTransporter.verify((error, success) => {
@@ -41,7 +46,7 @@ export async function sendNotificationEmail({ to, subject, message, notification
     const htmlContent = generateEmailHtml({ subject, message, notificationType, appUrl, data });
 
     const mailOptions = {
-      from: '"HR system" <smle.sqb@gmail.com>',
+      from: `"HR system" <${MAIL_FROM_ADDRESS}>`,
       to,
       subject,
       html: htmlContent,
@@ -241,7 +246,7 @@ export async function sendOTPEmail(toEmail, code, branchName) {
 
   try {
     const result = await emailTransporter.sendMail({
-      from: '"HR system" <smle.sqb@gmail.com>',
+      from: `"HR system" <${MAIL_FROM_ADDRESS}>`,
       to: toEmail,
       subject,
       html: htmlContent,
