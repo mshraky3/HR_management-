@@ -13,13 +13,7 @@ import {
 } from "../utils/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
-import UnifiedDatePicker from "../components/UnifiedDatePicker";
-import BranchBadge from "../components/BranchBadge";
-import NameInput from "../components/NameInput";
-import NationalitySelect from "../components/NationalitySelect";
-import ReligionSelect from "../components/ReligionSelect";
-import MaritalStatusSelect from "../components/MaritalStatusSelect";
-import BankSelect, { DEFAULT_BANK_PLACEHOLDER } from "../components/BankSelect";
+import { DEFAULT_BANK_PLACEHOLDER } from "../components/BankSelect";
 import {
   isSaudi as isSaudiHelper,
   isNonSaudi,
@@ -28,25 +22,13 @@ import {
   getIdExpiryCalendarType,
   isSchool,
   isHealthcareCenter,
-  requiresClassification,
   requiresExperienceCertificate,
-  requiresSpeechTherapy70Hours,
-  requiresTherapy40Hours,
-  requiresPassport,
-  requiresProfessionalLicense,
   requiresClassificationDocument,
   requiresExperienceCertificateDocument,
-  requiresSpeechTherapy70HoursDocument,
   requiresTherapy40HoursDocument,
-  requiresPassportNumber,
-  requiresIdExpiryDate,
-  requiresDateOfBirthHijri,
-  requiresDateOfBirthGregorian,
   validateDocumentType,
 } from "../utils/employeeHelpers";
 import {
-  SCHOOL_JOB_TITLES,
-  HEALTHCARE_JOB_TITLES,
   getJobTitlesByBranchType,
   DATA_COMPLETION_STATUS,
 } from "../utils/employeeConstants";
@@ -59,13 +41,20 @@ import {
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 // import './TablePage.css';
 import "./Employees.css";
+import BranchBadge from "../components/BranchBadge.jsx";
+import NationalitySelect from "../components/NationalitySelect.jsx";
+import NameInput from "../components/NameInput.jsx";
+import UnifiedDatePicker from "../components/UnifiedDatePicker.jsx";
+import BankSelect from "../components/BankSelect.jsx";
+import ReligionSelect from "../components/ReligionSelect.jsx";
+import MaritalStatusSelect from "../components/MaritalStatusSelect.jsx";
 
 const Employees = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { isMainManager, user } = useAuth();
-  const { showError, showSuccess, showWarning, showInfo } = useNotification();
+  const { showError, showSuccess, showWarning, _showInfo } = useNotification();
   const [employees, setEmployees] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -170,7 +159,7 @@ const Employees = () => {
   });
 
   const [dateOfBirthCalendarType, setDateOfBirthCalendarType] = useState(null);
-  const [idExpiryCalendarType, setIdExpiryCalendarType] = useState(null);
+  const [_idExpiryCalendarType, setIdExpiryCalendarType] = useState(null);
 
   // Check if selected educational qualification is basic education (doesn't require specialization, graduation year, or GPA)
   const isBasicEducation = () => {
@@ -2354,7 +2343,7 @@ const Employees = () => {
                     const isComplete =
                       employee.data_completion_status ===
                       DATA_COMPLETION_STATUS.COMPLETE;
-                    const completionStatus =
+                    const _completionStatus =
                       employee.data_completion_status ||
                       DATA_COMPLETION_STATUS.INCOMPLETE;
                     return (

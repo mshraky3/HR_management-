@@ -6,18 +6,18 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { DATA_COMPLETION_STATUS } from '../../utils/employeeConstants';
 import './EmployeeDetails.css';
-import EmployeeDetailsHeader from './components/EmployeeDetailsHeader';
-import EmployeeProfileCard from './components/EmployeeProfileCard';
-import RenewalSection from './components/RenewalSection';
-import EmployeeInfoSections from './components/EmployeeInfoSections';
-import DocumentsSection from './components/DocumentsSection';
-import GenerateFileSection from './components/GenerateFileSection';
-import ImagePreviewModal from './components/ImagePreviewModal';
+import EmployeeDetailsHeader from "./components/EmployeeDetailsHeader.jsx";
+import EmployeeProfileCard from "./components/EmployeeProfileCard.jsx";
+import RenewalSection from "./components/RenewalSection.jsx";
+import EmployeeInfoSections from "./components/EmployeeInfoSections.jsx";
+import DocumentsSection from "./components/DocumentsSection.jsx";
+import GenerateFileSection from "./components/GenerateFileSection.jsx";
+import ImagePreviewModal from "./components/ImagePreviewModal.jsx";
 
 const EmployeeDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isBranchManager, isMainManager, user } = useAuth();
+  const { isBranchManager, _isMainManager, user } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
 
   const [employee, setEmployee] = useState(null);

@@ -4,7 +4,7 @@
  * Main managers can view all branches, branch managers only their branch
  */
 
-import { Fragment, useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { busTransportationAPI, branchesAPI, termsAPI } from "../utils/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
@@ -13,9 +13,10 @@ import {
   groupTermsByBranchType,
   deduplicateTerms,
 } from "../utils/termHelpers.js";
-import BranchBadge from "../components/BranchBadge";
-import UnifiedDatePicker from "../components/UnifiedDatePicker";
 import "./BusTransportation.css";
+import { Fragment } from "react";
+import BranchBadge from "../components/BranchBadge.jsx";
+import UnifiedDatePicker from "../components/UnifiedDatePicker.jsx";
 
 
 function PlateDisplay({ value = "" }) {
@@ -124,10 +125,10 @@ const BusTransportation = () => {
   const [selectedBus, setSelectedBus] = useState(null);
   const [showBusForm, setShowBusForm] = useState(false);
   const [showBusFormInline, setShowBusFormInline] = useState(false);
-  const [showStudentForm, setShowStudentForm] = useState(false);
+  const [_showStudentForm, _setShowStudentForm] = useState(false);
   const [editingBus, setEditingBus] = useState(null);
   const [busFormInitialTab, setBusFormInitialTab] = useState("basic");
-  const [editingStudent, setEditingStudent] = useState(null);
+  const [_editingStudent, _setEditingStudent] = useState(null);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState("");
@@ -1534,7 +1535,7 @@ const BusTransportation = () => {
 const BusFormModal = ({
   bus,
   branches,
-  terms,
+  _terms,
   isMainManager,
   userBranchId,
   initialTab = "basic",
@@ -1544,7 +1545,7 @@ const BusFormModal = ({
   onReload,
   onAfterFinish,
 }) => {
-  const { user } = useAuth();
+  const { _user } = useAuth();
   const { showError, showSuccess } = useNotification();
   const isEditing = !!bus;
   const hydratedRef = useRef(false);
@@ -1569,7 +1570,7 @@ const BusFormModal = ({
     bus ? tabsFlow.length - 1 : 0,
   );
   const [saving, setSaving] = useState(false);
-  const [docsState, setDocsState] = useState({
+  const [_docsState, setDocsState] = useState({
     registration: !!bus?.registration?.registration_document_url,
     driverLicense: !!bus?.driver_license?.license_document_url,
     leaseContract: !!bus?.lease_contract_document_url,
@@ -2142,7 +2143,7 @@ const BusFormModal = ({
 
   // Legacy per-tab save removed: saving happens only at the final step
 
-  const handleSaveRegistration = async () => {
+  const _handleSaveRegistration = async () => {
     if (!createdBusId && !bus?.id) {
       showError("يرجى إنشاء الحافلة أولاً");
       return;
@@ -2158,7 +2159,7 @@ const BusFormModal = ({
     }
   };
 
-  const handleSaveDriverLicense = async () => {
+  const _handleSaveDriverLicense = async () => {
     if (!createdBusId && !bus?.id) {
       showError("يرجى إنشاء الحافلة أولاً");
       return;
@@ -2174,7 +2175,7 @@ const BusFormModal = ({
     }
   };
 
-  const handleSavePlates = async () => {
+  const _handleSavePlates = async () => {
     if (!createdBusId && !bus?.id) {
       showError("يرجى إنشاء الحافلة أولاً");
       return;
@@ -2207,7 +2208,7 @@ const BusFormModal = ({
     }
   };
 
-  const handleSaveDetails = async () => {
+  const _handleSaveDetails = async () => {
     if (!createdBusId && !bus?.id) {
       showError("يرجى إنشاء الحافلة أولاً");
       return;
@@ -2223,7 +2224,7 @@ const BusFormModal = ({
     }
   };
 
-  const handleAddStudent = () => {
+  const _handleAddStudent = () => {
     setStudents((prev) => [
       ...(Array.isArray(prev) ? prev : []),
       makeEmptyStudentRow(),
@@ -2311,7 +2312,7 @@ const BusFormModal = ({
     }
   };
 
-  const handleFinalSave = async () => {
+  const _handleFinalSave = async () => {
     // Strict validation: nothing is saved unless all required fields are filled (students optional)
     // Prevent branch managers from saving buses outside their branch (avoid 403 on final save)
     if (
@@ -2927,10 +2928,10 @@ const BusFormModal = ({
 
 // Form Tab Components for BusFormModal
 const RegistrationFormTab = ({ formData, setFormData, busId }) => {
-  const [uploading, setUploading] = useState(false);
+  const [_uploading, setUploading] = useState(false);
   const { showError, showSuccess } = useNotification();
 
-  const handleFileUpload = async (e) => {
+  const _handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !busId) return;
 
@@ -3037,15 +3038,15 @@ const RegistrationFormTab = ({ formData, setFormData, busId }) => {
 const DocumentsFormTab = ({
   busId,
   isLeased,
-  ownershipTypeKnown,
+  _ownershipTypeKnown,
   initialDocs,
   uploadedDocs,
   setUploadedDocs,
   beforeUpload,
   onDocsChange,
-  onReload,
-  onNavigateToStudents,
-  isNewBus,
+  _onReload,
+  _onNavigateToStudents,
+  _isNewBus,
 }) => {
   const { showError, showSuccess } = useNotification();
   const [preSaving, setPreSaving] = useState(false);
@@ -3318,11 +3319,11 @@ const DocumentsFormTab = ({
 };
 
 const DriverLicenseFormTab = ({ formData, setFormData, busId }) => {
-  const [uploading, setUploading] = useState(false);
+  const [_uploading, setUploading] = useState(false);
   const { showError, showSuccess } = useNotification();
   const digitsOnly = (value) => String(value || "").replace(/\D/g, "");
 
-  const handleFileUpload = async (e) => {
+  const _handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !busId) return;
 
@@ -5336,10 +5337,10 @@ const BusDetailsTab = ({ bus, onReload }) => {
 };
 
 const StudentsTab = ({
-  bus,
+  _bus,
   students,
   loading,
-  onReload,
+  _onReload,
   onAdd,
   onEdit,
   onDelete,

@@ -7,13 +7,13 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
 import { notificationsAPI, branchesAPI } from "../utils/api";
-import BranchBadge from '../components/BranchBadge';
 import { formatDate } from '../utils/dateConverters';
 import { getSeenCounts, setSeenCounts } from '../utils/notificationTracker';
 import "./NotifyBranches.css";
+import BranchBadge from "../components/BranchBadge.jsx";
 
 const NotifyBranches = () => {
-  const { user, isMainManager } = useAuth();
+  const { _user, isMainManager } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const [notifications, setNotifications] = useState([]);
   const [branches, setBranches] = useState([]);

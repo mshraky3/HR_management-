@@ -9,11 +9,10 @@ import { employeesAPI, notificationsAPI } from "../utils/api";
 import { downloadFile } from '../utils/downloadFile';
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
-import { formatDate } from "../utils/dateConverters";
 import { useBranches } from "../hooks/useBranches";
-import UnifiedDatePicker from "../components/UnifiedDatePicker";
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 import "./ExperienceCertificate.css";
+import UnifiedDatePicker from "../components/UnifiedDatePicker.jsx";
 
 const ExperienceCertificate = () => {
   const { isMainManager } = useAuth();

@@ -7,15 +7,10 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
 import { employeesAPI } from "../utils/api";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
+
+
 import "./EmployeeStatistics.css";
+import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 // Custom Tooltip Component
 const CustomTooltip = ({ active, payload }) => {
@@ -125,7 +120,7 @@ const renderCustomLabel = ({
   innerRadius,
   outerRadius,
   percent,
-  name,
+  _name,
 }) => {
   const RADIAN = Math.PI / 180;
   // Position label closer to outer edge but still inside the slice
@@ -208,14 +203,14 @@ const EmployeeStatistics = () => {
     nationalities,
     nationalityGender,
     educationalQualifications,
-    specializations,
-    status,
+    _specializations,
+    _status,
     ageGroups,
     experienceLevels,
     branches,
     idTypes,
-    headcountTrend,
-    companyExperience,
+    _headcountTrend,
+    _companyExperience,
     salaryByBranch,
     salaryMedianByBranch,
     religions,
@@ -1177,7 +1172,7 @@ const EmployeeStatistics = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {genderByBranch.map((item, index) => {
+                    {genderByBranch.map((item, _index) => {
                       const maleCount = item.male_count || 0;
                       const femaleCount = item.female_count || 0;
                       const totalCount = maleCount + femaleCount;
@@ -1616,7 +1611,7 @@ const EmployeeStatistics = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {genderByJobTitle.map((item, index) => {
+                    {genderByJobTitle.map((item, _index) => {
                       const maleCount = item.male_count || 0;
                       const femaleCount = item.female_count || 0;
                       const totalCount = maleCount + femaleCount;

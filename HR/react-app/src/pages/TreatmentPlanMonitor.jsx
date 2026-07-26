@@ -30,6 +30,7 @@ const STATUS_COLORS = {
 const normalizeFilename = (filename) => {
     if (!filename || typeof filename !== 'string') return 'plan';
 
+    // eslint-disable-next-line no-control-regex -- deliberately strips control chars from filenames
     const cleaned = filename.replace(/[\x00-\x1F\x7F-\x9F\r\n]/g, '').trim();
     const looksMojibake = /[ØÙÃÂÐ]/.test(cleaned);
     if (!looksMojibake) return cleaned || 'plan';

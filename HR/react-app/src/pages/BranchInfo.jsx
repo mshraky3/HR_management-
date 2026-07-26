@@ -7,8 +7,8 @@ import { useState, useEffect } from 'react';
 import { branchesAPI, clearCache } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import BranchBadge from '../components/BranchBadge';
 import './BranchInfo.css';
+import BranchBadge from "../components/BranchBadge.jsx";
 
 const BranchInfo = () => {
   const { user } = useAuth();

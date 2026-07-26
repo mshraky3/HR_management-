@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { payrollAbsenceAPI } from '../utils/api';
 import { downloadFile } from '../utils/downloadFile';
 import './PayrollAbsence.css';
+import { Fragment } from "react";
 
 // Format date as dd/mm/yyyy (Gregorian calendar only)
 const formatDateDDMMYYYY = (value) => {

@@ -10,19 +10,18 @@ import { branchDocumentsAPI, branchesAPI, setDocumentBranchMapping } from '../ut
 import { downloadFile } from '../utils/downloadFile';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import BankSelect from '../components/BankSelect';
-import UnifiedDatePicker from '../components/UnifiedDatePicker';
-import BranchBadge from '../components/BranchBadge';
-import { formatDate, hijriToGregorian, parseHijriString, gregorianToHijri } from '../utils/dateConverters';
+import { formatDate } from '../utils/dateConverters';
 import { RESTRICTED_DOCUMENT_TYPES } from '../utils/documentRestrictions';
 import './BranchDocuments.css';
+import UnifiedDatePicker from "../components/UnifiedDatePicker.jsx";
+import BankSelect from "../components/BankSelect.jsx";
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 
 const BranchDocuments = () => {
   const { isMainManager, user } = useAuth();
-  const { showError, showSuccess, showWarning, showInfo } = useNotification();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [documents, setDocuments] = useState([]);
+  const { showError, showSuccess, showWarning, _showInfo } = useNotification();
+  const [searchParams, _setSearchParams] = useSearchParams();
+  const [_documents, setDocuments] = useState([]);
   const [allDocuments, setAllDocuments] = useState([]); // Store all documents for filtering
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -422,8 +421,8 @@ const BranchDocuments = () => {
   const handleEdit = (document) => {
     setEditingDocument(document);
     // Determine date type based on which date exists
-    const issueDateType = document.issue_date_hijri ? 'hijri' : 'gregorian';
-    const expiryDateType = document.expiry_date_hijri ? 'hijri' : 'gregorian';
+    const _issueDateType = document.issue_date_hijri ? 'hijri' : 'gregorian';
+    const _expiryDateType = document.expiry_date_hijri ? 'hijri' : 'gregorian';
 
     setEditData({
       description: document.description || '',
@@ -695,7 +694,7 @@ const BranchDocuments = () => {
   // NOTE: payroll_file removed - users enter payroll data in payroll absence system, not as file upload
   const sortDocumentCardsByPriority = useCallback((cards) => {
     const monthlyTypes = [];
-    const studentCadreTypes = ['student_cadre_file'];
+    const _studentCadreTypes = ['student_cadre_file'];
 
     return [...cards].sort((a, b) => {
       const aType = a.value;
@@ -879,7 +878,7 @@ const BranchDocuments = () => {
         ) : (
           <div className="document-cards-grid">
             {documentCards.map((card) => {
-              const docType = allBranchDocumentTypes.find(dt => dt.value === card.value);
+              const _docType = allBranchDocumentTypes.find(dt => dt.value === card.value);
 
               // Check if document is expired
               const isExpired = card.exists && card.document?.expiry_date ? (() => {

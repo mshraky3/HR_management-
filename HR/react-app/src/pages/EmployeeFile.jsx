@@ -205,7 +205,7 @@ const EmployeeFile = () => {
     loadDocumentsForSelected();
   }, [selectedEmployeeId]);
 
-  const handleEmployeeSelect = (employeeId) => {
+  const _handleEmployeeSelect = (employeeId) => {
     if (employeeId) {
       const employee = employees.find(emp => emp.id === parseInt(employeeId));
       setSelectedEmployeeId(parseInt(employeeId));

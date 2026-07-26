@@ -14,9 +14,6 @@ import {
 import { API_URL } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
-import BranchBadge from "../components/BranchBadge";
-import UnifiedDatePicker from "../components/UnifiedDatePicker";
-import BankSelect from "../components/BankSelect";
 import { formatDate } from "../utils/dateConverters";
 import {
   getRequiredBranchDocuments,
@@ -25,6 +22,8 @@ import {
 import { RESTRICTED_DOCUMENT_TYPES } from "../utils/documentRestrictions";
 import { downloadFile } from "../utils/downloadFile";
 import "./BranchDocumentsManagement.css";
+import BranchBadge from "../components/BranchBadge.jsx";
+import UnifiedDatePicker from "../components/UnifiedDatePicker.jsx";
 
 const BranchDocumentsManagement = () => {
   const { isMainManager, isBranchOperationsManager, user } = useAuth();
@@ -161,7 +160,7 @@ const BranchDocumentsManagement = () => {
 
   // Get selected document type name for display
   // Get selected PDF document type name for display
-  const pdfSelectedDocTypeName = useMemo(() => {
+  const _pdfSelectedDocTypeName = useMemo(() => {
     if (isPdfDocTypeDropdownOpen && pdfDocTypeFilter) {
       return pdfDocTypeFilter;
     }
@@ -177,7 +176,7 @@ const BranchDocumentsManagement = () => {
   ]);
 
   // Get selected PDF branch name for display
-  const pdfSelectedBranchName = useMemo(() => {
+  const _pdfSelectedBranchName = useMemo(() => {
     if (isPdfBranchDropdownOpen && pdfBranchFilter) {
       return pdfBranchFilter;
     }

@@ -5,10 +5,10 @@
 
 import { useState, useEffect } from 'react';
 import { branchesAPI } from '../utils/api';
-import BranchBadge from '../components/BranchBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import './DirectContact.css';
+import BranchBadge from "../components/BranchBadge.jsx";
 
 const DirectContact = () => {
   const { isMainManager } = useAuth();

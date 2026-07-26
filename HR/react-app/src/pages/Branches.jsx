@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { branchesAPI, clearCache } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import BranchBadge from '../components/BranchBadge';
+import BranchBadge from "../components/BranchBadge.jsx";
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 
 const Branches = () => {

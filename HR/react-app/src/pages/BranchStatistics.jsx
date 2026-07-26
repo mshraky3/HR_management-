@@ -5,15 +5,14 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { branchStatisticsAPI, branchDocumentsAPI } from '../utils/api';
 import { calculateOverallProgress, calculateDocumentsCompletion } from '../utils/dataCompletionUtils';
 import { formatDate } from '../utils/dateConverters';
 import { downloadFile } from '../utils/downloadFile';
-import BranchesOverallProgressChart from '../components/BranchesOverallProgressChart';
 import './BranchStatistics.css';
+import BranchesOverallProgressChart from "../components/BranchesOverallProgressChart.jsx";
 
 const formatMonthLabel = (month, year) => {
   if (!month || !year) return '';
@@ -198,7 +197,7 @@ const BranchStatistics = () => {
     : 0;
 
   // Get progress color class based on percentage
-  const getProgressColorClass = (percentage) => {
+  const _getProgressColorClass = (percentage) => {
     if (percentage >= 90) return 'excellent';
     if (percentage >= 70) return 'good';
     if (percentage >= 50) return 'moderate';
@@ -440,7 +439,7 @@ const BranchStatistics = () => {
           '#009688', '#FF5722', '#795548', '#607D8B', '#9E9E9E'
         ];
 
-        const monthName = formatMonthLabel(selectedMonth, selectedYear);
+        const _monthName = formatMonthLabel(selectedMonth, selectedYear);
 
         return (
           <div className="chart-section">

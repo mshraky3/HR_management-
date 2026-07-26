@@ -1,14 +1,14 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { branchesAPI, employeesAPI, reportsAPI, branchDocumentsAPI, documentsAPI } from '../utils/api';
+import { branchesAPI, employeesAPI, reportsAPI, documentsAPI } from '../utils/api';
 import { downloadFile } from '../utils/downloadFile';
-import BranchBadge from '../components/BranchBadge';
 import { DATA_COMPLETION_STATUS, getDocumentTypeLabel, DOCUMENT_TYPE_LABELS } from '../utils/employeeConstants';
 import { formatDate } from '../utils/dateConverters';
 import { translateValue } from '../utils/translations';
 import './Reports.css';
+import BranchBadge from "../components/BranchBadge.jsx";
 
 const PREVIEW_PAGE_SIZE = 50;
 
@@ -99,7 +99,7 @@ const Reports = () => {
     const [selectedBranchId, setSelectedBranchId] = useState(null); // For single branch (branch managers or single selection)
     const [selectedBranchIds, setSelectedBranchIds] = useState([]); // For multi-branch (main managers)
     const [selectAllBranches, setSelectAllBranches] = useState(false);
-    const [branchTypeFilter, setBranchTypeFilter] = useState([]); // Filter by branch type
+    const [branchTypeFilter, _setBranchTypeFilter] = useState([]); // Filter by branch type
     const [currentBranchId, setCurrentBranchId] = useState(null);
 
     const [selectedFields, setSelectedFields] = useState(['full_name', 'id_or_residency_number']);
@@ -696,6 +696,10 @@ const Reports = () => {
 
     // Generate report with all features
     const proceedGenerateReport = async (fileTypeToUse) => {
+        // Declared outside try so catch/finally can clear it — previously it was
+        // a const inside try, so the catch's clearInterval threw a ReferenceError
+        // and early validation returns leaked the interval (progress kept ticking).
+        let progressInterval = null;
         try {
             setGenerating(fileTypeToUse === 'pdf');
             setGeneratingExcel(fileTypeToUse === 'excel');
@@ -703,7 +707,7 @@ const Reports = () => {
             setGenerationProgress(0);
 
             // Simulate progress
-            const progressInterval = setInterval(() => {
+            progressInterval = setInterval(() => {
                 setGenerationProgress(prev => {
                     if (prev >= 90) return prev;
                     return prev + Math.random() * 15;
@@ -813,10 +817,11 @@ const Reports = () => {
                 showSuccess(`تم إنشاء التقرير بنجاح`);
             }, 2000);
         } catch (error) {
-            clearInterval(progressInterval);
             console.error('Error generating report:', error);
             showError(error.response?.data?.message || 'فشل إنشاء التقرير');
         } finally {
+            // Covers success, errors AND the early validation returns.
+            if (progressInterval) clearInterval(progressInterval);
             setGenerating(false);
             setGeneratingExcel(false);
             setIsGeneratingOverlay(false);

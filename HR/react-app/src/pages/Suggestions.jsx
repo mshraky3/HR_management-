@@ -8,9 +8,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { suggestionsAPI, branchesAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import BranchBadge from '../components/BranchBadge';
 import { getLastSeen, setLastSeen, countNewByDate } from '../utils/notificationTracker';
 import './Suggestions.css';
+import BranchBadge from "../components/BranchBadge.jsx";
 
 // Importance level colors for visual distinction
 const IMPORTANCE_COLORS = {

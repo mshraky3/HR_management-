@@ -20,7 +20,7 @@ const SERVICE_LABELS = {
 };
 
 const BeneficiariesArchive = () => {
-    const { user } = useAuth();
+    const { _user } = useAuth();
     const { showError, showSuccess } = useNotification();
 
     const [beneficiaries, setBeneficiaries] = useState([]);

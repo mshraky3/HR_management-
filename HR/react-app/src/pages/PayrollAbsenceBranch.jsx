@@ -23,7 +23,7 @@ const formatMonthMMYYYY = (value) => {
 };
 
 const PayrollAbsenceBranch = ({ onComplete }) => {
-  const { user } = useAuth();
+  const { _user } = useAuth();
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -65,7 +65,7 @@ const PayrollAbsenceBranch = ({ onComplete }) => {
 
   useEffect(() => {
     loadState();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const handleAbsenceChange = (employeeId, value, type) => {

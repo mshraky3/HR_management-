@@ -29,7 +29,7 @@ const TermManagement = () => {
     term2_end_date: ''
   });
   const [submitting, setSubmitting] = useState(false);
-  const [editingYear, setEditingYear] = useState(null);
+  const [_editingYear, setEditingYear] = useState(null);
 
   useEffect(() => {
     if (!isMainManager()) {

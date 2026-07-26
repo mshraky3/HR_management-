@@ -4,31 +4,26 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, dashboardAPI, adminAPI, requestsAPI, busTransportationAPI, payrollAbsenceAPI, beneficiariesAPI, employeeExpiryAPI, clearCache } from '../utils/api';
-import BranchesOverallProgressChart from '../components/BranchesOverallProgressChart';
+import { branchesAPI, employeesAPI, usersAPI, branchDocumentsAPI, notificationsAPI, branchStatisticsAPI, dashboardAPI, requestsAPI, busTransportationAPI, payrollAbsenceAPI, beneficiariesAPI, employeeExpiryAPI, clearCache } from '../utils/api';
 import {
   getRequiredBranchDocuments,
-  getBranchTypeLabel,
-  getMonthlyRequiredBranchDocuments,
-  isMonthlyBranchDocument
+  getMonthlyRequiredBranchDocuments
 } from '../utils/employeeHelpers';
-import { getBranchTypeRules } from '../utils/employeeRules';
-import { DATA_COMPLETION_STATUS } from '../utils/employeeConstants';
 import { formatDate, hijriToGregorian, parseHijriString } from '../utils/dateConverters';
-import DashboardProgress from './DashboardProgress';
-import MissingEmployeeDataSection from '../components/MissingEmployeeDataSection.jsx';
-import PayrollAbsenceBranchSection from '../components/PayrollAbsenceBranchSection.jsx';
-import SalaryReviewSection from '../components/SalaryReviewSection.jsx';
-import IBANReviewSection from '../components/IBANReviewSection.jsx';
-import TaskProgressOverview from '../components/TaskProgressOverview';
-import FocusTaskCard from '../components/FocusTaskCard';
-import TaskQueue from '../components/TaskQueue';
-import TaskCardWrapper from '../components/TaskCardWrapper';
 import { calculateTasks } from '../utils/taskPrioritizer';
 import './Dashboard.css';
+import { Link } from "react-router-dom";
+import TaskProgressOverview from "../components/TaskProgressOverview.jsx";
+import FocusTaskCard from "../components/FocusTaskCard.jsx";
+import TaskCardWrapper from "../components/TaskCardWrapper.jsx";
+import MissingEmployeeDataSection from "../components/MissingEmployeeDataSection.jsx";
+import PayrollAbsenceBranchSection from "../components/PayrollAbsenceBranchSection.jsx";
+import SalaryReviewSection from "../components/SalaryReviewSection.jsx";
+import IBANReviewSection from "../components/IBANReviewSection.jsx";
+import BranchesOverallProgressChart from "../components/BranchesOverallProgressChart.jsx";
 
 const Dashboard = () => {
   const { user, isMainManager, isBranchOperationsManager } = useAuth();
@@ -54,21 +49,21 @@ const Dashboard = () => {
   const [monthlyDocumentAlerts, setMonthlyDocumentAlerts] = useState([]);
   const [incompleteEmployees, setIncompleteEmployees] = useState([]);
   const [missingBranchDocumentAlerts, setMissingBranchDocumentAlerts] = useState([]);
-  const [missingBranchDocumentAlertsWithExpiry, setMissingBranchDocumentAlertsWithExpiry] = useState([]);
-  const [missingBranchDocumentAlertsWithoutExpiry, setMissingBranchDocumentAlertsWithoutExpiry] = useState([]);
+  const [_missingBranchDocumentAlertsWithExpiry, setMissingBranchDocumentAlertsWithExpiry] = useState([]);
+  const [_missingBranchDocumentAlertsWithoutExpiry, setMissingBranchDocumentAlertsWithoutExpiry] = useState([]);
   const [documentsWithExpiry, setDocumentsWithExpiry] = useState([]);
-  const [documentsWithoutExpiry, setDocumentsWithoutExpiry] = useState([]);
+  const [_documentsWithoutExpiry, setDocumentsWithoutExpiry] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [respondingTo, setRespondingTo] = useState(null);
   const [responseStatus, setResponseStatus] = useState('');
   const [responseMessage, setResponseMessage] = useState('');
-  const [pendingEmployees, setPendingEmployees] = useState([]);
-  const [processingRenewal, setProcessingRenewal] = useState(null);
-  const [showNonRenewalForm, setShowNonRenewalForm] = useState(null);
-  const [nonRenewalData, setNonRenewalData] = useState({ status: '', reason: '' });
+  const [_pendingEmployees, setPendingEmployees] = useState([]);
+  const [_processingRenewal, _setProcessingRenewal] = useState(null);
+  const [_showNonRenewalForm, _setShowNonRenewalForm] = useState(null);
+  const [_nonRenewalData, _setNonRenewalData] = useState({ status: '', reason: '' });
   const [branchStats, setBranchStats] = useState(null);
-  const [loadingStats, setLoadingStats] = useState(false);
-  const [mainManagerNotifications, setMainManagerNotifications] = useState([]);
+  const [_loadingStats, setLoadingStats] = useState(false);
+  const [_mainManagerNotifications, setMainManagerNotifications] = useState([]);
   const [newResponsesCount, setNewResponsesCount] = useState(0);
   const [branchInfo, setBranchInfo] = useState(null);
   const [employeesList, setEmployeesList] = useState([]);
@@ -77,7 +72,7 @@ const Dashboard = () => {
   const [newRequestsCount, setNewRequestsCount] = useState(0);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const [buses, setBuses] = useState([]);
-  const [skippedTaskIds, setSkippedTaskIds] = useState(new Set()); // Temporary skip (session-only, doesn't mark as completed)
+  const [skippedTaskIds, _setSkippedTaskIds] = useState(new Set()); // Temporary skip (session-only, doesn't mark as completed)
   const [completedTaskIds, setCompletedTaskIds] = useState(new Set()); // Actually completed tasks
   const [missingEmployeeContractData, setMissingEmployeeContractData] = useState([]);
   const [payrollAbsenceState, setPayrollAbsenceState] = useState(null);
@@ -88,7 +83,10 @@ const Dashboard = () => {
 
   // Track whether the component is still mounted to avoid state updates after unmount
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const loadStats = useCallback(async () => {
     try {
@@ -471,7 +469,7 @@ const Dashboard = () => {
       // Call API to mark as viewed
       notificationsAPI
         .markViewed(notification.id)
-        .catch((err) => {
+        .catch((_err) => {
           // Remove from ref on error so it can be retried
           markedAsViewedRef.current.delete(notification.id);
           // Silently handle errors - don't log warnings
@@ -872,6 +870,7 @@ const Dashboard = () => {
     // Temporarily disabled - will be re-enabled after fixing date calculations
     return;
 
+    /* eslint-disable no-unreachable -- body kept intact for re-enabling later */
     if (isMainManager()) return;
 
     const branchId = user?.branch_id;
@@ -992,7 +991,7 @@ const Dashboard = () => {
         }
       } else {
         // Check if document is missing (not in missingBranchDocumentAlerts)
-        const typeLabels = {
+        const _typeLabels = {
           license: 'الترخيص',
           permit: 'التصريح',
           insurance: 'التأمين',
@@ -1032,13 +1031,14 @@ const Dashboard = () => {
 
     setDocumentsWithExpiry(withExpiry);
     setDocumentsWithoutExpiry(withoutExpiry);
+    /* eslint-enable no-unreachable */
   }, [isMainManager, user, branches]);
 
   // Get monthly documents status for display
   // NOTE: Payroll files are handled by payroll absence system, not monthly documents
-  const getMonthlyDocumentsSummary = () => {
+  const _getMonthlyDocumentsSummary = () => {
     const monthlyTypes = [];
-    const typeLabels = {};
+    const _typeLabels = {};
 
     if (isMainManager()) {
       // For main manager, show summary of all branches
@@ -1440,7 +1440,7 @@ const Dashboard = () => {
         };
 
         // Handle scroll to section
-        const handleScrollToSection = (url) => {
+        const _handleScrollToSection = (url) => {
           if (url && url.startsWith('#')) {
             const sectionId = url.replace('#', '');
             const element = document.getElementById(sectionId);
