@@ -6,6 +6,29 @@
 import { log } from './logger.js';
 import { emailTransporter } from './emailService.js';
 
+import { createEmailClient } from './email-client.js';
+
+/**
+ * Error alerts go through the central gateway so they are rationed, digested
+ * and origin-gated like everything else. Legacy SMTP stays as the fallback.
+ */
+const _gateway = createEmailClient({
+  baseUrl: process.env.EMAIL_GATEWAY_URL,
+  apiKey: process.env.EMAIL_GATEWAY_KEY,
+  mode: process.env.EMAIL_GATEWAY_MODE || 'off',
+  legacy: (p) => emailTransporter.sendMail({
+    from: p.from, to: p.to, subject: p.subject, html: p.html, text: p.text,
+  }),
+  log: () => {},
+});
+
+function sendViaGateway({ fromName, to, subject, html, text, event, severity, sourceOrigin, idempotencyKey }) {
+  return _gateway.send({
+    from: `"${fromName}" <${process.env.MAIL_FROM_ADDRESS}>`,
+    fromName, to, subject, html, text, event, severity, sourceOrigin, idempotencyKey,
+  });
+}
+
 // Developer email for error notifications
 const DEVELOPER_EMAIL = 'alshraky3@gmail.com';
 

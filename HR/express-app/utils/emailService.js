@@ -4,6 +4,7 @@
  */
 
 import nodemailer from 'nodemailer';
+import { createEmailClient } from './email-client.js';
 import dotenv from 'dotenv';
 import { log } from './logger.js';
 
@@ -41,19 +42,80 @@ emailTransporter.verify((error, success) => {
  * @param {string} params.appUrl - URL to the app
  * @param {Object} params.data - Additional data for the email
  */
+
+// ── central email gateway ───────────────────────────────────────────────────
+//
+// Added 2026-08-01. All mail now routes through
+// https://email-services-nu.vercel.app instead of going straight to SMTP.
+//
+// WHY: this app and SQB were sending through the SAME Resend account, the same
+// API key and the same verified domain, with no shared accounting. Resend free
+// is 100 emails/day across BOTH. The gateway rations that by priority, so a
+// "notify all branches" fan-out can never starve a branch login OTP, and it
+// routes owner-facing mail over Gmail where it costs no Resend quota at all.
+//
+// EMAIL_GATEWAY_MODE:
+//   off     legacy SMTP only — exactly the previous behaviour
+//   shadow  legacy SMTP still sends; the gateway only RECORDS what it would do
+//   on      the gateway sends, falling back to SMTP only on infra failure
+// Rollback is one env var.
+
+/** notificationType -> the event type registered on the gateway. */
+const EVENT_BY_TYPE = {
+  branch_email_update_request: 'hr.owner.email_update_request',
+  expiry_alert_summary:        'hr.owner.expiry_summary',
+  new_request:                 'hr.owner.new_request',
+  new_suggestion:              'hr.owner.new_suggestion',
+  notification_created:        'hr.owner.notification_created',
+  notification_response:       'hr.owner.branch_replied',
+  statistics_alert:            'hr.owner.daily_critical_stats',
+  test:                        'hr.owner.test_email',
+  request_response:            'hr.request.answered_user',
+  daily_expiry_alert:          'hr.branch.daily_expiry',
+  expiry_alert:                'hr.branch.manual_expiry',
+  branch_notification:         'hr.branch.notify_all',
+};
+
+const gateway = createEmailClient({
+  baseUrl: process.env.EMAIL_GATEWAY_URL,
+  apiKey: process.env.EMAIL_GATEWAY_KEY,
+  mode: process.env.EMAIL_GATEWAY_MODE || 'off',
+  legacy: (p) => emailTransporter.sendMail({
+    from: p.from, to: p.to, subject: p.subject, html: p.html, text: p.text,
+  }),
+  log: (m, e) => log.warn(`[gateway] ${m}`, { error: e }),
+});
+
+/**
+ * Single delivery point. Everything in this file goes through here.
+ *
+ * `sourceOrigin` matters: the gateway DROPS mail whose origin is not a known
+ * production host, which is what stops a frontend running on localhost against
+ * the production backend from firing real error alerts.
+ */
+async function deliver({ fromName, to, subject, html, text, event, severity, sourceOrigin, idempotencyKey }) {
+  return gateway.send({
+    from: `"${fromName}" <${MAIL_FROM_ADDRESS}>`,
+    fromName,
+    to, subject, html, text,
+    event: event || 'hr.legacy',
+    severity, sourceOrigin, idempotencyKey,
+  });
+}
+
 export async function sendNotificationEmail({ to, subject, message, notificationType, appUrl, data = {} }) {
   try {
     const htmlContent = generateEmailHtml({ subject, message, notificationType, appUrl, data });
 
-    const mailOptions = {
-      from: `"HR system" <${MAIL_FROM_ADDRESS}>`,
+    const result = await deliver({
+      fromName: 'HR system',
       to,
       subject,
       html: htmlContent,
       text: message, // Plain text fallback
-    };
-
-    const result = await emailTransporter.sendMail(mailOptions);
+      event: EVENT_BY_TYPE[notificationType] || 'hr.legacy',
+      sourceOrigin: data?.sourceOrigin,
+    });
     log.info('Email sent successfully', { to, subject, messageId: result.messageId });
     return { success: true, messageId: result.messageId };
   } catch (error) {
@@ -245,12 +307,17 @@ export async function sendOTPEmail(toEmail, code, branchName) {
     </body></html>`;
 
   try {
-    const result = await emailTransporter.sendMail({
-      from: `"HR system" <${MAIL_FROM_ADDRESS}>`,
+    // P0 on the gateway: a branch account is blocked on this code, so it is
+    // sent inline and holds a reserved slice of the daily budget that no
+    // amount of bulk mail can consume.
+    const result = await deliver({
+      fromName: 'HR system',
       to: toEmail,
       subject,
       html: htmlContent,
       text: `رمز التحقق الخاص بك: ${code} - ينتهي خلال 10 دقائق`,
+      event: 'hr.otp.login',
+      idempotencyKey: `hr-otp:${toEmail}:${code}`,
     });
     log.info('OTP email sent', { to: toEmail, messageId: result.messageId });
     return { success: true, messageId: result.messageId };
