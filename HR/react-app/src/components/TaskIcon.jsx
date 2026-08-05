@@ -26,6 +26,7 @@ const TaskIcon = ({ type, size = 'medium', className = '' }) => {
       case 'payroll_absence':
         return 'icon-payroll';
       case 'beneficiary':
+      case 'beneficiary_rollover':
         return 'icon-beneficiary';
       case 'notification':
         return 'icon-alert';
@@ -91,6 +92,7 @@ const TaskIcon = ({ type, size = 'medium', className = '' }) => {
         );
 
       case 'beneficiary':
+      case 'beneficiary_rollover':
         return (
           <svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M16 4H18C19.1 4 20 4.9 20 6V20C20 21.1 19.1 22 18 22H6C4.9 22 4 21.1 4 20V6C4 4.9 4.9 4 6 4H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
