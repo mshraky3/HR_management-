@@ -356,13 +356,29 @@ export const BusTransportation = {
       values.unshift(id);
 
       const query = `
-        UPDATE bus_transportation 
+        UPDATE bus_transportation
         SET ${setClause}, updated_at = $${values.length + 1}
         WHERE id = $1
         RETURNING *
       `;
 
       values.push(new Date());
+
+      // bus_registration_data.term_id and driver_license_data.term_id are
+      // denormalised copies of this row's term_id (they back the per-term unique
+      // keys on registration/chassis/licence numbers). If the bus moves to a
+      // different term the children must move with it, atomically.
+      if (updates.term_id !== undefined) {
+        return await sql.begin(async tx => {
+          const result = await tx.unsafe(query, values);
+          const bus = result[0] || null;
+          if (bus) {
+            await tx`UPDATE bus_registration_data SET term_id = ${bus.term_id} WHERE bus_id = ${id}`;
+            await tx`UPDATE driver_license_data SET term_id = ${bus.term_id} WHERE bus_id = ${id}`;
+          }
+          return bus;
+        });
+      }
 
       const result = await sql.unsafe(query, values);
       return result[0] || null;

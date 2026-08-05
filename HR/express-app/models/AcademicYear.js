@@ -173,20 +173,28 @@ export const AcademicYear = {
         throw new Error('Academic year label already exists for this branch type');
       }
 
-      // Set other years as not current
-      await sql`
-        UPDATE academic_years
-        SET is_current = false
-        WHERE branch_type = ${branch_type} AND is_current = true
-      `;
+      // Creating NEXT year's record while this year is still running must not
+      // steal "current" from it — that silently breaks getCurrentAcademicYearWithState
+      // and everything downstream. Only become current when explicitly asked, or
+      // when there is no current year at all.
+      const currentYear = await this.getCurrentYear(branch_type);
+      const shouldBeCurrent = yearData.is_current === true || !currentYear;
+
+      if (shouldBeCurrent) {
+        await sql`
+          UPDATE academic_years
+          SET is_current = false
+          WHERE branch_type = ${branch_type} AND is_current = true
+        `;
+      }
 
       const [year] = await sql`
         INSERT INTO academic_years (
           branch_type, year_label, year_start, year_end, term1_id, term2_id, is_current
         )
         VALUES (
-          ${branch_type}, ${year_label}, ${year_start}, ${year_end}, 
-          ${term1_id || null}, ${term2_id || null}, true
+          ${branch_type}, ${year_label}, ${year_start}, ${year_end},
+          ${term1_id || null}, ${term2_id || null}, ${shouldBeCurrent}
         )
         RETURNING *
       `;
@@ -278,12 +286,14 @@ export const AcademicYear = {
       // Start transaction: Update academic year and employee statuses
       // Change all active employees in this branch type to pending
       // Note: is_active remains true for pending employees (they're not archived yet)
+      // status_changed_by is a FK to users(id) (migrations 014/016 repointed it away
+      // from branches). No user drives this change, so it must stay NULL.
       const result = await sql`
         UPDATE employees
         SET status = 'pending',
             is_active = true, -- Pending employees are still active, just awaiting renewal
             status_changed_at = CURRENT_TIMESTAMP,
-            status_changed_by = branch_id,
+            status_changed_by = NULL,
             status_change_reason = 'نهاية السنة الدراسية'
         WHERE branch_id IN (
           SELECT id FROM branches WHERE branch_type = ${branchType}

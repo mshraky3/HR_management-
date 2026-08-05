@@ -58,7 +58,7 @@ export const BusRegistrationData = {
         // Create new
         const [created] = await sql`
           INSERT INTO bus_registration_data (
-            bus_id, registration_number, chassis_number,
+            bus_id, term_id, registration_number, chassis_number,
             vehicle_model, model_year, vehicle_color,
             expiry_date_gregorian,
             registration_document_url, registration_document_name,
@@ -66,7 +66,12 @@ export const BusRegistrationData = {
             is_verified, verified_at, verified_by
           )
           VALUES (
-            ${busId}, ${registrationData.registration_number},
+            ${busId},
+            -- term_id is denormalised from the parent bus so (term_id, registration_number)
+            -- and (term_id, chassis_number) can be unique. Always read it from the bus,
+            -- never from the request, so it cannot drift or be forged.
+            (SELECT term_id FROM bus_transportation WHERE id = ${busId}),
+            ${registrationData.registration_number},
             ${registrationData.chassis_number},
             ${registrationData.vehicle_model},
             ${registrationData.model_year || null},

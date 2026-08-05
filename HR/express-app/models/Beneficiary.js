@@ -191,6 +191,9 @@ const Beneficiary = {
           transport_service = ${data.transport_service || false},
           free_student = ${data.free_student || false},
           notes = ${data.notes || null},
+          -- Editing a row that was carried over from last year IS the review.
+          -- Enforced here so no caller can forget it.
+          carry_review_status = CASE WHEN carry_review_status = 'pending' THEN 'reviewed' ELSE carry_review_status END,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ${id}
         RETURNING *
@@ -239,6 +242,11 @@ const Beneficiary = {
      */
     async getStatsByTerm(termId, includeFree = false) {
         try {
+            // Free students are excluded unless explicitly requested, matching
+            // getStatsByBranch, getSubmissionStatus and /staffing-requirements.
+            // Applied to all four queries so SUM(branchStats.total) === totals.total.
+            const freeFilter = includeFree ? sql`` : sql`AND free_student IS NOT TRUE`;
+
             // Overall stats
             const [totals] = await sql`
         SELECT 
@@ -256,7 +264,7 @@ const Beneficiary = {
           COUNT(*) FILTER (WHERE transport_service = true) as transport_service_count,
           ROUND(AVG(age), 1) as avg_age
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false
+        WHERE term_id = ${termId} AND is_archived = false ${freeFilter}
       `;
 
             // Per-branch breakdown
@@ -279,6 +287,7 @@ const Beneficiary = {
         FROM beneficiaries b_data
         LEFT JOIN branches br ON b_data.branch_id = br.id
         WHERE b_data.term_id = ${termId} AND b_data.is_archived = false
+          ${includeFree ? sql`` : sql`AND b_data.free_student IS NOT TRUE`}
         GROUP BY b_data.branch_id, br.branch_name
         ORDER BY br.branch_name
       `;
@@ -297,7 +306,7 @@ const Beneficiary = {
           END as age_group,
           COUNT(*) as count
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false
+        WHERE term_id = ${termId} AND is_archived = false ${freeFilter}
         GROUP BY age_group
         ORDER BY age_group
       `;
@@ -312,7 +321,7 @@ const Beneficiary = {
            CASE WHEN transport_service THEN 1 ELSE 0 END) as service_count,
           COUNT(*) as beneficiary_count
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false
+        WHERE term_id = ${termId} AND is_archived = false ${freeFilter}
         GROUP BY service_count
         ORDER BY service_count
       `;
@@ -492,6 +501,117 @@ const Beneficiary = {
             return { copied: toCopy.length, skipped };
         } catch (error) {
             log.error('Error copying beneficiaries from term:', error);
+            throw error;
+        }
+    },
+
+    // ========================================================================
+    // New-year rollover support
+    // ========================================================================
+
+    /**
+     * List a branch's beneficiaries from the source (previous) term, each joined to
+     * the row it was carried into (if any) and to its bus assignment in the target
+     * term. bus_students has no FK to beneficiaries, so the link is by normalised
+     * name — the same rule the import/assign endpoints already use.
+     */
+    async findRolloverCandidates(branchId, sourceTermId, targetTermId) {
+        try {
+            return await sql`
+                SELECT
+                    src.*,
+                    tgt.id AS target_id,
+                    tgt.carry_review_status AS target_review_status,
+                    tgt.transport_service AS target_transport_service,
+                    -- Full target row so the review step can prefill every field
+                    -- without a second round-trip per beneficiary.
+                    row_to_json(tgt.*) AS target,
+                    bs.id AS bus_student_id,
+                    bs.bus_id AS assigned_bus_id,
+                    bt.bus_number AS bus_number
+                FROM beneficiaries src
+                LEFT JOIN beneficiaries tgt
+                       ON tgt.carried_from_beneficiary_id = src.id
+                LEFT JOIN bus_students bs
+                       ON bs.term_id = ${targetTermId}
+                      AND LOWER(TRIM(bs.student_full_name)) = LOWER(TRIM(tgt.beneficiary_name))
+                LEFT JOIN bus_transportation bt
+                       ON bt.id = bs.bus_id
+                      AND bt.branch_id = src.branch_id
+                WHERE src.branch_id = ${branchId}
+                  AND src.term_id = ${sourceTermId}
+                ORDER BY src.sequence_number
+            `;
+        } catch (error) {
+            log.error('Error finding rollover candidates:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Copy one source row into the target term as a carried-over beneficiary.
+     * Runs inside the caller's transaction so the whole batch is atomic and shares
+     * one advisory lock. ON CONFLICT DO NOTHING plays against the partial unique
+     * index on carried_from_beneficiary_id, making a repeated decision a no-op.
+     */
+    async createFromSource(tx, { sourceId, targetTermId, sequenceNumber }) {
+        const [row] = await tx`
+            INSERT INTO beneficiaries (
+                branch_id, term_id, sequence_number, beneficiary_number, enrollment_period,
+                beneficiary_name, civil_id, contact_number, gender, age,
+                speech_therapy, physical_therapy, occupational_therapy,
+                autism_therapy, transport_service, free_student, notes,
+                is_archived, carried_from_beneficiary_id, carry_review_status
+            )
+            SELECT
+                branch_id, ${targetTermId}, ${sequenceNumber}, beneficiary_number, enrollment_period,
+                beneficiary_name, civil_id, contact_number, gender, age,
+                speech_therapy, physical_therapy, occupational_therapy,
+                autism_therapy, transport_service, free_student, notes,
+                false, id, 'pending'
+            FROM beneficiaries
+            WHERE id = ${sourceId}
+            ON CONFLICT DO NOTHING
+            RETURNING *
+        `;
+        return row || null;
+    },
+
+    /**
+     * Mark carried-over rows as reviewed without editing them ("تم التحقق").
+     */
+    async markReviewed(ids, branchId, termId) {
+        try {
+            const rows = await sql`
+                UPDATE beneficiaries
+                SET carry_review_status = 'reviewed', updated_at = CURRENT_TIMESTAMP
+                WHERE id = ANY(${ids})
+                  AND branch_id = ${branchId}
+                  AND term_id = ${termId}
+                  AND carry_review_status = 'pending'
+                RETURNING id
+            `;
+            return rows.length;
+        } catch (error) {
+            log.error('Error marking beneficiaries reviewed:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Archive every still-active beneficiary of one branch in one term.
+     */
+    async archiveByTermAndBranch(termId, branchId) {
+        try {
+            const rows = await sql`
+                UPDATE beneficiaries
+                SET is_archived = true, updated_at = CURRENT_TIMESTAMP
+                WHERE term_id = ${termId} AND branch_id = ${branchId} AND is_archived = false
+                RETURNING id
+            `;
+            return rows.length;
+        } catch (error) {
+            log.error('Error archiving beneficiaries by term and branch:', error);
             throw error;
         }
     }

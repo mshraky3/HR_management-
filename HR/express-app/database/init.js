@@ -772,11 +772,17 @@ export async function initializeDatabase() {
     }
 
     // 16. Create bus_registration_data table (full vehicle registration card data)
+    // NOTE: registration_number / chassis_number are unique PER TERM, not globally.
+    // A bus is a physical vehicle re-registered every term, and bus_transportation
+    // rows are term-scoped, so global uniqueness made it impossible to carry a bus
+    // into a new academic year. See migration 020. term_id is denormalised from the
+    // parent bus and is always written by a correlated subselect, never by the app.
     await createTable('bus_registration_data', `
       id SERIAL PRIMARY KEY,
       bus_id INTEGER NOT NULL UNIQUE REFERENCES bus_transportation(id) ON DELETE CASCADE,
-      registration_number VARCHAR(100) UNIQUE NOT NULL,
-      chassis_number VARCHAR(100) UNIQUE NOT NULL,
+      term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE RESTRICT,
+      registration_number VARCHAR(100) NOT NULL,
+      chassis_number VARCHAR(100) NOT NULL,
       vehicle_model VARCHAR(100) NOT NULL,
       model_year INTEGER,
       vehicle_color VARCHAR(50),
@@ -788,7 +794,9 @@ export async function initializeDatabase() {
       verified_at TIMESTAMP,
       verified_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT bus_registration_data_term_registration_unique UNIQUE (term_id, registration_number),
+      CONSTRAINT bus_registration_data_term_chassis_unique UNIQUE (term_id, chassis_number)
     `);
 
     await executeQuery(
@@ -809,12 +817,15 @@ export async function initializeDatabase() {
     );
 
     // 17. Create driver_license_data table (driver’s license front/back)
+    // NOTE: license_number is unique PER TERM, not globally — same reasoning as
+    // bus_registration_data above. See migration 020.
     await createTable('driver_license_data', `
       id SERIAL PRIMARY KEY,
       bus_id INTEGER NOT NULL UNIQUE REFERENCES bus_transportation(id) ON DELETE CASCADE,
+      term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE RESTRICT,
       driver_full_name VARCHAR(255) NOT NULL,
       driver_id_number VARCHAR(100) NOT NULL,
-      license_number VARCHAR(100) UNIQUE NOT NULL,
+      license_number VARCHAR(100) NOT NULL,
       issue_date_gregorian DATE,
       expiry_date_gregorian DATE,
       driver_phone_number VARCHAR(50),
@@ -830,7 +841,8 @@ export async function initializeDatabase() {
       verified_at TIMESTAMP,
       verified_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT driver_license_data_term_license_unique UNIQUE (term_id, license_number)
     `);
 
     await executeQuery(
@@ -1687,6 +1699,13 @@ export async function initializeDatabase() {
       free_student BOOLEAN NOT NULL DEFAULT false,
       notes TEXT DEFAULT NULL,
       is_archived BOOLEAN NOT NULL DEFAULT false,
+      continuity_status VARCHAR(20) CHECK (continuity_status IS NULL OR continuity_status IN ('continuing', 'not_continuing')),
+      non_continuation_reason TEXT,
+      continuity_decided_at TIMESTAMP,
+      continuity_decided_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      continuity_decided_by_branch_id INTEGER REFERENCES branches(id) ON DELETE SET NULL,
+      carried_from_beneficiary_id INTEGER,
+      carry_review_status VARCHAR(20) NOT NULL DEFAULT 'reviewed' CHECK (carry_review_status IN ('pending', 'reviewed')),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(branch_id, term_id, civil_id)
@@ -1705,6 +1724,66 @@ export async function initializeDatabase() {
       'CREATE INDEX IF NOT EXISTS idx_beneficiaries_term ON beneficiaries(term_id)',
       'Created index on beneficiaries(term_id)'
     );
+
+    // Rollover support (see migration 020). The self-referencing FK cannot be
+    // declared inline in createTable because the table does not exist yet.
+    await executeQuery(
+      `DO $$
+       BEGIN
+         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'beneficiaries_carried_from_fkey') THEN
+           ALTER TABLE beneficiaries
+           ADD CONSTRAINT beneficiaries_carried_from_fkey
+           FOREIGN KEY (carried_from_beneficiary_id) REFERENCES beneficiaries(id) ON DELETE SET NULL;
+         END IF;
+       END $$;`,
+      'Added beneficiaries.carried_from_beneficiary_id self FK'
+    );
+    // One target row per source row — the idempotency backbone of the rollover.
+    await executeQuery(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_beneficiaries_carried_from_unique
+       ON beneficiaries (carried_from_beneficiary_id) WHERE carried_from_beneficiary_id IS NOT NULL`,
+      'Created unique index on beneficiaries(carried_from_beneficiary_id)'
+    );
+    await executeQuery(
+      'CREATE INDEX IF NOT EXISTS idx_beneficiaries_continuity ON beneficiaries(branch_id, term_id, continuity_status)',
+      'Created index on beneficiaries(branch_id, term_id, continuity_status)'
+    );
+    await executeQuery(
+      `CREATE INDEX IF NOT EXISTS idx_beneficiaries_carry_review
+       ON beneficiaries (branch_id, term_id) WHERE carry_review_status = 'pending'`,
+      'Created partial index on beneficiaries pending review'
+    );
+
+    // ==========================================
+    // Per-branch confirmation that the new-year beneficiary review is 100% done
+    // ==========================================
+    try {
+      await createTable('beneficiary_review_confirmations', `
+        id SERIAL PRIMARY KEY,
+        branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        term_id INTEGER NOT NULL REFERENCES terms(id) ON DELETE CASCADE,
+        source_term_id INTEGER REFERENCES terms(id) ON DELETE SET NULL,
+        confirmed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        confirmed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        confirmed_by_branch_id INTEGER REFERENCES branches(id) ON DELETE SET NULL,
+        confirmed_by_label VARCHAR(255),
+        confirmation_count INTEGER NOT NULL DEFAULT 1,
+        total_continuing INTEGER NOT NULL DEFAULT 0,
+        total_not_continuing INTEGER NOT NULL DEFAULT 0,
+        total_new INTEGER NOT NULL DEFAULT 0,
+        note TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (branch_id, term_id)
+      `);
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_beneficiary_review_confirmations_term ON beneficiary_review_confirmations(term_id)',
+        'Created index on beneficiary_review_confirmations(term_id)'
+      );
+    } catch (error) {
+      log.error('Error creating beneficiary_review_confirmations table:', error.message);
+      // Don't throw - allow database to continue initializing
+    }
 
     // Migration: Add unique constraint on (branch_id, term_id, sequence_number)
     try {
