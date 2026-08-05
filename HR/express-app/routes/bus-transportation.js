@@ -93,6 +93,63 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * POST /api/bus-transportation/carry-over
+ * Copy a branch's buses (registration, driver licence, plates, details) from one
+ * term into another. Documents and verification flags are intentionally not
+ * copied — see carryOverBuses for why. Idempotent: buses whose number already
+ * exists in the target term are skipped.
+ *
+ * Declared before /:id so this literal path is not captured by the id route.
+ */
+router.post('/carry-over', validateRequired(['source_term_id', 'target_term_id']), async (req, res) => {
+  try {
+    const { source_term_id, target_term_id } = req.body;
+
+    const requestedBranchId = req.user.role === 'branch_manager'
+      ? req.user.branch_id
+      : req.body.branch_id; // policy-scope:allow-direct
+    if (!requestedBranchId) {
+      return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
+    }
+    const branchId = parseInt(requestedBranchId);
+
+    if (req.user.role === 'branch_manager' && branchId !== req.user.branch_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'تم رفض الوصول. يمكنك فقط نقل حافلات فرعك.'
+      });
+    }
+
+    if (parseInt(source_term_id) === parseInt(target_term_id)) {
+      return res.status(400).json({ success: false, message: 'لا يمكن النقل إلى نفس الفصل الدراسي' });
+    }
+
+    const { carryOverBuses } = await import('../services/beneficiaryRolloverService.js');
+    const result = await carryOverBuses({
+      branchId,
+      sourceTermId: parseInt(source_term_id),
+      targetTermId: parseInt(target_term_id),
+      actor: req.user
+    });
+
+    res.json({
+      success: true,
+      message: `تم نقل ${result.copied} حافلة${result.skipped > 0 ? ` (تم تخطي ${result.skipped} موجودة مسبقاً)` : ''}`,
+      data: result
+    });
+  } catch (error) {
+    log.error('Error carrying buses over to a new term', { error: error.message });
+    if (error.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        message: 'تعذر النقل: توجد بيانات حافلة مكررة في الفصل الجديد'
+      });
+    }
+    handleRouteError(error, req, res, 'فشل نقل الحافلات إلى الفصل الجديد');
+  }
+});
+
+/**
  * GET /api/bus-transportation/:id
  * Get single bus with all related data
  */
@@ -364,11 +421,20 @@ router.post('/:id/registration', checkBranchAccess, validateRequired([
   } catch (error) {
     log.error('Error saving bus registration', { error: error.message });
 
-    // Handle duplicate registration number
-    if (error.code === '23505' || (error.message && error.message.includes('bus_registration_data_registration_number_key'))) {
+    // Registration and chassis numbers are unique per term (migration 020), so
+    // report which one actually clashed instead of always blaming the registration.
+    if (error.code === '23505') {
+      const constraint = error.constraint_name || error.constraint || error.message || '';
+      if (constraint.includes('chassis')) {
+        return res.status(409).json({
+          success: false,
+          message: 'رقم الهيكل مستخدم بالفعل في هذا الفصل الدراسي',
+          error: 'duplicate_chassis_number'
+        });
+      }
       return res.status(409).json({
         success: false,
-        message: 'رقم تسجيل الحافلة مستخدم بالفعل',
+        message: 'رقم تسجيل الحافلة مستخدم بالفعل في هذا الفصل الدراسي',
         error: 'duplicate_registration_number'
       });
     }
@@ -511,6 +577,16 @@ router.post('/:id/driver-license', checkBranchAccess, validateRequired([
     res.json({ success: true, data: license });
   } catch (error) {
     log.error('Error saving driver license', { error: error.message });
+
+    // License numbers are unique per term (migration 020).
+    if (error.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        message: 'رقم رخصة السائق مستخدم بالفعل في هذا الفصل الدراسي',
+        error: 'duplicate_license_number'
+      });
+    }
+
     handleRouteError(error, req, res, 'فشل حفظ بيانات رخصة السائق');
   }
 });

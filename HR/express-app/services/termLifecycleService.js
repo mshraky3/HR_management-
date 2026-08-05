@@ -154,12 +154,15 @@ export const endAcademicYearTransactional = async (yearId, branchType) => {
             throw new Error('Branch type mismatch');
         }
 
+        // status_changed_by is a FK to users(id) (migrations 014/016 repointed it
+        // away from branches). This is a system-driven change with no user behind
+        // it, so it must stay NULL — status_change_reason carries the provenance.
         const employeesResult = await tx`
       UPDATE employees
       SET status = 'pending',
           is_active = true,
           status_changed_at = CURRENT_TIMESTAMP,
-          status_changed_by = branch_id,
+          status_changed_by = NULL,
           status_change_reason = 'نهاية السنة الدراسية'
       WHERE branch_id IN (
         SELECT id FROM branches WHERE branch_type = ${branchType}
@@ -184,6 +187,22 @@ export const endAcademicYearTransactional = async (yearId, branchType) => {
       WHERE branch_type = ${branchType}
         AND academic_year_label = ${year.year_label}
         AND is_active = true
+    `;
+
+        // Backstop: any beneficiary still active in the closing year's terms is
+        // history now. The new-year review archives them one by one as decisions are
+        // made; this catches whatever was never reviewed.
+        const archivedBeneficiaries = await tx`
+      UPDATE beneficiaries
+      SET is_archived = true,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE is_archived = false
+        AND term_id IN (
+          SELECT id FROM terms
+          WHERE branch_type = ${branchType}
+            AND academic_year_label = ${year.year_label}
+        )
+      RETURNING id
     `;
 
         const [nextYear] = await tx`
@@ -230,6 +249,7 @@ export const endAcademicYearTransactional = async (yearId, branchType) => {
         return {
             success: true,
             employeesUpdated: Number(employeesResult.count || 0),
+            beneficiariesArchived: archivedBeneficiaries.length,
             completedYearId: yearId,
             nextYearActivatedId: activatedNextYearId,
         };

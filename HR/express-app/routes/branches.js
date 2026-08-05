@@ -271,7 +271,9 @@ router.delete('/:id',
         SET status = 'other',
             is_active = false,
             status_changed_at = CURRENT_TIMESTAMP,
-            status_changed_by = ${branchId},
+            -- FK to users(id): a branch id here violates it. The reason below is
+            -- what identifies this as a branch-deletion cascade.
+            status_changed_by = NULL,
             status_change_reason = 'تم حذف الفرع',
             updated_at = CURRENT_TIMESTAMP
         WHERE branch_id = ${branchId}

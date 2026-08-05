@@ -14,8 +14,33 @@ import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
 import { getScopedBranchFilter, getScopedTermFilter, resolveBranchAccessFromScope } from '../utils/policyScope.js';
 import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { getCurrentTermWithState } from '../services/termLifecycleService.js';
+import {
+    RolloverError,
+    resolveRolloverTerms,
+    getRolloverStatus,
+    getRolloverCandidates,
+    startRollover,
+    applyDecisions,
+    confirmReview,
+    unconfirmReview,
+    setBeneficiaryBus,
+    getRolloverOverview
+} from '../services/beneficiaryRolloverService.js';
 
 const router = express.Router();
+
+/**
+ * The one place that answers "which healthcare-center term are we working in?".
+ * Delegates to termLifecycleService so every endpoint here resolves the term the
+ * same way: today's term → next upcoming → most recent past. Hand-rolled copies
+ * of this logic drifted apart before (one ordered by created_at and silently
+ * wrote beneficiaries into the wrong term during the between-years window).
+ */
+const resolveHealthcareTerm = async () => {
+    const { term } = await getCurrentTermWithState('healthcare_center');
+    return term || null;
+};
 
 // All routes require authentication
 router.use(authenticate);
@@ -141,50 +166,30 @@ router.get('/terms', requireMainManager, async (req, res) => {
  */
 router.get('/active-term', async (req, res) => {
     try {
-        const now = new Date();
-
-        // 1. Try exact date match: today within start_date..end_date
-        let [term] = await sql`
-      SELECT t.*, ay.year_label, ay.is_current as year_is_current
-      FROM terms t
-      LEFT JOIN academic_years ay ON t.academic_year_label = ay.year_label AND ay.branch_type = 'healthcare_center'
-      WHERE t.branch_type = 'healthcare_center' AND t.is_active = true
-      AND t.start_date <= ${now} AND t.end_date >= ${now}
-      ORDER BY t.start_date DESC
-      LIMIT 1
-    `;
-
-        // 2. Fallback: next upcoming term
-        if (!term) {
-            [term] = await sql`
-        SELECT t.*, ay.year_label, ay.is_current as year_is_current
-        FROM terms t
-        LEFT JOIN academic_years ay ON t.academic_year_label = ay.year_label AND ay.branch_type = 'healthcare_center'
-        WHERE t.branch_type = 'healthcare_center' AND t.is_active = true
-        AND t.start_date > ${now}
-        ORDER BY t.start_date ASC
-        LIMIT 1
-      `;
-        }
-
-        // 3. Last resort: most recent past term
-        if (!term) {
-            [term] = await sql`
-        SELECT t.*, ay.year_label, ay.is_current as year_is_current
-        FROM terms t
-        LEFT JOIN academic_years ay ON t.academic_year_label = ay.year_label AND ay.branch_type = 'healthcare_center'
-        WHERE t.branch_type = 'healthcare_center' AND t.is_active = true
-        AND t.end_date < ${now}
-        ORDER BY t.end_date DESC
-        LIMIT 1
-      `;
-        }
+        const { term, lifecycleState } = await getCurrentTermWithState('healthcare_center');
 
         if (!term) {
             return res.json({ success: true, data: null, message: 'لا يوجد فصل دراسي نشط حالياً' });
         }
 
-        res.json({ success: true, data: term });
+        // Enrich with the academic year the term belongs to (terms join academic_years
+        // by the year_label string, not an FK).
+        const [year] = await sql`
+      SELECT year_label, is_current
+      FROM academic_years
+      WHERE year_label = ${term.academic_year_label} AND branch_type = 'healthcare_center'
+      LIMIT 1
+    `;
+
+        res.json({
+            success: true,
+            data: {
+                ...term,
+                year_label: year?.year_label || null,
+                year_is_current: year?.is_current ?? null,
+                lifecycle_state: lifecycleState
+            }
+        });
     } catch (error) {
         log.error('Error fetching active term:', error);
         handleRouteError(error, req, res, 'فشل في جلب الفصل النشط');
@@ -203,31 +208,7 @@ router.get('/branch-count', async (req, res) => {
             return res.json({ success: true, data: { count: 0, term: null } });
         }
 
-        const now = new Date();
-
-        // Find active healthcare term (same logic as active-term endpoint)
-        let [term] = await sql`
-          SELECT id, term_name FROM terms
-          WHERE branch_type = 'healthcare_center' AND is_active = true
-            AND start_date <= ${now} AND end_date >= ${now}
-          ORDER BY start_date DESC LIMIT 1
-        `;
-        if (!term) {
-            [term] = await sql`
-              SELECT id, term_name FROM terms
-              WHERE branch_type = 'healthcare_center' AND is_active = true
-                AND start_date > ${now}
-              ORDER BY start_date ASC LIMIT 1
-            `;
-        }
-        if (!term) {
-            [term] = await sql`
-              SELECT id, term_name FROM terms
-              WHERE branch_type = 'healthcare_center' AND is_active = true
-              ORDER BY end_date DESC LIMIT 1
-            `;
-        }
-
+        const term = await resolveHealthcareTerm();
         if (!term) {
             return res.json({ success: true, data: { count: 0, term: null } });
         }
@@ -411,31 +392,11 @@ router.post('/copy-from-term', requireManager, async (req, res) => {
         }
 
         // Get active term for healthcare_center
-        const activeTerm = await sql`
-            SELECT * FROM terms
-            WHERE branch_type = 'healthcare_center'
-            AND is_active = true
-            AND start_date <= NOW() AND end_date >= NOW()
-            ORDER BY start_date DESC LIMIT 1
-        `;
-
-        let targetTermId;
-        if (activeTerm.length > 0) {
-            targetTermId = activeTerm[0].id;
-        } else {
-            // Fallback to next upcoming term
-            const upcoming = await sql`
-                SELECT * FROM terms
-                WHERE branch_type = 'healthcare_center'
-                AND is_active = true AND start_date > NOW()
-                ORDER BY start_date ASC LIMIT 1
-            `;
-            if (upcoming.length > 0) {
-                targetTermId = upcoming[0].id;
-            } else {
-                return res.status(400).json({ success: false, message: 'لا يوجد فصل دراسي نشط حالياً' });
-            }
+        const activeTerm = await resolveHealthcareTerm();
+        if (!activeTerm) {
+            return res.status(400).json({ success: false, message: 'لا يوجد فصل دراسي نشط حالياً' });
         }
+        const targetTermId = activeTerm.id;
 
         if (parseInt(source_term_id) === targetTermId) {
             return res.status(400).json({ success: false, message: 'لا يمكن النسخ من نفس الفصل الحالي' });
@@ -451,6 +412,284 @@ router.post('/copy-from-term', requireManager, async (req, res) => {
     } catch (error) {
         log.error('Error copying beneficiaries from term:', error);
         handleRouteError(error, req, res, 'فشل في نسخ المستفيدين');
+    }
+});
+
+// ============================================================================
+// New-year rollover
+//
+// Declared here, above router.get('/:id'), so these literal paths are not
+// swallowed by the id route.
+// ============================================================================
+
+/**
+ * Resolve which branch a rollover request is about.
+ * Branch managers are pinned to their own branch; main managers may drive any
+ * healthcare branch by passing branch_id.
+ */
+const resolveRolloverBranch = (req) => {
+    const requested = req.user.role === 'branch_manager'
+        ? req.user.branch_id
+        : (req.body?.branch_id || req.query?.branch_id); // policy-scope:allow-direct
+    const access = resolveBranchAccessFromScope(req.scope, requested);
+    return access.allowed ? parseInt(access.effectiveBranchId, 10) : null;
+};
+
+const assertHealthcareBranch = async (branchId) => {
+    const [branch] = await sql`SELECT branch_type FROM branches WHERE id = ${branchId}`;
+    return Boolean(branch && branch.branch_type === 'healthcare_center');
+};
+
+/** Map a RolloverError onto its response; anything else goes to handleRouteError. */
+const handleRolloverError = (error, req, res, fallback) => {
+    if (error instanceof RolloverError) {
+        return res.status(error.status).json({ success: false, message: error.message, error: error.code });
+    }
+    log.error(fallback, { error: error.message });
+    return handleRouteError(error, req, res, fallback);
+};
+
+/**
+ * GET /api/beneficiaries/rollover/status
+ * Counters + confirmation state for the branch's new-year review.
+ */
+router.get('/rollover/status', requireManager, async (req, res) => {
+    try {
+        const branchId = resolveRolloverBranch(req);
+        if (!branchId) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
+        }
+        if (!(await assertHealthcareBranch(branchId))) {
+            return res.status(400).json({ success: false, message: 'هذه الخدمة متاحة فقط لمراكز الرعاية الصحية' });
+        }
+
+        const status = await getRolloverStatus(branchId, { targetTermId: req.query.target_term_id });
+        res.json({ success: true, data: status });
+    } catch (error) {
+        handleRolloverError(error, req, res, 'فشل في جلب حالة مراجعة المستفيدين');
+    }
+});
+
+/**
+ * GET /api/beneficiaries/rollover/candidates
+ * Last term's beneficiaries with their decision and carried-over row.
+ */
+router.get('/rollover/candidates', requireManager, async (req, res) => {
+    try {
+        const branchId = resolveRolloverBranch(req);
+        if (!branchId) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
+        }
+
+        const rows = await getRolloverCandidates(branchId, {
+            targetTermId: req.query.target_term_id,
+            status: req.query.status
+        });
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        handleRolloverError(error, req, res, 'فشل في جلب بيانات المراجعة');
+    }
+});
+
+/**
+ * POST /api/beneficiaries/rollover/start
+ * Open the review and carry the branch's buses into the new term. Idempotent.
+ */
+router.post('/rollover/start', requireManager, async (req, res) => {
+    try {
+        const branchId = resolveRolloverBranch(req);
+        if (!branchId) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
+        }
+        if (!(await assertHealthcareBranch(branchId))) {
+            return res.status(400).json({ success: false, message: 'هذه الخدمة متاحة فقط لمراكز الرعاية الصحية' });
+        }
+
+        const result = await startRollover({
+            branchId,
+            targetTermId: req.body.target_term_id,
+            actor: req.user
+        });
+        res.json({
+            success: true,
+            message: result.buses.copied > 0
+                ? `تم بدء المراجعة ونقل ${result.buses.copied} حافلة إلى الفصل الجديد`
+                : 'تم بدء المراجعة',
+            data: result
+        });
+    } catch (error) {
+        handleRolloverError(error, req, res, 'فشل في بدء المراجعة');
+    }
+});
+
+/**
+ * POST /api/beneficiaries/rollover/decide
+ * Apply continue / don't-continue decisions. Accepts a batch.
+ */
+router.post('/rollover/decide', requireManager, async (req, res) => {
+    try {
+        const branchId = resolveRolloverBranch(req);
+        if (!branchId) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
+        }
+
+        const decisions = Array.isArray(req.body.decisions) ? req.body.decisions : [];
+        if (decisions.length === 0) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد قرار واحد على الأقل' });
+        }
+
+        const result = await applyDecisions({
+            branchId,
+            targetTermId: req.body.target_term_id,
+            decisions,
+            actor: req.user
+        });
+
+        // A batch can be partially rejected (e.g. a reversal that is no longer safe).
+        // Surface the first blocking conflict rather than reporting a silent success.
+        const conflict = result.results.find(r => r.conflict);
+        if (conflict && result.counts.applied === 0) {
+            return res.status(409).json({ success: false, message: conflict.error, data: result });
+        }
+        const failure = result.results.find(r => !r.ok);
+        if (failure && result.counts.applied === 0) {
+            return res.status(400).json({ success: false, message: failure.error, data: result });
+        }
+
+        res.json({
+            success: true,
+            message: `تم حفظ ${result.counts.applied} قرار${result.counts.failed > 0 ? ` (تعذر حفظ ${result.counts.failed})` : ''}`,
+            data: result
+        });
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(400).json({ success: false, message: 'السجل المدني مسجل بالفعل في الفصل الجديد' });
+        }
+        if (error.code === '23503') {
+            return res.status(400).json({ success: false, message: 'الفصل الدراسي أو الفرع غير موجود' });
+        }
+        handleRolloverError(error, req, res, 'فشل في حفظ قرارات المراجعة');
+    }
+});
+
+/**
+ * POST /api/beneficiaries/rollover/mark-reviewed
+ * Confirm carried rows as checked without editing them.
+ */
+router.post('/rollover/mark-reviewed', requireManager, async (req, res) => {
+    try {
+        const branchId = resolveRolloverBranch(req);
+        if (!branchId) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
+        }
+
+        const ids = (Array.isArray(req.body.beneficiary_ids) ? req.body.beneficiary_ids : [])
+            .map(id => parseInt(id, 10))
+            .filter(id => !isNaN(id));
+        if (ids.length === 0) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد المستفيدين' });
+        }
+
+        const { targetTerm } = await resolveRolloverTerms(branchId, { targetTermId: req.body.target_term_id });
+        if (!targetTerm) {
+            return res.status(400).json({ success: false, message: 'لا يوجد فصل دراسي للسنة الجديدة' });
+        }
+
+        const updated = await Beneficiary.markReviewed(ids, branchId, targetTerm.id);
+        res.json({ success: true, message: `تمت مراجعة ${updated} مستفيد`, data: { updated } });
+    } catch (error) {
+        handleRolloverError(error, req, res, 'فشل في تحديث حالة المراجعة');
+    }
+});
+
+/**
+ * POST /api/beneficiaries/rollover/assign-bus
+ * Set, change or clear the bus for a beneficiary in the new term.
+ * Body: { beneficiary_id, bus_id | null }
+ */
+router.post('/rollover/assign-bus', requireManager, async (req, res) => {
+    try {
+        const branchId = resolveRolloverBranch(req);
+        if (!branchId) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
+        }
+
+        const beneficiaryId = parseInt(req.body.beneficiary_id, 10);
+        if (!beneficiaryId) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد المستفيد' });
+        }
+        const busId = req.body.bus_id ? parseInt(req.body.bus_id, 10) : null;
+
+        const result = await setBeneficiaryBus({ branchId, beneficiaryId, busId, actor: req.user });
+        res.json({
+            success: true,
+            message: busId ? 'تم تسجيل المستفيد في الحافلة' : 'تم إلغاء تسجيل المستفيد من الحافلة',
+            data: result
+        });
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(400).json({ success: false, message: 'يوجد طالب بنفس رقم التواصل مسجل بالفعل في هذه الحافلة' });
+        }
+        handleRolloverError(error, req, res, 'فشل في تسجيل المستفيد في الحافلة');
+    }
+});
+
+/**
+ * POST /api/beneficiaries/rollover/confirm
+ * The branch declares its beneficiary updates 100% complete for this term.
+ * A status flag only — nothing is locked afterwards.
+ */
+router.post('/rollover/confirm', requireManager, async (req, res) => {
+    try {
+        const branchId = resolveRolloverBranch(req);
+        if (!branchId) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
+        }
+
+        const confirmation = await confirmReview({
+            branchId,
+            targetTermId: req.body.target_term_id,
+            note: req.body.note,
+            actor: req.user
+        });
+        res.json({
+            success: true,
+            message: 'تم تأكيد اكتمال مراجعة بيانات المستفيدين',
+            data: confirmation
+        });
+    } catch (error) {
+        handleRolloverError(error, req, res, 'فشل في تأكيد المراجعة');
+    }
+});
+
+/**
+ * DELETE /api/beneficiaries/rollover/confirm
+ * Withdraw a confirmation.
+ */
+router.delete('/rollover/confirm', requireManager, async (req, res) => {
+    try {
+        const branchId = resolveRolloverBranch(req);
+        if (!branchId) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
+        }
+
+        await unconfirmReview({ branchId, targetTermId: req.query.target_term_id });
+        res.json({ success: true, message: 'تم إلغاء التأكيد' });
+    } catch (error) {
+        handleRolloverError(error, req, res, 'فشل في إلغاء التأكيد');
+    }
+});
+
+/**
+ * GET /api/beneficiaries/rollover/overview
+ * Per-branch review progress and confirmation status - main manager only.
+ */
+router.get('/rollover/overview', requireMainManager, async (req, res) => {
+    try {
+        const rows = await getRolloverOverview(parseInt(req.query.target_term_id, 10));
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        handleRolloverError(error, req, res, 'فشل في جلب حالة الفروع');
     }
 });
 
@@ -671,21 +910,7 @@ router.get('/bus-students', requireManager, async (req, res) => {
         // Get active term for healthcare_center
         let termId = getScopedTermFilter(req);
         if (!termId) {
-            const now = new Date();
-            let [term] = await sql`
-                SELECT id FROM terms
-                WHERE branch_type = 'healthcare_center' AND is_active = true
-                AND start_date <= ${now} AND end_date >= ${now}
-                ORDER BY start_date DESC LIMIT 1
-            `;
-            if (!term) {
-                [term] = await sql`
-                    SELECT id FROM terms
-                    WHERE branch_type = 'healthcare_center' AND is_active = true
-                    AND start_date > ${now}
-                    ORDER BY start_date ASC LIMIT 1
-                `;
-            }
+            const term = await resolveHealthcareTerm();
             if (!term) {
                 return res.json({ success: true, data: [] });
             }
@@ -757,21 +982,7 @@ router.get('/available-buses', requireManager, async (req, res) => {
 
         let termId = getScopedTermFilter(req);
         if (!termId) {
-            const now = new Date();
-            let [term] = await sql`
-                SELECT id FROM terms
-                WHERE branch_type = 'healthcare_center' AND is_active = true
-                AND start_date <= ${now} AND end_date >= ${now}
-                ORDER BY start_date DESC LIMIT 1
-            `;
-            if (!term) {
-                [term] = await sql`
-                    SELECT id FROM terms
-                    WHERE branch_type = 'healthcare_center' AND is_active = true
-                    AND start_date > ${now}
-                    ORDER BY start_date ASC LIMIT 1
-                `;
-            }
+            const term = await resolveHealthcareTerm();
             if (!term) {
                 return res.json({ success: true, data: [] });
             }
@@ -949,14 +1160,14 @@ router.post('/', requireManager, async (req, res) => {
             return res.status(400).json({ success: false, message: 'هذه الخدمة متاحة فقط لمراكز الرعاية الصحية' });
         }
 
-        // Find active term for healthcare centers if not provided
+        // Find active term for healthcare centers if not provided.
+        // Must use the shared resolver: ordering by created_at picked whichever term
+        // row happened to be inserted last, which during the between-years window is
+        // often term 2 of the new year — beneficiaries then landed in a term nobody
+        // was looking at.
         let activeTermId = term_id;
         if (!activeTermId) {
-            const [activeTerm] = await sql`
-        SELECT id FROM terms 
-        WHERE branch_type = 'healthcare_center' AND is_active = true 
-        ORDER BY created_at DESC LIMIT 1
-      `;
+            const activeTerm = await resolveHealthcareTerm();
             if (!activeTerm) {
                 return res.status(400).json({ success: false, message: 'لا يوجد فصل دراسي نشط حالياً' });
             }
