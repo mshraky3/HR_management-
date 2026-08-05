@@ -742,9 +742,13 @@ const calculateIBANReviewTask = (employees = []) => {
 /**
  * Calculate beneficiary registration task (healthcare centers only)
  */
-const calculateBeneficiaryTask = (branchType, beneficiaryCount) => {
+const calculateBeneficiaryTask = (branchType, beneficiaryCount, rolloverState = null) => {
   // Only for healthcare center branches
   if (branchType !== 'healthcare_center') return null;
+
+  // During the new-year review the term legitimately starts empty, so this card
+  // would fire and contradict the rollover card. The rollover card owns that state.
+  if (rolloverState?.is_active) return null;
 
   // If beneficiaries are already entered, no task needed
   if (beneficiaryCount > 0) return null;
@@ -763,6 +767,51 @@ const calculateBeneficiaryTask = (branchType, beneficiaryCount) => {
     actionUrl: '/beneficiaries',
     actionLabel: 'تسجيل المستفيدين',
     urgency: 'no_deadline',
+    estimatedTime: '30 min',
+    dependencies: []
+  };
+};
+
+/**
+ * Calculate the new-year beneficiary review task (healthcare centers only).
+ * Active only during the between-years window, and only until the branch has
+ * decided every carried-over beneficiary and reviewed their data.
+ */
+const calculateBeneficiaryRolloverTask = (branchType, rolloverState) => {
+  if (branchType !== 'healthcare_center') return null;
+  if (!rolloverState?.is_active) return null;
+
+  const counts = rolloverState.counts || {};
+  const undecided = counts.undecided || 0;
+  const pendingReview = counts.pending_review || 0;
+  const totalSource = counts.total_source || 0;
+
+  // Nothing carried over and already confirmed → nothing to nag about.
+  if (undecided === 0 && pendingReview === 0 && rolloverState.confirmation) return null;
+  if (totalSource === 0 && !undecided && !pendingReview) return null;
+
+  const remaining = undecided + pendingReview;
+  const completed = Math.max(totalSource - remaining, 0);
+
+  const parts = [];
+  if (undecided > 0) parts.push(`${undecided} مستفيد بانتظار القرار`);
+  if (pendingReview > 0) parts.push(`${pendingReview} بانتظار مراجعة البيانات`);
+  if (parts.length === 0) parts.push('يجب تأكيد اكتمال مراجعة بيانات المستفيدين');
+
+  return {
+    id: 'beneficiary-rollover',
+    type: 'beneficiary_rollover',
+    category: 'employees',
+    priority: 'critical',
+    title: 'مراجعة بيانات المستفيدين للسنة الجديدة',
+    description: parts.join('، '),
+    totalItems: totalSource || 1,
+    completedItems: completed,
+    remainingItems: remaining || 1,
+    progress: totalSource > 0 ? Math.round((completed / totalSource) * 100) : 0,
+    actionUrl: '/beneficiaries',
+    actionLabel: 'بدء المراجعة',
+    urgency: 'due_soon',
     estimatedTime: '30 min',
     dependencies: []
   };
@@ -928,6 +977,7 @@ export const calculateTasks = ({
   payrollAbsenceState = null,
   employees = [],
   beneficiaryCount = 0,
+  beneficiaryRolloverState = null,
   employeeExpirySummary = null
 }) => {
   const branchId = branchInfo?.id;
@@ -955,8 +1005,12 @@ export const calculateTasks = ({
   const ibanReviewTask = calculateIBANReviewTask(employees);
   if (ibanReviewTask) tasks.push(ibanReviewTask);
 
-  // 2.8. Beneficiary Registration Task (healthcare centers only)
-  const beneficiaryTask = calculateBeneficiaryTask(branchInfo?.branch_type, beneficiaryCount);
+  // 2.8. Beneficiary tasks (healthcare centers only). The rollover card and the
+  // registration card are mutually exclusive — see calculateBeneficiaryTask.
+  const beneficiaryRolloverTask = calculateBeneficiaryRolloverTask(branchInfo?.branch_type, beneficiaryRolloverState);
+  if (beneficiaryRolloverTask) tasks.push(beneficiaryRolloverTask);
+
+  const beneficiaryTask = calculateBeneficiaryTask(branchInfo?.branch_type, beneficiaryCount, beneficiaryRolloverState);
   if (beneficiaryTask) tasks.push(beneficiaryTask);
 
   // 3. Employees (Must Do) - Employee related, comes before bus

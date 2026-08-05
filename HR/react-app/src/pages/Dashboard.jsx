@@ -77,6 +77,7 @@ const Dashboard = () => {
   const [missingEmployeeContractData, setMissingEmployeeContractData] = useState([]);
   const [payrollAbsenceState, setPayrollAbsenceState] = useState(null);
   const [beneficiaryCount, setBeneficiaryCount] = useState(0);
+  const [beneficiaryRolloverState, setBeneficiaryRolloverState] = useState(null);
   const [employeeExpirySummary, setEmployeeExpirySummary] = useState(null);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0); // Track current task being shown
   const [branchOpsTasksLoading, setBranchOpsTasksLoading] = useState(false);
@@ -154,6 +155,10 @@ const Dashboard = () => {
           beneficiariesAPI.getBranchCount().catch((err) => {
             console.warn('[Dashboard] beneficiariesAPI.getBranchCount failed:', err?.message || 'Unknown error');
             return { data: { success: false, data: { count: 0 } } };
+          }),
+          beneficiariesAPI.getRolloverStatus().catch((err) => {
+            console.warn('[Dashboard] beneficiariesAPI.getRolloverStatus failed:', err?.message || 'Unknown error');
+            return { data: { success: false, data: null } };
           }),
           employeeExpiryAPI.getSummary().catch((err) => {
             console.warn('[Dashboard] employeeExpiryAPI.getSummary failed:', err?.message || 'Unknown error');
@@ -263,7 +268,14 @@ const Dashboard = () => {
           setBeneficiaryCount(0);
         }
 
-        const expiryRes = results[9];
+        const beneficiaryRolloverRes = results[9];
+        if (beneficiaryRolloverRes?.data?.success) {
+          setBeneficiaryRolloverState(beneficiaryRolloverRes.data.data || null);
+        } else {
+          setBeneficiaryRolloverState(null);
+        }
+
+        const expiryRes = results[10];
         if (expiryRes?.data?.success) {
           setEmployeeExpirySummary(expiryRes.data.data);
         } else {
@@ -1400,6 +1412,7 @@ const Dashboard = () => {
           payrollAbsenceState,
           employees: employeesList,
           beneficiaryCount,
+          beneficiaryRolloverState,
           employeeExpirySummary
         });
 

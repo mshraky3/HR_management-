@@ -1035,6 +1035,10 @@ export const busTransportationAPI = {
   delete: (id) =>
     api.delete(`/api/bus-transportation/${id}`),
 
+  // Copy a branch's buses into a new term (documents are not carried over)
+  carryOverTerm: (data) =>
+    api.post('/api/bus-transportation/carry-over', data),
+
   // Registration
   saveRegistration: (id, data) =>
     api.post(`/api/bus-transportation/${id}/registration`, data),
@@ -1170,6 +1174,34 @@ export const beneficiariesAPI = {
 
   getBranchCount: () =>
     api.get('/api/beneficiaries/branch-count'),
+
+  // --- New-year rollover (مراجعة المستفيدين للسنة الجديدة) ---
+  getRolloverStatus: (params = {}) =>
+    api.get('/api/beneficiaries/rollover/status', { params }),
+
+  getRolloverCandidates: (params = {}) =>
+    api.get('/api/beneficiaries/rollover/candidates', { params }),
+
+  getRolloverOverview: (params = {}) =>
+    api.get('/api/beneficiaries/rollover/overview', { params }),
+
+  startRollover: (data = {}) =>
+    api.post('/api/beneficiaries/rollover/start', data),
+
+  decideRollover: (data) =>
+    api.post('/api/beneficiaries/rollover/decide', data),
+
+  markRolloverReviewed: (data) =>
+    api.post('/api/beneficiaries/rollover/mark-reviewed', data),
+
+  assignRolloverBus: (data) =>
+    api.post('/api/beneficiaries/rollover/assign-bus', data),
+
+  confirmRollover: (data = {}) =>
+    api.post('/api/beneficiaries/rollover/confirm', data),
+
+  unconfirmRollover: (params = {}) =>
+    api.delete('/api/beneficiaries/rollover/confirm', { params }),
 };
 
 // Suggestions API
