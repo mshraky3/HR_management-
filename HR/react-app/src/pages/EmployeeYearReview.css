@@ -1,0 +1,52 @@
+/**
+ * Employee-specific pieces of the year review that don't belong in the shared
+ * ../styles/yearReview.css wizard chrome (used identically by Beneficiaries.jsx).
+ */
+
+.eyr-overview {
+    max-width: 100%;
+}
+
+.eyr-branch-chip {
+    display: inline-block;
+    margin-bottom: 14px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: rgba(73, 136, 196, 0.12);
+    color: #2f6395;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.eyr-missing-block {
+    margin-bottom: 14px;
+}
+
+.eyr-missing-list {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    color: #a52834;
+}
+
+.eyr-complete-note {
+    margin: 0 0 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #2f6b2f;
+}
+
+.eyr-docs-warning {
+    margin-bottom: 14px;
+    align-items: flex-start;
+}
+
+.eyr-docs-warning > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}

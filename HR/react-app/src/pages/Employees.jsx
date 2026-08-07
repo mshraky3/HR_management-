@@ -48,6 +48,7 @@ import UnifiedDatePicker from "../components/UnifiedDatePicker.jsx";
 import BankSelect from "../components/BankSelect.jsx";
 import ReligionSelect from "../components/ReligionSelect.jsx";
 import MaritalStatusSelect from "../components/MaritalStatusSelect.jsx";
+import EmployeeYearReview from "./EmployeeYearReview.jsx";
 
 const Employees = () => {
   const navigate = useNavigate();
@@ -71,6 +72,12 @@ const Employees = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteEmployeeId, setDeleteEmployeeId] = useState(null);
   const [deleteReason, setDeleteReason] = useState("");
+
+  // New-year employee review tab. Branch managers only see it once their
+  // branch's review is active; main managers always have access to the
+  // per-branch overview.
+  const [activeMainTab, setActiveMainTab] = useState("list");
+  const [yearReviewActive, setYearReviewActive] = useState(false);
   const [searchFilters, setSearchFilters] = useState({
     search_name: "",
     search_id: "",
@@ -234,11 +241,44 @@ const Employees = () => {
     }
   }, []);
 
+  // Tab visibility: branch managers only see the year-review tab once their
+  // own branch's review is active; main managers get it unconditionally (it
+  // opens the per-branch overview instead of one branch's queue).
+  useEffect(() => {
+    if (isMainManager()) {
+      setYearReviewActive(true);
+      return;
+    }
+    employeesAPI
+      .getYearReviewStatus()
+      .then((res) => {
+        const data = res.data?.data;
+        setYearReviewActive(Boolean(data?.is_active));
+        // Quick access: branch managers land straight on the review when
+        // there's pending work, instead of the plain employee list —
+        // matches the beneficiary rollover's landing behavior.
+        const counts = data?.counts || {};
+        if (data?.is_active && (counts.undecided > 0 || counts.pending_review > 0)) {
+          setActiveMainTab("year-review");
+        }
+      })
+      .catch(() => setYearReviewActive(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     // Check URL params for filter on mount
     const statusFilter = searchParams.get("data_completion_status");
     if (statusFilter === "incomplete" && !filterIncomplete) {
       setFilterIncomplete(true);
+    }
+  }, [searchParams]);
+
+  // Quick access from the dashboard task: ?tab=year-review jumps straight
+  // into the guided review instead of landing on the plain employee list.
+  useEffect(() => {
+    if (searchParams.get("tab") === "year-review") {
+      setActiveMainTab("year-review");
     }
   }, [searchParams]);
 
@@ -2023,7 +2063,26 @@ const Employees = () => {
 
   return (
     <div className="table-page">
-      {!showForm ? (
+      {yearReviewActive && !showForm && (
+        <div className="mm-tabs">
+          <button
+            className={`mm-tab ${activeMainTab === "list" ? "active" : ""}`}
+            onClick={() => setActiveMainTab("list")}
+          >
+            📄 الموظفون
+          </button>
+          <button
+            className={`mm-tab ${activeMainTab === "year-review" ? "active" : ""}`}
+            onClick={() => setActiveMainTab("year-review")}
+          >
+            🔄 مراجعة السنة الجديدة
+          </button>
+        </div>
+      )}
+
+      {activeMainTab === "year-review" && !showForm ? (
+        <EmployeeYearReview />
+      ) : !showForm ? (
         <>
           <div className="page-header">
             <h1>إدارة الموظفين</h1>

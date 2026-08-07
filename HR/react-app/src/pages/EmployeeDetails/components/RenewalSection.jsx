@@ -7,7 +7,6 @@ const RenewalSection = ({
   onChangeNonRenewalField,
   onSubmitNonRenewal,
   onCancelNonRenewal,
-  employeeGender,
 }) => (
   <div className="renewal-section">
     <h2>
@@ -85,15 +84,10 @@ const RenewalSection = ({
 
     <div className="renewal-note">
       <p>
-        <strong>ملاحظة:</strong> لتجديد العقد، يجب تحديث المستندات التالية:
+        <strong>ملاحظة:</strong> يفضّل تحديث عقد العمل عند التجديد (لن يمنع ذلك التجديد إن كان قديماً).
       </p>
-      <ul>
-        <li>عقد العمل (employment_contract)</li>
-        <li>خطاب بدء العمل (employment_letter)</li>
-        {employeeGender === 'female' && <li>الفحص الطبي (medical_examination) - مطلوب للإناث</li>}
-      </ul>
       <p style={{ margin: '10px 0 0 0', fontSize: '12px', fontStyle: 'italic' }}>
-        يجب أن تكون المستندات محدثة (تم رفعها خلال آخر 90 يوم)
+        يفضّل أن يكون العقد مرفوعاً بعد بداية السنة الدراسية الجديدة. سيتم تنبيهك إن كان ناقصاً أو قديماً بعد التجديد.
       </p>
     </div>
   </div>

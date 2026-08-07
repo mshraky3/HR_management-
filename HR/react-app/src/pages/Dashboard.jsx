@@ -78,6 +78,7 @@ const Dashboard = () => {
   const [payrollAbsenceState, setPayrollAbsenceState] = useState(null);
   const [beneficiaryCount, setBeneficiaryCount] = useState(0);
   const [beneficiaryRolloverState, setBeneficiaryRolloverState] = useState(null);
+  const [employeeYearReviewState, setEmployeeYearReviewState] = useState(null);
   const [employeeExpirySummary, setEmployeeExpirySummary] = useState(null);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0); // Track current task being shown
   const [branchOpsTasksLoading, setBranchOpsTasksLoading] = useState(false);
@@ -140,7 +141,11 @@ const Dashboard = () => {
             console.warn('[Dashboard] notificationsAPI.getMyBranchNotifications failed:', err?.message || 'Unknown error');
             return { data: { success: false, data: [] } };
           }),
-          busTransportationAPI.getAll({ branch_id: user.branch_id }).catch((err) => {
+          // current_term_only: bus rows are term-scoped, so an unfiltered list
+          // returns last year's buses too once a branch carries them into the
+          // new year — the task would then demand completion of historical
+          // buses that the buses page (single-term) never even shows.
+          busTransportationAPI.getAll({ branch_id: user.branch_id, current_term_only: true }).catch((err) => {
             console.warn('[Dashboard] busTransportationAPI.getAll failed:', err?.message || 'Unknown error');
             return { data: { success: false, data: [] } };
           }),
@@ -158,6 +163,10 @@ const Dashboard = () => {
           }),
           beneficiariesAPI.getRolloverStatus().catch((err) => {
             console.warn('[Dashboard] beneficiariesAPI.getRolloverStatus failed:', err?.message || 'Unknown error');
+            return { data: { success: false, data: null } };
+          }),
+          employeesAPI.getYearReviewStatus().catch((err) => {
+            console.warn('[Dashboard] employeesAPI.getYearReviewStatus failed:', err?.message || 'Unknown error');
             return { data: { success: false, data: null } };
           }),
           employeeExpiryAPI.getSummary().catch((err) => {
@@ -275,7 +284,14 @@ const Dashboard = () => {
           setBeneficiaryRolloverState(null);
         }
 
-        const expiryRes = results[10];
+        const employeeYearReviewRes = results[10];
+        if (employeeYearReviewRes?.data?.success) {
+          setEmployeeYearReviewState(employeeYearReviewRes.data.data || null);
+        } else {
+          setEmployeeYearReviewState(null);
+        }
+
+        const expiryRes = results[11];
         if (expiryRes?.data?.success) {
           setEmployeeExpirySummary(expiryRes.data.data);
         } else {
@@ -1413,6 +1429,7 @@ const Dashboard = () => {
           employees: employeesList,
           beneficiaryCount,
           beneficiaryRolloverState,
+          employeeYearReviewState,
           employeeExpirySummary
         });
 
@@ -1422,11 +1439,11 @@ const Dashboard = () => {
         // Filter out temporarily skipped tasks for display (session-only)
         const tasksForDisplay = visibleTasks.filter(task => !skippedTaskIds.has(task.id));
 
-        // Combine all tasks in priority order: inline editors first, then regular tasks
-        const allTasksOrdered = [
-          ...tasksForDisplay.filter(task => task.hasInlineEditor),
-          ...tasksForDisplay.filter(task => !task.hasInlineEditor)
-        ];
+        // Priority order as computed by calculateTasks (calculatePriorityScore).
+        // Previously inline-editor tasks (IBAN/salary review) were always
+        // hoisted to the front regardless of actual priority, which is what
+        // caused them to outrank the new-year review and bus tasks.
+        const allTasksOrdered = tasksForDisplay;
 
         // Clamp task index to valid range (no setState during render to avoid loops)
         const validTaskIndex = allTasksOrdered.length > 0

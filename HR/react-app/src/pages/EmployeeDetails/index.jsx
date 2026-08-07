@@ -270,19 +270,17 @@ const EmployeeDetails = () => {
     if (processingRenewal) return;
     setProcessingRenewal(true);
     try {
-      await employeesAPI.renew(id);
+      const res = await employeesAPI.renew(id);
       showSuccess('تم تجديد العقد بنجاح');
+      // Renewal documents are advisory now — missing/stale ones don't block
+      // renewal, but the branch still needs to know so they can upload them.
+      if (res.data?.document_warning) {
+        showWarning(res.data.document_warning);
+      }
       loadEmployeeData();
     } catch (error) {
       console.error('Error renewing employee:', error);
-      const errorMsg = error.response?.data?.message || 'فشل تجديد العقد';
-      if (error.response?.data?.missing_documents) {
-        showError(
-          `${errorMsg}\n\nالمستندات المطلوبة:\n${error.response.data.required_documents.join('\n')}\n\nيرجى تحديث هذه المستندات أولاً.`
-        );
-      } else {
-        showError(errorMsg);
-      }
+      showError(error.response?.data?.message || 'فشل تجديد العقد');
     } finally {
       setProcessingRenewal(false);
     }
@@ -347,7 +345,6 @@ const EmployeeDetails = () => {
               onChangeNonRenewalField={handleNonRenewalFieldChange}
               onSubmitNonRenewal={handleNonRenewalSubmit}
               onCancelNonRenewal={cancelNonRenewalFlow}
-              employeeGender={employee.gender}
             />
           )}
 

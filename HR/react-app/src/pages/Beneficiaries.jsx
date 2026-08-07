@@ -10,6 +10,7 @@ import { beneficiariesAPI, branchesAPI, termsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { downloadFile } from '../utils/downloadFile';
+import '../styles/yearReview.css';
 import './Beneficiaries.css';
 import SearchableSelect from "../components/SearchableSelect.jsx";
 
@@ -23,7 +24,10 @@ const SERVICE_LABELS = {
 
 const ENROLLMENT_OPTIONS = ['صباحية', 'مسائية'];
 const GENDER_OPTIONS = ['ذكر', 'أنثى'];
-const AGE_OPTIONS = Array.from({ length: 50 }, (_, i) => i + 1);
+// Ceiling matches the beneficiaries_age_check constraint (migration 024). It
+// has to exceed the oldest beneficiary on file, or the rollover cannot record
+// them a year older when they continue into the new term.
+const AGE_OPTIONS = Array.from({ length: 60 }, (_, i) => i + 1);
 
 const Beneficiaries = () => {
     const { isMainManager, user } = useAuth();
@@ -146,6 +150,9 @@ const Beneficiaries = () => {
     const [reviewBusId, setReviewBusId] = useState('');
     const [savingReview, setSavingReview] = useState(false);
     const [rolloverView, setRolloverView] = useState('guided'); // 'guided' | 'list'
+    // Set when the user deliberately opens one beneficiary from the list, so the
+    // "all done" panel does not hide the wizard they just asked for.
+    const [reviewPinned, setReviewPinned] = useState(false);
     const [showStepsHelp, setShowStepsHelp] = useState(true);
 
     // Inline edit mode: null | 'add' | beneficiary_id
@@ -369,10 +376,10 @@ const Beneficiaries = () => {
                 const rows = res.data.data || [];
                 setRolloverCandidates(rows);
                 if (jumpToFirstUnfinished) {
-                    const i = rows.findIndex(c => !(
-                        c.continuity_status === 'not_continuing' ||
-                        (c.continuity_status === 'continuing' && c.target_review_status !== 'pending')
-                    ));
+                    // isCandidateDone, not an inlined copy of it — the two drifted
+                    // apart once already and this one silently skipped past rows the
+                    // wizard still had work for.
+                    const i = rows.findIndex(c => !isCandidateDone(c));
                     setReviewIndex(i === -1 ? 0 : i);
                 }
                 // Returned so callers can act on fresh rows — reading the state right
@@ -403,10 +410,16 @@ const Beneficiaries = () => {
     // ---- Guided review wizard ----
 
     // A beneficiary is "finished" once a decision exists and, if they continue,
-    // their new-term data has been reviewed.
+    // they actually HAVE a row in the new term and it has been reviewed.
+    //
+    // target_id is checked explicitly because target_review_status is NULL when
+    // no such row exists, and `NULL !== 'pending'` is true — so a "continuing"
+    // beneficiary whose new-term row went missing (deleted, or a carry-over that
+    // failed) used to render as ✅ complete and get skipped by the wizard. They
+    // are the opposite of done: they have no place in the new year at all.
     const isCandidateDone = (c) =>
         c.continuity_status === 'not_continuing' ||
-        (c.continuity_status === 'continuing' && c.target_review_status !== 'pending');
+        (c.continuity_status === 'continuing' && c.target_id && c.target_review_status !== 'pending');
 
     const currentCandidate = rolloverCandidates[reviewIndex] || null;
 
@@ -545,19 +558,41 @@ const Beneficiaries = () => {
         try {
             setSavingReview(true);
             // Saving through the normal update endpoint is what marks the row reviewed.
-            await beneficiariesAPI.update(c.target_id, { ...reviewForm, age: parseInt(reviewForm.age) });
+            const res = await beneficiariesAPI.update(c.target_id, { ...reviewForm, age: parseInt(reviewForm.age) });
 
             const wantedBus = reviewForm.transport_service ? (reviewBusId || null) : null;
             const currentBus = c.assigned_bus_id ? String(c.assigned_bus_id) : null;
+            let busChanged = false;
             if (String(wantedBus || '') !== String(currentBus || '')) {
                 await beneficiariesAPI.assignRolloverBus(
                     rolloverParams({ beneficiary_id: c.target_id, bus_id: wantedBus })
                 );
+                busChanged = true;
             }
 
+            // Patch the one row we changed and move on. Refetching the whole list here
+            // put a spinner over the wizard between every beneficiary.
+            const saved = res.data?.data || null;
+            const patched = rolloverCandidates.map(row => row.id === c.id
+                ? {
+                    ...row,
+                    target: saved || { ...row.target, ...reviewForm, age: parseInt(reviewForm.age) },
+                    target_review_status: 'reviewed',
+                    target_transport_service: reviewForm.transport_service,
+                    assigned_bus_id: busChanged ? (wantedBus ? parseInt(wantedBus) : null) : row.assigned_bus_id,
+                    bus_number: busChanged
+                        ? (availableBuses.find(b => String(b.id) === String(wantedBus))?.bus_number || null)
+                        : row.bus_number,
+                }
+                : row);
+            setRolloverCandidates(patched);
             showSuccess('تم حفظ بيانات المستفيد');
-            const rows = await refreshRollover();
-            goToNextUnfinished(rows || undefined);
+            if (patched.every(isCandidateDone)) setReviewPinned(false);
+            goToNextUnfinished(patched);
+
+            // Only the new-intake count and the confirmation banner come from the
+            // server now, so refresh those quietly in the background.
+            loadRolloverStatus();
         } catch (error) {
             showError(error.response?.data?.message || 'فشل في حفظ البيانات');
         } finally {
@@ -571,7 +606,9 @@ const Beneficiaries = () => {
             const res = await beneficiariesAPI.startRollover(rolloverParams());
             if (res.data.success) {
                 showSuccess(res.data.message);
-                await refreshRollover();
+                // Carrying the buses over is the one action that changes data the
+                // candidate rows don't hold, so re-read status and the bus list.
+                await Promise.all([loadRolloverStatus(), loadAvailableBusesForReview()]);
             }
         } catch (error) {
             showError(error.response?.data?.message || 'فشل في بدء المراجعة');
@@ -611,10 +648,13 @@ const Beneficiaries = () => {
     };
 
     // Jump the guided flow to a specific beneficiary (used by the list view).
+    // Pins the wizard open so it is still reachable after everything is done —
+    // otherwise the completion panel would make already-reviewed rows uneditable.
     const openInGuidedReview = (candidateId) => {
         const idx = rolloverCandidates.findIndex(c => c.id === candidateId);
         if (idx !== -1) {
             setReviewIndex(idx);
+            setReviewPinned(true);
             setRolloverView('guided');
         }
     };
@@ -741,6 +781,8 @@ const Beneficiaries = () => {
             loadBeneficiaries();
             if (isMainManager()) { loadStats(); loadStaffingRequirements(); }
             if (!isMainManager()) loadBranchStats(filters.term_id || activeTerm?.id);
+            // Keeps the rollover checklist's "new beneficiaries added" count honest.
+            if (rolloverStatus?.is_active) loadRolloverStatus();
         } catch (error) {
             const msg = error.response?.data?.message || 'فشل في حفظ البيانات';
             showError(msg);
@@ -988,6 +1030,23 @@ const Beneficiaries = () => {
     // "Done" means decided AND — for those continuing — their new-term data reviewed.
     const rolloverDoneCount = rolloverCandidates.filter(isCandidateDone).length;
     const rolloverRemaining = rolloverCandidates.length - rolloverDoneCount;
+    // Once nothing is left, the per-beneficiary steps are over. Showing step 4
+    // ("save and go to the next one") at that point is misleading — there is no next
+    // one, and the real next action is adding the new intake.
+    const rolloverAllDone = rolloverCandidates.length > 0 && rolloverRemaining === 0;
+
+    // Derived from the rows we already hold rather than from the last status fetch,
+    // so the progress bar and checklist move the instant a decision is applied
+    // instead of waiting on a round-trip.
+    const rolloverLive = {
+        total: rolloverCandidates.length,
+        undecided: rolloverCandidates.filter(c => !c.continuity_status).length,
+        continuing: rolloverCandidates.filter(c => c.continuity_status === 'continuing').length,
+        notContinuing: rolloverCandidates.filter(c => c.continuity_status === 'not_continuing').length,
+        pendingReview: rolloverCandidates.filter(c => c.continuity_status === 'continuing' && c.target_review_status === 'pending').length,
+    };
+    rolloverLive.decided = rolloverLive.continuing + rolloverLive.notContinuing;
+    const rolloverCanConfirm = rolloverLive.undecided === 0 && rolloverLive.pendingReview === 0;
 
     if (loading) {
         return (
@@ -1765,14 +1824,14 @@ const Beneficiaries = () => {
                                         <div
                                             className="rollover-progress-fill"
                                             style={{
-                                                width: `${rolloverStatus.counts.total_source > 0
-                                                    ? Math.round((rolloverDoneCount / rolloverStatus.counts.total_source) * 100)
+                                                width: `${rolloverLive.total > 0
+                                                    ? Math.round((rolloverDoneCount / rolloverLive.total) * 100)
                                                     : 100}%`
                                             }}
                                         />
                                     </div>
                                     <span className="rollover-progress-label">
-                                        أنجزت {rolloverDoneCount} من {rolloverStatus.counts.total_source} مستفيد
+                                        أنجزت {rolloverDoneCount} من {rolloverLive.total} مستفيد
                                     </span>
                                 </div>
                             </div>
@@ -1822,7 +1881,7 @@ const Beneficiaries = () => {
                                         </button>
                                         <button
                                             className={`rollover-pill ${rolloverView === 'list' ? 'active' : ''}`}
-                                            onClick={() => setRolloverView('list')}
+                                            onClick={() => { setReviewPinned(false); setRolloverView('list'); }}
                                         >
                                             📋 عرض القائمة كاملة
                                         </button>
@@ -1831,11 +1890,31 @@ const Beneficiaries = () => {
                                     {rolloverLoading ? (
                                         <div className="loading-container"><div className="spinner-large"></div><p>جاري التحميل...</p></div>
                                     ) : rolloverView === 'guided' ? (
-                                        !currentCandidate ? (
-                                            <div className="empty-state">
-                                                <span className="empty-icon">✅</span>
-                                                <h3>انتهيت من جميع المستفيدين</h3>
-                                                <p>انتقل إلى الخطوة الأخيرة في أسفل الصفحة</p>
+                                        ((rolloverAllDone && !reviewPinned) || !currentCandidate) ? (
+                                            /* All old beneficiaries handled — the per-person steps are
+                                               finished, so hand over to the one remaining action. */
+                                            <div className="rollover-done-panel">
+                                                <span className="rollover-done-icon">🎉</span>
+                                                <h3>انتهيت من مراجعة جميع مستفيدي العام الماضي</h3>
+                                                <p className="rollover-done-sub">
+                                                    {rolloverDoneCount} من {rolloverCandidates.length} — لم يتبقَ أحد للمراجعة
+                                                </p>
+                                                <div className="rollover-done-next">
+                                                    <span className="rollover-done-next-label">الخطوة التالية</span>
+                                                    <p>هل هناك مستفيدون <strong>جدد</strong> لم يكونوا مسجلين العام الماضي؟ أضفهم الآن.</p>
+                                                    <button
+                                                        className="btn btn-primary btn-lg"
+                                                        onClick={() => { setActiveTab('data'); setTimeout(openAddModal, 0); }}
+                                                    >
+                                                        + إضافة مستفيد جديد
+                                                    </button>
+                                                    <p className="rollover-done-hint">
+                                                        وإذا لم يكن هناك مستفيدون جدد، انتقل مباشرة إلى «تأكيد اكتمال البيانات 100%» في الأسفل.
+                                                    </p>
+                                                </div>
+                                                <button className="rollover-link-btn" onClick={() => { setReviewPinned(false); setRolloverView('list'); }}>
+                                                    مراجعة القائمة كاملة مرة أخرى
+                                                </button>
                                             </div>
                                         ) : (
                                             <div className="rollover-wizard">
@@ -1917,6 +1996,25 @@ const Beneficiaries = () => {
                                                                 >
                                                                     تغيير إلى «لن يستمر»
                                                                 </button>
+                                                                {/* Decided "continuing" but nothing exists in the new term.
+                                                                    Steps 2-4 are all gated on the carried row, so without a way
+                                                                    out this beneficiary would be a dead end — visible, marked
+                                                                    unfinished, and impossible to finish. Re-applying the same
+                                                                    decision recreates the row (applyDecisions inserts when it
+                                                                    finds no child and no civil_id match), so the repair is just
+                                                                    the original action again. */}
+                                                                {!currentCandidate.target_id && (
+                                                                    <div className="rollover-inline-warning">
+                                                                        لم يتم إنشاء سجل هذا المستفيد في الفصل الجديد.
+                                                                        <button
+                                                                            className="btn btn-sm btn-primary"
+                                                                            disabled={decidingId === currentCandidate.id}
+                                                                            onClick={() => handleMarkContinuing(currentCandidate)}
+                                                                        >
+                                                                            إعادة إنشاء السجل
+                                                                        </button>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         ) : (
                                                             <div className="rollover-answered">
@@ -2057,7 +2155,7 @@ const Beneficiaries = () => {
                                                                 </div>
                                                             ) : (
                                                                 <select
-                                                                    className="rollover-bus-select"
+                                                                    className="rollover-select"
                                                                     value={reviewBusId}
                                                                     onChange={(e) => setReviewBusId(e.target.value)}
                                                                 >
@@ -2111,10 +2209,10 @@ const Beneficiaries = () => {
                                         <>
                                             <div className="rollover-filters">
                                                 {[
-                                                    { key: 'undecided', label: `لم يتم القرار (${rolloverStatus.counts.undecided})` },
-                                                    { key: 'continuing', label: `مستمر (${rolloverStatus.counts.continuing})` },
-                                                    { key: 'not_continuing', label: `غير مستمر (${rolloverStatus.counts.not_continuing})` },
-                                                    { key: 'all', label: `الكل (${rolloverStatus.counts.total_source})` },
+                                                    { key: 'undecided', label: `لم يتم القرار (${rolloverLive.undecided})` },
+                                                    { key: 'continuing', label: `مستمر (${rolloverLive.continuing})` },
+                                                    { key: 'not_continuing', label: `غير مستمر (${rolloverLive.notContinuing})` },
+                                                    { key: 'all', label: `الكل (${rolloverLive.total})` },
                                                 ].map(pill => (
                                                     <button
                                                         key={pill.key}
@@ -2198,29 +2296,73 @@ const Beneficiaries = () => {
                                     <h4>الخطوة الأخيرة — تأكيد اكتمال البيانات</h4>
                                 </div>
                                 <ul className="rollover-checklist">
-                                    <li className={rolloverStatus.counts.undecided === 0 ? 'ok' : 'todo'}>
-                                        {rolloverStatus.counts.undecided === 0 ? '✅' : '⬜'} تحديد مصير جميع مستفيدي العام الماضي
+                                    <li className={rolloverLive.undecided === 0 ? 'ok' : 'todo'}>
+                                        {rolloverLive.undecided === 0 ? '✅' : '⬜'} تحديد مصير جميع مستفيدي العام الماضي
                                         <span className="rollover-checklist-count">
-                                            ({rolloverStatus.counts.decided} من {rolloverStatus.counts.total_source})
+                                            ({rolloverLive.decided} من {rolloverLive.total})
                                         </span>
                                     </li>
-                                    <li className={rolloverStatus.counts.pending_review === 0 ? 'ok' : 'todo'}>
-                                        {rolloverStatus.counts.pending_review === 0 ? '✅' : '⬜'} مراجعة بيانات المستفيدين المستمرين
-                                        {rolloverStatus.counts.pending_review > 0 && (
-                                            <span className="rollover-checklist-count">(متبقٍ {rolloverStatus.counts.pending_review})</span>
+                                    <li className={rolloverLive.pendingReview === 0 ? 'ok' : 'todo'}>
+                                        {rolloverLive.pendingReview === 0 ? '✅' : '⬜'} مراجعة بيانات المستفيدين المستمرين
+                                        {rolloverLive.pendingReview > 0 && (
+                                            <span className="rollover-checklist-count">(متبقٍ {rolloverLive.pendingReview})</span>
                                         )}
                                     </li>
-                                    <li className="info">
-                                        ℹ️ إضافة المستفيدين الجدد الذين لم يكونوا مسجلين العام الماضي
-                                        <span className="rollover-checklist-count">(تمت إضافة {rolloverStatus.counts.new_in_target})</span>
+                                    <li className="info rollover-checklist-add">
+                                        <span>
+                                            ℹ️ إضافة المستفيدين الجدد الذين لم يكونوا مسجلين العام الماضي
+                                            <span className="rollover-checklist-count">(تمت إضافة {rolloverStatus.counts.new_in_target})</span>
+                                        </span>
                                         <button
-                                            className="rollover-link-btn"
+                                            className={`btn btn-sm ${rolloverAllDone ? 'btn-primary' : 'btn-secondary'}`}
                                             onClick={() => { setActiveTab('data'); setTimeout(openAddModal, 0); }}
                                         >
                                             + إضافة مستفيد جديد
                                         </button>
                                     </li>
                                 </ul>
+
+                                {/* Advisory only — never blocks confirming. Saving the review
+                                    form marks a beneficiary reviewed independently of the bus
+                                    seat, so transport riders can slip through unassigned and
+                                    nothing else would ever show it. The carry-over button is
+                                    the point: last year's buses come across with their data
+                                    already filled in, so the branch updates them instead of
+                                    re-entering every bus from scratch. */}
+                                {rolloverStatus.counts.transport_without_bus > 0 && (
+                                    <div className="rollover-inline-warning">
+                                        <div>
+                                            <strong>
+                                                ⚠️ {rolloverStatus.counts.transport_without_bus} مستفيد لديهم خدمة نقل بدون حافلة
+                                            </strong>
+                                            {rolloverStatus.counts.transport_without_bus_names?.length > 0 && (
+                                                <div>
+                                                    {rolloverStatus.counts.transport_without_bus_names.join('، ')}
+                                                    {rolloverStatus.counts.transport_without_bus >
+                                                        rolloverStatus.counts.transport_without_bus_names.length && ' ...'}
+                                                </div>
+                                            )}
+                                            <div>يمكنك التأكيد الآن وإكمال تعيين الحافلات لاحقاً.</div>
+                                        </div>
+                                        <div className="rollover-warning-actions">
+                                            {rolloverStatus.counts.target_buses === 0 && (
+                                                <button
+                                                    className="btn btn-sm btn-primary"
+                                                    onClick={handleStartRollover}
+                                                    disabled={rolloverLoading}
+                                                >
+                                                    🚌 نقل حافلات العام الماضي
+                                                </button>
+                                            )}
+                                            <button
+                                                className="btn btn-sm btn-secondary"
+                                                onClick={() => navigate('/bus-transportation')}
+                                            >
+                                                إدارة الحافلات
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div className="rollover-confirm-bar">
                                     {rolloverStatus.confirmation ? (
@@ -2240,14 +2382,17 @@ const Beneficiaries = () => {
                                         <>
                                             <button
                                                 className="btn btn-primary btn-lg"
-                                                disabled={!rolloverStatus.can_confirm}
+                                                disabled={!rolloverCanConfirm}
                                                 onClick={() => setConfirmModal({ show: true, note: '' })}
                                             >
                                                 تأكيد اكتمال البيانات 100%
                                             </button>
                                             <span className="rollover-blocking-reason">
-                                                {rolloverStatus.blocking_reason
-                                                    || 'اضغط الزر فقط بعد مراجعة جميع المستفيدين وإضافة المستفيدين الجدد'}
+                                                {rolloverLive.undecided > 0
+                                                    ? `يوجد ${rolloverLive.undecided} مستفيد لم يتم اتخاذ قرار بشأنه`
+                                                    : rolloverLive.pendingReview > 0
+                                                        ? `يوجد ${rolloverLive.pendingReview} مستفيد لم تتم مراجعة بياناته`
+                                                        : 'اضغط الزر فقط بعد إضافة المستفيدين الجدد أيضاً'}
                                             </span>
                                         </>
                                     )}
