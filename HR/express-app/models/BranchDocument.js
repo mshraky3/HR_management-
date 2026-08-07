@@ -29,10 +29,17 @@ export const BranchDocument = {
   async findAll(filters = {}) {
     try {
       let query = sql`
-        SELECT bd.*, b.branch_name 
+        SELECT bd.*, b.branch_name
         FROM branch_documents bd
         INNER JOIN branches b ON bd.branch_id = b.id
-        WHERE bd.is_active = true
+        -- bd.is_active is the DOCUMENT's own flag (superseded/replaced upload);
+        -- b.is_active is the BRANCH's. The archive view for branch documents
+        -- (routes/archive.js) queries bd.is_active = false directly — a
+        -- completely separate concept — so there is no other view that needs to
+        -- see a deactivated branch's documents through this method. Without
+        -- this, the main manager's branch-tracking document list kept showing
+        -- a deleted branch's paperwork as if it still needed following up.
+        WHERE bd.is_active = true AND b.is_active = true
       `;
 
       if (filters.branch_id) {

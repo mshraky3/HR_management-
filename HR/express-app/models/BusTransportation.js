@@ -109,7 +109,13 @@ export const BusTransportation = {
         LEFT JOIN bus_registration_data brd ON bt.id = brd.bus_id
         LEFT JOIN driver_license_data dld ON bt.id = dld.bus_id
         LEFT JOIN bus_details bd ON bt.id = bd.bus_id
-        WHERE 1=1
+        -- A deactivated branch's buses have no driver, no route, nobody to
+        -- maintain them — same reason the employee reports (employees.js) drop
+        -- deactivated branches unconditionally. Every caller of this method
+        -- (the buses list, the dashboard task, findByBranchAndTerm) is a "what
+        -- needs doing right now" view; there is no buses-archive page that
+        -- needs to see through this filter, unlike beneficiaries.
+        WHERE b.is_active = true
       `;
 
       if (filters.branch_id) {
@@ -180,7 +186,9 @@ export const BusTransportation = {
 
       const params = [normalizedIds];
       let paramIndex = 2;
-      let whereClauses = ['bt.branch_id = ANY($1::int[])'];
+      // Same reasoning as findAll above: a deactivated branch's buses are not
+      // part of any live report.
+      let whereClauses = ['bt.branch_id = ANY($1::int[])', 'b.is_active = true'];
 
       if (filters.term_id) {
         whereClauses.push(`bt.term_id = $${paramIndex}`);

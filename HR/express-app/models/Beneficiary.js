@@ -56,8 +56,23 @@ const Beneficiary = {
                 conditions.push(`b_data.enrollment_period = $${paramIndex++}`);
                 values.push(enrollment_period);
             }
+            // Deactivating a branch has to hide its beneficiaries from the live
+            // views the same way it hides its employees. Opt-in rather than
+            // automatic, because the ARCHIVE view exists precisely to show this
+            // data — filtering it there would make an archived branch's records
+            // unreachable from anywhere.
+            if (filters.active_branches_only) {
+                conditions.push(`b_data.branch_id IN (SELECT id FROM branches WHERE is_active = true)`);
+            }
 
             const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+            // Captured before pagination appends LIMIT/OFFSET values. The count
+            // query below reuses only the WHERE parameters, and the old
+            // slice(0, conditions.length) assumed every condition contributed
+            // exactly one value — which stopped being true the moment a
+            // parameterless condition (the branch filter above) was added.
+            const conditionValueCount = values.length;
 
             // Pagination
             let limitClause = '';
@@ -95,7 +110,7 @@ const Beneficiary = {
         FROM beneficiaries b_data
         ${whereClause}
       `;
-            const countValues = values.slice(0, conditions.length);
+            const countValues = values.slice(0, conditionValueCount);
             const [countResult] = await sql.unsafe(countQuery, countValues);
 
             return {
@@ -317,6 +332,15 @@ const Beneficiary = {
             // Applied to all four queries so SUM(branchStats.total) === totals.total.
             const freeFilter = includeFree ? sql`` : sql`AND free_student IS NOT TRUE`;
 
+            // A deactivated branch's beneficiaries are history and must not
+            // count towards live figures — the branch has no staff to serve
+            // them, so leaving them in inflated both the totals and the staffing
+            // shortfall it is compared against. Same rule getSubmissionStatus
+            // already applies. Written identically in all four queries below,
+            // because applying it to the per-branch breakdown alone would break
+            // SUM(branchStats.total) === totals.total.
+            const activeBranches = sql`AND branch_id IN (SELECT id FROM branches WHERE is_active = true)`;
+
             // Overall stats
             const [totals] = await sql`
         SELECT 
@@ -334,7 +358,7 @@ const Beneficiary = {
           COUNT(*) FILTER (WHERE transport_service = true) as transport_service_count,
           ROUND(AVG(age), 1) as avg_age
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false ${freeFilter}
+        WHERE term_id = ${termId} AND is_archived = false ${freeFilter} ${activeBranches}
       `;
 
             // Per-branch breakdown
@@ -355,8 +379,9 @@ const Beneficiary = {
           COUNT(*) FILTER (WHERE b_data.autism_therapy = true) as autism_therapy_count,
           COUNT(*) FILTER (WHERE b_data.transport_service = true) as transport_service_count
         FROM beneficiaries b_data
-        LEFT JOIN branches br ON b_data.branch_id = br.id
+        INNER JOIN branches br ON b_data.branch_id = br.id
         WHERE b_data.term_id = ${termId} AND b_data.is_archived = false
+          AND br.is_active = true
           ${includeFree ? sql`` : sql`AND b_data.free_student IS NOT TRUE`}
         GROUP BY b_data.branch_id, br.branch_name
         ORDER BY br.branch_name
@@ -376,7 +401,7 @@ const Beneficiary = {
           END as age_group,
           COUNT(*) as count
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false ${freeFilter}
+        WHERE term_id = ${termId} AND is_archived = false ${freeFilter} ${activeBranches}
         GROUP BY age_group
         ORDER BY age_group
       `;
@@ -391,7 +416,7 @@ const Beneficiary = {
            CASE WHEN transport_service THEN 1 ELSE 0 END) as service_count,
           COUNT(*) as beneficiary_count
         FROM beneficiaries
-        WHERE term_id = ${termId} AND is_archived = false ${freeFilter}
+        WHERE term_id = ${termId} AND is_archived = false ${freeFilter} ${activeBranches}
         GROUP BY service_count
         ORDER BY service_count
       `;
