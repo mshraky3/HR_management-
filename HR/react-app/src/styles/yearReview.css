@@ -1,0 +1,786 @@
+/**
+ * Shared "year-end review wizard" chrome — extracted from Beneficiaries.css.
+ *
+ * Both the beneficiary rollover (Beneficiaries.jsx) and the employee year
+ * transition review (EmployeeYearReview.jsx) use the exact same guided,
+ * one-record-at-a-time flow: numbered step cards, a how-it-works panel, a
+ * completion panel, and a final confirm bar. Rather than maintain two nearly
+ * identical stylesheets, both pages import this one file and keep the same
+ * `.rollover-*` class names — "rollover" here means "carry this record into
+ * the new year", which applies to a beneficiary or an employee equally.
+ *
+ * Content-specific rules (bus carry-over banner, beneficiary service pills)
+ * remain in Beneficiaries.css; only the generic wizard chrome lives here.
+ */
+
+/* ══════════════════════════════════════════════════════════════
+   New-year rollover tab (مراجعة السنة الجديدة)
+   ══════════════════════════════════════════════════════════════ */
+
+.rollover-tab {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+    padding: 20px;
+}
+
+.tab-badge {
+    display: inline-block;
+    min-width: 20px;
+    margin-inline-start: 6px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: #dc3545;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+}
+
+/* ── Header: source → target term + progress ── */
+.rollover-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #eef2f7;
+}
+
+.rollover-terms {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.rollover-term-chip {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.rollover-term-chip.previous {
+    background: #f1f3f5;
+    color: #6c757d;
+}
+
+.rollover-term-chip.next {
+    background: rgba(73, 136, 196, 0.12);
+    color: #2f6395;
+}
+
+.rollover-arrow {
+    color: #adb5bd;
+    font-size: 18px;
+}
+
+.rollover-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 220px;
+}
+
+.rollover-progress-bar {
+    height: 8px;
+    border-radius: 4px;
+    background: #eef2f7;
+    overflow: hidden;
+}
+
+.rollover-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4988C4, #5cb85c);
+    transition: width 0.3s ease;
+}
+
+.rollover-progress-label {
+    font-size: 12px;
+    color: #6c757d;
+}
+
+/* ── Toolbar + filter pills ── */
+.rollover-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 16px 0;
+}
+
+.rollover-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.rollover-pill {
+    padding: 6px 14px;
+    border: 1.5px solid #d7e1ec;
+    border-radius: 20px;
+    background: #fff;
+    color: #6c757d;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.rollover-pill:hover {
+    border-color: #4988C4;
+    color: #4988C4;
+}
+
+.rollover-pill.active {
+    background: #4988C4;
+    border-color: #4988C4;
+    color: #fff;
+}
+
+/* ── Table ── */
+.rollover-check-col {
+    width: 40px;
+    text-align: center;
+}
+
+.rollover-row.not_continuing {
+    background: rgba(220, 53, 69, 0.04);
+}
+
+.rollover-row.continuing {
+    background: rgba(92, 184, 92, 0.05);
+}
+
+.rollover-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.rollover-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.rollover-badge.undecided {
+    background: #f1f3f5;
+    color: #6c757d;
+}
+
+.rollover-badge.pending {
+    background: rgba(255, 193, 7, 0.18);
+    color: #8a6100;
+}
+
+.rollover-badge.reviewed,
+.rollover-badge.confirmed {
+    background: rgba(92, 184, 92, 0.18);
+    color: #2f6b2f;
+}
+
+.rollover-badge.stopped,
+.rollover-badge.not-confirmed {
+    background: rgba(220, 53, 69, 0.15);
+    color: #a52834;
+}
+
+/* ── Confirmation footer ── */
+.rollover-confirm-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #eef2f7;
+}
+
+.rollover-blocking-reason {
+    font-size: 13px;
+    color: #a52834;
+}
+
+.rollover-confirmed {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: rgba(92, 184, 92, 0.1);
+    border: 1px solid rgba(92, 184, 92, 0.35);
+}
+
+.rollover-confirmed-text {
+    font-size: 13px;
+    font-weight: 600;
+    color: #2f6b2f;
+}
+
+.rollover-stale-note {
+    font-size: 12px;
+    font-weight: 600;
+    color: #8a6100;
+}
+
+/* ── Reason / confirm modals ── */
+.rollover-reason-label {
+    display: block;
+    margin: 14px 0 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #495057;
+}
+
+.rollover-reason-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1.5px solid #d7e1ec;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    resize: vertical;
+}
+
+.rollover-reason-input:focus {
+    outline: none;
+    border-color: #4988C4;
+    box-shadow: 0 0 0 2px rgba(73, 136, 196, 0.15);
+}
+
+/* ── Main manager overview ── */
+.rollover-overview-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.rollover-overview-header h2 {
+    margin: 0;
+    font-size: 17px;
+    color: #2c3e50;
+}
+
+.rollover-summary-chip {
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: rgba(73, 136, 196, 0.12);
+    color: #2f6395;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.rollover-overview-table .clickable-row {
+    cursor: pointer;
+}
+
+.rollover-overview-table .clickable-row:hover {
+    background: rgba(73, 136, 196, 0.06);
+}
+
+.rollover-back-btn {
+    margin-bottom: 14px;
+}
+
+.rollover-tab .muted {
+    color: #adb5bd;
+}
+
+@media (max-width: 768px) {
+    .rollover-tab {
+        padding: 14px;
+    }
+
+    .rollover-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .rollover-progress {
+        min-width: 0;
+    }
+
+    .rollover-actions {
+        flex-direction: column;
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Guided review flow — one beneficiary at a time, numbered steps
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── "How does this page work" panel ── */
+.rollover-help {
+    margin-top: 16px;
+    padding: 14px 18px;
+    border-radius: 12px;
+    background: rgba(73, 136, 196, 0.06);
+    border: 1px solid rgba(73, 136, 196, 0.22);
+}
+
+.rollover-help-toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    color: #2f6395;
+    cursor: pointer;
+}
+
+.rollover-help-list {
+    margin: 12px 0 0;
+    padding-inline-start: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #3d4d5c;
+}
+
+.rollover-help-list strong {
+    color: #2f6395;
+}
+
+.rollover-help-note {
+    margin: 12px 0 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #8a6100;
+}
+
+/* ── View switch ── */
+.rollover-view-switch {
+    display: flex;
+    gap: 8px;
+    margin: 18px 0 14px;
+}
+
+/* ── Wizard shell ── */
+.rollover-wizard {
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #fbfcfe;
+}
+
+.rollover-wizard-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #fff;
+    border-bottom: 1px solid #eef2f7;
+}
+
+.rollover-wizard-pos {
+    font-size: 13px;
+    font-weight: 700;
+    color: #2c3e50;
+}
+
+.rollover-wizard-remaining {
+    font-weight: 600;
+    color: #8a6100;
+}
+
+/* ── Identity header ── */
+.rollover-identity {
+    padding: 16px 20px;
+    background: #fff;
+    border-bottom: 1px solid #eef2f7;
+}
+
+.rollover-identity-name {
+    margin: 0 0 8px;
+    font-size: 19px;
+    font-weight: 700;
+    color: #2c3e50;
+}
+
+.rollover-identity-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+    font-size: 12.5px;
+    color: #6c757d;
+}
+
+.rollover-identity-meta strong {
+    color: #2c3e50;
+}
+
+.rollover-identity-services {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    font-size: 12px;
+}
+
+/* ── Numbered step cards ── */
+.rollover-step {
+    margin: 14px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+    transition: border-color 0.2s, opacity 0.2s;
+}
+
+.rollover-step.active {
+    border-color: #4988C4;
+    box-shadow: 0 2px 10px rgba(73, 136, 196, 0.12);
+}
+
+.rollover-step.done {
+    opacity: 0.82;
+}
+
+.rollover-step-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.rollover-step-head h4 {
+    margin: 0;
+    font-size: 14.5px;
+    font-weight: 700;
+    color: #2c3e50;
+}
+
+.rollover-step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    border-radius: 50%;
+    background: #4988C4;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.rollover-step.done .rollover-step-num {
+    background: #5cb85c;
+}
+
+.rollover-step-num.final {
+    background: #2f6b2f;
+}
+
+.rollover-step-body {
+    padding: 16px;
+}
+
+/* ── Step 1: the continue / stop choice ── */
+.rollover-choice {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.rollover-choice .btn {
+    min-width: 170px;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.rollover-answered {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+.rollover-reason-shown {
+    font-size: 12.5px;
+    color: #6c757d;
+}
+
+.rollover-link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #4988C4;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.rollover-link-btn:disabled {
+    color: #adb5bd;
+    cursor: not-allowed;
+}
+
+/* ── Step 2: the review form ── */
+.rollover-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+}
+
+.rollover-services-block {
+    margin-top: 18px;
+}
+
+.rollover-block-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #495057;
+}
+
+.rollover-services {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.rollover-service-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1.5px solid #d7e1ec;
+    border-radius: 20px;
+    background: #fff;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #6c757d;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.rollover-service-check:hover {
+    border-color: #4988C4;
+}
+
+.rollover-service-check.on {
+    background: rgba(73, 136, 196, 0.1);
+    border-color: #4988C4;
+    color: #2f6395;
+}
+
+/* ── Step 3: bus ── */
+.rollover-select {
+    width: 100%;
+    max-width: 460px;
+    padding: 10px 12px;
+    border: 1.5px solid #d7e1ec;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    background: #fff;
+}
+
+.rollover-select:focus {
+    outline: none;
+    border-color: #4988C4;
+    box-shadow: 0 0 0 2px rgba(73, 136, 196, 0.15);
+}
+
+.rollover-inline-warning {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(255, 193, 7, 0.12);
+    border: 1px solid rgba(255, 193, 7, 0.4);
+    font-size: 13px;
+    color: #7a5c00;
+}
+
+/* Buttons inside an inline warning sit at the logical end (RTL-aware), with the
+   message text taking the remaining width. */
+.rollover-warning-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-inline-start: auto;
+}
+
+/* ── Step 4: save ── */
+.rollover-save-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+.btn-lg {
+    padding: 12px 26px;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.rollover-step-actions {
+    display: flex;
+    gap: 12px;
+    padding: 0 14px 14px;
+}
+
+/* ── Final step ── */
+.rollover-final {
+    margin-top: 22px;
+    padding: 18px;
+    border: 1.5px solid #d7e1ec;
+    border-radius: 14px;
+    background: #fbfcfe;
+}
+
+.rollover-checklist {
+    list-style: none;
+    margin: 14px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.rollover-checklist li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+    color: #3d4d5c;
+}
+
+.rollover-checklist li.ok {
+    color: #2f6b2f;
+    font-weight: 600;
+}
+
+.rollover-checklist li.todo {
+    color: #a52834;
+    font-weight: 600;
+}
+
+.rollover-checklist li.info {
+    color: #6c757d;
+}
+
+.rollover-checklist-count {
+    font-size: 12px;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+@media (max-width: 768px) {
+    .rollover-step {
+        margin: 10px;
+    }
+
+    .rollover-choice .btn,
+    .rollover-save-row .btn {
+        width: 100%;
+    }
+
+    .rollover-wizard-nav {
+        flex-wrap: wrap;
+    }
+
+    .rollover-form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── Everyone reviewed: the per-person steps are replaced by the next action ── */
+.rollover-done-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 34px 24px;
+    border: 1.5px solid rgba(92, 184, 92, 0.45);
+    border-radius: 14px;
+    background: rgba(92, 184, 92, 0.07);
+    text-align: center;
+}
+
+.rollover-done-icon {
+    font-size: 40px;
+    line-height: 1;
+}
+
+.rollover-done-panel h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #2f6b2f;
+}
+
+.rollover-done-sub {
+    margin: 0;
+    font-size: 13px;
+    color: #6c757d;
+}
+
+.rollover-done-next {
+    width: 100%;
+    max-width: 520px;
+    margin-top: 14px;
+    padding: 20px;
+    border-radius: 12px;
+    background: #fff;
+    border: 1.5px solid #4988C4;
+    box-shadow: 0 2px 12px rgba(73, 136, 196, 0.15);
+}
+
+.rollover-done-next-label {
+    display: inline-block;
+    margin-bottom: 8px;
+    padding: 3px 12px;
+    border-radius: 12px;
+    background: #4988C4;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.rollover-done-next p {
+    margin: 0 0 14px;
+    font-size: 14px;
+    color: #3d4d5c;
+}
+
+.rollover-done-hint {
+    margin: 14px 0 0 !important;
+    font-size: 12px !important;
+    color: #6c757d !important;
+}
+
+.rollover-checklist-add {
+    justify-content: space-between;
+}

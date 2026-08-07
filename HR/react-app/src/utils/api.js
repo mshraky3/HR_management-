@@ -145,6 +145,13 @@ const getCacheTTL = (url) => {
     return CACHE_TTL.NONE;
   }
 
+  // Beneficiary rollover / employee year review - workflow state read straight
+  // back after every decision. Any caching here makes a click look like it did
+  // nothing until the TTL expires (this bit us once already on the rollover).
+  if (url.includes('/api/beneficiaries/rollover') || url.includes('/api/employees/year-review')) {
+    return CACHE_TTL.NONE;
+  }
+
   // Employee data - short cache (changes frequently, but allow minimal caching)
   if (url.includes('/api/employees')) {
     return CACHE_TTL.SHORT; // 5 seconds
@@ -200,6 +207,15 @@ const clearRelatedCache = (url) => {
     // bus cards can depend on branches/terms display too
     clearCache('/api/branches');
     clearCache('/api/terms');
+    return;
+  }
+
+  // A beneficiary mutation changes the list, the stats and the rollover state.
+  // Without this the follow-up GET is served from cache and the UI looks frozen.
+  if (url.includes('/api/beneficiaries')) {
+    clearCache('/api/beneficiaries');
+    clearCache('/api/bus-transportation');
+    dashboardEndpoints.forEach(endpoint => clearCache(endpoint));
     return;
   }
 
@@ -587,6 +603,28 @@ export const employeesAPI = {
 
   saveMissingRequiredData: (data, config = {}) =>
     api.post('/api/employees/missing-required-data', data, config),
+
+  // --- New-year employee review (مراجعة الموظفين للسنة الجديدة) ---
+  getYearReviewStatus: (params = {}) =>
+    api.get('/api/employees/year-review/status', { params }),
+
+  getYearReviewCandidates: (params = {}) =>
+    api.get('/api/employees/year-review/candidates', { params }),
+
+  getYearReviewOverview: (params = {}) =>
+    api.get('/api/employees/year-review/overview', { params }),
+
+  decideYearReview: (data) =>
+    api.post('/api/employees/year-review/decide', data),
+
+  markYearReviewReviewed: (data) =>
+    api.post('/api/employees/year-review/mark-reviewed', data),
+
+  confirmYearReview: (data = {}) =>
+    api.post('/api/employees/year-review/confirm', data),
+
+  unconfirmYearReview: (params = {}) =>
+    api.delete('/api/employees/year-review/confirm', { params }),
 
   getStatistics: (filters = {}) =>
     api.get('/api/employees/statistics', { params: filters }),

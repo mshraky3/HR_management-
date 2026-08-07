@@ -400,8 +400,13 @@ const calculateDocumentTasks = (documents, branches, branchId, monthlyAlerts, mi
 /**
  * Calculate employee tasks
  */
-const calculateEmployeeTasks = (incompleteEmployees) => {
+const calculateEmployeeTasks = (incompleteEmployees, yearReviewState = null) => {
   const tasks = [];
+
+  // While the new-year employee review is active, calculateEmployeeYearReviewTask
+  // owns this branch's "employee" nagging — showing both would tell the branch
+  // to do the same work twice, once generically and once year-specific.
+  if (yearReviewState?.is_active) return tasks;
 
   if (incompleteEmployees.length === 0) return tasks;
 
@@ -424,6 +429,50 @@ const calculateEmployeeTasks = (incompleteEmployees) => {
   });
 
   return tasks;
+};
+
+/**
+ * Calculate the new-year employee review task. Applies to every branch type
+ * (unlike the beneficiary rollover, which is healthcare-center only) and is
+ * active only during the between-years window, until every carried-over
+ * employee has a decision and every continuing one has been reviewed.
+ */
+const calculateEmployeeYearReviewTask = (yearReviewState) => {
+  if (!yearReviewState?.is_active) return null;
+
+  const counts = yearReviewState.counts || {};
+  const undecided = counts.undecided || 0;
+  const pendingReview = counts.pending_review || 0;
+  const totalSource = counts.total_source || 0;
+
+  if (undecided === 0 && pendingReview === 0 && yearReviewState.confirmation) return null;
+  if (totalSource === 0 && !undecided && !pendingReview) return null;
+
+  const remaining = undecided + pendingReview;
+  const completed = Math.max(totalSource - remaining, 0);
+
+  const parts = [];
+  if (undecided > 0) parts.push(`${undecided} موظف بانتظار القرار`);
+  if (pendingReview > 0) parts.push(`${pendingReview} بانتظار مراجعة البيانات`);
+  if (parts.length === 0) parts.push('يجب تأكيد اكتمال مراجعة بيانات الموظفين');
+
+  return {
+    id: 'employee-year-review',
+    type: 'employee_year_review',
+    category: 'employees',
+    priority: 'critical',
+    title: 'مراجعة عقود الموظفين للسنة الجديدة',
+    description: parts.join('، '),
+    totalItems: totalSource || 1,
+    completedItems: completed,
+    remainingItems: remaining || 1,
+    progress: totalSource > 0 ? Math.round((completed / totalSource) * 100) : 0,
+    actionUrl: '/employees?tab=year-review',
+    actionLabel: 'بدء المراجعة',
+    urgency: 'due_soon',
+    estimatedTime: '30 min',
+    dependencies: []
+  };
 };
 
 /**
@@ -460,7 +509,15 @@ const calculateNotificationTasks = (notifications) => {
 /**
  * Calculate employee contract data task
  */
+// Disabled 2026-08-06 per manager request: contract data collection is
+// deferred at least two weeks while branches focus on moving employees and
+// beneficiaries to the new year and updating bus data. Flip back to true to
+// bring the task back once that window has passed.
+const EMPLOYEE_CONTRACT_DATA_TASK_ENABLED = false;
+
 const calculateEmployeeContractDataTask = (missingEmployeeContractData) => {
+  if (!EMPLOYEE_CONTRACT_DATA_TASK_ENABLED) return null;
+
   if (!missingEmployeeContractData || missingEmployeeContractData.length === 0) {
     return null;
   }
@@ -862,7 +919,24 @@ const calculatePayrollAbsenceTask = (payrollAbsenceState) => {
 const calculatePriorityScore = (task) => {
   let score = 0;
 
-  // Category order weight (highest = first)
+  // Phase weight (highest = first): the two most urgent things right now,
+  // set 2026-08-06 per manager request, are moving employees/beneficiaries
+  // to the new year and keeping bus data current — both must outrank every
+  // other task regardless of category. Branch setup stays first since
+  // nothing else is actionable without it. Payroll absence, when its entry
+  // window is open, is a short-lived opportunity and keeps absolute top
+  // priority as before.
+  if (task.type === 'payroll_absence' && task.isEntryOpen) {
+    score += 200000; // Way above everything - this is the most critical task when open
+  } else if (task.category === 'setup') {
+    score += 100000;
+  } else if (task.type === 'employee_year_review' || task.type === 'beneficiary_rollover') {
+    score += 90000; // Moving employees/students to the new year
+  } else if (task.category === 'transportation') {
+    score += 80000; // Updating bus data
+  }
+
+  // Category order weight (secondary ordering for everything not covered above)
   // This ensures proper ordering: setup → employees → transportation → documents → payroll → responses
   const categoryOrder = {
     setup: 10000,          // Branch info - always first
@@ -872,14 +946,7 @@ const calculatePriorityScore = (task) => {
     payroll: 3000,         // Payroll - last (except when entry_open)
     responses: 1000        // Notifications - very last
   };
-
-  // Special case for payroll absence:
-  // When entry_open: gets ABSOLUTE HIGHEST priority (above everything - temporary and most important)
-  if (task.type === 'payroll_absence' && task.isEntryOpen) {
-    score += 50000; // Way above everything - this is the most critical task when open
-  } else {
-    score += categoryOrder[task.category] || 0;
-  }
+  score += categoryOrder[task.category] || 0;
 
   // Priority weight (within category)
   const priorityWeights = {
@@ -978,6 +1045,7 @@ export const calculateTasks = ({
   employees = [],
   beneficiaryCount = 0,
   beneficiaryRolloverState = null,
+  employeeYearReviewState = null,
   employeeExpirySummary = null
 }) => {
   const branchId = branchInfo?.id;
@@ -1013,8 +1081,14 @@ export const calculateTasks = ({
   const beneficiaryTask = calculateBeneficiaryTask(branchInfo?.branch_type, beneficiaryCount, beneficiaryRolloverState);
   if (beneficiaryTask) tasks.push(beneficiaryTask);
 
+  // 2.9. Employee year-review task — every branch type, unlike the beneficiary
+  // rollover. Suppresses calculateEmployeeTasks' generic incomplete-data card
+  // while active (see calculateEmployeeTasks).
+  const employeeYearReviewTask = calculateEmployeeYearReviewTask(employeeYearReviewState);
+  if (employeeYearReviewTask) tasks.push(employeeYearReviewTask);
+
   // 3. Employees (Must Do) - Employee related, comes before bus
-  const employeeTasks = calculateEmployeeTasks(incompleteEmployees);
+  const employeeTasks = calculateEmployeeTasks(incompleteEmployees, employeeYearReviewState);
   tasks.push(...employeeTasks);
 
   // 3.5. Employee Expiry Dates
