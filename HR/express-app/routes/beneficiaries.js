@@ -58,7 +58,10 @@ router.get('/', requireManager, async (req, res) => {
             gender,
             enrollment_period,
             page,
-            limit
+            limit,
+            // Live list — a deactivated branch's beneficiaries belong in the
+            // archive view, not here. GET /archive deliberately omits this.
+            active_branches_only: true
         };
 
         // Branch managers can only see their branch data
@@ -240,7 +243,10 @@ router.get('/export', requireMainManager, async (req, res) => {
 
         const filters = {
             term_id,
-            is_archived: is_archived === 'true'
+            is_archived: is_archived === 'true',
+            // Mirrors whichever view is being exported: the live list hides
+            // deactivated branches, the archive export still includes them.
+            active_branches_only: is_archived !== 'true'
         };
         if (branch_id) filters.branch_id = branch_id;
 
@@ -722,8 +728,15 @@ router.get('/staffing-requirements', requireMainManager, async (req, res) => {
                 COUNT(*) FILTER (WHERE b_data.transport_service = true) as transport_service_count,
                 COUNT(*) FILTER (WHERE b_data.physical_therapy = true OR b_data.occupational_therapy = true) as physical_or_occupational_count
             FROM beneficiaries b_data
-            LEFT JOIN branches br ON b_data.branch_id = br.id
-            WHERE b_data.term_id = ${term_id} AND b_data.is_archived = false ${includeFree ? sql`` : sql`AND b_data.free_student IS NOT TRUE`}
+            INNER JOIN branches br ON b_data.branch_id = br.id
+            WHERE b_data.term_id = ${term_id} AND b_data.is_archived = false
+              -- A deactivated branch still had beneficiaries on the day it was
+              -- switched off, and this report compared them against its (now
+              -- zero) staff — reporting a shortfall for every role at a branch
+              -- that no longer operates. Its requirement is not unmet, it does
+              -- not exist.
+              AND br.is_active = true
+              ${includeFree ? sql`` : sql`AND b_data.free_student IS NOT TRUE`}
             GROUP BY b_data.branch_id, br.branch_name
             ORDER BY br.branch_name
         `;
