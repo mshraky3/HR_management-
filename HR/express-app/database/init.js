@@ -210,7 +210,7 @@ export async function initializeDatabase() {
       annual_leave_allowance DECIMAL(10,2),
       other_allowances DECIMAL(10,2),
       data_completion_status VARCHAR(20) DEFAULT 'incomplete' CHECK (data_completion_status IN ('incomplete', 'complete')),
-      status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'pending', 'terminated', 'resigned', 'contract_ended', 'non_renewal', 'other')),
+      status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'pending', 'terminated', 'terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other')),
       status_changed_at TIMESTAMP,
       status_changed_by INTEGER,
       status_change_reason TEXT,
@@ -1516,18 +1516,20 @@ export async function initializeDatabase() {
           'Dropped old unique constraint from bus_students'
         );
 
-        // Add new unique constraint with term_id (if not exists)
+        // Duplicate-rider key: scoped to the rider's NAME, not their contact
+        // phone. A phone identifies a family, not a student — keying on it
+        // rejected the second sibling assigned to the same bus. See migration
+        // 023. This must stay in sync with that migration: init runs on every
+        // boot, so re-adding the old phone-based constraint here would undo
+        // the migration the next time the server starts.
         await executeQuery(
-          `DO $$
-           BEGIN
-             IF NOT EXISTS (
-               SELECT 1 FROM pg_constraint 
-               WHERE conname = 'bus_students_bus_contact_term_unique'
-             ) THEN
-               ALTER TABLE bus_students ADD CONSTRAINT bus_students_bus_contact_term_unique UNIQUE(bus_id, contact_mobile_number, term_id);
-             END IF;
-           END $$;`,
-          'Added new unique constraint with term_id to bus_students'
+          `ALTER TABLE bus_students DROP CONSTRAINT IF EXISTS bus_students_bus_contact_term_unique`,
+          'Dropped phone-based unique constraint from bus_students'
+        );
+        await executeQuery(
+          `CREATE UNIQUE INDEX IF NOT EXISTS bus_students_bus_term_name_unique
+             ON bus_students (bus_id, term_id, LOWER(TRIM(student_full_name)))`,
+          'Added name-based unique index to bus_students'
         );
 
         // Add foreign key (if not exists)
@@ -1690,7 +1692,7 @@ export async function initializeDatabase() {
       civil_id VARCHAR(20) NOT NULL,
       contact_number VARCHAR(20) NOT NULL,
       gender VARCHAR(10) NOT NULL CHECK (gender IN ('ذكر', 'أنثى')),
-      age INTEGER NOT NULL CHECK (age BETWEEN 1 AND 50),
+      age INTEGER NOT NULL CHECK (age BETWEEN 1 AND 60),
       speech_therapy BOOLEAN NOT NULL DEFAULT false,
       physical_therapy BOOLEAN NOT NULL DEFAULT false,
       occupational_therapy BOOLEAN NOT NULL DEFAULT false,
@@ -1782,6 +1784,80 @@ export async function initializeDatabase() {
       );
     } catch (error) {
       log.error('Error creating beneficiary_review_confirmations table:', error.message);
+      // Don't throw - allow database to continue initializing
+    }
+
+    // ==========================================
+    // Employee year transition (see migration 021)
+    // One row per (employee, year) recording the continue/leave decision, the
+    // leaving reason, and a snapshot of missing data at decision time. A separate
+    // table because employees are a single row mutated in place across years —
+    // status_change_reason is overwritten by the NEXT status change, so it cannot
+    // carry a permanent per-year record the way this table does.
+    // ==========================================
+    try {
+      await createTable('employee_year_transitions', `
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        year_label VARCHAR(20) NOT NULL,
+        previous_year_label VARCHAR(20),
+        decision VARCHAR(20) NOT NULL CHECK (decision IN ('continuing', 'leaving')),
+        leaving_status VARCHAR(50),
+        leaving_reason TEXT,
+        data_reviewed BOOLEAN NOT NULL DEFAULT false,
+        missing_fields JSONB,
+        missing_documents JSONB,
+        decided_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        decided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        decided_by_branch_id INTEGER REFERENCES branches(id) ON DELETE SET NULL,
+        decided_by_label VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (employee_id, year_label),
+        CHECK (decision <> 'leaving' OR leaving_status IS NOT NULL)
+      `);
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_eyt_branch_year ON employee_year_transitions(branch_id, year_label)',
+        'Created index on employee_year_transitions(branch_id, year_label)'
+      );
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_eyt_employee ON employee_year_transitions(employee_id)',
+        'Created index on employee_year_transitions(employee_id)'
+      );
+    } catch (error) {
+      log.error('Error creating employee_year_transitions table:', error.message);
+      // Don't throw - allow database to continue initializing
+    }
+
+    // ==========================================
+    // Per-branch confirmation that the new-year employee review is 100% done
+    // ==========================================
+    try {
+      await createTable('employee_review_confirmations', `
+        id SERIAL PRIMARY KEY,
+        branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        year_label VARCHAR(20) NOT NULL,
+        previous_year_label VARCHAR(20),
+        confirmed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        confirmed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        confirmed_by_branch_id INTEGER REFERENCES branches(id) ON DELETE SET NULL,
+        confirmed_by_label VARCHAR(255),
+        confirmation_count INTEGER NOT NULL DEFAULT 1,
+        total_continuing INTEGER NOT NULL DEFAULT 0,
+        total_leaving INTEGER NOT NULL DEFAULT 0,
+        total_new_hires INTEGER NOT NULL DEFAULT 0,
+        note TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (branch_id, year_label)
+      `);
+      await executeQuery(
+        'CREATE INDEX IF NOT EXISTS idx_erc_year ON employee_review_confirmations(year_label)',
+        'Created index on employee_review_confirmations(year_label)'
+      );
+    } catch (error) {
+      log.error('Error creating employee_review_confirmations table:', error.message);
       // Don't throw - allow database to continue initializing
     }
 

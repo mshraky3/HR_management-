@@ -234,74 +234,50 @@ export const BusStudent = {
   },
 
   /**
-   * Check if a student (by name and phone) exists in another bus within the same branch/term
-   * Used to prevent the same student from being registered in multiple buses
+   * Check if a student already rides another bus within the same branch/term.
+   * Used to stop the same rider being registered on two buses at once.
+   *
+   * Matches on normalised NAME only. It used to also require an exact
+   * contact_mobile_number match, which made the check almost unable to fire:
+   * the same person's phone is stored in whatever format it was typed in, so
+   * one real rider in branch 9 sits on two buses in term 4 today under
+   * '966500724252' and '0500724252' (their beneficiary record has a third
+   * spelling, '500724252'). Same student, three strings, no match, no warning.
+   *
+   * Name alone is also the rule the rest of the system already applies: it is
+   * the unique key from migration 023 (bus_id, term_id, normalised name), the
+   * join in findRolloverCandidates, and what setBeneficiaryBus deletes on when
+   * it moves a rider between buses. Phone belongs to the family — siblings
+   * share it — so it never identified anyone in the first place.
+   *
    * @param {string} studentName - The student's full name
-   * @param {string} phoneNumber - The contact phone number
    * @param {number} branchId - The branch ID to check within
    * @param {number} termId - The term ID to check within
    * @param {number|null} excludeBusId - Bus ID to exclude (for current bus)
    * @param {number|null} excludeStudentId - Student ID to exclude (for updates)
    * @returns {Promise<object|null>} - The existing student record if found, null otherwise
    */
-  async findDuplicateInOtherBus(studentName, phoneNumber, branchId, termId, excludeBusId = null, excludeStudentId = null) {
+  async findDuplicateInOtherBus(studentName, branchId, termId, excludeBusId = null, excludeStudentId = null) {
     try {
-      // Normalize name for comparison (trim and lowercase)
       const normalizedName = studentName?.trim().toLowerCase();
+      if (!normalizedName) return null;
 
-      let result;
-      if (excludeBusId && excludeStudentId) {
-        result = await sql`
-          SELECT bs.*, bt.bus_number, lpd.plate_number as primary_plate
-          FROM bus_students bs
-          INNER JOIN bus_transportation bt ON bs.bus_id = bt.id
-          LEFT JOIN (
-            SELECT bus_id, plate_number
-            FROM license_plate_data
-            WHERE is_primary = true
-          ) lpd ON bt.id = lpd.bus_id
-          WHERE LOWER(TRIM(bs.student_full_name)) = ${normalizedName}
-            AND bs.contact_mobile_number = ${phoneNumber}
-            AND bt.branch_id = ${branchId}
-            AND bs.term_id = ${termId}
-            AND bs.bus_id != ${excludeBusId}
-            AND bs.id != ${excludeStudentId}
-          LIMIT 1
-        `;
-      } else if (excludeBusId) {
-        result = await sql`
-          SELECT bs.*, bt.bus_number, lpd.plate_number as primary_plate
-          FROM bus_students bs
-          INNER JOIN bus_transportation bt ON bs.bus_id = bt.id
-          LEFT JOIN (
-            SELECT bus_id, plate_number
-            FROM license_plate_data
-            WHERE is_primary = true
-          ) lpd ON bt.id = lpd.bus_id
-          WHERE LOWER(TRIM(bs.student_full_name)) = ${normalizedName}
-            AND bs.contact_mobile_number = ${phoneNumber}
-            AND bt.branch_id = ${branchId}
-            AND bs.term_id = ${termId}
-            AND bs.bus_id != ${excludeBusId}
-          LIMIT 1
-        `;
-      } else {
-        result = await sql`
-          SELECT bs.*, bt.bus_number, lpd.plate_number as primary_plate
-          FROM bus_students bs
-          INNER JOIN bus_transportation bt ON bs.bus_id = bt.id
-          LEFT JOIN (
-            SELECT bus_id, plate_number
-            FROM license_plate_data
-            WHERE is_primary = true
-          ) lpd ON bt.id = lpd.bus_id
-          WHERE LOWER(TRIM(bs.student_full_name)) = ${normalizedName}
-            AND bs.contact_mobile_number = ${phoneNumber}
-            AND bt.branch_id = ${branchId}
-            AND bs.term_id = ${termId}
-          LIMIT 1
-        `;
-      }
+      const result = await sql`
+        SELECT bs.*, bt.bus_number, lpd.plate_number as primary_plate
+        FROM bus_students bs
+        INNER JOIN bus_transportation bt ON bs.bus_id = bt.id
+        LEFT JOIN (
+          SELECT bus_id, plate_number
+          FROM license_plate_data
+          WHERE is_primary = true
+        ) lpd ON bt.id = lpd.bus_id
+        WHERE LOWER(TRIM(bs.student_full_name)) = ${normalizedName}
+          AND bt.branch_id = ${branchId}
+          AND bs.term_id = ${termId}
+          ${excludeBusId ? sql`AND bs.bus_id != ${excludeBusId}` : sql``}
+          ${excludeStudentId ? sql`AND bs.id != ${excludeStudentId}` : sql``}
+        LIMIT 1
+      `;
       return result[0] || null;
     } catch (error) {
       log.error('Error checking for duplicate student in other bus', { error: error.message });

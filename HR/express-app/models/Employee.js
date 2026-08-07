@@ -421,20 +421,50 @@ export const Employee = {
       // Ensure status is set to 'active' for new employees (unless explicitly provided)
       const employeeStatus = status || 'active';
 
+      // Stamp the year a new hire belongs to. Historically this was left NULL for
+      // every employee (nothing ever wrote it), which made "who was here in
+      // 25-26" unanswerable. New hires are, by definition, hired for whichever
+      // year/term the branch is currently PREPARING, so resolve it here instead
+      // of requiring every caller to pass it. Callers can still override.
+      //
+      // getPreparationAcademicYear, not getCurrentAcademicYearWithState: during
+      // the between-years window is_current still points at the year that just
+      // ended, and stamping a new hire with THAT year makes them reappear in the
+      // new-year review as an undecided carry-over candidate, keeps them out of
+      // the "new hires" count, and blocks the branch from confirming. The
+      // year-review resolves its target year through the same helper.
+      let academicYear = employeeData.academic_year;
+      let registrationTermId = employeeData.registration_term_id;
+      if (academicYear === undefined || registrationTermId === undefined) {
+        const [branch] = await db`SELECT branch_type FROM branches WHERE id = ${branch_id}`;
+        if (branch?.branch_type) {
+          const { getPreparationAcademicYear, getCurrentTermWithState } = await import('../services/termLifecycleService.js');
+          if (academicYear === undefined) {
+            const { year } = await getPreparationAcademicYear(branch.branch_type);
+            academicYear = year?.year_label || null;
+          }
+          if (registrationTermId === undefined) {
+            const { term } = await getCurrentTermWithState(branch.branch_type);
+            registrationTermId = term?.id || null;
+          }
+        }
+      }
+
       const [employee] = await db`
         INSERT INTO employees (
           employee_id_number, branch_id, first_name, second_name, third_name, fourth_name,
           occupation, nationality, date_of_birth_hijri, date_of_birth_gregorian,
           id_or_residency_number, id_type, gender, id_expiry_date_hijri, id_expiry_date_gregorian,
           religion, marital_status, educational_qualification, specialization,
-          bank_iban, bank_name, email, phone_number, national_address, contract_type, 
+          bank_iban, bank_name, email, phone_number, national_address, contract_type,
           contract_start_date_hijri, contract_start_date_gregorian, contract_end_date_hijri, contract_end_date_gregorian,
           years_of_experience_in_same_institution, years_of_experience_in_company,
           base_salary, housing_allowance, transportation_allowance,
           end_of_service_allowance, annual_leave_allowance, other_allowances,
           graduation_year, university_gpa,
           passport_number, passport_issue_date, passport_expiry_date, passport_issue_place, residency_issue_date,
-          job_title, data_completion_status, status, created_by, updated_by
+          job_title, data_completion_status, status, created_by, updated_by,
+          academic_year, registration_term_id, current_term_id
         )
         VALUES (
           ${employee_id_number || null}, ${branch_id}, ${first_name}, ${second_name}, ${third_name}, ${fourth_name},
@@ -442,19 +472,20 @@ export const Employee = {
           ${id_or_residency_number}, ${id_type || null}, ${gender || null}, ${id_expiry_date_hijri || null}, ${id_expiry_date_gregorian || null},
           ${religion || null}, ${marital_status || null}, ${educational_qualification || null}, ${specialization || null},
           ${bank_iban || null}, ${bank_name || null}, ${email || null}, ${phone_number || null},
-          ${national_address || null}, ${contract_type || null}, 
-          ${contract_start_date_hijri || null}, ${contract_start_date_gregorian || null}, 
+          ${national_address || null}, ${contract_type || null},
+          ${contract_start_date_hijri || null}, ${contract_start_date_gregorian || null},
           ${contract_end_date_hijri || null}, ${contract_end_date_gregorian || null},
           ${years_of_experience_in_same_institution !== undefined && years_of_experience_in_same_institution !== null ? years_of_experience_in_same_institution : 0}, ${years_of_experience_in_company !== undefined && years_of_experience_in_company !== null ? years_of_experience_in_company : 0},
-          ${base_salary !== undefined && base_salary !== null ? base_salary : 0}, 
-          ${housing_allowance !== undefined && housing_allowance !== null ? housing_allowance : 0}, 
+          ${base_salary !== undefined && base_salary !== null ? base_salary : 0},
+          ${housing_allowance !== undefined && housing_allowance !== null ? housing_allowance : 0},
           ${transportation_allowance !== undefined && transportation_allowance !== null ? transportation_allowance : 0},
-          ${end_of_service_allowance !== undefined && end_of_service_allowance !== null ? end_of_service_allowance : 0}, 
-          ${annual_leave_allowance !== undefined && annual_leave_allowance !== null ? annual_leave_allowance : 0}, 
+          ${end_of_service_allowance !== undefined && end_of_service_allowance !== null ? end_of_service_allowance : 0},
+          ${annual_leave_allowance !== undefined && annual_leave_allowance !== null ? annual_leave_allowance : 0},
           ${other_allowances !== undefined && other_allowances !== null ? other_allowances : 0},
           ${graduation_year || null}, ${university_gpa || null},
           ${passport_number || null}, ${passport_issue_date || null}, ${passport_expiry_date || null}, ${passport_issue_place || null}, ${residency_issue_date || null},
-          ${job_title || null}, ${data_completion_status || 'incomplete'}, ${employeeStatus}, ${created_by}, ${finalUpdatedBy}
+          ${job_title || null}, ${data_completion_status || 'incomplete'}, ${employeeStatus}, ${created_by}, ${finalUpdatedBy},
+          ${academicYear || null}, ${registrationTermId || null}, ${registrationTermId || null}
         )
         RETURNING *
       `;
@@ -787,11 +818,15 @@ export const Employee = {
   /**
    * Renew employee (pending -> active)
    * Also updates is_active to true
+   *
+   * Kept for the legacy per-employee detail-page renewal button
+   * (POST /:id/renew), which only ever acts on an employee already in
+   * 'pending' — i.e. after the main manager's year-end sweep ran.
    */
   async renewEmployee(id, academicYear, termId, updatedBy) {
     try {
       const [employee] = await sql`
-        UPDATE employees 
+        UPDATE employees
         SET status = 'active',
             is_active = true,
             academic_year = ${academicYear},
@@ -807,6 +842,74 @@ export const Employee = {
       return employee;
     } catch (error) {
       log.error('Error renewing employee', { error: error.message });
+      throw error;
+    }
+  },
+
+  /**
+   * Renew an employee for the new academic year, during the preparation window.
+   *
+   * Unlike renewEmployee (which requires status='pending', i.e. only after the
+   * main manager's year-end sweep), this has no status restriction — a branch
+   * can renew someone during the preparation window (status 'active'/'pending')
+   * AND reverse an earlier "leaving" decision back to "continuing", which
+   * arrives here with an already-archived status (e.g. 'resigned'). Gating on
+   * status IN ('active','pending') would make that reversal a silent no-op:
+   * the WHERE clause simply matches nothing and RETURNING * yields null, while
+   * the caller's transition-row upsert still reports success. Takes a db
+   * handle so the caller's transaction owns the write.
+   */
+  async renewForYear(tx, id, { yearLabel, termId, actorUserId }) {
+    const [employee] = await tx`
+      UPDATE employees
+      SET status = 'active',
+          is_active = true,
+          academic_year = ${yearLabel},
+          current_term_id = ${termId},
+          registration_term_id = COALESCE(registration_term_id, ${termId}),
+          status_changed_at = CURRENT_TIMESTAMP,
+          status_changed_by = ${actorUserId},
+          status_change_reason = 'تجديد العقد',
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${id}
+      RETURNING *
+    `;
+    return employee || null;
+  },
+
+  /**
+   * Employees a branch is reviewing for the new year: everyone still
+   * undecided (active/pending, not yet stamped with the target year) UNION
+   * everyone who already has a decision recorded for this year.
+   *
+   * The second half of that OR is what keeps a "continuing" employee in this
+   * list at all: deciding "continuing" stamps academic_year with the target
+   * year immediately (renewForYear), which would otherwise make them vanish
+   * from a plain "not yet stamped" filter the moment they're decided — taking
+   * Step 2 (review their data) out of reach on the very next refresh. Brand
+   * new hires (created directly for the target year, never decided) have
+   * neither condition true and are correctly excluded — there is nothing to
+   * carry over for them.
+   */
+  async findYearReviewCandidates(branchId, yearLabel) {
+    try {
+      return await sql`
+        SELECT e.*, b.branch_name, b.branch_type,
+               t.decision, t.leaving_status, t.leaving_reason, t.data_reviewed,
+               t.missing_fields, t.missing_documents, t.decided_at, t.decided_by_label
+        FROM employees e
+        JOIN branches b ON b.id = e.branch_id
+        LEFT JOIN employee_year_transitions t
+               ON t.employee_id = e.id AND t.year_label = ${yearLabel}
+        WHERE e.branch_id = ${branchId}
+          AND (
+            (e.status IN ('active', 'pending') AND (e.academic_year IS NULL OR e.academic_year <> ${yearLabel}))
+            OR t.employee_id IS NOT NULL
+          )
+        ORDER BY e.first_name, e.id
+      `;
+    } catch (error) {
+      log.error('Error finding year review candidates', { error: error.message });
       throw error;
     }
   },
@@ -966,30 +1069,49 @@ export const Employee = {
    */
   async transferToBranch(employeeId, newBranchId, transferredBy) {
     try {
-      // Get old branch_id
-      const [emp] = await sql`SELECT branch_id FROM employees WHERE id = ${employeeId}`;
-      if (!emp) throw new Error('Employee not found');
-      const oldBranchId = emp.branch_id;
+      // One transaction: a half-applied transfer (branch_id moved, primary flag
+      // not) leaves the employee owned by one branch and flagged primary at
+      // another, which the scoped queries disagree about.
+      const oldBranchId = await sql.begin(async tx => {
+        const [emp] = await tx`SELECT branch_id FROM employees WHERE id = ${employeeId} FOR UPDATE`;
+        if (!emp) throw new Error('Employee not found');
 
-      // Update the main branch_id
-      await sql`
-        UPDATE employees
-        SET branch_id = ${newBranchId}, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ${employeeId}
-      `;
+        // Update the main branch_id
+        await tx`
+          UPDATE employees
+          SET branch_id = ${newBranchId}, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ${employeeId}
+        `;
 
-      // Remove old primary flag
-      await sql`
-        UPDATE employee_branches SET is_primary = false
-        WHERE employee_id = ${employeeId} AND is_primary = true
-      `;
+        // The year-review scopes by employees.branch_id, so a transfer moves
+        // the employee into the receiving branch's queue — but their existing
+        // transition row kept pointing at the old branch. markEmployeeDataReviewed
+        // filters on THIS column, so "تم التحقق" silently matched zero rows while
+        // still reporting success, and pending_review never dropped: the new
+        // branch could never confirm, and the screen told them they were done.
+        // decided_by_branch_id still records who actually made the call, so the
+        // audit trail survives moving ownership.
+        await tx`
+          UPDATE employee_year_transitions
+          SET branch_id = ${newBranchId}, updated_at = CURRENT_TIMESTAMP
+          WHERE employee_id = ${employeeId} AND branch_id <> ${newBranchId}
+        `;
 
-      // Upsert the new branch link and set as primary
-      await sql`
-        INSERT INTO employee_branches (employee_id, branch_id, is_primary, added_by)
-        VALUES (${employeeId}, ${newBranchId}, true, ${transferredBy})
-        ON CONFLICT (employee_id, branch_id) DO UPDATE SET is_primary = true
-      `;
+        // Remove old primary flag
+        await tx`
+          UPDATE employee_branches SET is_primary = false
+          WHERE employee_id = ${employeeId} AND is_primary = true
+        `;
+
+        // Upsert the new branch link and set as primary
+        await tx`
+          INSERT INTO employee_branches (employee_id, branch_id, is_primary, added_by)
+          VALUES (${employeeId}, ${newBranchId}, true, ${transferredBy})
+          ON CONFLICT (employee_id, branch_id) DO UPDATE SET is_primary = true
+        `;
+
+        return emp.branch_id;
+      });
 
       log.info('Employee transferred', { employeeId, oldBranchId, newBranchId, transferredBy });
       return await this.findById(employeeId);

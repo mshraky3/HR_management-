@@ -171,11 +171,54 @@ const Beneficiary = {
     },
 
     /**
-     * Update a beneficiary
+     * Update a beneficiary.
+     *
+     * Runs in a transaction because a name change has to carry to bus_students
+     * as well: that table has no FK to beneficiaries and is linked purely by
+     * normalised name (see setBeneficiaryBus / findRolloverCandidates). Renaming
+     * here alone would leave the seat stranded under the old spelling — the
+     * beneficiary silently reads as "transport service, no bus", and the seat
+     * belongs to nobody. Correcting a misspelled name is exactly what branches
+     * do during the year rollover, so this is a routine path, not an edge case.
      */
     async update(id, data) {
         try {
-            const [row] = await sql`
+            return await sql.begin(async tx => {
+                const [before] = await tx`
+                    SELECT branch_id, term_id, beneficiary_name FROM beneficiaries WHERE id = ${id}
+                `;
+                if (!before) return null;
+
+                const row = await this.updateRow(tx, id, data);
+
+                const oldName = (before.beneficiary_name || '').trim().toLowerCase();
+                const newName = (data.beneficiary_name || '').trim();
+                if (newName && newName.toLowerCase() !== oldName) {
+                    await tx`
+                        UPDATE bus_students bs
+                        SET student_full_name = ${newName}, updated_at = CURRENT_TIMESTAMP
+                        FROM bus_transportation bt
+                        WHERE bs.bus_id = bt.id
+                          AND bt.branch_id = ${before.branch_id}
+                          AND bs.term_id = ${before.term_id}
+                          AND LOWER(TRIM(bs.student_full_name)) = ${oldName}
+                    `;
+                }
+
+                return row;
+            });
+        } catch (error) {
+            log.error('Error updating beneficiary:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * The bare UPDATE behind update(). Split out so it can run inside a caller's
+     * transaction; go through update() unless you are already holding one.
+     */
+    async updateRow(tx, id, data) {
+        const [row] = await tx`
         UPDATE beneficiaries SET
           beneficiary_number = ${data.beneficiary_number},
           enrollment_period = ${data.enrollment_period},
@@ -198,22 +241,49 @@ const Beneficiary = {
         WHERE id = ${id}
         RETURNING *
       `;
-            return row || null;
-        } catch (error) {
-            log.error('Error updating beneficiary:', error);
-            throw error;
-        }
+        return row || null;
     },
 
     /**
-     * Delete a beneficiary
+     * Delete a beneficiary, re-opening the rollover decision behind them.
+     *
+     * Deleting a carried-over row used to strand its source: the source stayed
+     * continuity_status = 'continuing' and archived, while the row it was
+     * supposed to have become no longer existed. Nothing caught that — the
+     * wizard reads "decided AND target not pending" as finished, and NULL is
+     * not 'pending', so the beneficiary showed as ✅ done; getRolloverStatus
+     * counts undecided on the source and pending_review on target rows, so both
+     * read zero and the branch could confirm 100% with someone missing from the
+     * new year entirely.
+     *
+     * Clearing the decision puts them back at the top of the review as
+     * undecided, which is the honest state: the branch said "continuing", then
+     * removed the result, so the question is open again.
      */
     async delete(id) {
         try {
-            const [row] = await sql`
-        DELETE FROM beneficiaries WHERE id = ${id} RETURNING *
-      `;
-            return row || null;
+            return await sql.begin(async tx => {
+                const [row] = await tx`
+                    DELETE FROM beneficiaries WHERE id = ${id} RETURNING *
+                `;
+                if (!row) return null;
+
+                if (row.carried_from_beneficiary_id) {
+                    await tx`
+                        UPDATE beneficiaries
+                        SET continuity_status = NULL,
+                            non_continuation_reason = NULL,
+                            continuity_decided_at = NULL,
+                            continuity_decided_by = NULL,
+                            continuity_decided_by_branch_id = NULL,
+                            is_archived = false,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ${row.carried_from_beneficiary_id}
+                    `;
+                }
+
+                return row;
+            });
         } catch (error) {
             log.error('Error deleting beneficiary:', error);
             throw error;
@@ -514,6 +584,16 @@ const Beneficiary = {
      * the row it was carried into (if any) and to its bus assignment in the target
      * term. bus_students has no FK to beneficiaries, so the link is by normalised
      * name — the same rule the import/assign endpoints already use.
+     *
+     * The seat lookup is a LATERAL, not a plain LEFT JOIN, for two reasons. The
+     * branch predicate lives on bus_transportation, so joining bus_students
+     * first and filtering the bus afterwards does NOT drop a foreign branch's
+     * row — it only nulls the bus_number, leaving the candidate duplicated once
+     * per same-named rider anywhere in the system, with someone else's
+     * assigned_bus_id attached. Names are only unique *within* a branch, so with
+     * 20 branches seating riders in one shared term that collision is a matter
+     * of time. LIMIT 1 also guarantees one row per candidate no matter what the
+     * seat data looks like.
      */
     async findRolloverCandidates(branchId, sourceTermId, targetTermId) {
         try {
@@ -526,18 +606,25 @@ const Beneficiary = {
                     -- Full target row so the review step can prefill every field
                     -- without a second round-trip per beneficiary.
                     row_to_json(tgt.*) AS target,
-                    bs.id AS bus_student_id,
-                    bs.bus_id AS assigned_bus_id,
-                    bt.bus_number AS bus_number
+                    seat.bus_student_id,
+                    seat.assigned_bus_id,
+                    seat.bus_number
                 FROM beneficiaries src
                 LEFT JOIN beneficiaries tgt
                        ON tgt.carried_from_beneficiary_id = src.id
-                LEFT JOIN bus_students bs
-                       ON bs.term_id = ${targetTermId}
-                      AND LOWER(TRIM(bs.student_full_name)) = LOWER(TRIM(tgt.beneficiary_name))
-                LEFT JOIN bus_transportation bt
-                       ON bt.id = bs.bus_id
+                LEFT JOIN LATERAL (
+                    SELECT bs.id AS bus_student_id,
+                           bs.bus_id AS assigned_bus_id,
+                           bt.bus_number
+                    FROM bus_students bs
+                    INNER JOIN bus_transportation bt ON bt.id = bs.bus_id
+                    WHERE bs.term_id = ${targetTermId}
                       AND bt.branch_id = src.branch_id
+                      AND tgt.id IS NOT NULL
+                      AND LOWER(TRIM(bs.student_full_name)) = LOWER(TRIM(tgt.beneficiary_name))
+                    ORDER BY bs.id
+                    LIMIT 1
+                ) seat ON true
                 WHERE src.branch_id = ${branchId}
                   AND src.term_id = ${sourceTermId}
                 ORDER BY src.sequence_number
