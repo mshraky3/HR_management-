@@ -145,17 +145,78 @@ export const getRolloverStatus = async (branchId, { targetTermId } = {}) => {
         WHERE branch_id = ${branchId} AND term_id = ${targetTerm.id}
     `;
 
-    const [busCounts] = await sql`
+    // Buses carry themselves over. Branches reuse and update last year's fleet
+    // rather than re-entering it, and ~91% of beneficiaries have transport, so
+    // the bus step fires for almost everyone — making a manual "carry the buses"
+    // press a prerequisite for nearly the whole review. A branch that never
+    // found the button would review its beneficiaries with an empty bus list,
+    // silently skip the seat step, and only discover it in the advisory warning
+    // at the very end.
+    //
+    // This is the one place every surface (dashboard task, beneficiaries page,
+    // confirm panel) already goes through, so it is the one place that can
+    // guarantee it happened. carryOverBuses is idempotent — UNIQUE(branch_id,
+    // bus_number, term_id) is the skip key — and the target_buses = 0 guard
+    // means it stops running the moment the branch has any bus of its own in
+    // the new term. Failures are swallowed: a bus problem must never take down
+    // the status read that the whole review renders from.
+    let [busCounts] = await sql`
         SELECT COUNT(*)::int AS target_buses
         FROM bus_transportation
         WHERE branch_id = ${branchId} AND term_id = ${targetTerm.id}
+    `;
+
+    if (busCounts.target_buses === 0 && sourceTerm) {
+        try {
+            const carried = await carryOverBuses({
+                branchId, sourceTermId: sourceTerm.id, targetTermId: targetTerm.id, actor: null
+            });
+            if (carried.copied > 0) {
+                log.info('Auto-carried buses into the new term', {
+                    branchId, targetTermId: targetTerm.id, copied: carried.copied
+                });
+                [busCounts] = await sql`
+                    SELECT COUNT(*)::int AS target_buses
+                    FROM bus_transportation
+                    WHERE branch_id = ${branchId} AND term_id = ${targetTerm.id}
+                `;
+            }
+        } catch (error) {
+            log.error('Auto bus carry-over failed', { branchId, targetTermId: targetTerm.id, error: error.message });
+        }
+    }
+
+    // Advisory only — deliberately NOT part of blockingReason. Saving the review
+    // form marks a beneficiary "reviewed" independently of the separate bus-seat
+    // call, so someone with transport_service can end up reviewed with no seat
+    // (the bus step is skipped entirely when the branch has not carried its buses
+    // over yet). Nothing else would ever surface that, so the confirm step shows
+    // it as a warning. Queried over the whole target term, not just carried-over
+    // rows, so beneficiaries added new to this term count too.
+    const [transportGap] = await sql`
+        SELECT COUNT(*)::int AS n,
+               (ARRAY_AGG(b.beneficiary_name ORDER BY b.sequence_number))[1:5] AS names
+        FROM beneficiaries b
+        WHERE b.branch_id = ${branchId}
+          AND b.term_id = ${targetTerm.id}
+          AND b.is_archived = false
+          AND b.transport_service = true
+          AND NOT EXISTS (
+            SELECT 1 FROM bus_students bs
+            INNER JOIN bus_transportation bt ON bt.id = bs.bus_id
+            WHERE bs.term_id = b.term_id
+              AND bt.branch_id = b.branch_id
+              AND LOWER(TRIM(bs.student_full_name)) = LOWER(TRIM(b.beneficiary_name))
+          )
     `;
 
     const counts = {
         ...sourceCounts,
         ...targetCounts,
         decided: sourceCounts.continuing + sourceCounts.not_continuing,
-        target_buses: busCounts.target_buses
+        target_buses: busCounts.target_buses,
+        transport_without_bus: transportGap.n,
+        transport_without_bus_names: transportGap.names || []
     };
     delete counts.last_change_at;
 
@@ -223,6 +284,16 @@ export const carryOverBuses = async ({ branchId, sourceTermId, targetTermId, act
     const createdBy = actorUserId(actor);
 
     return sql.begin(async tx => {
+        // Serialise concurrent carries for the same branch+term. Now that this
+        // runs automatically from getRolloverStatus, two page loads landing
+        // together (the dashboard and the beneficiaries page both read status)
+        // would each see zero buses, both build the same skip set, and the
+        // slower one would hit UNIQUE(branch_id, bus_number, term_id) and abort
+        // its whole transaction. Harmless — it retries on the next read — but
+        // guaranteed to happen the morning 20 branches log in at once, and an
+        // advisory lock is cheaper than the failed transaction it prevents.
+        await tx`SELECT pg_advisory_xact_lock(${sequenceLockKey(branchId, targetTermId)})`;
+
         const sourceBuses = await tx`
             SELECT id, bus_number FROM bus_transportation
             WHERE branch_id = ${branchId} AND term_id = ${sourceTermId}
@@ -458,7 +529,21 @@ export const applyDecisions = async ({ branchId, targetTermId, decisions, actor 
                         targetTermId: targetTerm.id,
                         sequenceNumber: nextSeq
                     });
-                    if (target) nextSeq++;
+                    // createFromSource is ON CONFLICT DO NOTHING, so an unexpected
+                    // conflict yields null. Falling through would mark the source
+                    // "continuing" with NO row in the new term — the beneficiary
+                    // silently vanishes, and pending_review (which only counts
+                    // target rows) would not catch it, so the branch could confirm
+                    // 100% with someone missing. Fail this row loudly instead.
+                    if (!target) {
+                        results.push({
+                            beneficiary_id: beneficiaryId,
+                            ok: false,
+                            error: 'تعذر نقل المستفيد إلى الفصل الجديد. يرجى المحاولة مرة أخرى'
+                        });
+                        continue;
+                    }
+                    nextSeq++;
                 }
             } else {
                 skippedReason = 'already_carried';

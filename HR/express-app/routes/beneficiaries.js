@@ -628,7 +628,7 @@ router.post('/rollover/assign-bus', requireManager, async (req, res) => {
         });
     } catch (error) {
         if (error.code === '23505') {
-            return res.status(400).json({ success: false, message: 'يوجد طالب بنفس رقم التواصل مسجل بالفعل في هذه الحافلة' });
+            return res.status(400).json({ success: false, message: 'هذا المستفيد مسجل بالفعل في هذه الحافلة' });
         }
         handleRolloverError(error, req, res, 'فشل في تسجيل المستفيد في الحافلة');
     }

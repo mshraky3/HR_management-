@@ -136,6 +136,41 @@ export const getCurrentAcademicYearWithState = async (branchType) => {
     return { year: null, lifecycleState: 'no_year' };
 };
 
+/**
+ * The academic year a branch is currently PREPARING — which is not always the
+ * one flagged is_current.
+ *
+ * getCurrentAcademicYearWithState trusts the is_current flag first, but the
+ * between-years window is exactly when that flag is stale: the main manager may
+ * not have pressed "end year" yet, so is_current still points at a year whose
+ * calendar dates already ran out. Everything that asks "which year are we
+ * working on right now" — the employee year-review AND the year stamped on a
+ * new hire — must agree, or a branch adding a new employee during the review
+ * stamps them with the OLD year and they resurface as a review candidate.
+ *
+ * Returns { year: null, lifecycleState: 'target_year_ended' } when the current
+ * year has ended and no next year has been created yet.
+ */
+export const getPreparationAcademicYear = async (branchType) => {
+    const { year, lifecycleState } = await getCurrentAcademicYearWithState(branchType);
+    if (!year) return { year: null, lifecycleState: lifecycleState || 'no_year' };
+
+    const hasEnded = new Date(year.year_end) < new Date(new Date().toDateString());
+    if (!hasEnded) return { year, lifecycleState };
+
+    const [nextYear] = await sql`
+    SELECT * FROM academic_years
+    WHERE branch_type = ${branchType}
+      AND is_completed = false
+      AND year_start > ${year.year_end}
+    ORDER BY year_start ASC
+    LIMIT 1
+  `;
+
+    if (nextYear) return { year: nextYear, lifecycleState: 'next_academic_year_by_date' };
+    return { year: null, lifecycleState: 'target_year_ended' };
+};
+
 export const endAcademicYearTransactional = async (yearId, branchType) => {
     ensureBranchType(branchType);
 
@@ -157,6 +192,13 @@ export const endAcademicYearTransactional = async (yearId, branchType) => {
         // status_changed_by is a FK to users(id) (migrations 014/016 repointed it
         // away from branches). This is a system-driven change with no user behind
         // it, so it must stay NULL — status_change_reason carries the provenance.
+        //
+        // The (academic_year IS NULL OR academic_year = year.year_label) guard is
+        // what lets branches complete their employee year-review DURING the
+        // preparation window, before this sweep ever runs. Once a branch renews
+        // someone, their academic_year is stamped with the NEW year's label — if
+        // this sweep did not skip them, pressing "end year" later would silently
+        // flip them back to 'pending' and undo a completed decision.
         const employeesResult = await tx`
       UPDATE employees
       SET status = 'pending',
@@ -169,6 +211,7 @@ export const endAcademicYearTransactional = async (yearId, branchType) => {
       )
       AND status = 'active'
       AND is_active = true
+      AND (academic_year IS NULL OR academic_year = ${year.year_label})
     `;
 
         await tx`

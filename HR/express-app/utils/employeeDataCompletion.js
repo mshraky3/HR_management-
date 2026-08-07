@@ -35,11 +35,16 @@ import { log } from '../utils/logger.js';
 export async function checkEmployeeDataCompletion(employee, options = {}) {
   const missingFields = [];
 
-  // Get branch type
-  const [branch] = await sql`
-    SELECT branch_type FROM branches WHERE id = ${employee.branch_id}
-  `;
-  const branchType = branch?.branch_type || null;
+  // Get branch type — callers checking many employees from the SAME branch
+  // (e.g. the year-transition review) can pass it once via options.branchType
+  // instead of paying one query per employee.
+  let branchType = options.branchType;
+  if (branchType === undefined) {
+    const [branch] = await sql`
+      SELECT branch_type FROM branches WHERE id = ${employee.branch_id}
+    `;
+    branchType = branch?.branch_type || null;
+  }
 
   // Get documents if not provided
   let documents = options.documents;
@@ -175,7 +180,11 @@ export async function checkEmployeeDataCompletion(employee, options = {}) {
   if (!documentTypes.includes('bank_iban')) {
     missingFields.push('مستند الآيبان (مستند مطلوب)');
   }
-  if (!documentTypes.includes('employment_contract')) {
+  // Contract documents are collected in a separate, later push (see the
+  // disabled 'employee-contract-data' dashboard task) — callers reviewing
+  // data right now (e.g. the year-transition flow) can opt out of nagging
+  // for it via options.skipContractDocument.
+  if (!options.skipContractDocument && !documentTypes.includes('employment_contract')) {
     missingFields.push('عقد العمل (مستند مطلوب وأساسي)');
   }
 

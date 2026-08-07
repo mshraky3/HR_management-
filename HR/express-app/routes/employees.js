@@ -689,6 +689,214 @@ router.post(
   },
 );
 
+// ============================================================================
+// New-year employee review
+//
+// Declared here, above router.get('/:id') at line ~2301, so these literal
+// paths are not swallowed by the id route. Mirrors the beneficiary rollover
+// routes in routes/beneficiaries.js.
+// ============================================================================
+
+/**
+ * Resolve which branch a year-review request is about. Branch managers are
+ * pinned to their own branch; main managers may drive any branch by passing
+ * branch_id.
+ */
+const resolveTransitionBranch = (req) => {
+  const requested = req.user.role === "branch_manager"
+    ? req.user.branch_id
+    : (req.body?.branch_id || req.query?.branch_id); // policy-scope:allow-direct
+  const access = resolveBranchAccessFromScope(req.scope, requested);
+  return access.allowed ? parseInt(access.effectiveBranchId, 10) : null;
+};
+
+/** Map a TransitionError onto its response; anything else goes to handleRouteError. */
+const handleTransitionError = async (error, req, res, fallback) => {
+  const { TransitionError } = await import("../services/employeeTransitionService.js");
+  if (error instanceof TransitionError) {
+    return res.status(error.status).json({ success: false, message: error.message, error: error.code });
+  }
+  log.error(fallback, { error: error.message });
+  return handleRouteError(error, req, res, fallback);
+};
+
+/**
+ * GET /api/employees/year-review/status
+ * Counters + confirmation state for the branch's new-year employee review.
+ */
+router.get("/year-review/status", requireManager, async (req, res) => {
+  try {
+    const branchId = resolveTransitionBranch(req);
+    if (!branchId) {
+      return res.status(400).json({ success: false, message: "يجب تحديد الفرع" });
+    }
+    const { getTransitionStatus } = await import("../services/employeeTransitionService.js");
+    const status = await getTransitionStatus(branchId);
+    res.json({ success: true, data: status });
+  } catch (error) {
+    await handleTransitionError(error, req, res, "فشل في جلب حالة مراجعة الموظفين");
+  }
+});
+
+/**
+ * GET /api/employees/year-review/candidates
+ * Last year's employees with their decision and missing-data snapshot.
+ */
+router.get("/year-review/candidates", requireManager, async (req, res) => {
+  try {
+    const branchId = resolveTransitionBranch(req);
+    if (!branchId) {
+      return res.status(400).json({ success: false, message: "يجب تحديد الفرع" });
+    }
+    const { getTransitionCandidates } = await import("../services/employeeTransitionService.js");
+    const rows = await getTransitionCandidates(branchId, { status: req.query.status });
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    await handleTransitionError(error, req, res, "فشل في جلب بيانات المراجعة");
+  }
+});
+
+/**
+ * POST /api/employees/year-review/decide
+ * Apply continue / leaving decisions. Accepts a batch.
+ */
+router.post("/year-review/decide", requireManager, async (req, res) => {
+  try {
+    const branchId = resolveTransitionBranch(req);
+    if (!branchId) {
+      return res.status(400).json({ success: false, message: "يجب تحديد الفرع" });
+    }
+
+    const decisions = Array.isArray(req.body.decisions) ? req.body.decisions : [];
+    if (decisions.length === 0) {
+      return res.status(400).json({ success: false, message: "يجب تحديد قرار واحد على الأقل" });
+    }
+
+    const { applyEmployeeDecisions } = await import("../services/employeeTransitionService.js");
+    const result = await applyEmployeeDecisions({ branchId, decisions, actor: req.user });
+
+    const failure = result.results.find((r) => !r.ok);
+    if (failure && result.counts.applied === 0) {
+      return res.status(400).json({ success: false, message: failure.error, data: result });
+    }
+
+    res.json({
+      success: true,
+      message: `تم حفظ ${result.counts.applied} قرار${result.counts.failed > 0 ? ` (تعذر حفظ ${result.counts.failed})` : ""}`,
+      data: result,
+    });
+  } catch (error) {
+    if (error.code === "23503") {
+      return res.status(400).json({ success: false, message: "الفرع أو الموظف غير موجود" });
+    }
+    await handleTransitionError(error, req, res, "فشل في حفظ قرارات المراجعة");
+  }
+});
+
+/**
+ * POST /api/employees/year-review/mark-reviewed
+ * Confirm employees' data as checked without editing them.
+ */
+router.post("/year-review/mark-reviewed", requireManager, async (req, res) => {
+  try {
+    const branchId = resolveTransitionBranch(req);
+    if (!branchId) {
+      return res.status(400).json({ success: false, message: "يجب تحديد الفرع" });
+    }
+
+    const employeeIds = (Array.isArray(req.body.employee_ids) ? req.body.employee_ids : [])
+      .map((id) => parseInt(id, 10))
+      .filter((id) => !isNaN(id));
+    if (employeeIds.length === 0) {
+      return res.status(400).json({ success: false, message: "يجب تحديد الموظفين" });
+    }
+
+    const { markEmployeeDataReviewed } = await import("../services/employeeTransitionService.js");
+    const result = await markEmployeeDataReviewed({ branchId, employeeIds });
+
+    // Nothing matched: every id was already reviewed, not decided "continuing",
+    // or not this branch's to review. Reporting success here made the screen
+    // tick the employee off while the server still counted them as pending,
+    // which reads as "the confirm button is broken for no reason".
+    if (result.updated === 0) {
+      return res.status(409).json({
+        success: false,
+        message: "تعذر تحديث حالة المراجعة. يرجى تحديث الصفحة والمحاولة مرة أخرى",
+        data: result,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `تمت مراجعة ${result.updated} موظف`,
+      data: result,
+    });
+  } catch (error) {
+    await handleTransitionError(error, req, res, "فشل في تحديث حالة المراجعة");
+  }
+});
+
+/**
+ * POST /api/employees/year-review/confirm
+ * The branch declares its employee updates 100% complete for the year.
+ * A status flag only — nothing is locked afterwards.
+ */
+router.post("/year-review/confirm", requireManager, async (req, res) => {
+  try {
+    const branchId = resolveTransitionBranch(req);
+    if (!branchId) {
+      return res.status(400).json({ success: false, message: "يجب تحديد الفرع" });
+    }
+
+    const { confirmEmployeeReview } = await import("../services/employeeTransitionService.js");
+    const confirmation = await confirmEmployeeReview({
+      branchId,
+      note: req.body.note,
+      actor: req.user,
+    });
+    res.json({
+      success: true,
+      message: "تم تأكيد اكتمال مراجعة بيانات الموظفين",
+      data: confirmation,
+    });
+  } catch (error) {
+    await handleTransitionError(error, req, res, "فشل في تأكيد المراجعة");
+  }
+});
+
+/**
+ * DELETE /api/employees/year-review/confirm
+ * Withdraw a confirmation.
+ */
+router.delete("/year-review/confirm", requireManager, async (req, res) => {
+  try {
+    const branchId = resolveTransitionBranch(req);
+    if (!branchId) {
+      return res.status(400).json({ success: false, message: "يجب تحديد الفرع" });
+    }
+
+    const { unconfirmEmployeeReview } = await import("../services/employeeTransitionService.js");
+    await unconfirmEmployeeReview({ branchId });
+    res.json({ success: true, message: "تم إلغاء التأكيد" });
+  } catch (error) {
+    await handleTransitionError(error, req, res, "فشل في إلغاء التأكيد");
+  }
+});
+
+/**
+ * GET /api/employees/year-review/overview
+ * Per-branch review progress and confirmation status - main manager only.
+ */
+router.get("/year-review/overview", requireMainManager, async (req, res) => {
+  try {
+    const { getEmployeeTransitionOverview } = await import("../services/employeeTransitionService.js");
+    const rows = await getEmployeeTransitionOverview(req.query.year_label, req.query.branch_type);
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    await handleTransitionError(error, req, res, "فشل في جلب حالة الفروع");
+  }
+});
+
 // Get employees with server-side pagination (optimized for large datasets)
 router.get("/paginated", async (req, res) => {
   try {
@@ -3123,6 +3331,31 @@ router.put(
         employee.id,
       );
 
+      // Editing an employee while they have an open "continuing" year-review
+      // decision counts as reviewing them — mirrors how saving a beneficiary's
+      // carried-over row flips its carry_review_status. Never blocks the update.
+      //
+      // Scoped to the year being prepared: without the year_label filter this
+      // flipped data_reviewed on EVERY year's row for that employee, so editing
+      // them once would retroactively mark past years reviewed too. Harmless
+      // while only one year is open, wrong the moment a second one is.
+      try {
+        const { resolveTransitionYears } = await import("../services/employeeTransitionService.js");
+        const { targetYear } = await resolveTransitionYears(employee.branch_id);
+        if (targetYear) {
+          await sql`
+            UPDATE employee_year_transitions
+            SET data_reviewed = true, updated_at = CURRENT_TIMESTAMP
+            WHERE employee_id = ${employee.id}
+              AND year_label = ${targetYear.year_label}
+              AND decision = 'continuing'
+              AND data_reviewed = false
+          `;
+        }
+      } catch (reviewFlagError) {
+        log.warn("Error flagging employee year-transition as reviewed", { error: reviewFlagError.message });
+      }
+
       // Check and update completion status after update
       try {
         log.info("[EMPLOYEE UPDATE] Updating completion status...");
@@ -3292,7 +3525,6 @@ router.put("/:id/status", async (req, res) => {
 router.post("/:id/renew", async (req, res) => {
   try {
     const { Employee } = await import("../models/Employee.js");
-    const { Document } = await import("../models/Document.js");
     const { Branch } = await import("../models/Branch.js");
     const { Term } = await import("../models/Term.js");
     const { AcademicYear } = await import("../models/AcademicYear.js");
@@ -3358,40 +3590,14 @@ router.post("/:id/renew", async (req, res) => {
       });
     }
 
-    // Get employee documents
-    const documents = await Document.findByEmployeeId(employeeId);
-    const documentTypes = documents.map((d) => d.document_type);
-
-    // Validate required documents for renewal
-    const requiredDocs = ["employment_contract", "employment_letter"];
-    if (employee.gender === "female") {
-      requiredDocs.push("medical_examination");
-    }
-
-    const missingDocs = requiredDocs.filter(
-      (docType) =>
-        !documentTypes.includes(docType) &&
-        !documentTypes.includes(docType.replace("_", "_")), // Handle variations
-    );
-
-    // Check if documents are recent (uploaded/updated in last 90 days)
-    const now = new Date();
-    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-
-    const recentDocs = documents.filter((doc) => {
-      if (!requiredDocs.includes(doc.document_type)) return false;
-      const uploadDate = new Date(doc.uploaded_at);
-      return uploadDate >= ninetyDaysAgo;
-    });
-
-    if (missingDocs.length > 0 || recentDocs.length < requiredDocs.length) {
-      return res.status(400).json({
-        success: false,
-        message: `يجب تحديث المستندات التالية: ${requiredDocs.join(", ")}`,
-        missing_documents: missingDocs,
-        required_documents: requiredDocs,
-      });
-    }
+    // Renewal documents are advisory, not a gate. The old hard 90-day rule
+    // (employment_contract + employment_letter, + medical_examination for
+    // females, all re-uploaded within the last 90 days) blocked every single
+    // renewal in production: employment_letter and medical_examination have
+    // never been uploaded for anyone. The branch is told what is missing or
+    // stale; renewal proceeds regardless — see employeeTransitionService.js.
+    const { evaluateRenewalDocuments } = await import("../services/employeeTransitionService.js");
+    const documentStatus = await evaluateRenewalDocuments(employee, currentYear.year_start);
 
     // Renew employee
     // status_changed_by is FK to users(id) — branch managers have no users row, use null
@@ -3409,10 +3615,16 @@ router.post("/:id/renew", async (req, res) => {
       });
     }
 
+    const docWarning = (documentStatus.missing.length > 0 || documentStatus.stale.length > 0)
+      ? `تنبيه: مستندات التجديد التالية غير موجودة أو قديمة: ${[...documentStatus.missing, ...documentStatus.stale].join(', ')}`
+      : null;
+
     res.json({
       success: true,
       message: "تم تجديد عقد الموظف بنجاح",
       data: renewedEmployee,
+      document_warning: docWarning,
+      renewal_documents: documentStatus,
     });
   } catch (error) {
     log.error("Error renewing employee", { error: error.message });

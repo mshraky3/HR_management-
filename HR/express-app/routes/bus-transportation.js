@@ -61,6 +61,29 @@ router.get('/', async (req, res) => {
       filters.branch_id = scopedBranchId;
     }
 
+    // `current_term_only=true` scopes to the branch's current term without the
+    // caller having to know its branch_type first. Callers that only care about
+    // "what does this branch still need to do NOW" (the dashboard task list)
+    // must use it: buses are term-scoped rows, and once a branch carries its
+    // buses into the new year an unfiltered list returns BOTH years' copies, so
+    // the task counts last year's historical buses as still needing completion
+    // — and they can never be completed, because carryOverBuses deliberately
+    // leaves the new copies' documents empty and the buses page only ever shows
+    // one term. Resolves the same term the buses page defaults to
+    // (GET /api/terms/current/:branchType).
+    if (!filters.term_id && req.query.current_term_only === 'true' && filters.branch_id) {
+      const branch = await Branch.findById(filters.branch_id);
+      if (!branch?.branch_type) {
+        return res.json({ success: true, data: [] });
+      }
+      const { getCurrentTermWithState } = await import('../services/termLifecycleService.js');
+      const { term } = await getCurrentTermWithState(branch.branch_type);
+      if (!term) {
+        return res.json({ success: true, data: [] });
+      }
+      filters.term_id = term.id;
+    }
+
     // Branch operations managers only see their assigned branches
     if (req.user.role === 'branch_operations_manager' && req.user.assigned_branches) {
       if (filters.branch_id) {
@@ -950,7 +973,6 @@ router.post('/:id/students', checkBranchAccess, validateRequired(['student_full_
     // Check if student already exists in another bus in the same branch/term
     const duplicateStudent = await BusStudent.findDuplicateInOtherBus(
       student_full_name,
-      contact_mobile_number,
       bus.branch_id,
       term_id,
       busId // exclude current bus
@@ -964,19 +986,20 @@ router.post('/:id/students', checkBranchAccess, validateRequired(['student_full_
       });
     }
 
-    // Check phone number limit (max 2 students per phone number in same branch/term)
-    const phoneCount = await BusStudent.countByPhoneNumber(
-      contact_mobile_number,
-      bus.branch_id,
-      term_id
-    );
-
-    if (phoneCount >= 2) {
-      return res.status(400).json({
-        success: false,
-        message: 'رقم الجوال مسجل بالفعل لطالبين. الحد الأقصى هو طالبين لكل رقم جوال.'
-      });
-    }
+    // No cap on how many riders share a phone number. That rule was the last
+    // remnant of treating a parent's mobile as the STUDENT's identity — the same
+    // assumption migration 023 removed from the unique key, which is now
+    // (bus_id, term_id, normalised name). A phone belongs to the family, not the
+    // child, so capping it at two rejected the third sibling of a family that
+    // already exists in the beneficiaries table: three such families are on
+    // transport right now (branches 6, 11 and 23).
+    //
+    // Nothing is lost by dropping it. The error it was really guarding against —
+    // the same student entered twice — is caught properly by
+    // findDuplicateInOtherBus above (by name, across buses) and by the unique
+    // index within a bus. It was also enforced in only one of the two paths
+    // that create riders: setBeneficiaryBus (the rollover's assign-bus) never
+    // checked it, so the two disagreed about what was legal.
 
     const student = await BusStudent.create({
       ...req.body,
@@ -1030,13 +1053,11 @@ router.put('/:id/students/:studentId', checkBranchAccess, async (req, res) => {
 
     // Get the values to check (use new values if provided, otherwise use existing)
     const nameToCheck = req.body.student_full_name || student.student_full_name;
-    const phoneToCheck = contact_mobile_number || student.contact_mobile_number;
     const termToCheck = term_id || student.term_id;
 
     // Check if this update would create a duplicate in another bus
     const duplicateStudent = await BusStudent.findDuplicateInOtherBus(
       nameToCheck,
-      phoneToCheck,
       bus.branch_id,
       termToCheck,
       student.bus_id, // exclude current bus
@@ -1051,22 +1072,10 @@ router.put('/:id/students/:studentId', checkBranchAccess, async (req, res) => {
       });
     }
 
-    // Check phone number limit if phone is being changed (max 2 students per phone number)
-    if (contact_mobile_number && contact_mobile_number !== student.contact_mobile_number) {
-      const phoneCount = await BusStudent.countByPhoneNumber(
-        contact_mobile_number,
-        bus.branch_id,
-        termToCheck,
-        studentId // Exclude current student from count
-      );
-
-      if (phoneCount >= 2) {
-        return res.status(400).json({
-          success: false,
-          message: 'رقم الجوال مسجل بالفعل لطالبين. الحد الأقصى هو طالبين لكل رقم جوال.'
-        });
-      }
-    }
+    // No phone-number cap here either — see the POST route above for why.
+    // Leaving it on this path alone would have been worse than useless: a
+    // sibling seated through the rollover could not afterwards have their
+    // phone corrected on the buses page.
 
     const updated = await BusStudent.update(studentId, {
       ...req.body,
