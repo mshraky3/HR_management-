@@ -57,13 +57,25 @@ export const getScopedTermFilter = (req) => {
 };
 
 export const resolveBranchAccessFromScope = (scope, requestedBranchId) => {
-    const branchId = toInt(requestedBranchId);
-    if (branchId === null) {
-        return { allowed: false, reason: 'invalid_branch_id', effectiveBranchId: null };
-    }
-
     if (!scope || !scope.user) {
         return { allowed: false, reason: 'missing_scope', effectiveBranchId: null };
+    }
+
+    const branchId = toInt(requestedBranchId);
+
+    if (branchId === null) {
+        // No explicit branch given. Main managers must specify one; other roles
+        // fall back to their own already-resolved branch (mirrors copy-from-term).
+        if (scope.user.role === 'main_manager') {
+            return { allowed: false, reason: 'invalid_branch_id', effectiveBranchId: null };
+        }
+
+        const ownBranchId = scope.branch?.primaryId ?? null;
+        if (ownBranchId === null) {
+            return { allowed: false, reason: 'invalid_branch_id', effectiveBranchId: null };
+        }
+
+        return { allowed: true, reason: null, effectiveBranchId: ownBranchId };
     }
 
     if (scope.user.role === 'main_manager') {
