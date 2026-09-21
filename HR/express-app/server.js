@@ -4,13 +4,15 @@ import dotenv from 'dotenv';
 import compression from 'compression';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { createHash } from 'crypto';
+import { readFileSync, readdirSync } from 'fs';
 
 // Import routes and middleware
 import apiRoutes from './routes/index.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { optionalAuth } from './middleware/auth.js';
 import { resolveRequestScope } from './middleware/requestScope.js';
-import { testConnection } from './config/database.js';
+import sql, { testConnection } from './config/database.js';
 import logger, { httpLogger, log } from './utils/logger.js';
 import { initializeDailyAlerts } from './utils/dailyAlerts.js';
 
@@ -84,9 +86,74 @@ async function initDatabase() {
     const { initializeDatabase } = await import('./database/init.js');
     await initializeDatabase();
     log.info('HRM database tables initialized successfully');
+    return true;
   } catch (error) {
     log.error('Error initializing database', { error: error.message });
     // Don't exit - allow server to start even if tables already exist
+    return false;
+  }
+}
+
+// initializeDatabase() is ~2,000 lines of idempotent DDL, and this file runs it
+// on every cold start - many times a day on Vercel, all billed as Active CPU.
+// Nothing in it changes unless the code does, so a fingerprint of the files
+// that define the schema gates all of it behind a single SELECT. The fingerprint
+// also carries the week number: a run that half-failed silently (executeQuery
+// only logs) is retried within a week instead of never.
+async function schemaFingerprint() {
+  const hash = createHash('sha1');
+  for (const rel of ['./database/init.js', './db-helpers.js']) {
+    hash.update(readFileSync(new URL(rel, import.meta.url)));
+  }
+  const migrationsDir = new URL('./database/migrations/', import.meta.url);
+  for (const file of readdirSync(migrationsDir).filter((f) => f.endsWith('.js')).sort()) {
+    hash.update(file);
+    hash.update(readFileSync(new URL(file, migrationsDir)));
+  }
+  const week = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
+  return `${hash.digest('hex')}:${week}`;
+}
+
+async function ensureSchemaCurrent() {
+  let fingerprint = null;
+  try {
+    fingerprint = await schemaFingerprint();
+    const [row] = await sql`SELECT fingerprint FROM schema_fingerprint WHERE id = 1`.catch(() => []);
+    if (row?.fingerprint === fingerprint && process.env.FORCE_DB_INIT !== 'true') {
+      log.info('Schema unchanged since last init - skipping DDL and migrations');
+      return;
+    }
+  } catch (error) {
+    // Fail open: if the check itself breaks, do exactly what this used to do.
+    log.warn('Schema fingerprint check failed, running full init', { error: error.message });
+    fingerprint = null;
+  }
+
+  const tablesOk = await initDatabase();
+
+  let migrationsOk = false;
+  try {
+    const { runMigrations } = await import('./database/migrationRunner.js');
+    await runMigrations();
+    migrationsOk = true;
+    log.info('Database migrations applied successfully');
+  } catch (error) {
+    log.warn('Migration runner had issues', { error: error.message });
+  }
+
+  // Only remember a run that fully succeeded, so a failure is retried next time.
+  if (fingerprint && tablesOk && migrationsOk) {
+    try {
+      await sql`CREATE TABLE IF NOT EXISTS schema_fingerprint (
+        id INT PRIMARY KEY,
+        fingerprint TEXT NOT NULL,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`;
+      await sql`INSERT INTO schema_fingerprint (id, fingerprint) VALUES (1, ${fingerprint})
+        ON CONFLICT (id) DO UPDATE SET fingerprint = EXCLUDED.fingerprint, applied_at = NOW()`;
+    } catch (error) {
+      log.warn('Could not record schema fingerprint', { error: error.message });
+    }
   }
 }
 
@@ -113,20 +180,7 @@ async function startup() {
   // Only run if not in Vercel or if explicitly enabled
   // On Vercel, tables should already exist, but this ensures they're created if needed
   if (process.env.INIT_DB_ON_STARTUP !== 'false') {
-    try {
-      await initDatabase();
-    } catch (error) {
-      // Don't block startup - tables may already exist
-      log.warn('Database initialization had issues (tables may already exist)', { error: error.message });
-    }
-
-    try {
-      const { runMigrations } = await import('./database/migrationRunner.js');
-      await runMigrations();
-      log.info('Database migrations applied successfully');
-    } catch (error) {
-      log.warn('Migration runner had issues', { error: error.message });
-    }
+    await ensureSchemaCurrent();
   }
 
   // Initialize daily alerts for main manager
