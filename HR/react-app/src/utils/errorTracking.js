@@ -404,6 +404,9 @@ export function initErrorTracking() {
 
     // Global error handler
     window.addEventListener('error', (event) => {
+        // "Script error." with no error object comes from cross-origin scripts (browser
+        // extensions, third-party tags): the browser hides every detail, so it is not actionable
+        if (!event.error && event.message === 'Script error.') return;
         reportUnhandledError(event.error || new Error(event.message), 'window.error');
     });
 

@@ -2154,7 +2154,7 @@ const DocumentModal = ({
               <input
                 type="file"
                 onChange={handleFileChange}
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                accept=".pdf,.jpg,.jpeg,.png"
                 required={!isEdit}
               />
               {formData.file && (

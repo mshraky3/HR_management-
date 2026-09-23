@@ -50,6 +50,17 @@ export const errorHandler = (err, req, res, next) => {
     });
   }
 
+  // Multer upload errors (file too large, too many files, unexpected field) are client errors
+  if (err.name === 'MulterError') {
+    return res.status(400).json({
+      success: false,
+      message: err.code === 'LIMIT_FILE_SIZE'
+        ? 'حجم الملف يتجاوز الحد الأقصى المسموح به'
+        : 'تعذر رفع الملف. يرجى التحقق من الملف والمحاولة مرة أخرى.',
+      error: err.code
+    });
+  }
+
   // JWT errors (when implemented)
   if (err.name === 'JsonWebTokenError') {
     return res.status(401).json({

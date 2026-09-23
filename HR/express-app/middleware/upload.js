@@ -16,7 +16,10 @@ const fileFilter = (req, file, cb) => {
   if (isValidMimeType(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('نوع الملف غير مدعوم. يُسمح فقط بملفات PDF و JPEG و PNG و GIF.'), false);
+    // status 400: a rejected file is a user mistake, not a server failure (no critical alert email)
+    const err = new Error('نوع الملف غير مدعوم. يُسمح فقط بملفات PDF و JPEG و PNG و GIF.');
+    err.status = 400;
+    cb(err, false);
   }
 };
 
@@ -92,7 +95,9 @@ const treatmentPlanFileFilter = (req, file, cb) => {
   if (TREATMENT_PLAN_ALLOWED_MIMES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('نوع الملف غير مدعوم. يُسمح بملفات Word (.docx, .doc) و PDF فقط.'), false);
+    const err = new Error('نوع الملف غير مدعوم. يُسمح بملفات Word (.docx, .doc) و PDF فقط.');
+    err.status = 400;
+    cb(err, false);
   }
 };
 
