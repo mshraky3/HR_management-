@@ -6,17 +6,18 @@
  * Beneficiaries.jsx: the same numbered steps, the same completion panel, the
  * same per-branch confirm bar. Both share styles/yearReview.css.
  *
- * Unlike beneficiaries, an employee's data lives on ONE row edited on their
- * own detail page (/employees/:id) rather than inline here — so "review the
- * data" opens that page in a new tab, and the branch comes back to confirm.
- * Saving there already marks the review done automatically (see the PUT
- * /api/employees/:id route), so returning here and refreshing shows it as
- * complete without any extra step.
+ * Unlike beneficiaries, an employee's data lives on ONE row edited in the
+ * employee form of the Employees page (this review is a tab of that page), so
+ * "review the data" opens that form via onEditEmployee and closing it comes
+ * back here. Saving the form already marks the review done automatically (see
+ * the PUT /api/employees/:id route). A new contract can also be uploaded right
+ * here, since an outdated contract is the most common renewal gap.
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { employeesAPI } from '../utils/api';
+import { employeesAPI, documentsAPI } from '../utils/api';
+import { MAX_UPLOAD_BYTES, fileTooLargeMessage, uploadErrorMessage } from '../utils/uploadLimits';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import '../styles/yearReview.css';
@@ -41,7 +42,7 @@ const fullName = (e) => [e.first_name, e.second_name, e.third_name, e.fourth_nam
 const isCandidateDone = (c) =>
     c.decision === 'leaving' || (c.decision === 'continuing' && c.data_reviewed);
 
-const EmployeeYearReview = () => {
+const EmployeeYearReview = ({ onAddEmployee, onEditEmployee }) => {
     const { isMainManager } = useAuth();
     const { showSuccess, showError, showWarning } = useNotification();
     const navigate = useNavigate();
@@ -57,6 +58,7 @@ const EmployeeYearReview = () => {
     const [reviewIndex, setReviewIndex] = useState(0);
     const [reviewPinned, setReviewPinned] = useState(false);
 
+    const [contractUploadingId, setContractUploadingId] = useState(null);
     const [leavingModal, setLeavingModal] = useState({ show: false, candidate: null, status: '', reason: '' });
     const [confirmModal, setConfirmModal] = useState({ show: false, note: '' });
 
@@ -270,8 +272,46 @@ const EmployeeYearReview = () => {
         }
     };
 
+    // Opens the employee form (with its document uploads) on the Employees page.
+    // Without the callback (rendered elsewhere) fall back to the detail page.
     const openEmployeeDetail = (id) => {
-        window.open(`/employees/${id}`, '_blank', 'noopener');
+        if (onEditEmployee) onEditEmployee(id);
+        else window.open(`/employees/${id}`, '_blank', 'noopener');
+    };
+
+    // The review lives inside /employees, so navigating there would do nothing.
+    const addNewEmployee = () => {
+        if (onAddEmployee) onAddEmployee();
+        else navigate('/employees');
+    };
+
+    const handleContractUpload = async (candidate, event) => {
+        const input = event.target;
+        const file = input.files?.[0];
+        input.value = '';
+        if (!file) return;
+        if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)) {
+            showWarning('نوع الملف غير مدعوم. يُسمح بملفات PDF و JPG و PNG.');
+            return;
+        }
+        if (file.size > MAX_UPLOAD_BYTES) {
+            showWarning(fileTooLargeMessage(file.name));
+            return;
+        }
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('employee_id', candidate.id);
+        formData.append('document_type', 'employment_contract');
+        setContractUploadingId(candidate.id);
+        try {
+            await documentsAPI.upload(formData);
+            showSuccess(`تم رفع عقد العمل الجديد لـ ${fullName(candidate)}`);
+            await refresh();
+        } catch (error) {
+            showError(`لم يتم رفع العقد: ${uploadErrorMessage(error)}`);
+        } finally {
+            setContractUploadingId(null);
+        }
     };
 
     const openInGuidedReview = (candidateId) => {
@@ -486,7 +526,7 @@ const EmployeeYearReview = () => {
                                         <div className="rollover-done-next">
                                             <span className="rollover-done-next-label">الخطوة التالية</span>
                                             <p>هل هناك موظفون <strong>جدد</strong> لم يكونوا مسجلين العام الماضي؟ أضفهم من صفحة الموظفين.</p>
-                                            <button className="btn btn-primary btn-lg" onClick={() => navigate('/employees')}>
+                                            <button className="btn btn-primary btn-lg" onClick={addNewEmployee}>
                                                 + إضافة موظف جديد
                                             </button>
                                             <p className="rollover-done-hint">
@@ -585,13 +625,25 @@ const EmployeeYearReview = () => {
                                                                 {currentCandidate.renewal_documents.stale.length > 0 && (
                                                                     <div>قديمة (قبل بداية السنة الجديدة): {currentCandidate.renewal_documents.stale.map(t => DOCUMENT_TYPE_LABELS[t] || t).join('، ')}</div>
                                                                 )}
+                                                                {[...currentCandidate.renewal_documents.missing, ...currentCandidate.renewal_documents.stale].includes('employment_contract') && (
+                                                                    <label className="btn btn-primary btn-sm eyr-contract-upload">
+                                                                        {contractUploadingId === currentCandidate.id ? 'جاري رفع العقد...' : '📄 رفع العقد الجديد'}
+                                                                        <input
+                                                                            type="file"
+                                                                            accept="application/pdf,image/jpeg,image/png"
+                                                                            hidden
+                                                                            disabled={contractUploadingId === currentCandidate.id}
+                                                                            onChange={(e) => handleContractUpload(currentCandidate, e)}
+                                                                        />
+                                                                    </label>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     )}
 
                                                     <div className="rollover-save-row">
                                                         <button className="btn btn-primary btn-lg" onClick={() => openEmployeeDetail(currentCandidate.id)}>
-                                                            تعديل بيانات الموظف ↗
+                                                            {onEditEmployee ? 'تعديل بيانات الموظف ومستنداته' : 'تعديل بيانات الموظف ↗'}
                                                         </button>
                                                         {!currentCandidate.data_reviewed && (
                                                             <button className="btn btn-secondary" disabled={decidingId === currentCandidate.id} onClick={() => handleMarkReviewed(currentCandidate)}>
@@ -689,7 +741,7 @@ const EmployeeYearReview = () => {
                                     ℹ️ إضافة الموظفين الجدد الذين لم يكونوا مسجلين العام الماضي
                                     <span className="rollover-checklist-count">(تمت إضافة {status.counts.new_hires})</span>
                                 </span>
-                                <button className={`btn btn-sm ${allDone ? 'btn-primary' : 'btn-secondary'}`} onClick={() => navigate('/employees')}>
+                                <button className={`btn btn-sm ${allDone ? 'btn-primary' : 'btn-secondary'}`} onClick={addNewEmployee}>
                                     + إضافة موظف جديد
                                 </button>
                             </li>

@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 import { PDFDocument } from "pdf-lib";
 import sql from "../config/database.js";
 import { authenticate } from "../middleware/auth.js";
-import { uploadSingle, validateUploadedFile } from "../middleware/upload.js";
+import { uploadSingle, validateUploadedFile, MAX_API_UPLOAD_MB, fileTooLargeMessage } from "../middleware/upload.js";
 import { BranchDocument } from "../models/BranchDocument.js";
 import { Branch } from "../models/Branch.js";
 import { loadAssignedBranches } from "../middleware/authorization.js";
@@ -781,21 +781,10 @@ router.put(
           });
         }
 
-        // Determine max file size based on document type
-        const highCapacityDocs = [
-          "operational_plan",
-          "acceptance_notifications",
-        ];
-        const maxFileSize = highCapacityDocs.includes(document.document_type)
-          ? 15
-          : 1;
-
-        if (!isValidFileSize(req.file.size, maxFileSize)) {
-          const sizeLimitMsg =
-            maxFileSize === 15 ? "15 ميجابايت" : "1 ميجابايت";
+        if (!isValidFileSize(req.file.size, MAX_API_UPLOAD_MB)) {
           return res.status(400).json({
             success: false,
-            message: `حجم الملف يتجاوز الحد الأقصى المسموح به (${sizeLimitMsg})`,
+            message: fileTooLargeMessage(),
           });
         }
 

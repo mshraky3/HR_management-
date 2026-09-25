@@ -5,6 +5,7 @@
 
 import { logError, log } from '../utils/logger.js';
 import { reportBackendError } from '../utils/errorNotificationService.js';
+import { fileTooLargeMessage } from './upload.js';
 
 export const errorHandler = (err, req, res, next) => {
   logError(err, { path: req.path, method: req.method });
@@ -55,7 +56,7 @@ export const errorHandler = (err, req, res, next) => {
     return res.status(400).json({
       success: false,
       message: err.code === 'LIMIT_FILE_SIZE'
-        ? 'حجم الملف يتجاوز الحد الأقصى المسموح به'
+        ? fileTooLargeMessage()
         : 'تعذر رفع الملف. يرجى التحقق من الملف والمحاولة مرة أخرى.',
       error: err.code
     });

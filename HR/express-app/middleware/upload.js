@@ -11,6 +11,14 @@ import { isValidMimeType, isValidFileSize } from '../utils/validators.js';
 // Files are stored in memory as buffers, then uploaded to Blob Storage
 const storage = multer.memoryStorage();
 
+// Vercel rejects function request bodies above ~4.5 MB before our code runs
+// (and without CORS headers, so the SPA shows its maintenance page). Anything
+// that travels through the API is therefore capped just under that.
+export const MAX_API_UPLOAD_MB = 4;
+export const MAX_API_UPLOAD_BYTES = MAX_API_UPLOAD_MB * 1024 * 1024;
+export const fileTooLargeMessage = () =>
+  `حجم الملف يتجاوز الحد الأقصى المسموح به (${MAX_API_UPLOAD_MB} ميجابايت). الرجاء ضغط الملف أو تقسيمه ثم المحاولة مرة أخرى.`;
+
 // File filter - uses the same isValidMimeType validator as validateUploadedFile (single source of truth)
 const fileFilter = (req, file, cb) => {
   if (isValidMimeType(file.mimetype)) {
@@ -28,7 +36,7 @@ export const upload = multer({
   storage: storage, // Changed from diskStorage to memoryStorage
   fileFilter: fileFilter,
   limits: {
-    fileSize: 15 * 1024 * 1024 // 15MB max file size (globally allow 15MB, restricted by type in check below)
+    fileSize: MAX_API_UPLOAD_BYTES
   }
 });
 
@@ -57,23 +65,10 @@ export const validateUploadedFile = (req, res, next) => {
     });
   }
 
-  // Determine max file size based on document type
-  let maxFileSize = 1 * 1024 * 1024; // Default 1MB
-
-  // High capacity documents (15MB)
-  const highCapacityDocs = ['operational_plan', 'acceptance_notifications'];
-  const documentType = req.body.document_type;
-
-  if (documentType && highCapacityDocs.includes(documentType)) {
-    maxFileSize = 15 * 1024 * 1024; // 15MB
-  }
-
-  // Validate file size
-  if (!isValidFileSize(req.file.size, maxFileSize / (1024 * 1024))) {
-    const sizeLimitMsg = maxFileSize === 15 * 1024 * 1024 ? '15 ميجابايت' : '1 ميجابايت';
+  if (!isValidFileSize(req.file.size, MAX_API_UPLOAD_MB)) {
     return res.status(400).json({
       success: false,
-      message: `حجم الملف يتجاوز الحد الأقصى المسموح به (${sizeLimitMsg})`
+      message: fileTooLargeMessage()
     });
   }
 

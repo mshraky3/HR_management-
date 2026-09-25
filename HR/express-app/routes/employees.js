@@ -31,8 +31,45 @@ import {
 import { getScopedBranchFilter, resolveBranchAccessFromScope } from "../utils/policyScope.js";
 import { printer as certificatePrinter } from "../utils/pdfFonts.js";
 import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { employeeHasBranchAccess } from '../utils/employeeHelpers.js';
+import { uploadToBlob } from '../utils/blobStorage.js';
+import { isValidMimeType } from '../utils/validators.js';
+import { MAX_API_UPLOAD_BYTES, fileTooLargeMessage } from '../middleware/upload.js';
 
 const router = express.Router();
+
+// Archived = any status other than active/pending (same rule as the employee
+// list, which hides them). Re-adding an archived person must point at the
+// archive: only the main manager can restore from there.
+const ARCHIVED_STATUS_LABELS = {
+  terminated_article_80: "إنهاء المادة 80",
+  terminated_article_77: "إنهاء المادة 77",
+  resigned: "استقالة",
+  contract_ended: "انتهاء العقد",
+  non_renewal: "عدم التجديد",
+  other: "محذوف",
+};
+const isArchivedEmployee = (employee) =>
+  Boolean(employee?.status) && !["active", "pending"].includes(employee.status);
+const archivedEmployeeResponse = (employee) => {
+  const name = [employee.first_name, employee.second_name, employee.third_name, employee.fourth_name]
+    .filter(Boolean)
+    .join(" ");
+  const reason = ARCHIVED_STATUS_LABELS[employee.status] || employee.status;
+  const since = employee.status_changed_at ? ` منذ ${formatDate(employee.status_changed_at)}` : "";
+  return {
+    success: false,
+    message: `📦 الموظف "${name}" مؤرشف (${reason}${since}).\n\nرقم الهوية/الإقامة: ${employee.id_or_residency_number}\n\nلا يمكن إضافته من جديد. تواصل مع المدير العام لاستعادته من الأرشيف، وسيعود إلى قائمة موظفي الفرع.`,
+    error: "EMPLOYEE_ARCHIVED",
+    existingEmployee: {
+      id: employee.id,
+      name,
+      status: employee.status,
+      id_or_residency_number: employee.id_or_residency_number,
+    },
+    canLink: false,
+  };
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -265,20 +302,6 @@ const calculateEmployeeStatistics = (employees) => {
   return stats;
 };
 
-const employeeHasBranchAccess = (employee, branchId) => {
-  if (!employee || !branchId) return false;
-  if (
-    employee.branch_id &&
-    employee.branch_id.toString() === branchId.toString()
-  )
-    return true;
-  if (Array.isArray(employee.branches)) {
-    return employee.branches.some(
-      (b) => b.branch_id && b.branch_id.toString() === branchId.toString(),
-    );
-  }
-  return false;
-};
 
 // All routes require authentication
 router.use(authenticate);
@@ -577,18 +600,38 @@ router.get("/missing-required-data", requireManager, async (req, res) => {
   }
 });
 
-// Configure multer for qualification upload within this endpoint
-// In serverless (e.g., Vercel) the filesystem is read-only except /tmp
-const tempStorage = multer({ dest: "/tmp/uploads" });
+// Qualification files go to R2 like every other employee document. This used
+// multer's /tmp disk storage (wiped by Vercel) and read req.files as an object
+// although .any() returns an array, so no qualification file was ever saved.
+const qualificationUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_API_UPLOAD_BYTES },
+});
 
 router.post(
   "/missing-required-data",
   requireManager,
-  tempStorage.any(),
+  qualificationUpload.any(),
   async (req, res) => {
     try {
-      // Multer may attach files; ensure req.files exists
-      const files = req.files || {};
+      // Files arrive as file_<index>, each with a file_employee_<index> body field.
+      const filesByEmployee = new Map();
+      for (const file of Array.isArray(req.files) ? req.files : []) {
+        if (!file.fieldname?.startsWith("file_")) continue;
+        if (!isValidMimeType(file.mimetype)) {
+          return res.status(400).json({
+            success: false,
+            message: "نوع الملف غير مدعوم. يُسمح فقط بملفات PDF والصور.",
+          });
+        }
+        if (file.size > MAX_API_UPLOAD_BYTES) {
+          return res.status(400).json({ success: false, message: fileTooLargeMessage() });
+        }
+        const idx = file.fieldname.replace("file_", "");
+        const targetEmployeeId = parseInt(req.body[`file_employee_${idx}`]);
+        if (targetEmployeeId) filesByEmployee.set(targetEmployeeId, file);
+      }
+      const touchedEmployeeIds = [];
 
       const entriesRaw = req.body.entries;
       let entries = [];
@@ -645,41 +688,46 @@ router.post(
           `;
           }
 
-          // Handle uploaded qualification file from multipart (if any)
-          // Files are named file_<index> with accompanying file_employee_<index>
-          if (files) {
-            for (const [fieldName, fileArr] of Object.entries(files)) {
-              if (!fieldName.startsWith("file_")) continue;
-              const idx = fieldName.replace("file_", "");
-              const targetEmployeeId = parseInt(
-                req.body[`file_employee_${idx}`],
-              );
-              if (targetEmployeeId !== employeeId) continue;
-              const file = Array.isArray(fileArr) ? fileArr[0] : fileArr;
-              if (!file) continue;
-              const filePath = file.path;
-              const fileName = file.originalname;
-              const mimeType = file.mimetype;
-              const fileSize = file.size;
-              const extension = (
-                file.originalname.split(".").pop() || ""
-              ).toLowerCase();
-
-              const uploadedByForDoc = req.user?.existsInDb ? req.user.id : null;
-              await trx`
+          const file = filesByEmployee.get(employeeId);
+          if (file) {
+            const { url, r2Url } = await uploadToBlob(
+              file.buffer,
+              file.originalname,
+              file.mimetype,
+              employeeId,
+              "primary_qualification",
+            );
+            // primary_qualification is single-file: the new upload replaces the old one.
+            await trx`
+              UPDATE employee_documents
+              SET is_active = false, updated_at = CURRENT_TIMESTAMP
+              WHERE employee_id = ${employeeId}
+                AND document_type = 'primary_qualification'
+                AND is_active = true
+            `;
+            const uploadedByForDoc = req.user?.existsInDb ? req.user.id : null;
+            const extension = (file.originalname.split(".").pop() || "").toLowerCase();
+            await trx`
               INSERT INTO employee_documents (
-                employee_id, document_type, file_name, file_path, file_size,
+                employee_id, document_type, file_name, file_path, r2_file_path, file_size,
                 mime_type, file_extension, is_active, uploaded_at, uploaded_by
               )
               VALUES (
-                ${employeeId}, 'primary_qualification', ${fileName}, ${filePath}, ${fileSize},
-                ${mimeType}, ${extension}, true, CURRENT_TIMESTAMP, ${uploadedByForDoc}
+                ${employeeId}, 'primary_qualification', ${file.originalname}, ${url}, ${r2Url || null}, ${file.size},
+                ${file.mimetype}, ${extension}, true, CURRENT_TIMESTAMP, ${uploadedByForDoc}
               )
             `;
-            }
           }
+          touchedEmployeeIds.push(employeeId);
         }
       });
+
+      try {
+        const { updateEmployeeCompletionStatus } = await import("../utils/employeeDataCompletion.js");
+        for (const id of touchedEmployeeIds) await updateEmployeeCompletionStatus(id);
+      } catch (completionError) {
+        log.error("Error updating completion status after missing-data save", { error: completionError.message });
+      }
 
       return res.json({ success: true, message: "تم حفظ البيانات الناقصة" });
     } catch (error) {
@@ -2851,6 +2899,10 @@ router.post(
           const existingEmployee = existingByIdNumber[0];
           log.info("[EMPLOYEE CREATE] Found existing employee with same ID:", existingEmployee.id);
 
+          if (isArchivedEmployee(existingEmployee)) {
+            return res.status(409).json(archivedEmployeeResponse(existingEmployee));
+          }
+
           // Get all branches the employee is linked to
           let existingBranches = [];
           try {
@@ -2924,6 +2976,10 @@ router.post(
 
         if (existingByEmployeeId) {
           log.info("[EMPLOYEE CREATE] Found existing employee with same employee_id_number:", existingByEmployeeId.id);
+
+          if (isArchivedEmployee(existingByEmployeeId)) {
+            return res.status(409).json(archivedEmployeeResponse(existingByEmployeeId));
+          }
 
           // Get full employee info with branches
           const fullEmployee = await Employee.findById(existingByEmployeeId.id);

@@ -219,3 +219,21 @@ export default {
   validateDocumentType
 };
 
+/**
+ * True when the employee's primary branch or one of its linked branches
+ * (employee_branches, loaded as employee.branches) is branchId.
+ */
+export const employeeHasBranchAccess = (employee, branchId) => {
+  if (!employee || !branchId) return false;
+  if (
+    employee.branch_id &&
+    employee.branch_id.toString() === branchId.toString()
+  )
+    return true;
+  if (Array.isArray(employee.branches)) {
+    return employee.branches.some(
+      (b) => b.branch_id && b.branch_id.toString() === branchId.toString(),
+    );
+  }
+  return false;
+};

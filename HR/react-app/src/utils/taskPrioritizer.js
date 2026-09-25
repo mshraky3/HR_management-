@@ -509,11 +509,10 @@ const calculateNotificationTasks = (notifications) => {
 /**
  * Calculate employee contract data task
  */
-// Disabled 2026-08-06 per manager request: contract data collection is
-// deferred at least two weeks while branches focus on moving employees and
-// beneficiaries to the new year and updating bus data. Flip back to true to
-// bring the task back once that window has passed.
-const EMPLOYEE_CONTRACT_DATA_TASK_ENABLED = false;
+// Was disabled 2026-08-06 for two weeks while branches moved employees and
+// beneficiaries to the new year; re-enabled 2026-09-25 for the 26-27 contract
+// updates. It still ranks after the year-review task.
+const EMPLOYEE_CONTRACT_DATA_TASK_ENABLED = true;
 
 const calculateEmployeeContractDataTask = (missingEmployeeContractData) => {
   if (!EMPLOYEE_CONTRACT_DATA_TASK_ENABLED) return null;

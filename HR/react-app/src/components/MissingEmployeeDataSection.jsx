@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { employeesAPI } from '../utils/api';
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, fileTooLargeMessage } from '../utils/uploadLimits';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import './MissingEmployeeDataSection.css';
@@ -219,6 +220,14 @@ const MissingEmployeeDataSection = ({ onComplete }) => {
       }
       setErrors({});
 
+      // Every file travels in this one request, which has the same size cap as a single upload.
+      const totalFileBytes = entries.reduce((sum, e) => sum + (e.qualification_file?.size || 0), 0);
+      if (totalFileBytes > MAX_UPLOAD_BYTES) {
+        showError(`مجموع حجم ملفات المؤهلات المرفقة يتجاوز ${MAX_UPLOAD_MB} ميجابايت. احفظ كل موظف على حدة باستخدام زر الحفظ الخاص به.`);
+        setSaving(false);
+        return;
+      }
+
       const formData = new FormData();
       formData.append('entries', JSON.stringify(
         entries.map((e) => ({
@@ -365,6 +374,11 @@ const MissingEmployeeDataSection = ({ onComplete }) => {
                           className="file-upload-input"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
+                            if (file && file.size > MAX_UPLOAD_BYTES) {
+                              showError(fileTooLargeMessage(file.name));
+                              e.target.value = '';
+                              return;
+                            }
                             setDrafts((prev) => ({
                               ...prev,
                               [row.id]: {

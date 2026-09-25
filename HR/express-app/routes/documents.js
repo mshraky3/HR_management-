@@ -18,6 +18,7 @@ import { uploadToBlob, deleteFromBlob, fetchBlobWithFallback, copyBlob, fixDoubl
 import { mirrorVercelFileToR2 } from '../utils/dualStorage.js';
 import { handleRouteError } from '../utils/routeErrorHandler.js';
 import { log } from '../utils/logger.js';
+import { employeeHasBranchAccess } from '../utils/employeeHelpers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -150,7 +151,9 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       });
     }
 
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
+    // Linked employees (employee_branches) count as the branch's own, same as
+    // the employee edit route.
+    if (req.user.role === 'branch_manager' && !employeeHasBranchAccess(employee, req.user.branch_id)) {
       return res.status(403).json({
         success: false,
         message: 'يمكنك فقط رفع مستندات لموظفي فرعك'

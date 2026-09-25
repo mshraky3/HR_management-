@@ -15,6 +15,7 @@ import { RESTRICTED_DOCUMENT_TYPES } from '../utils/documentRestrictions';
 import './BranchDocuments.css';
 import UnifiedDatePicker from "../components/UnifiedDatePicker.jsx";
 import BankSelect from "../components/BankSelect.jsx";
+import { MAX_UPLOAD_MB, MAX_UPLOAD_BYTES, fileTooLargeMessage } from '../utils/uploadLimits';
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 
 const BranchDocuments = () => {
@@ -178,14 +179,8 @@ const BranchDocuments = () => {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Determine max file size based on document type
-      const highCapacityDocs = ['operational_plan', 'acceptance_notifications'];
-      const isHighCapacity = highCapacityDocs.includes(uploadData.document_type);
-      const maxSize = (isHighCapacity ? 15 : 1) * 1024 * 1024;
-
-      if (file.size > maxSize) {
-        const sizeLimitMsg = isHighCapacity ? '15 ميجابايت' : '1 ميجابايت';
-        showWarning(`حجم الملف كبير جداً. الحد الأقصى لحجم الملف هو ${sizeLimitMsg}.`);
+      if (file.size > MAX_UPLOAD_BYTES) {
+        showWarning(fileTooLargeMessage(file.name));
         e.target.value = ''; // Clear the file input
         return;
       }
@@ -200,15 +195,9 @@ const BranchDocuments = () => {
       return;
     }
 
-    // Re-validate file size before upload (in case document type changed)
-    const highCapacityDocs = ['operational_plan', 'acceptance_notifications'];
-    // Check both uploadData.document_type and fallback to 'other' logic if needed, but strict check is better
-    const isHighCapacity = highCapacityDocs.includes(uploadData.document_type);
-    const maxSize = (isHighCapacity ? 15 : 1) * 1024 * 1024;
-
-    if (uploadData.file.size > maxSize) {
-      const sizeLimitMsg = isHighCapacity ? '15 ميجابايت' : '1 ميجابايت';
-      showWarning(`حجم الملف كبير جداً. الحد الأقصى لحجم الملف هو ${sizeLimitMsg}.`);
+    // Re-validate file size before upload
+    if (uploadData.file.size > MAX_UPLOAD_BYTES) {
+      showWarning(fileTooLargeMessage(uploadData.file.name));
       return;
     }
 
@@ -563,14 +552,8 @@ const BranchDocuments = () => {
   const handleFileChangeEdit = (e) => {
     const file = e.target.files[0] || null;
     if (file) {
-      // Determine max file size based on document type
-      const highCapacityDocs = ['operational_plan', 'acceptance_notifications'];
-      const isHighCapacity = editingDocument && highCapacityDocs.includes(editingDocument.document_type);
-      const maxSize = (isHighCapacity ? 15 : 1) * 1024 * 1024;
-
-      if (file.size > maxSize) {
-        const sizeLimitMsg = isHighCapacity ? '15 ميجابايت' : '1 ميجابايت';
-        showWarning(`حجم الملف كبير جداً. الحد الأقصى لحجم الملف هو ${sizeLimitMsg}.`);
+      if (file.size > MAX_UPLOAD_BYTES) {
+        showWarning(fileTooLargeMessage(file.name));
         e.target.value = ''; // Clear the file input
         return;
       }
@@ -1150,7 +1133,7 @@ const BranchDocuments = () => {
                 )}
               </div>
               <div className="form-group">
-                <label>الملف * (PDF, JPG, PNG - الحد الأقصى 15 ميجابايت)</label>
+                <label>الملف * (PDF, JPG, PNG - الحد الأقصى {MAX_UPLOAD_MB} ميجابايت)</label>
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"

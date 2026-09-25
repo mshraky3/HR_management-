@@ -31,7 +31,13 @@ import {
 import {
   getJobTitlesByBranchType,
   DATA_COMPLETION_STATUS,
+  DOCUMENT_TYPE_LABELS,
 } from "../utils/employeeConstants";
+import {
+  MAX_UPLOAD_BYTES,
+  fileTooLargeMessage,
+  uploadErrorMessage,
+} from "../utils/uploadLimits";
 import {
   gregorianToHijri,
   formatDate,
@@ -636,6 +642,9 @@ const Employees = () => {
 
     // Set saving state at the start
     setSaving(true);
+    // Document uploads run after the employee is saved; collect their failures
+    // so the user is told instead of seeing a plain success message.
+    const failedUploads = [];
 
     // Validate nationality is selected first
     if (!formData.nationality) {
@@ -1291,6 +1300,7 @@ const Employees = () => {
                 await documentsAPI.upload(formData);
               } catch (error) {
                 console.error(`Error uploading ${documentType}:`, error);
+                failedUploads.push({ documentType, fileName: file.name, message: uploadErrorMessage(error) });
               }
             },
           );
@@ -1360,6 +1370,7 @@ const Employees = () => {
                 await documentsAPI.upload(formData);
               } catch (error) {
                 console.error(`Error uploading ${documentType}:`, error);
+                failedUploads.push({ documentType, fileName: file.name, message: uploadErrorMessage(error) });
               }
             },
           );
@@ -1381,9 +1392,20 @@ const Employees = () => {
       resetForm();
       resetDocuments();
       loadEmployees();
-      showSuccess(
-        editingEmployee ? "تم تحديث الموظف بنجاح" : "تم إضافة الموظف بنجاح",
-      );
+      const savedMessage = editingEmployee ? "تم تحديث بيانات الموظف" : "تم إضافة الموظف";
+      if (failedUploads.length > 0) {
+        showWarning(
+          `${savedMessage}، لكن لم يتم رفع ${failedUploads.length === 1 ? "المستند التالي" : "المستندات التالية"}:\n\n` +
+            failedUploads
+              .map((f) => `• ${DOCUMENT_TYPE_LABELS[f.documentType] || f.documentType} (${f.fileName}): ${f.message}`)
+              .join("\n") +
+            `\n\nافتح الموظف من القائمة (تعديل) وارفع ${failedUploads.length === 1 ? "المستند" : "المستندات"} مرة أخرى.`,
+        );
+      } else {
+        showSuccess(
+          editingEmployee ? "تم تحديث الموظف بنجاح" : "تم إضافة الموظف بنجاح",
+        );
+      }
     } catch (error) {
       console.error("Error saving employee:", error);
       let errorMessage = "فشل حفظ الموظف";
@@ -1426,6 +1448,20 @@ const Employees = () => {
               "فشل ربط الموظف بالفرع. الرجاء المحاولة مرة أخرى."
             );
           }
+        }
+        setSaving(false);
+        setUploadingDocuments(false);
+        return;
+      }
+
+      // Archived employees cannot be re-added; only the main manager restores them.
+      if (responseData?.error === "EMPLOYEE_ARCHIVED") {
+        if (isMainManager()) {
+          if (window.confirm(`${responseData.message}\n\nهل تريد فتح صفحة الأرشيف الآن؟`)) {
+            navigate("/archive");
+          }
+        } else {
+          showWarning(responseData.message);
         }
         setSaving(false);
         setUploadingDocuments(false);
@@ -1596,12 +1632,9 @@ const Employees = () => {
       for (const file of filesToCheck) {
         if (!file) continue;
 
-        // Validate file size (1MB max per file)
-        const maxSize = 1 * 1024 * 1024; // 1MB in bytes
-        if (file.size > maxSize) {
-          showWarning(
-            `حجم الملف "${file.name}" كبير جداً. الحد الأقصى لحجم الملف هو 1 ميجابايت.`,
-          );
+        // Validate file size (same limit as the server)
+        if (file.size > MAX_UPLOAD_BYTES) {
+          showWarning(fileTooLargeMessage(file.name));
           if (isEvent && inputElement) {
             inputElement.value = ""; // Clear the input
           }
@@ -2056,6 +2089,42 @@ const Employees = () => {
     searchFilters.search_branch,
   ]);
 
+  const openAddForm = () => {
+    resetForm();
+    // Auto-set branch_id and branch type for branch managers
+    if (!isMainManager() && user?.branch_id) {
+      const userBranch = branches.find(
+        (b) => b.id === user.branch_id,
+      );
+      if (userBranch) {
+        setFormData((prev) => ({
+          ...prev,
+          branch_id: user.branch_id,
+        }));
+        setSelectedBranchType(userBranch.branch_type);
+        setFormStep(2); // Skip branch type selection, go directly to form
+      }
+    } else {
+      setFormStep(1); // Main managers need to select branch type
+    }
+    setShowForm(true);
+    setEditingEmployee(null);
+  };
+
+  // Year review "edit" opens the same form as the list (with document uploads).
+  const openEditFormById = (employeeId) => {
+    employeesAPI
+      .getById(employeeId)
+      .then((response) => {
+        if (response.data.success) handleEdit(response.data.data);
+        else showError("تعذر تحميل بيانات الموظف");
+      })
+      .catch((error) => {
+        console.error("Error loading employee for edit:", error);
+        showError(error.response?.data?.message || "تعذر تحميل بيانات الموظف");
+      });
+  };
+
   // Show full page loading only on initial load
   if (initialLoading && loading) {
     return <div className="loading">جاري تحميل الموظفين...</div>;
@@ -2081,7 +2150,10 @@ const Employees = () => {
       )}
 
       {activeMainTab === "year-review" && !showForm ? (
-        <EmployeeYearReview />
+        <EmployeeYearReview
+          onAddEmployee={openAddForm}
+          onEditEmployee={openEditFormById}
+        />
       ) : !showForm ? (
         <>
           <div className="page-header">
@@ -2104,27 +2176,7 @@ const Employees = () => {
                 {filterIncomplete ? "عرض الجميع" : "عرض غير مكتملي البيانات"}
               </button>
               <button
-                onClick={() => {
-                  resetForm();
-                  // Auto-set branch_id and branch type for branch managers
-                  if (!isMainManager() && user?.branch_id) {
-                    const userBranch = branches.find(
-                      (b) => b.id === user.branch_id,
-                    );
-                    if (userBranch) {
-                      setFormData((prev) => ({
-                        ...prev,
-                        branch_id: user.branch_id,
-                      }));
-                      setSelectedBranchType(userBranch.branch_type);
-                      setFormStep(2); // Skip branch type selection, go directly to form
-                    }
-                  } else {
-                    setFormStep(1); // Main managers need to select branch type
-                  }
-                  setShowForm(true);
-                  setEditingEmployee(null);
-                }}
+                onClick={openAddForm}
                 className="btn-primary btn-lg"
               >
                 إضافة موظف جديد

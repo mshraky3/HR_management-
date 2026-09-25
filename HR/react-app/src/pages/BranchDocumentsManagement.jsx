@@ -24,6 +24,7 @@ import { downloadFile } from "../utils/downloadFile";
 import "./BranchDocumentsManagement.css";
 import BranchBadge from "../components/BranchBadge.jsx";
 import UnifiedDatePicker from "../components/UnifiedDatePicker.jsx";
+import { MAX_UPLOAD_BYTES, fileTooLargeMessage } from '../utils/uploadLimits';
 
 const BranchDocumentsManagement = () => {
   const { isMainManager, isBranchOperationsManager, user } = useAuth();
@@ -2031,10 +2032,16 @@ const DocumentModal = ({
   loading,
   isEdit,
 }) => {
+  const { showWarning } = useNotification();
   const documentTypes = Object.keys(documentTypeLabels);
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
+      if (e.target.files[0].size > MAX_UPLOAD_BYTES) {
+        showWarning(fileTooLargeMessage(e.target.files[0].name));
+        e.target.value = '';
+        return;
+      }
       setFormData((prev) => ({ ...prev, file: e.target.files[0] }));
     }
   };

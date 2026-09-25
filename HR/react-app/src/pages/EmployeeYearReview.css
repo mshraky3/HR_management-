@@ -50,3 +50,9 @@
     flex-direction: column;
     gap: 4px;
 }
+
+.eyr-contract-upload {
+    align-self: flex-start;
+    margin-top: 6px;
+    cursor: pointer;
+}
