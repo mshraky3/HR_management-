@@ -23,8 +23,7 @@ import { Document } from '../models/Document.js';
 import { Employee } from '../models/Employee.js';
 import { isValidDocumentType, isValidMimeType } from '../utils/validators.js';
 import { getExtensionFromMimeType } from '../utils/fileUpload.js';
-import { uploadToBlob, deleteFromBlob, fetchBlobWithFallback, copyBlob, fixDoubleExtensionUrl } from '../utils/blobStorage.js';
-import { mirrorVercelFileToR2 } from '../utils/dualStorage.js';
+import { uploadToBlob, deleteFromBlob, fetchBlobWithFallback } from '../utils/blobStorage.js';
 import { handleRouteError } from '../utils/routeErrorHandler.js';
 import { log } from '../utils/logger.js';
 import { employeeHasBranchAccess } from '../utils/employeeHelpers.js';
@@ -108,7 +107,6 @@ router.get('/', async (req, res) => {
         message: 'يجب تسجيل الدخول'
       });
     }
-
 
     const filters = {
       document_type: req.query.document_type,
@@ -398,44 +396,7 @@ router.get('/:id/download', async (req, res) => {
     // If file_path is a URL (Blob), proxy the content through the backend
     if (document.file_path.startsWith('http://') || document.file_path.startsWith('https://')) {
       try {
-        const { buffer, contentType, fixedUrl, source } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
-
-        // If a fixed URL was used, try to permanently fix the blob path
-        if (fixedUrl) {
-          try {
-            // Check if fixedUrl has double extension (blob found at doubled path)
-            // In that case, copy to the clean path and update DB with clean URL
-            const doubleExtRegex = /\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx)\.\1$/i;
-            if (doubleExtRegex.test(fixedUrl)) {
-              // fixedUrl is the doubled path where blob actually lives
-              // document.file_path is the clean path we want
-              // Copy blob from doubled path to clean path
-              const cleanUrl = fixDoubleExtensionUrl(fixedUrl);
-              if (cleanUrl) {
-                const pathname = new URL(cleanUrl).pathname.replace(/^\//, '');
-                const newBlobUrl = await copyBlob(fixedUrl, pathname);
-                await Document.update(document.id, { file_path: newBlobUrl });
-                log.info(`Auto-fixed: copied blob to clean path for document ${document.id}`);
-              }
-            } else {
-              // fixedUrl is the clean path (double extension was removed)
-              await Document.update(document.id, { file_path: fixedUrl });
-              log.info(`Auto-fixed double-extension URL for document ${document.id}`);
-            }
-          } catch (updateErr) {
-            log.warn(`Could not auto-fix URL for document ${document.id}:`, updateErr.message);
-          }
-        }
-
-        // Lazy migration: mirror to R2 on first Vercel hit
-        if (source === 'vercel' && !document.r2_file_path) {
-          setImmediate(async () => {
-            try {
-              const r2Url = await mirrorVercelFileToR2(document.file_path, buffer, contentType);
-              if (r2Url) await Document.update(document.id, { r2_file_path: r2Url });
-            } catch (e) { /* non-blocking */ }
-          });
-        }
+        const { buffer, contentType } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
 
         res.setHeader('Content-Type', document.mime_type || contentType);
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(document.file_name || 'document')}"`);
@@ -539,27 +500,7 @@ router.get('/:id/preview', async (req, res) => {
       // If file_path is a URL (Blob Storage), fetch via authenticated fetchBlobWithFallback
       if (document.file_path && (document.file_path.startsWith('http://') || document.file_path.startsWith('https://'))) {
         try {
-          const { buffer, contentType, fixedUrl, source } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
-
-          // If a fixed URL was used, update DB for future requests
-          if (fixedUrl) {
-            try {
-              await Document.update(document.id, { file_path: fixedUrl });
-              log.info(`Auto-fixed preview URL for document ${document.id}`);
-            } catch (updateErr) {
-              log.warn(`Could not update fixed URL for document ${document.id}:`, updateErr.message);
-            }
-          }
-
-          // Lazy migration: mirror to R2 on first Vercel preview hit
-          if (source === 'vercel' && !document.r2_file_path) {
-            setImmediate(async () => {
-              try {
-                const r2Url = await mirrorVercelFileToR2(document.file_path, buffer, contentType);
-                if (r2Url) await Document.update(document.id, { r2_file_path: r2Url });
-              } catch (e) { /* non-blocking */ }
-            });
-          }
+          const { buffer, contentType } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
 
           res.setHeader('Content-Type', document.mime_type || contentType);
           return res.send(buffer);

@@ -1,477 +1,115 @@
 /**
- * Vercel Blob Storage Utilities
- * Handles file uploads to Vercel Blob Storage
- * 
- * Uses centralized blob storage configuration from config/blobStorage.js
+ * File storage (Cloudflare R2)
+ *
+ * All HR files live in R2 (bucket hr1). Vercel Blob is no longer used (it was
+ * over its free quota and blocked, so it could not be read anyway). Files were
+ * copied from Blob to R2 under the same path, so older database rows that
+ * still hold a Vercel Blob URL in file_path are read from R2 by that path.
+ *
+ * The module keeps its historical name and the *ToBlob function names so the
+ * many callers did not have to change.
  */
 
-import { del, head, copy } from '@vercel/blob';
 import { generateFileName } from './fileUpload.js';
-import {
-  getBlobToken,
-  isBlobStorageConfigured as checkBlobStorageConfigured
-} from '../config/blobStorage.js';
-import { uploadToR2 } from './r2Storage.js';
+import { uploadToR2, fetchFromR2ByKey, deleteFromR2, extractKeyFromR2Url, r2PublicUrlForKey } from './r2Storage.js';
 import { log } from './logger.js';
 
-/**
- * Check if Blob Storage is properly configured
- * @returns {boolean} - Whether blob token is available
- */
-export function isBlobStorageConfigured() {
-  return checkBlobStorageConfigured();
-}
+const DOUBLE_EXTENSION = /(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.\2$/i;
 
-/**
- * Validate Blob Storage configuration and throw if not configured
- */
-function validateBlobConfig() {
-  if (!isBlobStorageConfigured()) {
-    throw new Error(
-      'Blob Storage is not configured. ' +
-      'Please set BLOB_READ_WRITE_TOKEN environment variable. ' +
-      'For local development, run: vercel env pull'
-    );
-  }
-}
-
-/**
- * Returns true only for actual Vercel Blob Storage URLs.
- * Used to skip Vercel-specific operations (delete, etc.) for R2 URLs.
- */
-function isVercelBlobUrl(url) {
-  return !!(url && url.includes('.blob.vercel-storage.com'));
-}
-
-/**
- * Upload file to Vercel Blob Storage
- * @param {Buffer} fileBuffer - File buffer data
- * @param {string} fileName - Original file name
- * @param {string} mimeType - File MIME type
- * @param {number} employeeId - Employee ID
- * @param {string} documentType - Document type
- * @returns {Promise<string>} - Blob URL
- */
-export async function uploadToBlob(fileBuffer, fileName, mimeType, employeeId, documentType) {
+async function uploadFile(prefix, fileBuffer, fileName, mimeType, requiredParams) {
   if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
     throw new Error('Invalid file buffer provided');
   }
-  if (!fileName || !mimeType || !employeeId || !documentType) {
-    throw new Error('Missing required parameters for blob upload');
+  if (!fileName || !mimeType || requiredParams.some((p) => !p)) {
+    throw new Error('Missing required parameters for file upload');
   }
-
-  let uniqueFileName = generateFileName(fileName);
-  uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.(\2)$/i, '$1');
-  const blobPath = `employees/${employeeId}/${documentType}/${uniqueFileName}`;
-
-  const r2Url = await uploadToR2(blobPath, fileBuffer, mimeType);
+  const uniqueFileName = generateFileName(fileName).replace(DOUBLE_EXTENSION, '$1');
+  const r2Url = await uploadToR2(`${prefix}/${uniqueFileName}`, fileBuffer, mimeType);
   return { url: r2Url, r2Url };
 }
 
-/**
- * Upload branch document to Vercel Blob Storage
- * @param {Buffer} fileBuffer - File buffer data
- * @param {string} fileName - Original file name
- * @param {string} mimeType - File MIME type
- * @param {number} branchId - Branch ID
- * @param {string} documentType - Document type
- * @returns {Promise<string>} - Blob URL
- */
-export async function uploadBranchDocumentToBlob(fileBuffer, fileName, mimeType, branchId, documentType) {
-  if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
-    throw new Error('Invalid file buffer provided');
-  }
-  if (!fileName || !mimeType || !branchId || !documentType) {
-    throw new Error('Missing required parameters for blob upload');
-  }
+/** Employee document -> employees/{id}/{type}/... Returns { url, r2Url } (same URL). */
+export function uploadToBlob(fileBuffer, fileName, mimeType, employeeId, documentType) {
+  return uploadFile(`employees/${employeeId}/${documentType}`, fileBuffer, fileName, mimeType, [employeeId, documentType]);
+}
 
-  let uniqueFileName = generateFileName(fileName);
-  uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.\2$/i, '$1');
-  const blobPath = `branches/${branchId}/${documentType}/${uniqueFileName}`;
+export function uploadBranchDocumentToBlob(fileBuffer, fileName, mimeType, branchId, documentType) {
+  return uploadFile(`branches/${branchId}/${documentType}`, fileBuffer, fileName, mimeType, [branchId, documentType]);
+}
 
-  const r2Url = await uploadToR2(blobPath, fileBuffer, mimeType);
-  return { url: r2Url, r2Url };
+export function uploadRequestAttachmentToBlob(fileBuffer, fileName, mimeType, requestId) {
+  return uploadFile(`requests/${requestId}/attachments`, fileBuffer, fileName, mimeType, [requestId]);
+}
+
+export function uploadNotificationAttachmentToBlob(fileBuffer, fileName, mimeType, notificationId) {
+  return uploadFile(`notifications/${notificationId}/attachments`, fileBuffer, fileName, mimeType, [notificationId]);
+}
+
+export function uploadBusRegistrationDocument(fileBuffer, fileName, mimeType, busId) {
+  return uploadFile(`buses/${busId}/registration`, fileBuffer, fileName, mimeType, [busId]);
+}
+
+export function uploadDriverLicenseDocument(fileBuffer, fileName, mimeType, busId) {
+  return uploadFile(`buses/${busId}/license`, fileBuffer, fileName, mimeType, [busId]);
+}
+
+export function uploadBusLeaseContractDocument(fileBuffer, fileName, mimeType, busId) {
+  return uploadFile(`buses/${busId}/lease-contract`, fileBuffer, fileName, mimeType, [busId]);
 }
 
 /**
- * Upload request attachment to Vercel Blob Storage
- * @param {Buffer} fileBuffer - File buffer data
- * @param {string} fileName - Original file name
- * @param {string} mimeType - File MIME type
- * @param {number} requestId - Request ID
- * @returns {Promise<string>} - Blob URL
+ * Delete the stored file behind a URL (an R2 URL or an old Vercel Blob URL,
+ * whose path is the R2 key). Never throws: a failed delete must not break the
+ * request that triggered it.
  */
-export async function uploadRequestAttachmentToBlob(fileBuffer, fileName, mimeType, requestId) {
-  if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
-    throw new Error('Invalid file buffer provided');
-  }
-  if (!fileName || !mimeType || !requestId) {
-    throw new Error('Missing required parameters for blob upload');
-  }
-
-  let uniqueFileName = generateFileName(fileName);
-  uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.(\2)$/i, '$1');
-  const blobPath = `requests/${requestId}/attachments/${uniqueFileName}`;
-
-  const r2Url = await uploadToR2(blobPath, fileBuffer, mimeType);
-  return { url: r2Url, r2Url };
-}
-
-/**
- * Delete file from Vercel Blob Storage
- * @param {string} blobUrl - Blob URL to delete
- * @returns {Promise<boolean>} - Success status
- */
-export async function deleteFromBlob(blobUrl) {
+export async function deleteFromBlob(fileUrl) {
   try {
-    // Only delete from Vercel if it's actually a Vercel Blob URL
-    if (isVercelBlobUrl(blobUrl)) {
-      validateBlobConfig();
-
-      const token = getBlobToken();
-      if (!token) {
-        log.error('Error deleting from Blob: No blob token configured');
-        return false;
-      }
-
-      try {
-        await del(blobUrl, { token });
-        if (process.env.LOG_BLOB_OPERATIONS === 'true') {
-          log.info(`Deleted blob: ${blobUrl.substring(0, 50)}...`);
-        }
-        return true;
-      } catch (error) {
-        log.error('Error deleting from Blob:', { error: error.message });
-        return false;
-      }
-    }
-    // R2 URLs and local paths: no Vercel deletion needed
-    return true;
+    const key = extractKeyFromR2Url(fileUrl);
+    if (!key) return true;
+    return await deleteFromR2(r2PublicUrlForKey(key));
   } catch (error) {
-    log.error('Error deleting from Blob:', { error: error.message });
-    // Don't throw - deletion failures shouldn't break the app
+    log.error('Error deleting stored file:', { error: error.message });
     return false;
   }
 }
 
-/**
- * Check if file exists in Blob Storage
- * @param {string} blobUrl - Blob URL to check
- * @returns {Promise<boolean>} - Whether file exists
- */
-export async function blobFileExists(blobUrl) {
-  try {
-    if (blobUrl && (blobUrl.startsWith('http://') || blobUrl.startsWith('https://'))) {
-      // Validate Blob Storage configuration
-      validateBlobConfig();
-
-      const token = getBlobToken();
-      if (!token) {
-        return false;
-      }
-
-      try {
-        await head(blobUrl, { token });
-        return true;
-      } catch (error) {
-        // File doesn't exist or is inaccessible
-        return false;
-      }
-    }
-    return false;
-  } catch (error) {
-    // File doesn't exist or error occurred
-    return false;
+/** R2 keys to try for a stored file, most likely first. */
+function candidateKeys(fileUrl, r2Url) {
+  const keys = [];
+  const add = (key) => { if (key && !keys.includes(key)) keys.push(key); };
+  for (const url of [r2Url, fileUrl]) {
+    const key = extractKeyFromR2Url(url);
+    if (!key) continue;
+    add(key);
+    try { add(decodeURIComponent(key)); } catch { /* not percent-encoded */ }
   }
-}
-
-/**
- * Fetch file from Blob Storage
- * @param {string} blobUrl - Blob URL to fetch
- * @returns {Promise<{buffer: Buffer, contentType: string}>} - File buffer and content type
- */
-export async function fetchFromBlob(blobUrl) {
-  try {
-    if (!blobUrl || (!blobUrl.startsWith('http://') && !blobUrl.startsWith('https://'))) {
-      throw new Error('Invalid blob URL');
-    }
-
-    const response = await fetch(blobUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch blob: ${response.statusText}`);
-    }
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const contentType = response.headers.get('content-type') || 'application/octet-stream';
-
-    return { buffer, contentType };
-  } catch (error) {
-    log.error('Error fetching from Blob:', { error: error.message });
-    throw new Error(`Failed to fetch file from Blob: ${error.message}`);
-  }
-}
-
-/**
- * Upload notification attachment to Vercel Blob Storage
- * @param {Buffer} fileBuffer - File buffer data
- * @param {string} fileName - Original file name
- * @param {string} mimeType - File MIME type
- * @param {number} notificationId - Notification ID
- * @returns {Promise<string>} - Blob URL
- */
-export async function uploadNotificationAttachmentToBlob(fileBuffer, fileName, mimeType, notificationId) {
-  if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
-    throw new Error('Invalid file buffer provided');
-  }
-  if (!fileName || !mimeType || !notificationId) {
-    throw new Error('Missing required parameters for blob upload');
-  }
-
-  let uniqueFileName = generateFileName(fileName);
-  uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.(\2)$/i, '$1');
-  const blobPath = `notifications/${notificationId}/attachments/${uniqueFileName}`;
-
-  const r2Url = await uploadToR2(blobPath, fileBuffer, mimeType);
-  return { url: r2Url, r2Url };
-}
-
-/**
- * Detect and fix double file extension in a blob URL
- * e.g. ".pdf.pdf" -> ".pdf", ".jpeg.jpeg" -> ".jpeg"
- * @param {string} url - Blob URL
- * @returns {string|null} - Fixed URL, or null if no double extension found
- */
-export function fixDoubleExtensionUrl(url) {
-  if (!url) return null;
-  // Match common double extensions: .pdf.pdf, .jpg.jpg, .jpeg.jpeg, .png.png, .gif.gif etc.
-  const doubleExtRegex = /\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx)\.(\1)$/i;
-  if (doubleExtRegex.test(url)) {
-    return url.replace(doubleExtRegex, '.$1');
-  }
-  return null;
-}
-
-/**
- * Try adding a double extension to a URL
- * e.g. ".pdf" -> ".pdf.pdf" (for files uploaded with the double-extension bug)
- * @param {string} url - Blob URL
- * @returns {string|null} - URL with doubled extension, or null if no known extension found
- */
-export function addDoubleExtensionUrl(url) {
-  if (!url) return null;
-  const singleExtRegex = /\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx)$/i;
-  const match = url.match(singleExtRegex);
-  if (match) {
-    // Only add if it doesn't already have a double extension
-    const doubleExtRegex = /\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx)\.\1$/i;
-    if (!doubleExtRegex.test(url)) {
-      return `${url}.${match[1]}`;
+  // Files saved by the old double-extension bug ("x.pdf.pdf") were copied to
+  // the clean name; very old rows may reference either form.
+  for (const key of [...keys]) {
+    if (DOUBLE_EXTENSION.test(key)) {
+      add(key.replace(DOUBLE_EXTENSION, '$1'));
+    } else {
+      const ext = key.match(/\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx)$/i);
+      if (ext) add(`${key}.${ext[1]}`);
     }
   }
-  return null;
+  return keys;
 }
 
 /**
- * Copy a blob to a new path (used to fix double-extension files)
- * @param {string} sourceUrl - Source blob URL
- * @param {string} destinationPathname - New pathname in blob storage
- * @returns {Promise<string>} - New blob URL
+ * Read a stored file from R2.
+ * @param {string} fileUrl - file_path from the database (R2 or old Blob URL)
+ * @param {string|null} [r2Url] - r2_file_path, when the row has one
+ * @returns {Promise<{buffer: Buffer, contentType: string, fixedUrl: null, source: 'r2'}>}
  */
-export async function copyBlob(sourceUrl, destinationPathname) {
-  try {
-    validateBlobConfig();
-    const token = getBlobToken();
-    if (!token) {
-      throw new Error('Blob storage token is not configured');
-    }
-    const result = await copy(sourceUrl, destinationPathname, {
-      access: 'public',
-      token: token
-    });
-    return result.url;
-  } catch (error) {
-    log.error('Error copying blob:', { error: error.message });
-    throw new Error(`Failed to copy blob: ${error.message}`);
-  }
-}
-
-/**
- * Proxy-fetch a blob URL and return its content as a buffer.
- * Priority order:
- * 1. R2 storage (fast, reliable — primary storage)
- * 2. R2 by extracting key from blob URL (if r2Url not set but file was migrated)
- * 3. Vercel CDN direct fetch
- * 4. Vercel CDN with double extension fixes
- * Returns { buffer, contentType, fixedUrl, source }.
- * @param {string} blobUrl - Original blob URL
- * @param {string|null} [r2Url] - Optional R2 mirror URL
- * @returns {Promise<{buffer: Buffer, contentType: string, fixedUrl: string|null, source: string}>}
- */
-export async function fetchBlobWithFallback(blobUrl, r2Url = null) {
-  // Priority 1: Try R2 storage first (primary, fastest)
-  if (r2Url) {
+export async function fetchBlobWithFallback(fileUrl, r2Url = null) {
+  for (const key of candidateKeys(fileUrl, r2Url)) {
     try {
-      const { fetchFromR2 } = await import('./r2Storage.js');
-      const { buffer, contentType } = await fetchFromR2(r2Url);
+      const { buffer, contentType } = await fetchFromR2ByKey(key);
       return { buffer, contentType, fixedUrl: null, source: 'r2' };
-    } catch (e) {
-      // R2 URL failed, try other methods
+    } catch {
+      // try the next candidate
     }
   }
-
-  // Priority 2: Try R2 by extracting key from blob URL path
-  if (!r2Url && blobUrl) {
-    try {
-      const { fetchFromR2ByKey } = await import('./r2Storage.js');
-      const { isR2StorageConfigured } = await import('../config/r2Storage.js');
-      if (isR2StorageConfigured()) {
-        const blobPath = new URL(blobUrl).pathname.slice(1);
-        if (blobPath) {
-          const { buffer, contentType } = await fetchFromR2ByKey(blobPath);
-          return { buffer, contentType, fixedUrl: null, source: 'r2' };
-        }
-      }
-    } catch (e) {
-      // R2 key lookup failed, fall through to Vercel
-    }
-  }
-
-  // Priority 3: Try Vercel CDN direct fetch
-  try {
-    const response = await fetch(blobUrl);
-    if (response.ok) {
-      const buffer = Buffer.from(await response.arrayBuffer());
-      const contentType = response.headers.get('content-type') || 'application/octet-stream';
-      return { buffer, contentType, fixedUrl: null, source: 'vercel' };
-    }
-  } catch (e) {
-    // CDN fetch failed
-  }
-
-  // Priority 4: Try Vercel with double extension fixes
-  const withoutDouble = fixDoubleExtensionUrl(blobUrl);
-  if (withoutDouble) {
-    try {
-      const response = await fetch(withoutDouble);
-      if (response.ok) {
-        const buffer = Buffer.from(await response.arrayBuffer());
-        const contentType = response.headers.get('content-type') || 'application/octet-stream';
-        return { buffer, contentType, fixedUrl: withoutDouble, source: 'vercel' };
-      }
-    } catch (e) {
-      // fallback also failed
-    }
-  }
-
-  const withDouble = addDoubleExtensionUrl(blobUrl);
-  if (withDouble) {
-    try {
-      const response = await fetch(withDouble);
-      if (response.ok) {
-        const buffer = Buffer.from(await response.arrayBuffer());
-        const contentType = response.headers.get('content-type') || 'application/octet-stream';
-        return { buffer, contentType, fixedUrl: withDouble, source: 'vercel' };
-      }
-    } catch (e) {
-      // fallback also failed
-    }
-  }
-
-  throw new Error(`الملف غير متوفر في التخزين السحابي (URL: ${blobUrl.substring(0, 80)}...)`);
-}
-
-/**
- * Upload bus registration document to Vercel Blob Storage
- * @param {Buffer} fileBuffer - File buffer data
- * @param {string} fileName - Original file name
- * @param {string} mimeType - File MIME type
- * @param {number} busId - Bus ID
- * @returns {Promise<string>} - Blob URL
- */
-export async function uploadBusRegistrationDocument(fileBuffer, fileName, mimeType, busId) {
-  if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
-    throw new Error('Invalid file buffer provided');
-  }
-  if (!fileName || !mimeType || !busId) {
-    throw new Error('Missing required parameters for blob upload');
-  }
-
-  let uniqueFileName = generateFileName(fileName);
-  uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.(\2)$/i, '$1');
-  const blobPath = `buses/${busId}/registration/${uniqueFileName}`;
-
-  const r2Url = await uploadToR2(blobPath, fileBuffer, mimeType);
-  return { url: r2Url, r2Url };
-}
-
-/**
- * Upload driver license document to Vercel Blob Storage
- * @param {Buffer} fileBuffer - File buffer data
- * @param {string} fileName - Original file name
- * @param {string} mimeType - File MIME type
- * @param {number} busId - Bus ID
- * @returns {Promise<string>} - Blob URL
- */
-export async function uploadDriverLicenseDocument(fileBuffer, fileName, mimeType, busId) {
-  if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
-    throw new Error('Invalid file buffer provided');
-  }
-  if (!fileName || !mimeType || !busId) {
-    throw new Error('Missing required parameters for blob upload');
-  }
-
-  let uniqueFileName = generateFileName(fileName);
-  uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.(\2)$/i, '$1');
-  const blobPath = `buses/${busId}/license/${uniqueFileName}`;
-
-  const r2Url = await uploadToR2(blobPath, fileBuffer, mimeType);
-  return { url: r2Url, r2Url };
-}
-
-/**
- * Upload bus lease contract document to Vercel Blob Storage
- * @param {Buffer} fileBuffer - File buffer data
- * @param {string} fileName - Original file name
- * @param {string} mimeType - File MIME type
- * @param {number} busId - Bus ID
- * @returns {Promise<string>} - Blob URL
- */
-export async function uploadBusLeaseContractDocument(fileBuffer, fileName, mimeType, busId) {
-  if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
-    throw new Error('Invalid file buffer provided');
-  }
-  if (!fileName || !mimeType || !busId) {
-    throw new Error('Missing required parameters for blob upload');
-  }
-
-  let uniqueFileName = generateFileName(fileName);
-  uniqueFileName = uniqueFileName.replace(/(\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx))\.(\2)$/i, '$1');
-  const blobPath = `buses/${busId}/lease-contract/${uniqueFileName}`;
-
-  const r2Url = await uploadToR2(blobPath, fileBuffer, mimeType);
-  return { url: r2Url, r2Url };
-}
-
-/**
- * Upload treatment plan document to Vercel Blob Storage
- * @param {Buffer} fileBuffer - File buffer data
- * @param {string} fileName - Original file name
- * @param {string} mimeType - File MIME type
- * @param {number} branchId - Branch ID
- * @returns {Promise<{url: string, r2Url: string|null}>} - Blob URL and R2 URL
- */
-export async function uploadTreatmentPlanToBlob(fileBuffer, fileName, mimeType, branchId) {
-  if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
-    throw new Error('Invalid file buffer provided');
-  }
-  if (!fileName || !mimeType || !branchId) {
-    throw new Error('Missing required parameters for blob upload');
-  }
-
-  let uniqueFileName = generateFileName(fileName);
-  uniqueFileName = uniqueFileName.replace(/(\.(doc|docx))\.\2$/i, '$1');
-  const blobPath = `treatment-plans/${branchId}/${uniqueFileName}`;
-
-  const r2Url = await uploadToR2(blobPath, fileBuffer, mimeType);
-  return { url: r2Url, r2Url };
+  throw new Error(`الملف غير متوفر في التخزين السحابي (URL: ${String(fileUrl || r2Url).substring(0, 80)}...)`);
 }

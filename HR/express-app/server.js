@@ -65,20 +65,6 @@ async function testDbConnection() {
   }
 }
 
-// Test Blob Storage configuration on startup
-async function testBlobStorage() {
-  try {
-    const { isBlobStorageConfigured } = await import('./utils/blobStorage.js');
-    if (isBlobStorageConfigured()) {
-      log.info('Blob Storage is configured');
-    } else {
-      log.warn('Blob Storage is not configured - file uploads will not work. Please set BLOB_READ_WRITE_TOKEN');
-    }
-  } catch (error) {
-    log.warn('Could not check Blob Storage configuration', { error: error.message });
-  }
-}
-
 // Initialize HRM database tables
 async function initDatabase() {
   try {
@@ -167,13 +153,6 @@ async function startup() {
   } catch (error) {
     // Don't block startup if DB test fails - connection will be retried on first request
     log.warn('Database connection test failed on startup, will retry on first request');
-  }
-
-  try {
-    await testBlobStorage();
-  } catch (error) {
-    // Don't block startup if Blob Storage test fails
-    log.warn('Blob Storage test failed on startup');
   }
 
   // Initialize database tables (idempotent - safe to run multiple times)

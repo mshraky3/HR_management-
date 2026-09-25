@@ -64,8 +64,6 @@ router.use('/students-report', lazy(() => import('./students-report.js')));
 router.use('/suggestions', suggestionsRoutes);
 router.use('/beneficiaries', lazy(() => import('./beneficiaries.js')));
 router.use('/error-report', errorReportRoutes);
-router.use('/blob-recovery', lazy(() => import('./blob-recovery.js')));
-router.use('/treatment-plans', lazy(() => import('./treatment-plans.js')));
 router.use('/employee-expiry', lazy(() => import('./employee-expiry.js')));
 
 export default router;

@@ -34,10 +34,7 @@ import {
   uploadBranchDocumentToBlob,
   deleteFromBlob,
   fetchBlobWithFallback,
-  copyBlob,
-  fixDoubleExtensionUrl,
 } from "../utils/blobStorage.js";
-import { mirrorVercelFileToR2 } from "../utils/dualStorage.js";
 import { isValidMimeType as isValidUploadMimeType } from "../utils/validators.js";
 import { clearByPrefix } from "../utils/simpleCache.js";
 import { formatDate } from "../utils/dateConverter.js";
@@ -545,39 +542,7 @@ router.get("/:id/download", async (req, res) => {
       document.file_path.startsWith("https://")
     ) {
       try {
-        const { buffer, contentType, fixedUrl, source } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
-
-        // Auto-fix double-extension URL in database
-        if (fixedUrl) {
-          try {
-            const doubleExtRegex = /\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx)\.\1$/i;
-            if (doubleExtRegex.test(fixedUrl)) {
-              // Blob found at doubled path, copy to clean path
-              const cleanUrl = fixDoubleExtensionUrl(fixedUrl);
-              if (cleanUrl) {
-                const pathname = new URL(cleanUrl).pathname.replace(/^\//, '');
-                const newBlobUrl = await copyBlob(fixedUrl, pathname);
-                await sql`UPDATE branch_documents SET file_path = ${newBlobUrl}, updated_at = CURRENT_TIMESTAMP WHERE id = ${document.id}`;
-                log.info(`Auto-fixed: copied blob to clean path for branch document ${document.id}`);
-              }
-            } else {
-              await sql`UPDATE branch_documents SET file_path = ${fixedUrl}, updated_at = CURRENT_TIMESTAMP WHERE id = ${document.id}`;
-              log.info(`Auto-fixed double-extension URL for branch document ${document.id}`);
-            }
-          } catch (updateErr) {
-            log.warn(`Could not auto-fix URL for branch document ${document.id}:`, updateErr.message);
-          }
-        }
-
-        // Lazy migration: mirror to R2 on first Vercel hit
-        if (source === 'vercel' && !document.r2_file_path) {
-          setImmediate(async () => {
-            try {
-              const r2Url = await mirrorVercelFileToR2(document.file_path, buffer, contentType);
-              if (r2Url) await sql`UPDATE branch_documents SET r2_file_path = ${r2Url}, updated_at = CURRENT_TIMESTAMP WHERE id = ${document.id}`;
-            } catch (e) { /* non-blocking */ }
-          });
-        }
+        const { buffer, contentType } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
 
         const safeFilename = sanitizeFilename(document.file_name);
         res.setHeader("Content-Type", contentType || document.mime_type);
@@ -663,27 +628,7 @@ router.get("/:id/preview", async (req, res) => {
           document.file_path.startsWith("https://"))
       ) {
         try {
-          const { buffer, contentType, fixedUrl, source } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
-
-          // If a fixed URL was used, update DB for future requests
-          if (fixedUrl) {
-            try {
-              await BranchDocument.update(document.id, { file_path: fixedUrl });
-              log.info(`Auto-fixed preview URL for branch document ${document.id}`);
-            } catch (updateErr) {
-              log.warn(`Could not update fixed URL for branch document ${document.id}:`, updateErr.message);
-            }
-          }
-
-          // Lazy migration: mirror to R2 on first Vercel preview hit
-          if (source === 'vercel' && !document.r2_file_path) {
-            setImmediate(async () => {
-              try {
-                const r2Url = await mirrorVercelFileToR2(document.file_path, buffer, contentType);
-                if (r2Url) await sql`UPDATE branch_documents SET r2_file_path = ${r2Url}, updated_at = CURRENT_TIMESTAMP WHERE id = ${document.id}`;
-              } catch (e) { /* non-blocking */ }
-            });
-          }
+          const { buffer, contentType } = await fetchBlobWithFallback(document.file_path, document.r2_file_path);
 
           res.setHeader("Content-Type", document.mime_type || contentType);
           return res.send(buffer);

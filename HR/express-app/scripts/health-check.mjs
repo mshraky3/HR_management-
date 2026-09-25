@@ -1,6 +1,6 @@
 /**
  * System Health Check
- * Tests: DB connection, DB schema, migration status, Vercel Blob, R2 Storage
+ * Tests: DB connection, DB schema, migration status, R2 Storage
  *
  * Run: node scripts/health-check.mjs
  */
@@ -10,7 +10,6 @@ dotenv.config();
 
 import postgres from 'postgres';
 import { S3Client, ListBucketsCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { put, del } from '@vercel/blob';
 
 const RESET = '\x1b[0m';
 const GREEN = '\x1b[32m';
@@ -35,7 +34,6 @@ section('Environment Variables');
 
 const required = {
     DATABASE_URL: process.env.DATABASE_URL,
-    BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
     R2_Access_Key_ID: process.env.R2_Access_Key_ID,
     Secret_Access_Key: process.env.Secret_Access_Key,
     Account_ID: process.env.Account_ID,
@@ -104,35 +102,7 @@ try {
     }
 } catch (e) { err('Row counts', e); }
 
-// ─── 4. Vercel Blob Storage ───────────────────────────────────────────────────
-section('Vercel Blob Storage');
-
-const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
-if (!blobToken) {
-    wn('Blob upload test', 'skipped — BLOB_READ_WRITE_TOKEN not set');
-} else {
-    const testPath = `health-check/test-${Date.now()}.txt`;
-    let blobUrl;
-    try {
-        const result = await put(testPath, Buffer.from('health-check'), {
-            access: 'public',
-            contentType: 'text/plain',
-            addRandomSuffix: false,
-            token: blobToken,
-        });
-        blobUrl = result.url;
-        ok(`Upload test file  →  ${blobUrl}`);
-    } catch (e) { err('Blob upload', e); }
-
-    if (blobUrl) {
-        try {
-            await del(blobUrl, { token: blobToken });
-            ok('Delete test file from Blob');
-        } catch (e) { wn('Blob delete', e.message); }
-    }
-}
-
-// ─── 5. Cloudflare R2 Storage ─────────────────────────────────────────────────
+// ─── 4. Cloudflare R2 Storage ─────────────────────────────────────────────────
 section('Cloudflare R2 Storage');
 
 const r2Key = process.env.R2_Access_Key_ID;
@@ -165,7 +135,7 @@ if (!r2Key || !r2Secret || !r2Account) {
     }
 }
 
-// ─── 6. Summary ───────────────────────────────────────────────────────────────
+// ─── 5. Summary ───────────────────────────────────────────────────────────────
 section('Summary');
 console.log(`  ${GREEN}Passed:${RESET}  ${results.passed}`);
 console.log(`  ${YELLOW}Warned:${RESET}  ${results.warned}`);

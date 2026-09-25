@@ -1364,56 +1364,6 @@ export const suggestionsAPI = {
     api.delete(`/api/suggestions/${id}`),
 };
 
-// =============================================
-// Public API instance (no auth interceptor)
-// Used for public endpoints that don't require login
-// =============================================
-const publicApi = axios.create({
-  baseURL: getCurrentApiUrl(),
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-// Treatment Plans Public API (no auth required)
-export const treatmentPlansPublicAPI = {
-  getBranches: () =>
-    publicApi.get('/api/treatment-plans/branches'),
-
-  submit: (formData, config = {}) =>
-    publicApi.post('/api/treatment-plans/submit', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      ...config,
-    }),
-
-  submitDirect: (metadata) =>
-    publicApi.post('/api/treatment-plans/submit-direct', metadata),
-
-  getUploadUrl: (body) =>
-    publicApi.post('/api/treatment-plans/upload-url', body),
-};
-
-// Treatment Plans Admin API (auth required)
-export const treatmentPlansAPI = {
-  getAll: (params = {}) =>
-    api.get('/api/treatment-plans', { params }),
-
-  getStats: () =>
-    api.get('/api/treatment-plans/stats'),
-
-  getById: (id) =>
-    api.get(`/api/treatment-plans/${id}`),
-
-  download: (id) =>
-    api.get(`/api/treatment-plans/${id}/download`, { responseType: 'blob' }),
-
-  review: (id, data) =>
-    api.put(`/api/treatment-plans/${id}/review`, data),
-
-  delete: (id) =>
-    api.delete(`/api/treatment-plans/${id}`),
-};
-
 // Employee Expiry API
 export const employeeExpiryAPI = {
   getSummary: (params = {}) =>

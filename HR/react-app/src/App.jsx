@@ -123,8 +123,6 @@ const BusTransportation = lazyRetry(() => import("./pages/BusTransportation.jsx"
 const Suggestions = lazyRetry(() => import("./pages/Suggestions"));
 const Beneficiaries = lazyRetry(() => import("./pages/Beneficiaries"));
 const BeneficiariesArchive = lazyRetry(() => import("./pages/BeneficiariesArchive"));
-const TreatmentPlanSubmission = lazyRetry(() => import("./pages/TreatmentPlanSubmission"));
-const TreatmentPlanMonitor = lazyRetry(() => import("./pages/TreatmentPlanMonitor"));
 const TestEmails = lazyRetry(() => import("./pages/TestEmails"));
 const EmployeeExpiry = lazyRetry(() => import("./pages/EmployeeExpiry"));
 
@@ -170,7 +168,6 @@ const AppContent = () => {
     <Suspense fallback={<PageLoading />}>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/treatment-plans" element={<TreatmentPlanSubmission />} />
         <Route
           path="/dashboard"
           element={
@@ -489,16 +486,6 @@ const AppContent = () => {
             <ProtectedRoute requireMainManager>
               <Layout>
                 <BeneficiariesArchive />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/treatment-plans-monitor"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <TreatmentPlanMonitor />
               </Layout>
             </ProtectedRoute>
           }

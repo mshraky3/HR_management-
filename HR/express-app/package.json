@@ -15,10 +15,7 @@
     "migrate:performance-indexes": "node scripts/migrate-add-performance-indexes.js",
     "recalculate:completion-status": "node scripts/recalculate-all-employees-completion-status.js",
     "archive:old-documents": "node scripts/archive-old-documents.js",
-    "fix:double-extensions": "node scripts/fix-double-extensions.js",
-    "backup:blobs": "node scripts/backup-all-blobs.js",
     "report:unfixable": "node scripts/generate-unfixable-report.js",
-    "check:blobs": "node scripts/check-blob-status.js",
     "test:email": "node scripts/test-email-send.mjs",
     "policy:report": "node scripts/policy-scope-report.mjs",
     "policy:check": "node scripts/policy-scope-report.mjs --strict"
@@ -31,7 +28,6 @@
     "@aws-sdk/client-s3": "^3.1009.0",
     "@aws-sdk/s3-request-presigner": "^3.1009.0",
     "@digicole/pdfmake-rtl": "^1.2.0",
-    "@vercel/blob": "^2.3.1",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
