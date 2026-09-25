@@ -20,6 +20,19 @@ import { getBlobToken } from '../config/blobStorage.js';
 import { uploadToR2Mirror, mirrorVercelFileToR2 } from '../utils/dualStorage.js';
 import { handleRouteError } from '../utils/routeErrorHandler.js';
 import { log } from '../utils/logger.js';
+import { randomUUID } from 'crypto';
+import { generateFileName } from '../utils/fileUpload.js';
+import { MAX_API_UPLOAD_BYTES } from '../middleware/upload.js';
+import {
+    presignR2Put,
+    presignR2Get,
+    headR2Object,
+    readR2Prefix,
+    deleteFromR2,
+    r2PublicUrlForKey,
+    extractKeyFromR2Url,
+    isR2StorageConfigured,
+} from '../utils/r2Storage.js';
 
 const router = express.Router();
 
@@ -58,6 +71,61 @@ router.get('/branches', async (req, res) => {
     } catch (error) {
         log.error('Error fetching healthcare branches:', error);
         handleRouteError(error, req, res, 'فشل في جلب الفروع');
+    }
+});
+
+// ============================================================================
+// Direct R2 uploads for the public submission form. The Vercel Blob store is
+// blocked (over its free quota), so files go browser -> R2 with a signed URL
+// and /submit-direct references them by key.
+// ============================================================================
+
+const TREATMENT_PLAN_TYPES = [
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+    'application/pdf',
+];
+const MAX_TREATMENT_PLAN_BYTES = 100 * 1024 * 1024;
+const TREATMENT_PLAN_SIGNATURES = {
+    'application/pdf': [0x25, 0x50, 0x44, 0x46], // %PDF
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [0x50, 0x4b, 0x03, 0x04], // zip
+    'application/msword': [0xd0, 0xcf, 0x11, 0xe0], // OLE2
+};
+
+const findHealthcareBranch = async (branchId) => {
+    const [branch] = await sql`
+      SELECT id FROM branches
+      WHERE id = ${parseInt(branchId)} AND is_active = true AND branch_type = 'healthcare_center'
+    `;
+    return branch || null;
+};
+
+/**
+ * Signed URL for uploading one treatment plan file straight to R2 (public, no auth)
+ * POST /api/treatment-plans/upload-url
+ * Body: branch_id, file_name, content_type, size
+ */
+router.post('/upload-url', async (req, res) => {
+    try {
+        const { branch_id, file_name, content_type, size } = req.body || {};
+        if (!branch_id || !content_type) {
+            return res.status(400).json({ success: false, message: 'جميع الحقول المطلوبة يجب أن تكون موجودة' });
+        }
+        if (!TREATMENT_PLAN_TYPES.includes(content_type)) {
+            return res.status(400).json({ success: false, message: 'نوع الملف غير مسموح به. يُسمح بملفات Word و PDF فقط' });
+        }
+        if (Number(size) > MAX_TREATMENT_PLAN_BYTES) {
+            return res.status(400).json({ success: false, message: 'حجم الملف يتجاوز الحد الأقصى (100 ميجابايت)' });
+        }
+        if (!(await findHealthcareBranch(branch_id))) {
+            return res.status(400).json({ success: false, message: 'الفرع غير موجود أو غير فعال' });
+        }
+        const key = `treatment-plans/${parseInt(branch_id)}/${randomUUID().slice(0, 8)}_${generateFileName(file_name || 'plan')}`;
+        const uploadUrl = await presignR2Put(key, content_type);
+        return res.json({ success: true, data: { upload_url: uploadUrl, key } });
+    } catch (error) {
+        log.error('Error creating treatment plan upload URL:', error);
+        handleRouteError(error, req, res, 'فشل تجهيز رفع الملف');
     }
 });
 
@@ -100,18 +168,38 @@ router.post('/client-upload', async (req, res) => {
  */
 router.post('/submit-direct', async (req, res) => {
     try {
-        const { employee_name, branch_id, job_title, department, plan_type, notes, file_url, original_filename, file_size } = req.body;
+        const { employee_name, branch_id, job_title, department, plan_type, notes, file_key, original_filename } = req.body;
+        let { file_url, file_size } = req.body;
 
         // Validate required fields
-        if (!employee_name || !branch_id || !job_title || !department || !plan_type || !file_url || !original_filename) {
+        if (!employee_name || !branch_id || !job_title || !department || !plan_type || !(file_url || file_key) || !original_filename) {
             return res.status(400).json({
                 success: false,
                 message: 'جميع الحقول المطلوبة يجب أن تكون موجودة'
             });
         }
 
-        // Validate that file_url is a legitimate Vercel Blob URL
-        if (!file_url.startsWith('https://') || !file_url.includes('.public.blob.vercel-storage.com/')) {
+        // New uploads reference an R2 key from /upload-url; older clients send a Blob URL.
+        let uploadedToR2 = false;
+        if (file_key) {
+            const prefix = `treatment-plans/${parseInt(branch_id)}/`;
+            if (typeof file_key !== 'string' || !file_key.startsWith(prefix) || file_key.includes('..')) {
+                return res.status(400).json({ success: false, message: 'رابط الملف غير صالح' });
+            }
+            const head = await headR2Object(file_key);
+            if (!head) {
+                return res.status(400).json({ success: false, message: 'لم يكتمل رفع الملف. الرجاء المحاولة مرة أخرى.' });
+            }
+            const signature = TREATMENT_PLAN_SIGNATURES[head.contentType];
+            const firstBytes = await readR2Prefix(file_key, 8);
+            if (!signature || !signature.every((b, i) => firstBytes[i] === b) || head.size > MAX_TREATMENT_PLAN_BYTES) {
+                await deleteFromR2(r2PublicUrlForKey(file_key));
+                return res.status(400).json({ success: false, message: 'نوع الملف غير مسموح به. يُسمح بملفات Word و PDF فقط' });
+            }
+            file_url = r2PublicUrlForKey(file_key);
+            file_size = head.size;
+            uploadedToR2 = true;
+        } else if (!file_url.startsWith('https://') || !file_url.includes('.public.blob.vercel-storage.com/')) {
             return res.status(400).json({
                 success: false,
                 message: 'رابط الملف غير صالح'
@@ -134,9 +222,9 @@ router.post('/submit-direct', async (req, res) => {
         const normalizedFilename = normalizeUploadedFilename(original_filename);
 
         // R2 mirroring - best effort, skip for large files to avoid timeout
-        let r2Url = null;
+        let r2Url = uploadedToR2 ? file_url : null;
         const MAX_R2_MIRROR_SIZE = 20 * 1024 * 1024; // 20MB
-        if (file_size && file_size <= MAX_R2_MIRROR_SIZE) {
+        if (!uploadedToR2 && file_size && file_size <= MAX_R2_MIRROR_SIZE) {
             try {
                 const blobPathMatch = file_url.match(/treatment-plans\/.+$/);
                 if (blobPathMatch) {
@@ -381,6 +469,17 @@ router.get('/:id/download', authenticate, requireManager, async (req, res) => {
 
         if (!plan.file_url) {
             return res.status(404).json({ success: false, message: 'الملف غير موجود' });
+        }
+
+        // Files above the API limit cannot pass through the function (Vercel caps
+        // responses at ~4.5 MB): give the browser a short-lived R2 link instead.
+        const r2Key = plan.r2_url ? extractKeyFromR2Url(plan.r2_url) : null;
+        if (r2Key && Number(plan.file_size) > MAX_API_UPLOAD_BYTES && isR2StorageConfigured()) {
+            const directUrl = await presignR2Get(r2Key, {
+                fileName: plan.original_filename || 'plan.docx',
+                inline: false,
+            });
+            return res.json({ success: true, direct_url: directUrl });
         }
 
         const { buffer, contentType, source } = await fetchBlobWithFallback(plan.file_url, plan.r2_url);

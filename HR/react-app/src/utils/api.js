@@ -1388,6 +1388,9 @@ export const treatmentPlansPublicAPI = {
 
   submitDirect: (metadata) =>
     publicApi.post('/api/treatment-plans/submit-direct', metadata),
+
+  getUploadUrl: (body) =>
+    publicApi.post('/api/treatment-plans/upload-url', body),
 };
 
 // Treatment Plans Admin API (auth required)

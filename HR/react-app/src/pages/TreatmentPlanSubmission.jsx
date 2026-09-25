@@ -5,7 +5,6 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { treatmentPlansPublicAPI } from '../utils/api';
-import { getCurrentApiUrl } from '../config/api';
 import { reportApiError } from '../utils/errorTracking';
 import {
     getTreatmentPlansByJobTitle,
@@ -97,55 +96,37 @@ const TreatmentPlanSubmission = () => {
     ];
 
     /**
-     * Upload a file directly to Vercel Blob via the client upload protocol.
-     * Replicates what @vercel/blob/client `upload()` does, using plain XHR for progress.
+     * Upload a file straight to R2 with a signed URL from the backend.
+     * Plain XHR so the progress bar keeps working. Returns the object key.
      */
-    const uploadToBlob = async (pathname, file, { handleUploadUrl, onUploadProgress }) => {
-        // Step 1: Get client token from backend
-        const tokenRes = await fetch(handleUploadUrl, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-                type: 'blob.generate-client-token',
-                payload: { pathname, callbackUrl: handleUploadUrl, clientPayload: null, multipart: false },
-            }),
+    const uploadToStorage = async (file, branchId, { onUploadProgress }) => {
+        const { data } = await treatmentPlansPublicAPI.getUploadUrl({
+            branch_id: branchId,
+            file_name: file.name,
+            content_type: file.type,
+            size: file.size,
         });
-        if (!tokenRes.ok) {
-            const errorData = await tokenRes.json().catch(() => ({}));
-            throw new Error(errorData.error || 'فشل في الحصول على تصريح الرفع');
-        }
-        const { clientToken } = await tokenRes.json();
+        const { upload_url: uploadUrl, key } = data?.data || {};
+        if (!uploadUrl || !key) throw new Error('فشل في الحصول على تصريح الرفع');
 
-        // Step 2: Upload file directly to Vercel Blob using XHR (supports progress)
-        return new Promise((resolve, reject) => {
+        await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
-            const params = new URLSearchParams({ pathname });
-            xhr.open('PUT', `https://vercel.com/api/blob/?${params.toString()}`);
-            xhr.setRequestHeader('authorization', `Bearer ${clientToken}`);
-            xhr.setRequestHeader('x-api-version', '12');
-            xhr.setRequestHeader('x-content-type', file.type || 'application/octet-stream');
-            xhr.setRequestHeader('x-content-length', String(file.size));
-
+            xhr.open('PUT', uploadUrl);
+            xhr.setRequestHeader('Content-Type', file.type);
             xhr.upload.onprogress = (e) => {
                 if (e.lengthComputable && onUploadProgress) {
                     onUploadProgress({ percentage: Math.round((e.loaded / e.total) * 100) });
                 }
             };
             xhr.onload = () => {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    try {
-                        resolve(JSON.parse(xhr.responseText));
-                    } catch {
-                        reject(new Error('استجابة غير صالحة من خادم التخزين'));
-                    }
-                } else {
-                    reject(new Error(`فشل رفع الملف (${xhr.status})`));
-                }
+                if (xhr.status >= 200 && xhr.status < 300) resolve();
+                else reject(new Error(`فشل رفع الملف (${xhr.status})`));
             };
             xhr.onerror = () => reject(new Error('خطأ في الشبكة أثناء رفع الملف'));
             xhr.ontimeout = () => reject(new Error('انتهت مهلة رفع الملف'));
             xhr.send(file);
         });
+        return key;
     };
 
     const addFiles = (incomingFiles) => {
@@ -289,7 +270,6 @@ const TreatmentPlanSubmission = () => {
         setFileProgress([...progress]);
         let successCount = 0;
         let failedFiles = [];
-        const handleUploadUrl = `${getCurrentApiUrl()}/api/treatment-plans/client-upload`;
 
         try {
             // Submit each file: upload to blob directly, then send metadata
@@ -299,17 +279,10 @@ const TreatmentPlanSubmission = () => {
                 setFileProgress([...progress]);
 
                 try {
-                    // Generate unique filename for blob storage
-                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19).replace('T', '_');
-                    const sanitized = files[i].name.replace(/[^a-zA-Z0-9.-]/g, '_');
-                    const uniqueName = `${timestamp}_${sanitized}`;
-                    const blobPath = `treatment-plans/${formData.branch_id}/${uniqueName}`;
-
-                    // Step 1: Upload file directly to Vercel Blob
-                    const blob = await uploadToBlob(blobPath, files[i], {
-                        handleUploadUrl,
+                    // Step 1: Upload the file straight to storage
+                    const fileKey = await uploadToStorage(files[i], formData.branch_id, {
                         onUploadProgress: ({ percentage }) => {
-                            // Blob upload = 90% of progress, metadata submission = last 10%
+                            // File upload = 90% of progress, metadata submission = last 10%
                             progress[i].percent = Math.round(percentage * 0.9);
                             setFileProgress([...progress]);
                         },
@@ -318,7 +291,7 @@ const TreatmentPlanSubmission = () => {
                     progress[i].percent = 90;
                     setFileProgress([...progress]);
 
-                    // Step 2: Submit metadata + blob URL to backend
+                    // Step 2: Submit metadata + file key to backend
                     await treatmentPlansPublicAPI.submitDirect({
                         employee_name: formData.employee_name.trim(),
                         branch_id: formData.branch_id,
@@ -326,7 +299,7 @@ const TreatmentPlanSubmission = () => {
                         department: formData.department,
                         plan_type: formData.plan_type === '__other__' ? customPlanType.trim() : formData.plan_type,
                         notes: formData.notes,
-                        file_url: blob.url,
+                        file_key: fileKey,
                         original_filename: files[i].name,
                         file_size: files[i].size,
                     });
