@@ -15,6 +15,7 @@ import { Branch } from '../models/Branch.js';
 import sql from '../config/database.js';
 import { handleRouteError } from '../utils/routeErrorHandler.js';
 import { log } from '../utils/logger.js';
+import { sendLargeFileAsLink } from '../utils/largeResponse.js';
 
 const router = express.Router();
 
@@ -729,6 +730,7 @@ router.post('/generate', async (req, res) => {
       const { generateEmployeeFilePDF } = await import('./employee-file.js');
       const pdfBuffer = await generateEmployeeFilePDF(title, employees, finalSelectedFields, allBranches, documentsMap, true); // true = isReport
 
+      if (await sendLargeFileAsLink(res, pdfBuffer, `${title}.pdf`)) return;
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.pdf"`);
       res.send(pdfBuffer);
@@ -749,6 +751,7 @@ router.post('/generate', async (req, res) => {
       const pdfBuffer = await generatePDF(title, employees, finalSelectedFields, allBranches, validBranchIds);
 
       // Return PDF directly as response (no file system write in serverless environment)
+      if (await sendLargeFileAsLink(res, pdfBuffer, `${title}.pdf`)) return;
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.pdf"`);
       res.send(pdfBuffer);

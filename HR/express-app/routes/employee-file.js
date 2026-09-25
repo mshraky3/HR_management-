@@ -19,6 +19,7 @@ import { Branch } from '../models/Branch.js';
 import sql from '../config/database.js';
 import { handleRouteError } from '../utils/routeErrorHandler.js';
 import { log } from '../utils/logger.js';
+import { sendLargeFileAsLink } from '../utils/largeResponse.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -934,6 +935,7 @@ router.post('/generate-single/:employee_id', requireManager, async (req, res) =>
     const pdfBuffer = await generateEmployeeFilePDF(title, [employee], selectedFields, allBranches, documentsMap);
 
     // Return PDF directly as response
+    if (await sendLargeFileAsLink(res, pdfBuffer, `${title}.pdf`)) return;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.pdf"`);
     res.send(pdfBuffer);
@@ -1021,6 +1023,7 @@ router.post('/generate', requireMainManager, async (req, res) => {
     const pdfBuffer = await generateEmployeeFilePDF(title, employees, selectedFields, allBranches, documentsMap);
 
     // Return PDF directly as response (no file system write in serverless environment)
+    if (await sendLargeFileAsLink(res, pdfBuffer, `${title}.pdf`)) return;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(title)}.pdf"`);
     res.send(pdfBuffer);

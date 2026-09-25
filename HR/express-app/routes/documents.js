@@ -9,10 +9,19 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { authenticate } from '../middleware/auth.js';
 import { checkBranchAccess, requireManager } from '../middleware/authorization.js';
-import { uploadSingle, validateUploadedFile } from '../middleware/upload.js';
+import {
+  uploadSingle,
+  validateUploadedFile,
+  acceptDirectUpload,
+  buildDirectUploadKey,
+  MAX_API_UPLOAD_BYTES,
+  MAX_DIRECT_UPLOAD_BYTES,
+  directFileTooLargeMessage,
+} from '../middleware/upload.js';
+import { presignR2Put, presignR2Get, extractKeyFromR2Url, isR2StorageConfigured } from '../utils/r2Storage.js';
 import { Document } from '../models/Document.js';
 import { Employee } from '../models/Employee.js';
-import { isValidDocumentType } from '../utils/validators.js';
+import { isValidDocumentType, isValidMimeType } from '../utils/validators.js';
 import { getExtensionFromMimeType } from '../utils/fileUpload.js';
 import { uploadToBlob, deleteFromBlob, fetchBlobWithFallback, copyBlob, fixDoubleExtensionUrl } from '../utils/blobStorage.js';
 import { mirrorVercelFileToR2 } from '../utils/dualStorage.js';
@@ -28,6 +37,63 @@ const router = express.Router();
 // All routes require authentication + manager role (blocks branch_operations_manager)
 router.use(authenticate);
 router.use(requireManager);
+
+/**
+ * Signed R2 link for files too big to send through the function, else null.
+ * Only documents above the API upload limit take this path, so every older
+ * (smaller) file keeps being served exactly as before.
+ */
+const directDownloadUrl = async (document) => {
+  if (!document?.file_size || document.file_size <= MAX_API_UPLOAD_BYTES) return null;
+  if (!isR2StorageConfigured()) return null;
+  const key = extractKeyFromR2Url(document.r2_file_path || document.file_path);
+  if (!key) return null;
+  return presignR2Get(key, { fileName: document.file_name, contentType: document.mime_type });
+};
+
+/** Access check shared by the upload routes. Returns an error response or null. */
+const checkEmployeeUploadAccess = async (req, employeeId) => {
+  const employee = await Employee.findById(parseInt(employeeId));
+  if (!employee) return { status: 404, message: 'الموظف غير موجود' };
+  if (req.user.role === 'branch_manager' && !employeeHasBranchAccess(employee, req.user.branch_id)) {
+    return { status: 403, message: 'يمكنك فقط رفع مستندات لموظفي فرعك' };
+  }
+  return null;
+};
+
+/**
+ * Signed URL for uploading a file larger than the API limit straight to R2.
+ * POST /api/documents/upload-url
+ * Body: employee_id, document_type, file_name, content_type, size
+ * The browser then PUTs the file to upload_url (with the same Content-Type)
+ * and calls POST /api/documents with direct_upload_key = key.
+ */
+router.post('/upload-url', async (req, res) => {
+  try {
+    const { employee_id, document_type, file_name, content_type, size } = req.body || {};
+    if (!employee_id || !document_type || !content_type) {
+      return res.status(400).json({ success: false, message: 'معرف الموظف ونوع المستند مطلوبان' });
+    }
+    if (!isValidDocumentType(document_type)) {
+      return res.status(400).json({ success: false, message: 'نوع المستند غير صحيح' });
+    }
+    if (!isValidMimeType(content_type)) {
+      return res.status(400).json({ success: false, message: 'نوع الملف غير مدعوم. يُسمح فقط بملفات PDF والصور.' });
+    }
+    if (Number(size) > MAX_DIRECT_UPLOAD_BYTES) {
+      return res.status(400).json({ success: false, message: directFileTooLargeMessage() });
+    }
+    const denied = await checkEmployeeUploadAccess(req, employee_id);
+    if (denied) return res.status(denied.status).json({ success: false, message: denied.message });
+
+    const key = buildDirectUploadKey(`employees/${parseInt(employee_id)}/${document_type}/`, file_name);
+    const uploadUrl = await presignR2Put(key, content_type);
+    return res.json({ success: true, data: { upload_url: uploadUrl, key } });
+  } catch (error) {
+    log.error('Error creating document upload URL:', error);
+    handleRouteError(error, req, res, 'فشل تجهيز رفع الملف');
+  }
+});
 
 /**
  * Get all documents (with filters)
@@ -123,7 +189,12 @@ router.get('/', async (req, res) => {
  * POST /api/documents
  * Form data: file, employee_id, document_type, description, expiry_date
  */
-router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
+router.post(
+  '/',
+  uploadSingle,
+  acceptDirectUpload((req) => (req.body.employee_id ? `employees/${parseInt(req.body.employee_id)}/` : null)),
+  validateUploadedFile,
+  async (req, res) => {
   try {
     const { employee_id, document_type, description, expiry_date } = req.body;
 
@@ -187,14 +258,16 @@ router.post('/', uploadSingle, validateUploadedFile, async (req, res) => {
       log.warn('Document type validation error:', validationError);
     }
 
-    // Upload file to Vercel Blob Storage
-    const { url: blobUrl, r2Url } = await uploadToBlob(
-      req.file.buffer, // File buffer from memory storage
-      req.file.originalname,
-      req.file.mimetype,
-      parseInt(employee_id),
-      document_type
-    );
+    // Store the file in R2 (direct uploads are already there)
+    const { url: blobUrl, r2Url } = req.file.directKey
+      ? { url: req.file.url, r2Url: req.file.url }
+      : await uploadToBlob(
+        req.file.buffer, // File buffer from memory storage
+        req.file.originalname,
+        req.file.mimetype,
+        parseInt(employee_id),
+        document_type
+      );
 
     // Set uploaded_by to user ID — requires authenticated user, no fallback allowed
     if (!req.user || !req.user.id) {
@@ -300,11 +373,18 @@ router.get('/:id/download', async (req, res) => {
         message: 'الموظف المرتبط بهذا المستند غير موجود'
       });
     }
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
+    if (req.user.role === 'branch_manager' && !employeeHasBranchAccess(employee, req.user.branch_id)) {
       return res.status(403).json({
         success: false,
         message: 'تم رفض الوصول'
       });
+    }
+
+    // Files above the API limit cannot be sent through the function (Vercel
+    // caps responses at ~4.5 MB): hand the browser a short-lived R2 link.
+    const directUrl = await directDownloadUrl(document);
+    if (directUrl) {
+      return res.json({ success: true, direct_url: directUrl });
     }
 
     // Validate file_path exists
@@ -440,11 +520,18 @@ router.get('/:id/preview', async (req, res) => {
         message: 'الموظف المرتبط بهذا المستند غير موجود'
       });
     }
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
+    if (req.user.role === 'branch_manager' && !employeeHasBranchAccess(employee, req.user.branch_id)) {
       return res.status(403).json({
         success: false,
         message: 'تم رفض الوصول'
       });
+    }
+
+    // Files above the API limit cannot be sent through the function (Vercel
+    // caps responses at ~4.5 MB): hand the browser a short-lived R2 link.
+    const directUrl = await directDownloadUrl(document);
+    if (directUrl) {
+      return res.json({ success: true, direct_url: directUrl });
     }
 
     // For images, proxy the content through backend using authenticated access
@@ -571,7 +658,7 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
+    if (req.user.role === 'branch_manager' && !employeeHasBranchAccess(employee, req.user.branch_id)) {
       return res.status(403).json({
         success: false,
         message: 'تم رفض الوصول'
@@ -608,7 +695,7 @@ router.put('/:id', async (req, res) => {
         message: 'الموظف المرتبط بهذا المستند غير موجود'
       });
     }
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
+    if (req.user.role === 'branch_manager' && !employeeHasBranchAccess(employee, req.user.branch_id)) {
       return res.status(403).json({
         success: false,
         message: 'تم رفض الوصول'
@@ -709,7 +796,7 @@ router.delete('/:id', async (req, res) => {
         message: 'الموظف المرتبط بهذا المستند غير موجود'
       });
     }
-    if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
+    if (req.user.role === 'branch_manager' && !employeeHasBranchAccess(employee, req.user.branch_id)) {
       return res.status(403).json({
         success: false,
         message: 'تم رفض الوصول'

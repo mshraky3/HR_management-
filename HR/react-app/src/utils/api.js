@@ -7,6 +7,7 @@
 import axios from 'axios';
 import { getCurrentApiUrl } from '../config/api.js';
 import { reportApiError } from './errorTracking.js';
+import { MAX_API_UPLOAD_BYTES } from './uploadLimits.js';
 
 // API Response Cache - stores successful GET requests
 // Key: cache key (URL + params), Value: { data, timestamp, expiry }
@@ -320,6 +321,94 @@ api.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
+
+// ============================================================================
+// Large files: direct browser <-> R2 transfers
+//
+// Vercel caps API request and response bodies at ~4.5 MB. Files up to
+// MAX_API_UPLOAD_BYTES keep going through the API exactly as before; larger
+// ones are PUT straight to R2 with a signed URL, then the normal upload route
+// is called with `direct_upload_key` instead of the file. Downloads of large
+// files (and large generated PDFs) come back as { direct_url }, which the
+// interceptor below turns into the same Blob callers always received.
+// ============================================================================
+
+/** An error shaped like an axios 400, so callers show `message` and the global
+ *  handlers do not mistake it for the backend being down. */
+const directTransferError = (message) => {
+  const error = new Error(message);
+  error.response = { status: 400, data: { success: false, message } };
+  return error;
+};
+
+const sendFormData = (method, url, formData) =>
+  api.request({ method, url, data: formData, headers: { 'Content-Type': 'multipart/form-data' } });
+
+/**
+ * Sends a FormData that may carry a `file` field. Large files go to R2 first.
+ * @param {object} uploadUrlBody - fields the /upload-url route needs to authorize the file
+ */
+const sendWithLargeFile = async (method, url, formData, uploadUrlEndpoint, uploadUrlBody) => {
+  const file = formData.get('file');
+  if (!(file instanceof Blob) || file.size <= MAX_API_UPLOAD_BYTES) {
+    return sendFormData(method, url, formData);
+  }
+
+  const { data } = await api.post(uploadUrlEndpoint, {
+    ...uploadUrlBody,
+    file_name: file.name,
+    content_type: file.type,
+    size: file.size,
+  });
+  const { upload_url: uploadUrl, key } = data?.data || {};
+  if (!uploadUrl || !key) throw directTransferError('تعذر تجهيز رفع الملف. الرجاء المحاولة مرة أخرى.');
+
+  let put;
+  try {
+    put = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+  } catch {
+    put = null;
+  }
+  if (!put || !put.ok) {
+    throw directTransferError('تعذر رفع الملف إلى التخزين. تحقق من الاتصال بالإنترنت ثم حاول مرة أخرى.');
+  }
+
+  const next = new FormData();
+  for (const [name, value] of formData.entries()) {
+    if (name !== 'file') next.append(name, value);
+  }
+  next.append('direct_upload_key', key);
+  next.append('file_name', file.name);
+  return sendFormData(method, url, next);
+};
+
+// Runs before the caching/error interceptor below (axios runs response
+// interceptors in registration order).
+api.interceptors.response.use(async (response) => {
+  const body = response.data;
+  if (response.config?.responseType !== 'blob' || !(body instanceof Blob) || !body.type?.includes('application/json')) {
+    return response;
+  }
+  let json;
+  try {
+    json = JSON.parse(await body.text());
+  } catch {
+    return response;
+  }
+  if (!json?.direct_url) return response;
+
+  let fileResponse;
+  try {
+    fileResponse = await fetch(json.direct_url);
+  } catch {
+    fileResponse = null;
+  }
+  if (!fileResponse || !fileResponse.ok) {
+    throw directTransferError('تعذر تحميل الملف من التخزين. الرجاء المحاولة مرة أخرى.');
+  }
+  response.data = await fileResponse.blob();
+  return response;
+});
 
 // Handle 401 errors (unauthorized) and cache successful responses
 api.interceptors.response.use(
@@ -671,8 +760,9 @@ export const documentsAPI = {
     api.get(`/api/documents/${id}`),
 
   upload: (formData) =>
-    api.post('/api/documents', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    sendWithLargeFile('post', '/api/documents', formData, '/api/documents/upload-url', {
+      employee_id: formData.get('employee_id'),
+      document_type: formData.get('document_type'),
     }),
 
   download: (id) =>
@@ -723,8 +813,9 @@ export const branchDocumentsAPI = {
     api.get(`/api/branch-documents/${id}`),
 
   upload: (formData) =>
-    api.post('/api/branch-documents', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    sendWithLargeFile('post', '/api/branch-documents', formData, '/api/branch-documents/upload-url', {
+      branch_id: formData.get('branch_id'),
+      document_type: formData.get('document_type'),
     }),
 
   download: (id) =>
@@ -737,8 +828,8 @@ export const branchDocumentsAPI = {
     api.put(`/api/branch-documents/${id}`, data),
 
   updateWithFile: (id, formData) =>
-    api.put(`/api/branch-documents/${id}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    sendWithLargeFile('put', `/api/branch-documents/${id}`, formData, '/api/branch-documents/upload-url', {
+      document_id: id,
     }),
 
   verify: (id) =>

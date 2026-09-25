@@ -1,6 +1,22 @@
 import { useEffect, useState } from 'react';
-import { employeesAPI } from '../utils/api';
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, fileTooLargeMessage } from '../utils/uploadLimits';
+import { employeesAPI, documentsAPI } from '../utils/api';
+import { MAX_UPLOAD_BYTES, fileTooLargeMessage, uploadErrorMessage } from '../utils/uploadLimits';
+
+// Qualification files use the normal document upload (large files go straight
+// to R2); only the contract dates go through /missing-required-data.
+const uploadQualification = async (employeeId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('employee_id', employeeId);
+  formData.append('document_type', 'primary_qualification');
+  try {
+    await documentsAPI.upload(formData);
+  } catch (error) {
+    const wrapped = new Error(`لم يتم رفع مستند المؤهل "${file.name}": ${uploadErrorMessage(error)}`);
+    wrapped.response = { data: { message: wrapped.message } };
+    throw wrapped;
+  }
+};
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import './MissingEmployeeDataSection.css';
@@ -153,8 +169,7 @@ const MissingEmployeeDataSection = ({ onComplete }) => {
       ]));
 
       if (entry.qualification_file) {
-        formData.append('file_0', entry.qualification_file);
-        formData.append('file_employee_0', entry.employee_id);
+        await uploadQualification(entry.employee_id, entry.qualification_file);
       }
 
       await employeesAPI.saveMissingRequiredData(formData, {
@@ -220,12 +235,10 @@ const MissingEmployeeDataSection = ({ onComplete }) => {
       }
       setErrors({});
 
-      // Every file travels in this one request, which has the same size cap as a single upload.
-      const totalFileBytes = entries.reduce((sum, e) => sum + (e.qualification_file?.size || 0), 0);
-      if (totalFileBytes > MAX_UPLOAD_BYTES) {
-        showError(`مجموع حجم ملفات المؤهلات المرفقة يتجاوز ${MAX_UPLOAD_MB} ميجابايت. احفظ كل موظف على حدة باستخدام زر الحفظ الخاص به.`);
-        setSaving(false);
-        return;
+      // Files first, one request each (a single multipart request would hit
+      // Vercel's body limit as soon as a few files are attached).
+      for (const e of entries) {
+        if (e.qualification_file) await uploadQualification(e.employee_id, e.qualification_file);
       }
 
       const formData = new FormData();
@@ -239,13 +252,6 @@ const MissingEmployeeDataSection = ({ onComplete }) => {
           qualification_file: e.qualification_file ? 'attached' : null,
         }))
       ));
-
-      entries.forEach((e, idx) => {
-        if (e.qualification_file) {
-          formData.append(`file_${idx}`, e.qualification_file);
-          formData.append(`file_employee_${idx}`, e.employee_id);
-        }
-      });
 
       await employeesAPI.saveMissingRequiredData(formData, {
         headers: { 'Content-Type': 'multipart/form-data' },

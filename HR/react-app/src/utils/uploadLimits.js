@@ -1,11 +1,15 @@
 /**
  * Upload size limits shared by every upload screen.
  *
- * Files sent through the API are capped by Vercel's ~4.5 MB request limit;
- * the server (express-app/middleware/upload.js) enforces the same 4 MB.
+ * Files up to MAX_API_UPLOAD_BYTES travel through the API (Vercel caps request
+ * bodies at ~4.5 MB); larger ones, up to MAX_UPLOAD_BYTES, are sent straight
+ * to R2 by utils/api.js. The server (express-app/middleware/upload.js)
+ * enforces the same two limits.
  */
 
-export const MAX_UPLOAD_MB = 4;
+export const MAX_API_UPLOAD_BYTES = 4 * 1024 * 1024;
+
+export const MAX_UPLOAD_MB = 15;
 export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
 export const fileTooLargeMessage = (fileName) =>

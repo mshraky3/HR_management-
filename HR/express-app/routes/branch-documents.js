@@ -10,7 +10,19 @@ import { fileURLToPath } from "url";
 import { PDFDocument } from "pdf-lib";
 import sql from "../config/database.js";
 import { authenticate } from "../middleware/auth.js";
-import { uploadSingle, validateUploadedFile, MAX_API_UPLOAD_MB, fileTooLargeMessage } from "../middleware/upload.js";
+import {
+  uploadSingle,
+  validateUploadedFile,
+  acceptDirectUpload,
+  buildDirectUploadKey,
+  MAX_API_UPLOAD_MB,
+  MAX_API_UPLOAD_BYTES,
+  MAX_DIRECT_UPLOAD_MB,
+  MAX_DIRECT_UPLOAD_BYTES,
+  fileTooLargeMessage,
+  directFileTooLargeMessage,
+} from "../middleware/upload.js";
+import { presignR2Put, presignR2Get, extractKeyFromR2Url, isR2StorageConfigured } from "../utils/r2Storage.js";
 import { BranchDocument } from "../models/BranchDocument.js";
 import { Branch } from "../models/Branch.js";
 import { loadAssignedBranches } from "../middleware/authorization.js";
@@ -26,6 +38,7 @@ import {
   fixDoubleExtensionUrl,
 } from "../utils/blobStorage.js";
 import { mirrorVercelFileToR2 } from "../utils/dualStorage.js";
+import { isValidMimeType as isValidUploadMimeType } from "../utils/validators.js";
 import { clearByPrefix } from "../utils/simpleCache.js";
 import { formatDate } from "../utils/dateConverter.js";
 import { validateDateFields } from "../middleware/dateValidation.js";
@@ -34,6 +47,7 @@ import { getScopedBranchFilter, resolveBranchAccessFromScope } from "../utils/po
 import { printer } from "../utils/pdfFonts.js";
 import { handleRouteError } from '../utils/routeErrorHandler.js';
 import { log } from '../utils/logger.js';
+import { sendLargeFileAsLink } from '../utils/largeResponse.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -115,6 +129,73 @@ const resolveFilePath = (filePath) => {
 // All routes require authentication
 router.use(authenticate);
 router.use(loadAssignedBranches);
+
+/**
+ * Signed R2 link for files too big to send through the function (Vercel caps
+ * responses at ~4.5 MB), else null. Smaller files keep the existing path.
+ */
+const directDownloadUrl = async (document) => {
+  if (!document?.file_size || document.file_size <= MAX_API_UPLOAD_BYTES) return null;
+  if (!isR2StorageConfigured()) return null;
+  const key = extractKeyFromR2Url(document.r2_file_path || document.file_path);
+  if (!key) return null;
+  return presignR2Get(key, { fileName: document.file_name, contentType: document.mime_type });
+};
+
+/**
+ * Signed URL for uploading a file larger than the API limit straight to R2.
+ * POST /api/branch-documents/upload-url
+ * Body: (branch_id and document_type) or document_id (replacing a file),
+ *       file_name, content_type, size
+ * The browser PUTs the file to upload_url, then calls the normal POST / or
+ * PUT /:id with direct_upload_key = key instead of the file.
+ */
+router.post("/upload-url", async (req, res) => {
+  try {
+    const { document_id, file_name, content_type, size } = req.body || {};
+    let { branch_id, document_type } = req.body || {};
+    if (document_id) {
+      const existing = await BranchDocument.findById(parseInt(document_id));
+      if (!existing) {
+        return res.status(404).json({ success: false, message: "المستند غير موجود" });
+      }
+      branch_id = existing.branch_id;
+      document_type = existing.document_type;
+    }
+    if (!branch_id || !document_type || !content_type) {
+      return res.status(400).json({ success: false, message: "معرف الفرع ونوع المستند والملف مطلوبة" });
+    }
+    if (!isValidUploadMimeType(content_type)) {
+      return res.status(400).json({ success: false, message: "نوع الملف غير مدعوم. يُسمح فقط بملفات PDF والصور." });
+    }
+    if (Number(size) > MAX_DIRECT_UPLOAD_BYTES) {
+      return res.status(400).json({ success: false, message: directFileTooLargeMessage() });
+    }
+    const access = resolveBranchAccessFromScope(req.scope, parseInt(branch_id));
+    if (!access.allowed) {
+      return res.status(403).json({ success: false, message: "ليس لديك صلاحية رفع مستندات لهذا الفرع" });
+    }
+    const safeType = String(document_type).replace(/[^a-z0-9_]/gi, "_");
+    const key = buildDirectUploadKey(`branches/${parseInt(branch_id)}/${safeType}/`, file_name);
+    const uploadUrl = await presignR2Put(key, content_type);
+    return res.json({ success: true, data: { upload_url: uploadUrl, key } });
+  } catch (error) {
+    log.error("Error creating branch document upload URL:", error);
+    handleRouteError(error, req, res, "فشل تجهيز رفع الملف");
+  }
+});
+
+// Direct uploads for POST / may only reference keys of the posted branch.
+const branchUploadPrefix = (req) =>
+  req.body?.branch_id ? `branches/${parseInt(req.body.branch_id)}/` : null;
+
+// ... and for PUT /:id only keys of the document's own branch.
+const existingDocumentPrefix = async (req) => {
+  const documentId = parseInt(req.params?.id);
+  if (isNaN(documentId)) return null;
+  const document = await BranchDocument.findById(documentId);
+  return document ? `branches/${document.branch_id}/` : null;
+};
 
 /**
  * Get all branch documents (with filters)
@@ -215,6 +296,7 @@ router.get("/", async (req, res) => {
 router.post(
   "/",
   uploadSingle,
+  acceptDirectUpload(branchUploadPrefix),
   validateUploadedFile,
   validateDateFields({
     issue_date_hijri: {
@@ -328,13 +410,15 @@ router.post(
       // Upload file to Vercel Blob Storage
       // Note: uploadBranchDocumentToBlob uses generateFileName which sanitizes the filename
       // This ensures blob paths are safe for Vercel Blob Storage (no special characters)
-      const { url: blobUrl, r2Url } = await uploadBranchDocumentToBlob(
-        req.file.buffer,
-        fixedFileName, // Use fixed filename for consistent encoding
-        req.file.mimetype,
-        parseInt(branch_id),
-        normalizedDocumentType,
-      );
+      const { url: blobUrl, r2Url } = req.file.directKey
+        ? { url: req.file.url, r2Url: req.file.url } // already in R2
+        : await uploadBranchDocumentToBlob(
+          req.file.buffer,
+          fixedFileName, // Use fixed filename for consistent encoding
+          req.file.mimetype,
+          parseInt(branch_id),
+          normalizedDocumentType,
+        );
 
       // Get valid user ID for uploaded_by field
       const uploadedById = await getUploadedByUserId(req.user?.id);
@@ -431,6 +515,12 @@ router.get("/:id/download", async (req, res) => {
         success: false,
         message: "Access denied",
       });
+    }
+
+    // Files above the API limit are served by a short-lived R2 link.
+    const directUrl = await directDownloadUrl(document);
+    if (directUrl) {
+      return res.json({ success: true, direct_url: directUrl });
     }
 
     // Validate file_path exists
@@ -556,6 +646,12 @@ router.get("/:id/preview", async (req, res) => {
         success: false,
         message: "Access denied",
       });
+    }
+
+    // Files above the API limit are served by a short-lived R2 link.
+    const directUrl = await directDownloadUrl(document);
+    if (directUrl) {
+      return res.json({ success: true, direct_url: directUrl });
     }
 
     // For images, proxy the content through backend using authenticated access
@@ -725,6 +821,7 @@ router.post("/:id/verify", async (req, res) => {
 router.put(
   "/:id",
   uploadSingle,
+  acceptDirectUpload(existingDocumentPrefix),
   validateDateFields({
     issue_date_hijri: {
       calendarType: "hijri",
@@ -781,10 +878,11 @@ router.put(
           });
         }
 
-        if (!isValidFileSize(req.file.size, MAX_API_UPLOAD_MB)) {
+        const maxFileMB = req.file.directKey ? MAX_DIRECT_UPLOAD_MB : MAX_API_UPLOAD_MB;
+        if (!isValidFileSize(req.file.size, maxFileMB)) {
           return res.status(400).json({
             success: false,
-            message: fileTooLargeMessage(),
+            message: req.file.directKey ? directFileTooLargeMessage() : fileTooLargeMessage(),
           });
         }
 
@@ -794,13 +892,15 @@ router.put(
         // Upload new file to Blob Storage
         // Note: uploadBranchDocumentToBlob uses generateFileName which sanitizes the filename
         // This ensures blob paths are safe for Vercel Blob Storage (no special characters)
-        const { url: blobUrl, r2Url } = await uploadBranchDocumentToBlob(
-          req.file.buffer,
-          fixedFileName, // Use fixed filename for consistent encoding
-          req.file.mimetype,
-          document.branch_id,
-          document.document_type,
-        );
+        const { url: blobUrl, r2Url } = req.file.directKey
+          ? { url: req.file.url, r2Url: req.file.url } // already in R2
+          : await uploadBranchDocumentToBlob(
+            req.file.buffer,
+            fixedFileName, // Use fixed filename for consistent encoding
+            req.file.mimetype,
+            document.branch_id,
+            document.document_type,
+          );
 
         // For license type documents, deactivate old documents of the same type
         if (document.document_type === "license") {
@@ -1479,6 +1579,10 @@ router.post("/generate-payroll-report", authenticate, async (req, res) => {
                 finalPdfBuffer = mainPdfBuffer;
               }
 
+              if (!res.headersSent && await sendLargeFileAsLink(res, finalPdfBuffer, `${documentLabel}.pdf`)) {
+                resolve();
+                return;
+              }
               if (!res.headersSent) {
                 res.setHeader("Content-Type", "application/pdf");
                 res.setHeader(
@@ -1851,6 +1955,7 @@ router.post("/generate-pdf-by-type", authenticate, async (req, res) => {
     const pdfBytes = await finalPdf.save();
     const buffer = Buffer.from(pdfBytes);
 
+    if (await sendLargeFileAsLink(res, buffer, `${documentLabel}_جميع_الفروع.pdf`)) return;
     res.setHeader("Content-Type", "application/pdf");
     const filename = `${documentLabel}_جميع_الفروع.pdf`;
     res.setHeader(
@@ -2214,6 +2319,7 @@ router.post("/generate-pdf-by-branch", authenticate, async (req, res) => {
     const pdfBytes = await finalPdf.save();
     const buffer = Buffer.from(pdfBytes);
 
+    if (await sendLargeFileAsLink(res, buffer, `مستندات_${branch.branch_name}.pdf`)) return;
     res.setHeader("Content-Type", "application/pdf");
     const filename = `مستندات_${branch.branch_name}.pdf`;
     res.setHeader(
