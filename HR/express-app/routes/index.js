@@ -66,6 +66,7 @@ router.use('/beneficiaries', lazy(() => import('./beneficiaries.js')));
 router.use('/error-report', errorReportRoutes);
 router.use('/employee-expiry', lazy(() => import('./employee-expiry.js')));
 router.use('/tasks', lazy(() => import('./tasks.js')));
+router.use('/employee-import', lazy(() => import('./employee-import.js')));
 router.use('/year-cycle', lazy(() => import('./year-cycle.js')));
 
 export default router;

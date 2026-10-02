@@ -7,6 +7,7 @@ import {
 import { employeesAPI } from '../../utils/api';
 import { useNotification } from '../../contexts/NotificationContext';
 import OffboardModal from './OffboardModal';
+import ImportModal from './ImportModal';
 import { fullName, isDataComplete, normalizeSearch } from './employeeUtils';
 
 const STATUS_FILTER = [
@@ -46,6 +47,7 @@ export default function EmployeesView({
   const [selected, setSelected] = useState(() => new Set());
 
   const [offboardTargets, setOffboardTargets] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferBranch, setTransferBranch] = useState('');
   const [transferring, setTransferring] = useState(false);
@@ -175,6 +177,7 @@ export default function EmployeesView({
         actions={(
           <>
             {isMain && <Button variant="secondary" icon="transfer" to="/employee-transfer">نقل وربط</Button>}
+            <Button variant="secondary" icon="upload" onClick={() => setImportOpen(true)}>استيراد من Excel</Button>
             <Button variant="primary" icon="user-plus" onClick={onAdd}>إضافة موظف</Button>
           </>
         )}
@@ -266,6 +269,14 @@ export default function EmployeesView({
           </Card>
         </>
       )}
+
+      <ImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        isMain={isMain}
+        branches={branches}
+        onDone={onReload}
+      />
 
       <OffboardModal
         open={Boolean(offboardTargets)}

@@ -1086,6 +1086,23 @@ export const dashboardAPI = {
     api.get('/api/dashboard/main-overview'),
 };
 
+// Employee import from Excel (template, preview without writing, commit)
+export const employeeImportAPI = {
+  template: () =>
+    api.get('/api/employee-import/template', { responseType: 'blob' }),
+
+  preview: (file, branchId) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (branchId) form.append('branch_id', branchId);
+    return api.post('/api/employee-import/preview', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+
+  // rows = the `raw` values of the rows the preview accepted; the server validates them again
+  commit: (branchId, rows) =>
+    api.post('/api/employee-import/commit', { branch_id: branchId, rows }),
+};
+
 // Tasks: computed on the server (see services/taskEngine.js)
 export const tasksAPI = {
   getMy: (branchId) =>
