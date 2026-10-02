@@ -6,6 +6,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
+import { useConfirm } from '../ui';
 import { notificationsAPI, branchesAPI } from "../utils/api";
 import { formatDate } from '../utils/dateConverters';
 import { getSeenCounts, setSeenCounts } from '../utils/notificationTracker';
@@ -15,6 +16,7 @@ import BranchBadge from "../components/BranchBadge.jsx";
 const NotifyBranches = () => {
   const { _user, isMainManager } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
+  const { confirm } = useConfirm();
   const [notifications, setNotifications] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -189,7 +191,7 @@ const NotifyBranches = () => {
   };
 
   const handleDeleteNotification = async (notificationId) => {
-    if (!window.confirm("هل أنت متأكد من حذف هذا الإشعار؟")) {
+    if (!await confirm({ message: "هل أنت متأكد من حذف هذا الإشعار؟", tone: 'danger' })) {
       return;
     }
 

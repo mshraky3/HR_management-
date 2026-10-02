@@ -6,11 +6,13 @@
 import { useState, useEffect, useRef } from "react";
 import { employeesAPI, branchesAPI } from "../utils/api";
 import { useNotification } from "../contexts/NotificationContext";
+import { useConfirm } from '../ui';
 import "./EmployeeTransfer.css";
 import "./Employees.css";
 
 const EmployeeTransfer = () => {
   const { showSuccess, showError, showWarning } = useNotification();
+  const { confirm } = useConfirm();
 
   // Branches list
   const [branches, setBranches] = useState([]);
@@ -139,7 +141,7 @@ const EmployeeTransfer = () => {
     }
 
     const targetBranch = branches.find(b => b.id === parseInt(targetBranchId));
-    if (!confirm(`هل أنت متأكد من نقل الموظف "${selectedEmployee.full_name || `${selectedEmployee.first_name} ${selectedEmployee.second_name}`}" إلى فرع "${targetBranch?.branch_name}"؟`)) {
+    if (!await confirm({ message: `هل أنت متأكد من نقل الموظف "${selectedEmployee.full_name || `${selectedEmployee.first_name} ${selectedEmployee.second_name}`}" إلى فرع "${targetBranch?.branch_name}"؟` })) {
       return;
     }
 
@@ -194,7 +196,7 @@ const EmployeeTransfer = () => {
 
   // Unlink from branch
   const handleUnlink = async (branchId, branchName) => {
-    if (!confirm(`هل أنت متأكد من إلغاء ربط الموظف بفرع "${branchName}"؟`)) return;
+    if (!await confirm({ message: `هل أنت متأكد من إلغاء ربط الموظف بفرع "${branchName}"؟` })) return;
 
     try {
       const response = await employeesAPI.unlinkFromBranch(selectedEmployee.id, branchId);

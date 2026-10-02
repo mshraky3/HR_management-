@@ -7,13 +7,15 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { termsAPI, academicYearsAPI } from '../utils/api';
+import { useConfirm } from '../ui';
+import { termsAPI, academicYearsAPI, yearCycleAPI } from '../utils/api';
 import { formatDate } from '../utils/dateConverters';
 import './TermManagement.css';
 
 const TermManagement = () => {
   const { isMainManager } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
+  const { confirm, prompt } = useConfirm();
 
   const [academicYears, setAcademicYears] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -174,7 +176,45 @@ const TermManagement = () => {
   };
 
   const handleCompleteYear = async (yearId) => {
-    if (!window.confirm('هل أنت متأكد من إتمام هذه السنة الدراسية؟ سيتم تغيير حالة جميع الموظفين إلى "قيد الانتظار"')) {
+    // Ending a year moves every employee who was not carried into the new year to "pending" and archives the
+    // closing year's beneficiaries, for ALL branches of the type. Show exactly what will change first.
+    const year = [...(academicYears.school || []), ...(academicYears.healthcare_center || [])].find((y) => y.id === yearId);
+    let preview = null;
+    try {
+      if (year?.branch_type) preview = (await yearCycleAPI.getEndYearPreview(year.branch_type)).data.data;
+    } catch (error) {
+      console.error('Error loading end-year preview:', error);
+    }
+
+    const t = preview?.totals;
+    const unconfirmed = preview ? preview.branches.filter((b) => !b.confirmed) : [];
+    const lines = t ? [
+      `${t.employees_to_pending} موظف نشط سيتحول إلى «قيد التجديد» لأنه لم يُنقل إلى السنة الجديدة.`,
+      t.beneficiaries_to_archive > 0 ? `${t.beneficiaries_to_archive} مستفيد من فصول السنة المنتهية سيُؤرشف.` : null,
+      unconfirmed.length > 0
+        ? `${unconfirmed.length} من ${t.branches} فرع لم يعتمد مراجعة موظفي السنة الجديدة بعد: ${unconfirmed.slice(0, 8).map((b) => b.branch_name).join('، ')}${unconfirmed.length > 8 ? '…' : ''}.`
+        : 'كل الفروع اعتمدت مراجعة الموظفين.',
+      'لا يمكن التراجع عن هذا الإجراء بسهولة.',
+    ].filter(Boolean) : ['تعذّر حساب أثر الإجراء. سيتم تحويل الموظفين غير المنقولين إلى «قيد التجديد».'];
+
+    const message = lines.join('\n\n');
+    if (unconfirmed.length > 0 || !preview) {
+      // Risky: make the head office type the word, not just click.
+      const typed = await prompt({
+        title: 'إتمام السنة الدراسية',
+        message,
+        label: 'اكتب كلمة «إتمام» للتأكيد',
+        multiline: false,
+        required: true,
+        tone: 'danger',
+        confirmText: 'إتمام السنة',
+        requiredMessage: 'اكتب كلمة إتمام للمتابعة',
+      });
+      if (typed !== 'إتمام') {
+        if (typed !== null) showError('لم تُكتب كلمة التأكيد بشكل صحيح');
+        return;
+      }
+    } else if (!await confirm({ title: 'إتمام السنة الدراسية', message, tone: 'danger', confirmText: 'إتمام السنة' })) {
       return;
     }
 

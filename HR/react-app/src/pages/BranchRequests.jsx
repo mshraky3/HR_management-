@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { requestsAPI, employeesAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { useConfirm } from '../ui';
 import { formatDate } from '../utils/dateConverters';
 import { getLastSeen, setLastSeen } from '../utils/notificationTracker';
 import './BranchRequests.css';
@@ -14,6 +15,7 @@ import './BranchRequests.css';
 const BranchRequests = () => {
   const { user } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
+  const { confirm } = useConfirm();
   const [requests, setRequests] = useState([]);
   const [mainManagers, setMainManagers] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -135,7 +137,7 @@ const BranchRequests = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('هل أنت متأكد من حذف هذا الطلب؟')) {
+    if (!await confirm({ message: 'هل أنت متأكد من حذف هذا الطلب؟', tone: 'danger' })) {
       return;
     }
 

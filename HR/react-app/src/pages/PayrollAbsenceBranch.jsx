@@ -4,6 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import './PayrollAbsence.css';
 
 // Format date as dd/mm/yyyy (Gregorian calendar only)
+import { useConfirm } from '../ui';
+
 const formatDateDDMMYYYY = (value) => {
   if (!value) return '';
   const date = new Date(value);
@@ -23,6 +25,7 @@ const formatMonthMMYYYY = (value) => {
 };
 
 const PayrollAbsenceBranch = ({ onComplete }) => {
+  const { confirm } = useConfirm();
   const { _user } = useAuth();
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -92,7 +95,7 @@ const PayrollAbsenceBranch = ({ onComplete }) => {
 
   const handleSubmit = async () => {
     if (!state?.employees?.length) return;
-    const confirmSave = window.confirm('سيتم الحفظ لمرة واحدة لهذا الشهر ولا يمكن التعديل بعد الحفظ. هل أنت متأكد؟');
+    const confirmSave = await confirm({ message: 'سيتم الحفظ لمرة واحدة لهذا الشهر ولا يمكن التعديل بعد الحفظ. هل أنت متأكد؟' });
     if (!confirmSave) return;
     setSaving(true);
     setError('');

@@ -8,6 +8,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { busTransportationAPI, branchesAPI, termsAPI } from "../utils/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
+import { useConfirm } from '../ui';
 import {
   formatTermDisplay,
   groupTermsByBranchType,
@@ -107,6 +108,7 @@ function PlateDisplay({ value = "" }) {
 const BusTransportation = () => {
   const { isMainManager, isBranchOperationsManager, user } = useAuth();
   const { showError, showSuccess } = useNotification();
+  const { confirm } = useConfirm();
   const pageTopRef = useRef(null);
   const isBranchOpsUser = isBranchOperationsManager();
   const assignedBranchIds = useMemo(
@@ -590,7 +592,7 @@ const BusTransportation = () => {
   };
 
   const handleDeleteBus = async (id) => {
-    if (!window.confirm("هل أنت متأكد من حذف هذه الحافلة؟")) return;
+    if (!await confirm({ message: "هل أنت متأكد من حذف هذه الحافلة؟", tone: 'danger' })) return;
 
     try {
       const response = await busTransportationAPI.delete(id);
@@ -4031,6 +4033,7 @@ const StudentsFormTab = ({ students, onUpdate, onRemove }) => {
 
 // Bus Details Section Component (Consolidated Dashboard View)
 const BusDetailsSection = ({ bus, onClose, onEdit, onReload, showEditForm, branches, terms, isMainManager, userBranchId }) => {
+  const { confirm } = useConfirm();
   const { showError, showSuccess } = useNotification();
   const [students, setStudents] = useState([]);
   const [loadingStudents, setLoadingStudents] = useState(true);
@@ -4056,7 +4059,7 @@ const BusDetailsSection = ({ bus, onClose, onEdit, onReload, showEditForm, branc
   };
 
   const handleDeleteStudent = async (studentId) => {
-    if (!window.confirm("هل أنت متأكد من حذف هذا الطالب؟")) return;
+    if (!await confirm({ message: "هل أنت متأكد من حذف هذا الطالب؟", tone: 'danger' })) return;
     try {
       const response = await busTransportationAPI.deleteStudent(bus.id, studentId);
       if (response.data.success) {
@@ -4961,6 +4964,7 @@ const DriverLicenseTab = ({ bus, onReload }) => {
 
 // License Plates Tab Component
 const LicensePlatesTab = ({ bus, onReload }) => {
+  const { confirm } = useConfirm();
   const { showError, showSuccess } = useNotification();
   const [plates, setPlates] = useState(bus.license_plates || []);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -5031,7 +5035,7 @@ const LicensePlatesTab = ({ bus, onReload }) => {
   };
 
   const handleDelete = async (plateId) => {
-    if (!window.confirm("هل أنت متأكد من حذف هذه اللوحة؟")) return;
+    if (!await confirm({ message: "هل أنت متأكد من حذف هذه اللوحة؟", tone: 'danger' })) return;
 
     try {
       await busTransportationAPI.deleteLicensePlate(bus.id, plateId);

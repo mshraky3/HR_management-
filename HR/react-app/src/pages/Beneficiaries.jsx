@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { beneficiariesAPI, branchesAPI, termsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { useConfirm } from '../ui';
 import { downloadFile } from '../utils/downloadFile';
 import '../styles/yearReview.css';
 import './Beneficiaries.css';
@@ -32,6 +33,7 @@ const AGE_OPTIONS = Array.from({ length: 60 }, (_, i) => i + 1);
 const Beneficiaries = () => {
     const { isMainManager, user } = useAuth();
     const { showError, showSuccess, showWarning } = useNotification();
+    const { confirm } = useConfirm();
     const navigate = useNavigate();
 
     // School branches should not access this page
@@ -634,7 +636,7 @@ const Beneficiaries = () => {
     };
 
     const handleUnconfirmReview = async () => {
-        if (!window.confirm('هل تريد إلغاء تأكيد اكتمال المراجعة؟')) return;
+        if (!await confirm({ message: 'هل تريد إلغاء تأكيد اكتمال المراجعة؟' })) return;
         try {
             const res = await beneficiariesAPI.unconfirmRollover(rolloverParams());
             if (res.data.success) {
@@ -857,7 +859,7 @@ const Beneficiaries = () => {
 
     const handleArchive = async () => {
         if (!filters.term_id) return;
-        if (!window.confirm('هل أنت متأكد من أرشفة بيانات هذا الفصل؟ لن يمكن التعديل عليها بعد الأرشفة.')) return;
+        if (!await confirm({ message: 'هل أنت متأكد من أرشفة بيانات هذا الفصل؟ لن يمكن التعديل عليها بعد الأرشفة.', tone: 'danger' })) return;
 
         try {
             const res = await beneficiariesAPI.archiveTerm(filters.term_id);

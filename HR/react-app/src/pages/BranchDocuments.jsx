@@ -10,6 +10,7 @@ import { branchDocumentsAPI, branchesAPI, setDocumentBranchMapping } from '../ut
 import { downloadFile } from '../utils/downloadFile';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { useConfirm } from '../ui';
 import { formatDate } from '../utils/dateConverters';
 import { RESTRICTED_DOCUMENT_TYPES } from '../utils/documentRestrictions';
 import './BranchDocuments.css';
@@ -21,6 +22,7 @@ import { MAX_UPLOAD_MB, MAX_UPLOAD_BYTES, fileTooLargeMessage } from '../utils/u
 const BranchDocuments = () => {
   const { isMainManager, user } = useAuth();
   const { showError, showSuccess, showWarning, _showInfo } = useNotification();
+  const { confirm } = useConfirm();
   const [searchParams, _setSearchParams] = useSearchParams();
   const [_documents, setDocuments] = useState([]);
   const [allDocuments, setAllDocuments] = useState([]); // Store all documents for filtering
@@ -571,7 +573,7 @@ const BranchDocuments = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('هل أنت متأكد من رغبتك في حذف هذا المستند؟')) return;
+    if (!await confirm({ message: 'هل أنت متأكد من رغبتك في حذف هذا المستند؟', tone: 'danger' })) return;
     try {
       await branchDocumentsAPI.delete(id);
       loadDocuments();

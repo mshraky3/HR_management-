@@ -5,6 +5,8 @@ import './PayrollAbsence.css';
 import { Fragment } from "react";
 
 // Format date as dd/mm/yyyy (Gregorian calendar only)
+import { useConfirm } from '../ui';
+
 const formatDateDDMMYYYY = (value) => {
   if (!value) return '—';
   const date = new Date(value);
@@ -37,6 +39,7 @@ const statusLabel = (status) => {
 };
 
 const PayrollAbsenceAdmin = () => {
+  const { confirm } = useConfirm();
   const [cycles, setCycles] = useState([]);
   const [selectedCycleId, setSelectedCycleId] = useState(null);
   const [branches, setBranches] = useState([]);
@@ -207,7 +210,7 @@ const PayrollAbsenceAdmin = () => {
 
   const handleReset = async () => {
     if (!selectedCycleId) return;
-    const confirmReset = window.confirm('سيتم إعادة تعيين الشهر الحالي لجميع الفروع إلى حالة العد التنازلي وحذف البيانات المحفوظة. هل أنت متأكد؟');
+    const confirmReset = await confirm({ message: 'سيتم إعادة تعيين الشهر الحالي لجميع الفروع إلى حالة العد التنازلي وحذف البيانات المحفوظة. هل أنت متأكد؟', tone: 'danger' });
     if (!confirmReset) return;
     setProcessing(true);
     setError('');

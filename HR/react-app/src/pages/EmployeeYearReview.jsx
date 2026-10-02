@@ -20,6 +20,7 @@ import { employeesAPI, documentsAPI } from '../utils/api';
 import { MAX_UPLOAD_BYTES, fileTooLargeMessage, uploadErrorMessage } from '../utils/uploadLimits';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { useConfirm } from '../ui';
 import '../styles/yearReview.css';
 import './EmployeeYearReview.css';
 
@@ -45,6 +46,7 @@ const isCandidateDone = (c) =>
 const EmployeeYearReview = ({ onAddEmployee, onEditEmployee }) => {
     const { isMainManager } = useAuth();
     const { showSuccess, showError, showWarning } = useNotification();
+    const { confirm } = useConfirm();
     const navigate = useNavigate();
 
     const [status, setStatus] = useState(null);
@@ -336,7 +338,7 @@ const EmployeeYearReview = ({ onAddEmployee, onEditEmployee }) => {
     };
 
     const handleUnconfirm = async () => {
-        if (!window.confirm('هل تريد إلغاء تأكيد اكتمال المراجعة؟')) return;
+        if (!await confirm({ message: 'هل تريد إلغاء تأكيد اكتمال المراجعة؟' })) return;
         try {
             const res = await employeesAPI.unconfirmYearReview(branchParams());
             if (res.data.success) {

@@ -13,6 +13,7 @@ import {
 } from "../utils/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
+import { useConfirm } from '../ui';
 import { DEFAULT_BANK_PLACEHOLDER } from "../components/BankSelect";
 import {
   isSaudi as isSaudiHelper,
@@ -62,6 +63,7 @@ const Employees = () => {
   const [searchParams] = useSearchParams();
   const { isMainManager, user } = useAuth();
   const { showError, showSuccess, showWarning, _showInfo } = useNotification();
+  const { confirm } = useConfirm();
   const [employees, setEmployees] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1249,14 +1251,12 @@ const Employees = () => {
         const existingEmp = responseData.existingEmployee;
 
         // Ask user if they want to link the employee to their branch
-        const confirmLink = window.confirm(
-          `📋 الموظف موجود مسبقاً في فرع آخر\n\n` +
+        const confirmLink = await confirm({ message: `📋 الموظف موجود مسبقاً في فرع آخر\n\n` +
           `👤 الاسم: ${existingEmp.name}\n` +
           `🔢 رقم الهوية/الإقامة: ${existingEmp.id_or_residency_number}\n` +
           `🏢 الفروع الحالية: ${existingEmp.branches?.map(b => b.name).join('، ') || 'غير محدد'}\n\n` +
           `❓ هل تريد ربط هذا الموظف بفرعك أيضاً؟\n\n` +
-          `اضغط "موافق" للربط أو "إلغاء" للإغاء`
-        );
+          `اضغط "موافق" للربط أو "إلغاء" للإغاء` });
 
         if (confirmLink) {
           try {
@@ -1290,7 +1290,7 @@ const Employees = () => {
       // Archived employees cannot be re-added; only the main manager restores them.
       if (responseData?.error === "EMPLOYEE_ARCHIVED") {
         if (isMainManager()) {
-          if (window.confirm(`${responseData.message}\n\nهل تريد فتح صفحة الأرشيف الآن؟`)) {
+          if (await confirm({ message: `${responseData.message}\n\nهل تريد فتح صفحة الأرشيف الآن؟` })) {
             navigate("/archive");
           }
         } else {
@@ -1395,7 +1395,7 @@ const Employees = () => {
     );
   };
 
-  const handleDocumentChange = (documentType, fileOrFiles) => {
+  const handleDocumentChange = async (documentType, fileOrFiles) => {
     let filesToCheck = [];
     let isEvent = false;
     let inputElement = null;
@@ -1450,7 +1450,7 @@ const Employees = () => {
         `يوجد ${existingCount} مستند ${existingCount > 1 ? "موجودة" : "موجود"} مسبقاً لهذا النوع.\n\n` +
         `رفع مستند جديد سيحذف المستند(ات) الموجودة.\n\n` +
         `هل تريد المتابعة؟`;
-      if (!confirm(message)) {
+      if (!await await confirm({ message: { message: message } })) {
         // Reset the file input
         if (inputElement) {
           inputElement.value = "";

@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { useConfirm } from '../ui';
 import { archiveAPI, branchesAPI, documentsAPI, branchDocumentsAPI } from '../utils/api';
 import { getDocumentTypeLabel, getBranchDocumentTypeLabel } from '../utils/employeeConstants';
 import { formatDate } from '../utils/dateConverters';
@@ -17,6 +18,7 @@ import './Archive.css';
 const Archive = () => {
   const { isMainManager } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
+  const { confirm } = useConfirm();
   const navigate = useNavigate();
 
   // Tab state
@@ -107,7 +109,7 @@ const Archive = () => {
   const handleReactivateBranch = async (branchId, branchName) => {
     const confirmMessage = `هل أنت متأكد من إعادة تفعيل الفرع "${branchName}"؟`;
 
-    if (!confirm(confirmMessage)) {
+    if (!await confirm({ message: confirmMessage })) {
       return;
     }
 
@@ -294,7 +296,7 @@ const Archive = () => {
   }, [filters.emp_doc_branch_id, filters.emp_doc_document_type, filters.emp_doc_employee_id]);
 
   const handlePermanentDeleteDocument = async (documentId) => {
-    if (!confirm('هل أنت متأكد من رغبتك في حذف هذا المستند نهائياً؟ لا يمكن التراجع عن هذا الإجراء.')) {
+    if (!await confirm({ message: 'هل أنت متأكد من رغبتك في حذف هذا المستند نهائياً؟ لا يمكن التراجع عن هذا الإجراء.', tone: 'danger' })) {
       return;
     }
 
@@ -318,7 +320,7 @@ const Archive = () => {
   const handlePermanentDeleteEmployee = async (employeeId, employeeName) => {
     const confirmMessage = `هل أنت متأكد من رغبتك في حذف الموظف "${employeeName}" نهائياً؟\n\nسيتم حذف جميع بيانات الموظف ومستنداته بشكل دائم.\nلا يمكن التراجع عن هذا الإجراء.`;
 
-    if (!confirm(confirmMessage)) {
+    if (!await confirm({ message: confirmMessage })) {
       return;
     }
 
@@ -366,7 +368,7 @@ const Archive = () => {
   };
 
   const handleRestoreEmployee = async (employeeId, employeeName) => {
-    if (!confirm(`هل أنت متأكد من استعادة الموظف "${employeeName}" إلى حالة نشط؟`)) return;
+    if (!await confirm({ message: `هل أنت متأكد من استعادة الموظف "${employeeName}" إلى حالة نشط؟` })) return;
     try {
       const response = await archiveAPI.restore(employeeId, {
         status: 'active',

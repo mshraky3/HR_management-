@@ -8,6 +8,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { suggestionsAPI, branchesAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import { useConfirm } from '../ui';
 import { getLastSeen, setLastSeen, countNewByDate } from '../utils/notificationTracker';
 import './Suggestions.css';
 import BranchBadge from "../components/BranchBadge.jsx";
@@ -31,6 +32,7 @@ const STATUS_COLORS = {
 const Suggestions = () => {
     const { isMainManager, user } = useAuth();
     const { showError, showSuccess, showWarning } = useNotification();
+    const { confirm } = useConfirm();
 
     // State
     const [suggestions, setSuggestions] = useState([]);
@@ -208,7 +210,7 @@ const Suggestions = () => {
 
     // Handle delete suggestion
     const handleDelete = async (id) => {
-        if (!window.confirm('هل أنت متأكد من حذف هذا الاقتراح؟')) return;
+        if (!await confirm({ message: 'هل أنت متأكد من حذف هذا الاقتراح؟', tone: 'danger' })) return;
 
         try {
             const res = await suggestionsAPI.delete(id);

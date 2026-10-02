@@ -14,6 +14,7 @@ import {
 import { API_URL } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
+import { useConfirm } from '../ui';
 import { formatDate } from "../utils/dateConverters";
 import {
   getRequiredBranchDocuments,
@@ -29,6 +30,7 @@ import { MAX_UPLOAD_BYTES, fileTooLargeMessage } from '../utils/uploadLimits';
 const BranchDocumentsManagement = () => {
   const { isMainManager, isBranchOperationsManager, user } = useAuth();
   const { showError, showSuccess } = useNotification();
+  const { confirm } = useConfirm();
   const [searchParams] = useSearchParams();
   const isBranchOpsUser = isBranchOperationsManager();
   const assignedBranchIds = useMemo(
@@ -713,9 +715,7 @@ const BranchDocumentsManagement = () => {
 
   const handleDelete = async (doc) => {
     if (
-      !window.confirm(
-        `هل أنت متأكد من حذف المستند "${documentTypeLabels[doc.document_type] || doc.document_type}"؟`,
-      )
+      !await confirm({ message: `هل أنت متأكد من حذف المستند "${documentTypeLabels[doc.document_type] || doc.document_type}"؟`, tone: 'danger' })
     ) {
       return;
     }
