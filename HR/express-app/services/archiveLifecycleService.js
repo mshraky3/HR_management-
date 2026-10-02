@@ -5,6 +5,8 @@
 
 import sql from '../config/database.js';
 import { Employee } from '../models/Employee.js';
+import { changeEmployeeStatus, LifecycleError } from './employeeLifecycleService.js';
+import { actorFromReq } from './auditService.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const ACTIVE_STATUSES = ['active', 'pending'];
@@ -159,72 +161,34 @@ export const applyArchiveEmployeeStatusTransition = async ({
 
     const isCurrentArchived = ARCHIVED_STATUSES.includes(employee.status);
     const isTargetRestoreState = ACTIVE_STATUSES.includes(status);
-    const actorId = getStatusActorId(actor);
 
-    if (isTargetRestoreState) {
-        if (!isCurrentArchived) {
-            throw new ArchivePolicyError('هذا الموظف غير موجود في الأرشيف', 'EMPLOYEE_NOT_ARCHIVED', {
-                employeeId,
-                currentStatus: employee.status
-            });
-        }
-
-        await ensureBranchIsActiveForRestore(employee.branch_id);
-
-        const restored = await sql.begin(async tx => {
-            const [row] = await tx`
-                UPDATE employees
-                SET status = ${status},
-                    is_active = true,
-                    status_changed_at = CURRENT_TIMESTAMP,
-                    status_changed_by = ${actorId},
-                    status_change_reason = ${reason || 'تم الاستعادة من الأرشيف'},
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ${employeeId}
-                RETURNING *
-            `;
-
-            // A restore contradicts a "leaving" decision recorded for the year the
-            // branch is currently preparing. Left in place, the year-review would
-            // keep showing this employee as مغادر and never ask for a new decision,
-            // so they would sit active-but-stranded: not archived, but never carried
-            // into the new year's roster either. Dropping the row is what "undecided"
-            // means here — decision is NOT NULL, so there is no undecided value to
-            // set — and the employee reappears in the review awaiting a fresh call.
-            const [branch] = await tx`SELECT branch_type FROM branches WHERE id = ${employee.branch_id}`;
-            if (branch?.branch_type) {
-                const { getPreparationAcademicYear } = await import('./termLifecycleService.js');
-                const { year } = await getPreparationAcademicYear(branch.branch_type);
-                if (year) {
-                    await tx`
-                        DELETE FROM employee_year_transitions
-                        WHERE employee_id = ${employeeId}
-                          AND year_label = ${year.year_label}
-                          AND decision = 'leaving'
-                    `;
-                }
-            }
-
-            return row;
+    if (isTargetRestoreState && !isCurrentArchived) {
+        throw new ArchivePolicyError('هذا الموظف غير موجود في الأرشيف', 'EMPLOYEE_NOT_ARCHIVED', {
+            employeeId,
+            currentStatus: employee.status
         });
-
-        return {
-            action: 'restored',
-            employee: restored,
-            previousStatus: employee.status
-        };
     }
 
-    const updatedEmployee = await Employee.updateStatus(
-        employeeId,
-        status,
-        actorId,
-        reason || null
-    );
-
-    return {
-        action: 'status_updated',
-        employee: updatedEmployee,
-        previousStatus: employee.status
-    };
+    // The archive screens are head-office only (routes enforce it); the lifecycle service does the
+    // write, the history row and the audit entry, and refuses a restore into a deleted branch.
+    try {
+        const result = await changeEmployeeStatus({
+            employeeId,
+            toStatus: status,
+            reasonText: reason || (isTargetRestoreState ? 'تم الاستعادة من الأرشيف' : null),
+            actor: actorFromReq({ user: actor }),
+            source: isTargetRestoreState ? 'archive_restore' : 'archive_status',
+            skipRoleCheck: true
+        });
+        return {
+            action: result.action === 'restored' ? 'restored' : 'status_updated',
+            employee: result.employee,
+            previousStatus: result.previousStatus
+        };
+    } catch (error) {
+        if (error instanceof LifecycleError) {
+            throw new ArchivePolicyError(error.message, error.code, error.details);
+        }
+        throw error;
+    }
 };

@@ -28,10 +28,10 @@ async function insertUser(u, role, email = null) {
 const TEST_USERNAMES = ['t_main', 't_ops', 't_ops2', 't_branch1', 't_clash_user', 't_clash_branch'];
 
 async function cleanup() {
-  await sql`DELETE FROM user_branch_assignments WHERE user_id >= 900000 OR branch_id >= 900000`;
-  await sql`DELETE FROM login_events WHERE account_id >= 900000 OR username = ANY(${TEST_USERNAMES})`;
-  await sql`DELETE FROM users WHERE id >= 900000 OR username = ANY(${TEST_USERNAMES})`;
-  await sql`DELETE FROM branches WHERE id >= 900000 OR username = ANY(${TEST_USERNAMES})`;
+  await sql`DELETE FROM user_branch_assignments WHERE user_id BETWEEN 900000 AND 900099 OR branch_id BETWEEN 900000 AND 900099`;
+  await sql`DELETE FROM login_events WHERE account_id BETWEEN 900000 AND 900099 OR username = ANY(${TEST_USERNAMES})`;
+  await sql`DELETE FROM users WHERE id BETWEEN 900000 AND 900099 OR username = ANY(${TEST_USERNAMES})`;
+  await sql`DELETE FROM branches WHERE id BETWEEN 900000 AND 900099 OR username = ANY(${TEST_USERNAMES})`;
 }
 
 let mainToken;

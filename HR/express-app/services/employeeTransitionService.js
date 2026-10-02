@@ -17,6 +17,7 @@ import { log } from '../utils/logger.js';
 import { Employee } from '../models/Employee.js';
 import { checkEmployeeDataCompletion } from '../utils/employeeDataCompletion.js';
 import { getPreparationAcademicYear, getCurrentTermWithState } from './termLifecycleService.js';
+import { changeEmployeeStatus } from './employeeLifecycleService.js';
 
 /** Thrown for expected, user-facing problems. Routes map .status onto the response. */
 export class TransitionError extends Error {
@@ -322,6 +323,9 @@ export const applyEmployeeDecisions = async ({ branchId, decisions, actor }) => 
     const decidedBy = actorUserId(actor);
     const [branch] = await sql`SELECT branch_name FROM branches WHERE id = ${branchId}`;
     const decidedByLabel = actorLabel(actor, branch?.branch_name);
+    const lifecycleActor = actor?.existsInDb
+        ? { kind: 'user', userId: actor.id, branchId: null, name: actor.username || decidedByLabel, role: actor.role }
+        : { kind: 'branch', userId: null, branchId, name: decidedByLabel, role: 'branch_manager' };
 
     return sql.begin(async tx => {
         const results = [];
@@ -406,18 +410,25 @@ export const applyEmployeeDecisions = async ({ branchId, decisions, actor }) => 
                 // would misreport their last real year in the archive. Employees
                 // decided "leaving" directly (never renewed) keep whatever
                 // academic_year they already had, untouched.
+                // The status change itself goes through the lifecycle service so it gets a
+                // history row and an audit entry like every other archive path.
+                await changeEmployeeStatus({
+                    employeeId,
+                    toStatus: leavingStatus,
+                    reasonText: reason,
+                    lastWorkingDay: decision.last_working_day || null,
+                    exitNotes: decision.exit_notes || null,
+                    actor: lifecycleActor,
+                    source: 'year_review',
+                    tx,
+                    skipRoleCheck: true
+                });
                 const [updated] = await tx`
                     UPDATE employees
-                    SET status = ${leavingStatus},
-                        is_active = false,
-                        academic_year = CASE WHEN academic_year = ${targetYear.year_label}
+                    SET academic_year = CASE WHEN academic_year = ${targetYear.year_label}
                                               THEN ${previousYear?.year_label || null} ELSE academic_year END,
                         current_term_id = CASE WHEN academic_year = ${targetYear.year_label}
-                                                THEN NULL ELSE current_term_id END,
-                        status_changed_at = CURRENT_TIMESTAMP,
-                        status_changed_by = ${decidedBy},
-                        status_change_reason = ${reason},
-                        updated_at = CURRENT_TIMESTAMP
+                                                THEN NULL ELSE current_term_id END
                     WHERE id = ${employeeId}
                     RETURNING *
                 `;
@@ -427,6 +438,19 @@ export const applyEmployeeDecisions = async ({ branchId, decisions, actor }) => 
             }
 
             // verdict === 'continuing'
+            // An archived employee may only be brought back here when this same year's review had
+            // marked them as leaving (a reversal). Otherwise an archived status chosen elsewhere
+            // (e.g. by the head office) would be silently undone by a branch click.
+            if (!['active', 'pending'].includes(employee.status)) {
+                const [leavingRow] = await tx`
+                    SELECT 1 FROM employee_year_transitions
+                    WHERE employee_id = ${employeeId} AND year_label = ${targetYear.year_label} AND decision = 'leaving'
+                `;
+                if (!leavingRow) {
+                    results.push({ employee_id: employeeId, ok: false, error: 'الموظف مؤرشف. تواصل مع المدير العام لاستعادته' });
+                    continue;
+                }
+            }
             await tx`
                 INSERT INTO employee_year_transitions (
                     employee_id, branch_id, year_label, previous_year_label,

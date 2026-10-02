@@ -3,7 +3,69 @@
  * Conversions between Hijri and Gregorian dates
  */
 
-import { log } from './logger.js';
+
+// --- Exact Umm al-Qura conversion -------------------------------------------
+// Both directions come from the platform's Umm al-Qura calendar (Intl), so
+// hijriToGregorian(gregorianToHijri(x)) === x for every date. The previous
+// Hijri -> Gregorian used a 30-year arithmetic calendar (off by a day for most
+// dates) while Gregorian -> Hijri used Intl, so saving a form rewrote stored
+// Gregorian dates one day earlier. Keep this block identical in the API
+// (utils/dateConverter.js) and the SPA (src/utils/dateConverters.js).
+const MS_PER_DAY = 86400000;
+const UMALQURA_MIN_YEAR = 1300;
+const UMALQURA_MAX_YEAR = 1600;
+const umalquraFormatter = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', {
+  day: 'numeric',
+  month: 'numeric',
+  year: 'numeric',
+  timeZone: 'UTC'
+});
+
+function umalquraPartsAtUtc(utcMs) {
+  const parts = umalquraFormatter.formatToParts(new Date(utcMs));
+  const pick = (type) => parseInt(parts.find((p) => p.type === type)?.value, 10);
+  return { day: pick('day'), month: pick('month'), year: pick('year') };
+}
+
+/** UTC midnight (ms) of a 'YYYY-MM-DD' string, a Date (its local calendar day) or any date string. */
+function toUtcMidnight(input) {
+  if (input instanceof Date) {
+    if (isNaN(input.getTime())) return null;
+    return Date.UTC(input.getFullYear(), input.getMonth(), input.getDate());
+  }
+  const text = String(input).trim();
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  const parsed = new Date(text);
+  if (isNaN(parsed.getTime())) return null;
+  return Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+}
+
+function exactHijriToGregorian(day, month, year) {
+  const d = parseInt(day, 10);
+  const m = parseInt(month, 10);
+  const y = parseInt(year, 10);
+  if ([d, m, y].some((n) => Number.isNaN(n))) return null;
+  if (y < UMALQURA_MIN_YEAR || y > UMALQURA_MAX_YEAR || m < 1 || m > 12 || d < 1 || d > 30) return null;
+
+  // Mean-calendar estimate (1 Muharram 1 AH = 622-07-19 proleptic Gregorian), then settle on the
+  // neighbouring day whose Umm al-Qura date matches exactly. A day that does not exist (30th of a
+  // 29-day month) matches nothing and returns null.
+  const daysSinceEpoch = (y - 1) * 354.36707 + (m - 1) * 29.530588 + (d - 1);
+  const estimate = Date.UTC(622, 6, 19) + Math.round(daysSinceEpoch) * MS_PER_DAY;
+  for (let step = 0; step <= 8; step++) {
+    for (const sign of step === 0 ? [1] : [-1, 1]) {
+      const candidate = estimate + sign * step * MS_PER_DAY;
+      const p = umalquraPartsAtUtc(candidate);
+      if (p.day === d && p.month === m && p.year === y) {
+        const g = new Date(candidate);
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${g.getUTCFullYear()}-${pad(g.getUTCMonth() + 1)}-${pad(g.getUTCDate())}`;
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * Convert Gregorian date string (YYYY-MM-DD) to Hijri date object
@@ -13,32 +75,16 @@ import { log } from './logger.js';
 export const gregorianToHijri = (dateString) => {
   if (!dateString) return null;
 
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return null;
-
-  // Use Intl.DateTimeFormat for accurate conversion
-  const formatter = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', {
-    day: 'numeric',
-    month: 'numeric',
-    year: 'numeric'
-  });
+  const utcMs = toUtcMidnight(dateString);
+  if (utcMs === null) return null;
 
   try {
-    const parts = formatter.formatToParts(date);
-    const day = parts.find(p => p.type === 'day')?.value;
-    const month = parts.find(p => p.type === 'month')?.value;
-    const year = parts.find(p => p.type === 'year')?.value;
-
-    if (!day || !month || !year) return null;
-
-    return {
-      day: parseInt(day),
-      month: parseInt(month),
-      year: parseInt(year)
-    };
+    const p = umalquraPartsAtUtc(utcMs);
+    if (!p.day || !p.month || !p.year) return null;
+    return p;
   } catch (e) {
-    log.warn('Islamic Umalqura calendar not supported, using approximation');
-    return approximateGregorianToHijri(date);
+    // Platform without the Umm al-Qura calendar: arithmetic approximation
+    return approximateGregorianToHijri(new Date(utcMs));
   }
 };
 
@@ -51,7 +97,7 @@ export const gregorianToHijri = (dateString) => {
  */
 export const hijriToGregorian = (day, month, year) => {
   if (!day || !month || !year) return null;
-  return kuwaitiHijriToGregorian(day, month, year);
+  return exactHijriToGregorian(day, month, year);
 };
 
 /**
@@ -137,90 +183,4 @@ function approximateGregorianToHijri(date) {
   };
 }
 
-/**
- * Convert Hijri date to Gregorian using Julian Day Number calculation
- * This is the reverse of the algorithm used in employee-file.js and reports.js
- */
-function kuwaitiHijriToGregorian(day, month, year) {
-  const iYear = parseInt(year);
-  const iMonth = parseInt(month); // 1-indexed
-  const iDay = parseInt(day);
-
-  if (iYear < 1 || iYear > 1500 || iMonth < 1 || iMonth > 12 || iDay < 1 || iDay > 30) {
-    return null;
-  }
-
-  // Hijri epoch: July 16, 622 CE = Julian Day 1948439.5
-  const hijriEpoch = 1948439.5;
-
-  // Calculate days from start of Hijri year
-  // Determine if it's a leap year (11 leap years in 30-year cycle: 2, 5, 7, 10, 13, 16, 18, 21, 24, 26, 29)
-  const cycleYear = (iYear - 1) % 30;
-  const leapYears = [2, 5, 7, 10, 13, 16, 18, 21, 24, 26, 29];
-  const isLeapYear = leapYears.includes(cycleYear);
-
-  // Hijri month lengths (standard pattern: 30, 29, 30, 29...)
-  const monthLengths = [30, 29, 30, 29, 30, 29, 30, 29, 30, 29, 30, 29];
-  if (isLeapYear) {
-    monthLengths[11] = 30; // Last month (Dhu al-Hijjah) is 30 days in leap year
-  }
-
-  // Calculate days from start of year
-  let daysFromYearStart = iDay - 1; // -1 because we count from 0
-  for (let m = 0; m < iMonth - 1; m++) {
-    daysFromYearStart += monthLengths[m];
-  }
-
-  // Calculate total days since Hijri epoch
-  // 30-year cycle has 11 leap years, so 354*19 + 355*11 = 10631 days
-  const cycles = Math.floor((iYear - 1) / 30);
-  const yearInCycle = (iYear - 1) % 30;
-
-  // Calculate days from completed cycles
-  const daysFromCycles = cycles * 10631;
-
-  // Calculate days from completed years in current cycle
-  let daysFromYears = 0;
-  for (let y = 0; y < yearInCycle; y++) {
-    const yCycleYear = y % 30;
-    const yIsLeap = leapYears.includes(yCycleYear);
-    daysFromYears += yIsLeap ? 355 : 354;
-  }
-
-  // Calculate Julian Day Number
-  const jd = hijriEpoch + daysFromCycles + daysFromYears + daysFromYearStart;
-
-  // Convert Julian Day Number to Gregorian Date
-  // Algorithm from "Astronomical Algorithms" by Jean Meeus
-  const j = Math.floor(jd) + 0.5;
-  const z = Math.floor(j);
-  const w = Math.floor((z - 1867216.25) / 36524.25);
-  const x = Math.floor(w / 4);
-  const a = z + 1 + w - x;
-  const b = a + 1524;
-  const c = Math.floor((b - 122.1) / 365.25);
-  const d = Math.floor(365.25 * c);
-  const e = Math.floor((b - d) / 30.6001);
-  const f = Math.floor(30.6001 * e);
-
-  let gDay = b - d - f;
-  let gMonth = e < 14 ? e - 1 : e - 13;
-  let gYear = gMonth > 2 ? c - 4716 : c - 4715;
-
-  // Format YYYY-MM-DD
-  const pad = (n) => n.toString().padStart(2, '0');
-
-  // Validate the resulting date - expanded range to handle historical dates
-  if (gYear < 1000 || gYear > 2500) {
-    log.warn(`Hijri to Gregorian conversion resulted in year ${gYear} (outside 1000-2500 range) for input: ${day}/${month}/${year}`);
-    return null;
-  }
-
-  if (gMonth < 1 || gMonth > 12 || gDay < 1 || gDay > 31) {
-    log.warn(`Hijri to Gregorian conversion resulted in invalid date: ${gYear}-${gMonth}-${gDay} for input: ${day}/${month}/${year}`);
-    return null;
-  }
-
-  return `${gYear}-${pad(gMonth)}-${pad(gDay)}`;
-}
 

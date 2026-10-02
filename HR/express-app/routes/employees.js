@@ -35,6 +35,16 @@ import { employeeHasBranchAccess } from '../utils/employeeHelpers.js';
 import { uploadToBlob } from '../utils/blobStorage.js';
 import { isValidMimeType } from '../utils/validators.js';
 import { MAX_API_UPLOAD_BYTES, fileTooLargeMessage } from '../middleware/upload.js';
+import { loadEmployee } from '../middleware/employeeAccess.js';
+import { employeeInputGuard, validateEmployeeNamesPartial } from '../utils/employeeFieldValidators.js';
+import { actorFromReq, recordAudit } from '../services/auditService.js';
+import {
+  changeEmployeeStatus,
+  bulkChangeStatus,
+  transferEmployee,
+  LifecycleError,
+  ARCHIVED_STATUSES as LIFECYCLE_ARCHIVED_STATUSES,
+} from '../services/employeeLifecycleService.js';
 
 const router = express.Router();
 
@@ -305,6 +315,33 @@ const calculateEmployeeStatistics = (employees) => {
 
 // All routes require authentication
 router.use(authenticate);
+
+// Operations managers work with branch documents and buses, not individual employees.
+// They keep read access to the scoped list/statistics (their dashboard uses it); every other
+// employee route (single employee, create, edit, status, transfer, documents...) is closed to them.
+router.use((req, res, next) => {
+  if (req.user?.role !== "branch_operations_manager") return next();
+  const readOnlyScoped = req.method === "GET" && ["/", "/paginated", "/statistics"].includes(req.path);
+  if (readOnlyScoped) return next();
+  return res.status(403).json({ success: false, message: "تم رفض الوصول" });
+});
+
+// Fields the server decides; a client-supplied value must never reach the INSERT.
+const withoutServerControlled = (body) => {
+  const { status, academic_year, registration_term_id, current_term_id, created_by, updated_by, id, ...rest } = body;
+  return rest;
+};
+
+const sendLifecycleError = (error, res) => {
+  if (!(error instanceof LifecycleError)) return false;
+  res.status(error.httpStatus).json({
+    success: false,
+    message: error.message,
+    error: error.code,
+    ...error.details,
+  });
+  return true;
+};
 
 // List duplicate clusters (main manager only)
 router.get("/duplicates", requireMainManager, async (req, res) => {
@@ -2441,7 +2478,7 @@ router.get("/", async (req, res) => {
 });
 
 // Update employee completion status - MUST be before /:id route
-router.post("/:id/update-completion-status", async (req, res) => {
+router.post("/:id/update-completion-status", loadEmployee(), async (req, res) => {
   try {
     const { updateEmployeeCompletionStatus } =
       await import("../utils/employeeDataCompletion.js");
@@ -2456,7 +2493,7 @@ router.post("/:id/update-completion-status", async (req, res) => {
 });
 
 // Get employee documents - MUST be before /:id route
-router.get("/:id/documents", async (req, res) => {
+router.get("/:id/documents", loadEmployee(), async (req, res) => {
   try {
     const { Employee } = await import("../models/Employee.js");
     const employee = await Employee.findById(parseInt(req.params.id));
@@ -2499,7 +2536,7 @@ router.get("/:id/documents", async (req, res) => {
 });
 
 // Get employee missing data - MUST be before /:id route
-router.get("/:id/missing-data", async (req, res) => {
+router.get("/:id/missing-data", loadEmployee(), async (req, res) => {
   try {
     const { Employee } = await import("../models/Employee.js");
     const { checkEmployeeDataCompletion } =
@@ -2554,7 +2591,7 @@ router.get("/:id/missing-data", async (req, res) => {
 });
 
 // Get employee by ID - MUST be after specific routes like /:id/missing-data
-router.get("/:id", async (req, res) => {
+router.get("/:id", loadEmployee(), async (req, res) => {
   try {
     const { Employee } = await import("../models/Employee.js");
     const employee = await Employee.findById(parseInt(req.params.id));
@@ -2619,10 +2656,18 @@ router.post("/check-duplicate", async (req, res) => {
       date_of_birth_gregorian,
     );
 
+    // Only what the caller needs to decide: the full employee row (IBAN, birth date, phone...)
+    // must not be handed to a branch that does not own the employee.
+    const minimal = duplicates.map((d) => ({
+      id: d.id,
+      name: [d.first_name, d.second_name, d.third_name, d.fourth_name].filter(Boolean).join(" "),
+      status: d.status,
+      branch_name: d.branch_name,
+    }));
     res.json({
       success: true,
-      hasDuplicates: duplicates.length > 0,
-      duplicates: duplicates,
+      hasDuplicates: minimal.length > 0,
+      duplicates: minimal,
     });
   } catch (error) {
     log.error("Error checking for duplicates", { error: error.message });
@@ -2667,6 +2712,22 @@ router.post("/link-to-branch", async (req, res) => {
       });
     }
 
+    // A branch manager may only pull in an employee they can identify: the ID/residency number
+    // typed in the form must match. (The head office links by id from the transfer page.)
+    if (req.user.role === "branch_manager") {
+      const given = String(req.body.id_or_residency_number || "").trim();
+      if (!given || given !== String(existingEmployee.id_or_residency_number || "").trim()) {
+        return res.status(403).json({
+          success: false,
+          message: "رقم الهوية/الإقامة مطلوب ويجب أن يطابق سجل الموظف لإتمام الربط",
+        });
+      }
+    }
+
+    if (isArchivedEmployee(existingEmployee)) {
+      return res.status(409).json(archivedEmployeeResponse(existingEmployee));
+    }
+
     // Check if already linked to this branch
     const isAlreadyLinked = await Employee.isLinkedToBranch(existingEmployee.id, targetBranchId);
     if (isAlreadyLinked) {
@@ -2693,6 +2754,15 @@ router.post("/link-to-branch", async (req, res) => {
 
     // Reload employee with updated branch info
     const updatedEmployee = await Employee.findById(existingEmployee.id);
+
+    await recordAudit({
+      entityType: "employee",
+      entityId: existingEmployee.id,
+      action: "link_branch",
+      actor: actorFromReq(req),
+      branchId: targetBranchId,
+      changes: { linked_branch_id: targetBranchId },
+    });
 
     // Clear caches
     clearByPrefix(`dashboard:summary:${targetBranchId}`);
@@ -2737,6 +2807,7 @@ router.post(
   ]),
   validateEmployeeName,
   validateEmail,
+  employeeInputGuard({ isUpdate: false }),
   validateDateFields({
     date_of_birth_hijri: {
       calendarType: "hijri",
@@ -3099,7 +3170,7 @@ router.post(
       await sql.begin(async (tx) => {
         employee = await Employee.create(
           {
-            ...req.body,
+            ...withoutServerControlled(req.body),
             created_by: auditUserId,
             updated_by: auditUserId, // For new records, updated_by = created_by
             data_completion_status: "incomplete", // Default to incomplete
@@ -3289,12 +3360,15 @@ router.post(
 // Update employee
 router.put(
   "/:id",
-  validateEmployeeName,
+  loadEmployee(),
+  validateEmployeeNamesPartial,
+  validateEmail,
+  employeeInputGuard({ isUpdate: true }),
   validateDateFields({
     date_of_birth_hijri: {
       calendarType: "hijri",
       dateType: "birth_date",
-      required: true,
+      required: false,
     },
     id_expiry_date_hijri: {
       calendarType: "hijri",
@@ -3376,11 +3450,81 @@ router.put(
       log.info("[EMPLOYEE UPDATE] Updated by user ID:", auditUserIdForUpdate);
       log.info("[EMPLOYEE UPDATE] Calling Employee.update()...");
 
-      const employee = await Employee.update(
-        parseInt(req.params.id),
-        req.body,
-        auditUserIdForUpdate,
-      );
+      // Optional stale-edit guard: the client sends the updated_at it loaded; if somebody saved in
+      // between, refuse instead of silently overwriting their change.
+      if (req.body.expected_updated_at) {
+        const expected = new Date(req.body.expected_updated_at).getTime();
+        const current = new Date(existingEmployee.updated_at).getTime();
+        if (!Number.isNaN(expected) && expected !== current) {
+          return res.status(409).json({
+            success: false,
+            error: "STALE_EMPLOYEE",
+            message: "تم تعديل بيانات هذا الموظف من قبل شخص آخر. حدّث الصفحة ثم أعد المحاولة.",
+          });
+        }
+      }
+
+      // The ID / employee numbers can be corrected by the head office only.
+      const canEditIdentity = req.user.role === "main_manager";
+      const ignoredFields = [];
+      if (!canEditIdentity) {
+        for (const f of ["id_or_residency_number", "employee_id_number"]) {
+          if (f in req.body && String(req.body[f] ?? "") !== String(existingEmployee[f] ?? "")) {
+            ignoredFields.push(f);
+          }
+          delete req.body[f];
+        }
+      } else if (
+        req.body.id_or_residency_number &&
+        req.body.id_or_residency_number !== existingEmployee.id_or_residency_number
+      ) {
+        const clash = await Employee.findDuplicates(
+          req.body.id_or_residency_number, null, null, existingEmployee.id,
+        );
+        if (clash.length > 0) {
+          return res.status(409).json({
+            success: false,
+            error: "DUPLICATE_EMPLOYEE",
+            message: "رقم الهوية/الإقامة مسجل لموظف آخر",
+          });
+        }
+      }
+
+      let employee;
+      try {
+        employee = await Employee.update(
+          parseInt(req.params.id),
+          req.body,
+          auditUserIdForUpdate,
+          { allowIdentityEdit: canEditIdentity },
+        );
+      } catch (updateError) {
+        if (updateError.code === "NO_VALID_FIELDS") {
+          return res.status(400).json({
+            success: false,
+            message: "لا توجد بيانات صالحة للتحديث",
+            ignored_fields: ignoredFields,
+          });
+        }
+        throw updateError;
+      }
+
+      try {
+        const { diffFields } = await import("../services/auditService.js");
+        const changes = diffFields(existingEmployee, employee, Object.keys(req.body));
+        if (Object.keys(changes).length > 0) {
+          await recordAudit({
+            entityType: "employee",
+            entityId: employee.id,
+            action: "update",
+            actor: actorFromReq(req),
+            branchId: employee.branch_id,
+            changes,
+          });
+        }
+      } catch (auditError) {
+        log.warn("Could not audit employee update", { error: auditError.message });
+      }
 
       log.info(
         "[EMPLOYEE UPDATE] Employee updated successfully:",
@@ -3426,7 +3570,7 @@ router.put(
         clearByPrefix("branch-statistics");
         log.info("[EMPLOYEE UPDATE] SUCCESS: Employee updated successfully");
         log.info("========================================");
-        res.json({ success: true, data: updatedEmployee });
+        res.json({ success: true, data: updatedEmployee, ignored_fields: ignoredFields });
       } catch (completionError) {
         log.info(
           "[EMPLOYEE UPDATE] WARNING: Error checking completion status:",
@@ -3445,7 +3589,7 @@ router.put(
           "[EMPLOYEE UPDATE] SUCCESS: Employee updated (completion status check failed)",
         );
         log.info("========================================");
-        res.json({ success: true, data: employee });
+        res.json({ success: true, data: employee, ignored_fields: ignoredFields });
       }
     } catch (error) {
       log.info("[EMPLOYEE UPDATE] ERROR:", error.message);
@@ -3483,14 +3627,17 @@ router.delete("/:id", async (req, res) => {
     // Get deletion reason from request body
     const reason = req.body?.reason || "تم إلغاء التفعيل";
 
-    // Archive employee by setting status to 'other' with deletion reason
-    // Use req.user.id (main manager's user ID) for the FK to users(id)
-    const updatedEmployee = await Employee.updateStatus(
+    // Archive through the lifecycle service (history + audit); the body may name the real reason status.
+    const requestedStatus = req.body?.status;
+    const toStatus = LIFECYCLE_ARCHIVED_STATUSES.includes(requestedStatus) ? requestedStatus : "other";
+    const { employee: updatedEmployee } = await changeEmployeeStatus({
       employeeId,
-      "other",
-      req.user.id,
-      reason,
-    );
+      toStatus,
+      reasonText: reason,
+      lastWorkingDay: req.body?.last_working_day || null,
+      actor: actorFromReq(req),
+      source: "delete_route",
+    });
 
     // Invalidate dashboard & branch statistics caches for this branch
     clearByPrefix(`dashboard:summary:${employee.branch_id}`);
@@ -3502,83 +3649,213 @@ router.delete("/:id", async (req, res) => {
       data: updatedEmployee,
     });
   } catch (error) {
+    if (sendLifecycleError(error, res)) return;
     log.error("Error deleting employee", { error: error.message });
     handleRouteError(error, req, res, 'فشل إلغاء تفعيل الموظف');
   }
 });
 
-// Update employee status (instead of delete - employees are archived, not deleted)
-router.put("/:id/status", async (req, res) => {
+// Update employee status (employees are archived, not deleted).
+// Every status change goes through services/employeeLifecycleService.js: one role rule table,
+// history row, audit entry.
+router.put("/:id/status", loadEmployee({ primaryOnly: true }), async (req, res) => {
   try {
-    const { Employee } = await import("../models/Employee.js");
-    const { Branch } = await import("../models/Branch.js");
-
-    const employeeId = parseInt(req.params.id);
-    const { status, reason } = req.body;
-
-    // Validation
-    const validStatuses = [
-      "active",
-      "pending",
-      "terminated_article_80",
-      "terminated_article_77",
-      "resigned",
-      "contract_ended",
-      "non_renewal",
-      "other",
-    ];
-    if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "حالة غير صحيحة",
-      });
-    }
-
-    // Check if employee exists and user has access
-    const employee = await Employee.findById(employeeId);
-    if (!employee) {
-      return res.status(404).json({
-        success: false,
-        message: "الموظف غير موجود",
-      });
-    }
-
-    // Check access: branch managers can only update their branch employees
-    if (
-      req.user.role === "branch_manager" &&
-      req.user.branch_id !== employee.branch_id
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: "غير مصرح لك بتغيير حالة هذا الموظف",
-      });
-    }
-
-    // Determine who changed the status
-    // status_changed_by has FK to users(id) — branch managers don't have a users row, use null
-    let statusChangedBy = req.user.role === 'branch_manager' ? null : req.user.id;
-
-    // Update status
-    const updatedEmployee = await Employee.updateStatus(
-      employeeId,
-      status,
-      statusChangedBy,
-      reason || null,
-    );
+    const { status, reason, last_working_day, exit_notes, rehire_eligible } = req.body || {};
+    const result = await changeEmployeeStatus({
+      employeeId: req.employee.id,
+      toStatus: status,
+      reasonText: reason,
+      lastWorkingDay: last_working_day,
+      exitNotes: exit_notes,
+      rehireEligible: typeof rehire_eligible === "boolean" ? rehire_eligible : null,
+      actor: actorFromReq(req),
+      source: "status_route",
+    });
 
     res.json({
       success: true,
       message: "تم تحديث حالة الموظف بنجاح",
-      data: updatedEmployee,
+      data: result.employee,
+      action: result.action,
     });
   } catch (error) {
+    if (sendLifecycleError(error, res)) return;
     log.error("Error updating employee status", { error: error.message });
     handleRouteError(error, req, res, 'فشل تحديث حالة الموظف');
   }
 });
 
+// End of service: archive an employee who left, with the reason (the archived status),
+// last working day, notes and rehire eligibility. Branch managers may do this for their own
+// employees; the head office sees it in the archive and the employee's history.
+router.post("/:id/offboard", loadEmployee({ primaryOnly: true }), async (req, res) => {
+  try {
+    const { status, reason, last_working_day, exit_notes, rehire_eligible } = req.body || {};
+    if (!status || !LIFECYCLE_ARCHIVED_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "يجب اختيار سبب إنهاء الخدمة (مثل: استقالة، انتهاء العقد، إنهاء المادة 80...)",
+      });
+    }
+    if (last_working_day && !/^\d{4}-\d{2}-\d{2}$/.test(String(last_working_day))) {
+      return res.status(400).json({ success: false, message: "صيغة تاريخ آخر يوم عمل غير صحيحة" });
+    }
+
+    const result = await changeEmployeeStatus({
+      employeeId: req.employee.id,
+      toStatus: status,
+      reasonText: reason,
+      lastWorkingDay: last_working_day || null,
+      exitNotes: exit_notes || null,
+      rehireEligible: typeof rehire_eligible === "boolean" ? rehire_eligible : null,
+      actor: actorFromReq(req),
+      source: "offboard",
+    });
+    res.json({
+      success: true,
+      message: "تم إنهاء خدمة الموظف ونقله إلى الأرشيف",
+      data: result.employee,
+      action: result.action,
+    });
+  } catch (error) {
+    if (sendLifecycleError(error, res)) return;
+    log.error("Error offboarding employee", { error: error.message });
+    handleRouteError(error, req, res, 'فشل إنهاء خدمة الموظف');
+  }
+});
+
+// Archive several employees at once (same rules as one-by-one; per-employee results).
+router.post("/bulk/archive", async (req, res) => {
+  try {
+    const { employee_ids, status, reason, last_working_day } = req.body || {};
+    const ids = Array.isArray(employee_ids)
+      ? [...new Set(employee_ids.map((v) => parseInt(v, 10)).filter((v) => Number.isInteger(v) && v > 0))]
+      : [];
+    if (ids.length === 0 || ids.length > 200) {
+      return res.status(400).json({ success: false, message: "اختر من 1 إلى 200 موظف" });
+    }
+    if (!status || !LIFECYCLE_ARCHIVED_STATUSES.includes(status)) {
+      return res.status(400).json({ success: false, message: "يجب اختيار سبب إنهاء الخدمة" });
+    }
+    if (!["main_manager", "branch_manager"].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: "تم رفض الوصول" });
+    }
+    const results = await bulkChangeStatus({
+      employeeIds: ids,
+      toStatus: status,
+      reasonText: reason,
+      lastWorkingDay: last_working_day || null,
+      actor: actorFromReq(req),
+      source: "bulk_archive",
+    });
+    res.json({
+      success: true,
+      data: results,
+      counts: { ok: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length },
+    });
+  } catch (error) {
+    log.error("Error in bulk archive", { error: error.message });
+    handleRouteError(error, req, res, 'فشل الأرشفة الجماعية');
+  }
+});
+
+// Move several employees to another branch (main manager only).
+router.post("/bulk/transfer", async (req, res) => {
+  try {
+    if (req.user.role !== "main_manager") {
+      return res.status(403).json({ success: false, message: "غير مصرح لك بنقل الموظفين" });
+    }
+    const { employee_ids, target_branch_id, keep_old_as_secondary } = req.body || {};
+    const ids = Array.isArray(employee_ids)
+      ? [...new Set(employee_ids.map((v) => parseInt(v, 10)).filter((v) => Number.isInteger(v) && v > 0))]
+      : [];
+    const targetBranchId = parseInt(target_branch_id, 10);
+    if (ids.length === 0 || ids.length > 200 || !Number.isInteger(targetBranchId)) {
+      return res.status(400).json({ success: false, message: "اختر الموظفين والفرع المستهدف" });
+    }
+    const actor = actorFromReq(req);
+    const results = [];
+    for (const id of ids) {
+      try {
+        await transferEmployee({ employeeId: id, targetBranchId, keepOldAsSecondary: Boolean(keep_old_as_secondary), actor });
+        results.push({ id, ok: true });
+      } catch (err) {
+        if (!(err instanceof LifecycleError)) throw err;
+        results.push({ id, ok: false, code: err.code, message: err.message });
+      }
+    }
+    res.json({
+      success: true,
+      data: results,
+      counts: { ok: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length },
+    });
+  } catch (error) {
+    log.error("Error in bulk transfer", { error: error.message });
+    handleRouteError(error, req, res, 'فشل النقل الجماعي');
+  }
+});
+
+// Status history + audit trail of one employee (newest first)
+router.get("/:id/history", loadEmployee(), async (req, res) => {
+  try {
+    const id = req.employee.id;
+    const [statusHistory, audit] = await Promise.all([
+      sql`
+        SELECT id, from_status, to_status, reason_code, reason_text, effective_date, last_working_day,
+               source, actor_kind, actor_name, created_at
+        FROM employee_status_history WHERE employee_id = ${id}
+        ORDER BY created_at DESC LIMIT 200
+      `,
+      sql`
+        SELECT id, action, actor_kind, actor_name, changes, created_at
+        FROM audit_log WHERE entity_type = 'employee' AND entity_id = ${id}
+        ORDER BY created_at DESC LIMIT 200
+      `,
+    ]);
+    res.json({ success: true, data: { status_history: statusHistory, audit } });
+  } catch (error) {
+    handleRouteError(error, req, res, 'فشل جلب سجل الموظف');
+  }
+});
+
+// Notes on an employee
+router.get("/:id/notes", loadEmployee(), async (req, res) => {
+  try {
+    const notes = await sql`
+      SELECT id, note, actor_kind, actor_name, created_at
+      FROM employee_notes WHERE employee_id = ${req.employee.id}
+      ORDER BY created_at DESC LIMIT 200
+    `;
+    res.json({ success: true, data: notes });
+  } catch (error) {
+    handleRouteError(error, req, res, 'فشل جلب الملاحظات');
+  }
+});
+
+router.post("/:id/notes", loadEmployee(), async (req, res) => {
+  try {
+    const note = String(req.body?.note || "").trim();
+    if (note.length < 2 || note.length > 2000) {
+      return res.status(400).json({ success: false, message: "الملاحظة يجب أن تكون بين 2 و2000 حرف" });
+    }
+    const actor = actorFromReq(req);
+    const [row] = await sql`
+      INSERT INTO employee_notes (employee_id, note, actor_kind, actor_user_id, actor_branch_id, actor_name)
+      VALUES (${req.employee.id}, ${note}, ${actor.kind}, ${actor.userId}, ${actor.branchId}, ${actor.name})
+      RETURNING id, note, actor_kind, actor_name, created_at
+    `;
+    await recordAudit({
+      entityType: "employee", entityId: req.employee.id, action: "note_added",
+      actor, branchId: req.employee.branch_id, changes: { note_id: row.id },
+    });
+    res.status(201).json({ success: true, data: row });
+  } catch (error) {
+    handleRouteError(error, req, res, 'فشل إضافة الملاحظة');
+  }
+});
+
 // Renew employee (pending -> active) - Branch Manager only
-router.post("/:id/renew", async (req, res) => {
+router.post("/:id/renew", loadEmployee({ primaryOnly: true }), async (req, res) => {
   try {
     const { Employee } = await import("../models/Employee.js");
     const { Branch } = await import("../models/Branch.js");
@@ -3689,7 +3966,7 @@ router.post("/:id/renew", async (req, res) => {
 });
 
 // Non-renewal (pending -> archived status) - Branch Manager only
-router.post("/:id/non-renewal", async (req, res) => {
+router.post("/:id/non-renewal", loadEmployee({ primaryOnly: true }), async (req, res) => {
   try {
     const { Employee } = await import("../models/Employee.js");
 
@@ -3747,12 +4024,13 @@ router.post("/:id/non-renewal", async (req, res) => {
 
     // Update status to archived status
     // status_changed_by has FK to users(id) — branch managers don't have a users row, use null
-    const updatedEmployee = await Employee.updateStatus(
+    const { employee: updatedEmployee } = await changeEmployeeStatus({
       employeeId,
-      status,
-      null,
-      reason || "عدم تجديد العقد",
-    );
+      toStatus: status,
+      reasonText: reason || "عدم تجديد العقد",
+      actor: actorFromReq(req),
+      source: "non_renewal",
+    });
 
     res.json({
       success: true,
@@ -3760,6 +4038,7 @@ router.post("/:id/non-renewal", async (req, res) => {
       data: updatedEmployee,
     });
   } catch (error) {
+    if (sendLifecycleError(error, res)) return;
     log.error("Error processing non-renewal", { error: error.message });
     handleRouteError(error, req, res, 'فشل تحديد عدم التجديد');
   }
@@ -4757,51 +5036,29 @@ router.post("/certificates/generate", requireMainManager, async (req, res) => {
 // Employee Transfer & Multi-Branch Routes (Main Manager Only)
 // ============================================================
 
-// Transfer employee to another branch
-router.put("/:id/transfer", async (req, res) => {
+// Transfer employee to another branch (main manager only).
+// The old branch link is removed unless keep_old_as_secondary is true.
+router.put("/:id/transfer", loadEmployee(), async (req, res) => {
   try {
-    // Only main managers can transfer
     if (req.user.role !== 'main_manager') {
       return res.status(403).json({ success: false, message: 'غير مصرح لك بنقل الموظفين' });
     }
 
-    const { Employee } = await import("../models/Employee.js");
-    const { Branch } = await import("../models/Branch.js");
-    const employeeId = parseInt(req.params.id);
-    const { target_branch_id } = req.body;
-
-    if (!target_branch_id) {
+    const { target_branch_id, keep_old_as_secondary } = req.body || {};
+    const targetBranchId = parseInt(target_branch_id, 10);
+    if (!Number.isInteger(targetBranchId)) {
       return res.status(400).json({ success: false, message: 'يجب تحديد الفرع المستهدف' });
     }
 
-    // Check employee exists
-    const employee = await Employee.findById(employeeId);
-    if (!employee) {
-      return res.status(404).json({ success: false, message: 'الموظف غير موجود' });
-    }
-
-    // Check target branch is active
-    const targetBranch = await Branch.findById(parseInt(target_branch_id));
-    if (!targetBranch) {
-      return res.status(404).json({ success: false, message: 'الفرع المستهدف غير موجود أو محذوف' });
-    }
-
-    // Can't transfer to same branch
-    if (employee.branch_id === parseInt(target_branch_id)) {
-      return res.status(400).json({ success: false, message: 'الموظف موجود بالفعل في هذا الفرع' });
-    }
-
-    const updatedEmployee = await Employee.transferToBranch(
-      employeeId,
-      parseInt(target_branch_id),
-      req.user.id
-    );
-
-    // Clear caches
-    const { clearByPrefix } = await import("../utils/simpleCache.js");
-    clearByPrefix(`dashboard:summary:${employee.branch_id}`);
-    clearByPrefix(`dashboard:summary:${target_branch_id}`);
-    clearByPrefix("branch-statistics");
+    const { Employee } = await import("../models/Employee.js");
+    const employee = req.employee;
+    const { targetBranch } = await transferEmployee({
+      employeeId: employee.id,
+      targetBranchId,
+      keepOldAsSecondary: Boolean(keep_old_as_secondary),
+      actor: actorFromReq(req),
+    });
+    const updatedEmployee = await Employee.findById(employee.id);
 
     res.json({
       success: true,
@@ -4809,13 +5066,14 @@ router.put("/:id/transfer", async (req, res) => {
       data: updatedEmployee
     });
   } catch (error) {
+    if (sendLifecycleError(error, res)) return;
     log.error("Error transferring employee", { error: error.message });
     handleRouteError(error, req, res, 'فشل نقل الموظف');
   }
 });
 
 // Get all branches linked to an employee
-router.get("/:id/branches", async (req, res) => {
+router.get("/:id/branches", loadEmployee(), async (req, res) => {
   try {
     const { Employee } = await import("../models/Employee.js");
     const employeeId = parseInt(req.params.id);
@@ -4838,7 +5096,7 @@ router.get("/:id/branches", async (req, res) => {
 });
 
 // Unlink employee from a secondary branch
-router.delete("/:id/branches/:branchId", async (req, res) => {
+router.delete("/:id/branches/:branchId", loadEmployee(), async (req, res) => {
   try {
     // Only main managers can unlink
     if (req.user.role !== 'main_manager') {

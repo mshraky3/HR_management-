@@ -1429,7 +1429,8 @@ const Employees = () => {
         if (confirmLink) {
           try {
             const linkResponse = await employeesAPI.linkToBranch({
-              employee_id: existingEmp.id
+              employee_id: existingEmp.id,
+              id_or_residency_number: existingEmp.id_or_residency_number
             });
 
             if (linkResponse.data.success) {

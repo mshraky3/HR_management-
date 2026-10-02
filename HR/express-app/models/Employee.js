@@ -110,7 +110,7 @@ export const Employee = {
       // Base condition
       conditions.push('1=1');
 
-      const shouldJoinBranches = !!filters.branch_id;
+      const shouldJoinBranches = !!filters.branch_id && !(Array.isArray(filters.branch_id) && filters.branch_id.length === 0);
       if (filters.branch_id) {
         if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
           const placeholders = filters.branch_id.map(() => `$${paramIndex++}`).join(', ');
@@ -120,6 +120,10 @@ export const Employee = {
           conditions.push(`(e.branch_id = $${paramIndex} OR eb.branch_id = $${paramIndex})`);
           params.push(filters.branch_id);
           paramIndex++;
+        } else {
+          // An empty list means "no branch is allowed" (e.g. an operations manager with no
+          // assignments), never "no filter": treating it as unfiltered returned every employee.
+          conditions.push('FALSE');
         }
       }
 
@@ -289,7 +293,7 @@ export const Employee = {
 
       conditions.push('1=1');
 
-      const shouldJoinBranches = !!filters.branch_id;
+      const shouldJoinBranches = !!filters.branch_id && !(Array.isArray(filters.branch_id) && filters.branch_id.length === 0);
       if (filters.branch_id) {
         if (Array.isArray(filters.branch_id) && filters.branch_id.length > 0) {
           const placeholders = filters.branch_id.map(() => `$${paramIndex++}`).join(', ');
@@ -299,6 +303,10 @@ export const Employee = {
           conditions.push(`(e.branch_id = $${paramIndex} OR eb.branch_id = $${paramIndex})`);
           params.push(filters.branch_id);
           paramIndex++;
+        } else {
+          // An empty list means "no branch is allowed" (e.g. an operations manager with no
+          // assignments), never "no filter": treating it as unfiltered returned every employee.
+          conditions.push('FALSE');
         }
       }
 
@@ -500,7 +508,7 @@ export const Employee = {
   /**
    * Update employee
    */
-  async update(id, updates, updatedBy) {
+  async update(id, updates, updatedBy, options = {}) {
 
     try {
       const allowedFields = [
@@ -517,11 +525,18 @@ export const Employee = {
         'passport_number', 'passport_issue_date', 'passport_expiry_date', 'passport_issue_place', 'residency_issue_date',
         'job_title', 'data_completion_status'
       ];
+      // Identity fields are editable only when the caller says so (the route allows the main manager).
+      // They were silently ignored before, so a typo in an ID number could never be corrected.
+      if (options.allowIdentityEdit) {
+        allowedFields.push('id_or_residency_number', 'employee_id_number');
+      }
 
       const updateFields = Object.keys(updates).filter(key => allowedFields.includes(key));
 
       if (updateFields.length === 0) {
-        throw new Error('No valid fields to update');
+        const noFields = new Error('No valid fields to update');
+        noFields.code = 'NO_VALID_FIELDS';
+        throw noFields;
       }
 
       updates.updated_at = new Date();
@@ -636,6 +651,8 @@ export const Employee = {
         } else if (!Array.isArray(filters.branch_id)) {
           conditions.push(`branch_id = $${paramIndex++}`);
           params.push(filters.branch_id);
+        } else {
+          conditions.push('FALSE'); // empty list = no branch allowed, not "no filter"
         }
       }
 
@@ -701,6 +718,8 @@ export const Employee = {
         } else if (!Array.isArray(filters.branch_id)) {
           conditions.push(`e.branch_id = $${paramIndex++}`);
           params.push(filters.branch_id);
+        } else {
+          conditions.push('FALSE'); // empty list = no branch allowed, not "no filter"
         }
       }
 
@@ -944,7 +963,7 @@ export const Employee = {
 
       // Exclude specific employee ID if provided
       if (excludeEmployeeId) {
-        conditions.push(`id != $${paramIndex++}`);
+        conditions.push(`e.id != $${paramIndex++}`);
         params.push(excludeEmployeeId);
       }
 

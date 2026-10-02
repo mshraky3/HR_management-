@@ -120,6 +120,8 @@ router.get('/', async (req, res) => {
     });
 
     let documents = [];
+    // null = head office (unrestricted); a branch manager is limited to their own branch.
+    const branchScope = req.user.role === 'branch_manager' ? [Number(req.user.branch_id)] : null;
 
     if (req.query.employee_id && req.query.employee_id !== 'null' && req.query.employee_id !== '') {
       const employeeId = parseInt(req.query.employee_id);
@@ -133,7 +135,7 @@ router.get('/', async (req, res) => {
         });
       }
 
-      if (req.user.role === 'branch_manager' && req.user.branch_id !== employee.branch_id) {
+      if (req.user.role === 'branch_manager' && !(await employeeHasBranchAccess(employee, req.user.branch_id))) {
         return res.status(403).json({
           success: false,
           message: 'تم رفض الوصول'
@@ -142,21 +144,21 @@ router.get('/', async (req, res) => {
 
       documents = await Document.findByEmployeeId(employeeId, filters);
     } else if (req.query.search) {
-      // Search by filename
+      // Search by filename (a branch manager only sees documents of employees linked to their branch)
       const employeeId = req.query.employee_id && req.query.employee_id !== 'null' && req.query.employee_id !== ''
         ? parseInt(req.query.employee_id)
         : null;
-      documents = await Document.searchByFilename(req.query.search, employeeId);
+      documents = await Document.searchByFilename(req.query.search, employeeId, branchScope);
     } else if (req.query.expiring === 'true' || req.query.expiring === true) {
       // Get expiring documents
       const days = parseInt(req.query.days) || 30;
-      documents = await Document.findExpiring(days);
+      documents = await Document.findExpiring(days, branchScope);
     } else if (req.query.unverified === 'true') {
       // Get unverified documents
       const employeeId = req.query.employee_id && req.query.employee_id !== 'null' && req.query.employee_id !== ''
         ? parseInt(req.query.employee_id)
         : null;
-      documents = await Document.findUnverified(employeeId);
+      documents = await Document.findUnverified(employeeId, branchScope);
     } else {
       // No specific filter provided - return documents based on user role
       if (req.user.role === 'branch_manager' && req.user.branch_id) {

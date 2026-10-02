@@ -249,8 +249,11 @@ export function validateDate(input, calendarType, dateType = "general") {
 
       if (age === null) {
         errors.push("Could not calculate age from date");
+      } else if (age < 16) {
+        errors.push(`Employee age (${age} years) must be at least 16 years`);
       } else if (age < 20) {
-        errors.push(`Employee age (${age} years) must be at least 20 years`);
+        // Employees aged 16-19 exist; refusing the whole save made them uneditable.
+        warnings.push(`Employee age (${age} years) is under 20`);
       } else if (age > 100) {
         errors.push(`Employee age (${age} years) must not exceed 100 years`);
       }

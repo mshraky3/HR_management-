@@ -6,6 +6,16 @@
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
 
+// Restricts a document query to employees linked to the given branches (primary or secondary link).
+// `branchIds` null/undefined = unrestricted (head office).
+const inBranches = (branchIds) => (branchIds
+  ? sql`AND employee_id IN (
+      SELECT id FROM employees WHERE branch_id = ANY(${branchIds}::int[])
+      UNION
+      SELECT employee_id FROM employee_branches WHERE branch_id = ANY(${branchIds}::int[])
+    )`
+  : sql``);
+
 export const Document = {
   /**
    * Find document by ID
@@ -57,11 +67,11 @@ export const Document = {
   /**
    * Search documents by filename
    */
-  async searchByFilename(searchTerm, employeeId = null) {
+  async searchByFilename(searchTerm, employeeId = null, branchIds = null) {
     try {
       let query = sql`
         SELECT * FROM employee_documents 
-        WHERE file_name ILIKE ${'%' + searchTerm + '%'} AND is_active = true
+        WHERE file_name ILIKE ${'%' + searchTerm + '%'} AND is_active = true ${inBranches(branchIds)}
       `;
 
       if (employeeId) {
@@ -80,13 +90,13 @@ export const Document = {
   /**
    * Find expiring documents
    */
-  async findExpiring(days = 30) {
+  async findExpiring(days = 30, branchIds = null) {
     try {
       const result = await sql`
         SELECT * FROM employee_documents 
         WHERE expiry_date IS NOT NULL 
         AND expiry_date BETWEEN CURRENT_DATE AND CURRENT_DATE + ${days} * INTERVAL '1 day'
-        AND is_active = true
+        AND is_active = true ${inBranches(branchIds)}
         ORDER BY expiry_date ASC
       `;
 
@@ -100,11 +110,11 @@ export const Document = {
   /**
    * Find unverified documents
    */
-  async findUnverified(employeeId = null) {
+  async findUnverified(employeeId = null, branchIds = null) {
     try {
       let query = sql`
         SELECT * FROM employee_documents 
-        WHERE is_verified = false AND is_active = true
+        WHERE is_verified = false AND is_active = true ${inBranches(branchIds)}
       `;
 
       if (employeeId) {

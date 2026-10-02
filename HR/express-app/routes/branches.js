@@ -11,6 +11,8 @@ import { validateRequired } from '../middleware/validation.js';
 import { isValidEmail, isValidPhone } from '../utils/validators.js';
 import { handleRouteError } from '../utils/routeErrorHandler.js';
 import { sanitizeAccountsFor } from '../utils/accountSanitize.js';
+import { actorFromReq } from '../services/auditService.js';
+import { deactivateBranch, reactivateBranch, LifecycleError } from '../services/employeeLifecycleService.js';
 
 const router = express.Router();
 
@@ -248,7 +250,39 @@ router.put('/:id',
       }
 
       const { Branch } = await import('../models/Branch.js');
-      const branch = await Branch.update(parseInt(req.params.id), req.body);
+      const sqlConn = (await import('../config/database.js')).default;
+      const branchId = parseInt(req.params.id);
+      const actor = actorFromReq(req);
+      const body = { ...req.body };
+      let archivedEmployeesCount;
+      let restoredEmployeesCount;
+
+      // Turning a branch off or on moves its employees too, so it goes through the transactional
+      // service instead of a bare is_active flip that left every employee untouched.
+      if (body.is_active !== undefined) {
+        const [current] = await sqlConn`SELECT is_active FROM branches WHERE id = ${branchId}`;
+        if (!current) {
+          return res.status(404).json({ success: false, message: 'Branch not found' });
+        }
+        const wantActive = body.is_active === true || body.is_active === 'true';
+        if (current.is_active && !wantActive) {
+          ({ archivedEmployeesCount } = await deactivateBranch({ branchId, actor }));
+        } else if (!current.is_active && wantActive) {
+          ({ restoredEmployeesCount } = await reactivateBranch({
+            branchId,
+            actor,
+            restoreEmployees: body.restore_employees !== false,
+          }));
+        }
+        delete body.is_active;
+      }
+
+      const hasOtherFields = Object.keys(body).some((k) =>
+        ['branch_name', 'branch_location', 'username', 'password', 'phone_number', 'email', 'number_of_employees'].includes(k));
+      const branch = hasOtherFields
+        ? await Branch.update(branchId, body)
+        : (await sqlConn`SELECT * FROM branches WHERE id = ${branchId}`)[0];
+      Branch.clearCache(branchId);
 
       if (!branch) {
         return res.status(404).json({
@@ -257,56 +291,66 @@ router.put('/:id',
         });
       }
 
-      res.json({ success: true, data: branch });
+      res.json({
+        success: true,
+        data: sanitizeAccountsFor(req.user, branch),
+        ...(archivedEmployeesCount !== undefined && { archivedEmployeesCount }),
+        ...(restoredEmployeesCount !== undefined && { restoredEmployeesCount }),
+      });
     } catch (error) {
       handleRouteError(error, req, res, 'فشل تحديث الفرع');
     }
   }
 );
 
-// Soft delete branch (main manager only)
-// Also archives all employees in the branch with reason "تم حذف الفرع"
+// Deactivate branch (main manager only), in one transaction:
+// the branch is switched off, signed-in sessions end, its employees are archived with the reason
+// "تم حذف الفرع" (tagged so reactivating the branch can restore exactly them) and operations-manager
+// assignments are removed.
 router.delete('/:id',
   authenticate,
   requireMainManager,
   async (req, res) => {
     try {
-      const { Branch } = await import('../models/Branch.js');
       const branchId = parseInt(req.params.id);
-      const branch = await Branch.softDelete(branchId);
-
-      if (!branch) {
-        return res.status(404).json({
-          success: false,
-          message: 'Branch not found'
-        });
-      }
-
-      // Archive all employees in this branch (regardless of current status)
-      const sql = (await import('../config/database.js')).default;
-      const archivedEmployees = await sql`
-        UPDATE employees
-        SET status = 'other',
-            is_active = false,
-            status_changed_at = CURRENT_TIMESTAMP,
-            -- FK to users(id): a branch id here violates it. The reason below is
-            -- what identifies this as a branch-deletion cascade.
-            status_changed_by = NULL,
-            status_change_reason = 'تم حذف الفرع',
-            updated_at = CURRENT_TIMESTAMP
-        WHERE branch_id = ${branchId}
-          AND (status IN ('active', 'pending') OR is_active = true)
-        RETURNING id
-      `;
+      const { branch, archivedEmployeesCount } = await deactivateBranch({
+        branchId,
+        actor: actorFromReq(req),
+      });
 
       res.json({
         success: true,
         message: 'Branch deactivated successfully',
         data: branch,
-        archivedEmployeesCount: archivedEmployees.length
+        archivedEmployeesCount
       });
     } catch (error) {
+      if (error instanceof LifecycleError) {
+        return res.status(error.httpStatus).json({ success: false, message: error.message, error: error.code });
+      }
       handleRouteError(error, req, res, 'فشل حذف الفرع');
+    }
+  }
+);
+
+// Reactivate a deactivated branch (main manager only); employees archived by its deactivation come back.
+router.post('/:id/reactivate',
+  authenticate,
+  requireMainManager,
+  async (req, res) => {
+    try {
+      const branchId = parseInt(req.params.id);
+      const { branch, restoredEmployeesCount } = await reactivateBranch({
+        branchId,
+        actor: actorFromReq(req),
+        restoreEmployees: req.body?.restore_employees !== false,
+      });
+      res.json({ success: true, data: branch, restoredEmployeesCount });
+    } catch (error) {
+      if (error instanceof LifecycleError) {
+        return res.status(error.httpStatus).json({ success: false, message: error.message, error: error.code });
+      }
+      handleRouteError(error, req, res, 'فشل إعادة تفعيل الفرع');
     }
   }
 );
