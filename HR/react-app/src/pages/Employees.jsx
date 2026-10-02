@@ -3,7 +3,7 @@
  * Manage employees
  */
 
-import { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
+import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import {
   employeesAPI,
@@ -30,7 +30,6 @@ import {
 } from "../utils/employeeHelpers";
 import {
   getJobTitlesByBranchType,
-  DATA_COMPLETION_STATUS,
   DOCUMENT_TYPE_LABELS,
 } from "../utils/employeeConstants";
 import {
@@ -47,7 +46,6 @@ import {
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 // import './TablePage.css';
 import "./Employees.css";
-import BranchBadge from "../components/BranchBadge.jsx";
 import NationalitySelect from "../components/NationalitySelect.jsx";
 import NameInput from "../components/NameInput.jsx";
 import UnifiedDatePicker from "../components/UnifiedDatePicker.jsx";
@@ -56,6 +54,7 @@ import ReligionSelect from "../components/ReligionSelect.jsx";
 import MaritalStatusSelect from "../components/MaritalStatusSelect.jsx";
 import EmployeeYearReview from "./EmployeeYearReview.jsx";
 import EmployeesView from "./employees/EmployeesView.jsx";
+import { employeeStatusLabel } from "../ui";
 
 const Employees = () => {
   const navigate = useNavigate();
@@ -76,56 +75,13 @@ const Employees = () => {
   const [selectedBranchType, setSelectedBranchType] = useState(null); // 'healthcare_center' or 'school'
   const [filterIncomplete, setFilterIncomplete] = useState(false); // Filter for incomplete employees
   const [focusEmployee, setFocusEmployee] = useState(null); // Employee to highlight when navigated from other pages
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteEmployeeId, setDeleteEmployeeId] = useState(null);
-  const [deleteReason, setDeleteReason] = useState("");
+  const [pendingEditEmployee, setPendingEditEmployee] = useState(null);
 
   // New-year employee review tab. Branch managers only see it once their
   // branch's review is active; main managers always have access to the
   // per-branch overview.
   const [activeMainTab, setActiveMainTab] = useState("list");
   const [yearReviewActive, setYearReviewActive] = useState(false);
-  const [searchFilters, setSearchFilters] = useState({
-    search_name: "",
-    search_id: "",
-    search_phone: "",
-    search_branch: "",
-  });
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25); // Default: 25 items per page
-
-  // Refs to maintain focus on search inputs
-  const searchNameRef = useRef(null);
-  const searchIdRef = useRef(null);
-  const searchPhoneRef = useRef(null);
-
-  // Ref to track which input was focused before update
-  const focusedInputRef = useRef(null);
-
-  // State for searchable branch select
-  const [branchSearchTerm, setBranchSearchTerm] = useState("");
-  const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
-  const branchDropdownRef = useRef(null);
-
-  // Get selected branch name for display
-  const selectedBranchName = useMemo(() => {
-    if (isBranchDropdownOpen && branchSearchTerm) {
-      return branchSearchTerm;
-    }
-    if (searchFilters.search_branch) {
-      const branch = branches.find(
-        (b) => b.id === parseInt(searchFilters.search_branch),
-      );
-      return branch?.branch_name || "";
-    }
-    return branchSearchTerm;
-  }, [
-    searchFilters.search_branch,
-    branches,
-    branchSearchTerm,
-    isBranchDropdownOpen,
-  ]);
   const [formData, setFormData] = useState({
     employee_id_number: "",
     branch_id: user?.branch_id || "",
@@ -220,7 +176,9 @@ const Employees = () => {
         .getById(editId)
         .then((response) => {
           if (response.data.success) {
-            handleEdit(response.data.data);
+            // handleEdit needs the branches (job titles depend on the branch type),
+            // which may not have arrived yet: wait for them, see the effect below.
+            setPendingEditEmployee(response.data.data);
           }
         })
         .catch((error) => {
@@ -291,119 +249,7 @@ const Employees = () => {
 
   useEffect(() => {
     loadEmployees();
-  }, [filterIncomplete]);
-
-  // Performance Optimization: Improved debounced search with minimum length
-  // Only search if user has typed at least 2 characters or cleared the search
-  const shouldTriggerSearch = useMemo(() => {
-    const nameLen = searchFilters.search_name.trim().length;
-    const idLen = searchFilters.search_id.trim().length;
-    const phoneLen = searchFilters.search_phone.trim().length;
-
-    // Trigger search if:
-    // 1. Any field has at least 2 characters, OR
-    // 2. All fields are empty (to show all results)
-    return (
-      nameLen >= 2 ||
-      idLen >= 2 ||
-      phoneLen >= 2 ||
-      (nameLen === 0 && idLen === 0 && phoneLen === 0)
-    );
-  }, [
-    searchFilters.search_name,
-    searchFilters.search_id,
-    searchFilters.search_phone,
-  ]);
-
-  // Debounced search effect - wait for user to stop typing
-  useEffect(() => {
-    // Skip search if minimum length not met (unless all fields are empty)
-    const nameLen = searchFilters.search_name.trim().length;
-    const idLen = searchFilters.search_id.trim().length;
-    const phoneLen = searchFilters.search_phone.trim().length;
-
-    // Don't search if user is still typing and hasn't reached minimum length
-    if (nameLen > 0 && nameLen < 2 && idLen === 0 && phoneLen === 0) {
-      return; // User is still typing name, wait
-    }
-    if (idLen > 0 && idLen < 2 && nameLen === 0 && phoneLen === 0) {
-      return; // User is still typing ID, wait
-    }
-    if (phoneLen > 0 && phoneLen < 2 && nameLen === 0 && idLen === 0) {
-      return; // User is still typing phone, wait
-    }
-
-    // Store which input had focus before the update
-    const activeElement = document.activeElement;
-    if (activeElement === searchNameRef.current) {
-      focusedInputRef.current = "name";
-    } else if (activeElement === searchIdRef.current) {
-      focusedInputRef.current = "id";
-    } else if (activeElement === searchPhoneRef.current) {
-      focusedInputRef.current = "phone";
-    }
-
-    // Optimized debounce: shorter delay if minimum length is met
-    const debounceDelay = shouldTriggerSearch ? 400 : 500;
-
-    const timeoutId = setTimeout(async () => {
-      await loadEmployees();
-
-      // Restore focus after loading completes
-      // Use requestAnimationFrame to ensure DOM has updated
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          let inputToFocus = null;
-
-          if (focusedInputRef.current === "name" && searchNameRef.current) {
-            inputToFocus = searchNameRef.current;
-          } else if (focusedInputRef.current === "id" && searchIdRef.current) {
-            inputToFocus = searchIdRef.current;
-          } else if (
-            focusedInputRef.current === "phone" &&
-            searchPhoneRef.current
-          ) {
-            inputToFocus = searchPhoneRef.current;
-          }
-
-          if (inputToFocus) {
-            inputToFocus.focus();
-            // Move cursor to end of input
-            const length = inputToFocus.value.length;
-            inputToFocus.setSelectionRange(length, length);
-          }
-        });
-      });
-    }, debounceDelay);
-
-    return () => clearTimeout(timeoutId);
-  }, [
-    searchFilters.search_name,
-    searchFilters.search_id,
-    searchFilters.search_phone,
-    shouldTriggerSearch,
-  ]);
-
-  // Immediate effect for branch filter (no debounce needed for select dropdown)
-  useEffect(() => {
-    if (isMainManager()) {
-      loadEmployees();
-    }
-  }, [searchFilters.search_branch]);
-
-  // Handle click outside to close branch dropdown
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (
-        branchDropdownRef.current &&
-        !branchDropdownRef.current.contains(event.target)
-      ) {
-        setIsBranchDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadBranches = async () => {
@@ -1033,17 +879,16 @@ const Employees = () => {
       }
 
       optionalFields.forEach((field) => {
-        if (
+        const isEmpty =
           data[field] === "" ||
           data[field] === null ||
-          data[field] === undefined
-        ) {
-          delete data[field]; // Remove field instead of setting to null
-        } else if (
-          typeof data[field] === "string" &&
-          data[field].trim() === ""
-        ) {
-          delete data[field];
+          data[field] === undefined ||
+          (typeof data[field] === "string" && data[field].trim() === "");
+        if (isEmpty) {
+          // Editing: send null, otherwise a value the user cleared silently comes back.
+          // Creating: leave the field out.
+          if (editingEmployee) data[field] = null;
+          else delete data[field];
         }
       });
 
@@ -1197,8 +1042,15 @@ const Employees = () => {
         const statusToUpdate = data.status;
         delete data.status;
 
-        await employeesAPI.update(editingEmployee.id, data);
+        const updateResponse = await employeesAPI.update(editingEmployee.id, {
+          ...data,
+          expected_updated_at: editingEmployee.updated_at,
+        });
         employee = { id: editingEmployee.id };
+        const ignored = updateResponse?.data?.ignored_fields || [];
+        if (ignored.length > 0) {
+          showWarning("رقم الهوية/الإقامة لا يغيّره إلا المدير الرئيسي، لذلك لم يتم تغييره.");
+        }
 
         // Update status separately if it changed (only for main manager)
         if (isMainManager() && statusToUpdate) {
@@ -1207,11 +1059,15 @@ const Employees = () => {
             try {
               await employeesAPI.updateStatus(editingEmployee.id, {
                 status: statusToUpdate,
-                reason: `تم تغيير الحالة من ${originalStatus} إلى ${newStatus}`,
+                reason: `تم تغيير الحالة من ${employeeStatusLabel(originalStatus)} إلى ${employeeStatusLabel(newStatus)}`,
               });
             } catch (error) {
               console.error("Error updating employee status:", error);
-              // Don't fail the whole update, just log the error
+              // The data was saved; only the status change failed. Say so instead of claiming full success.
+              showWarning(
+                error.response?.data?.message ||
+                  "تم حفظ البيانات لكن تعذّر تغيير حالة الموظف.",
+              );
             }
           } else if (!editingEmployee.status && statusToUpdate !== "active") {
             // Status was not set before, and user selected a non-default status
@@ -1904,31 +1760,6 @@ const Employees = () => {
     [branchesMap],
   );
 
-  const handleDelete = useCallback(
-    async (id) => {
-      setDeleteEmployeeId(id);
-      setDeleteReason("");
-      setShowDeleteModal(true);
-    },
-    [],
-  );
-
-  const confirmDelete = useCallback(
-    async () => {
-      if (!deleteReason) return;
-      try {
-        await employeesAPI.delete(deleteEmployeeId, { reason: deleteReason });
-        setShowDeleteModal(false);
-        setDeleteEmployeeId(null);
-        setDeleteReason("");
-        loadEmployees();
-      } catch (error) {
-        showError("فشل حذف الموظف");
-      }
-    },
-    [deleteEmployeeId, deleteReason, showError, loadEmployees],
-  );
-
   const handleViewDetails = useCallback(
     (employee) => {
       navigate(`/employees/${employee.id}`);
@@ -2044,27 +1875,13 @@ const Employees = () => {
     return null;
   }, [selectedBranchType, isMainManager, user?.branch_id, branchesMap]);
 
-  // Pagination calculations - memoized for performance
-  const paginatedEmployees = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return employees.slice(startIndex, endIndex);
-  }, [employees, currentPage, itemsPerPage]);
-
-  const totalPages = useMemo(() => {
-    return Math.ceil(employees.length / itemsPerPage);
-  }, [employees.length, itemsPerPage]);
-
-  // Reset to page 1 when filters change
+  // Open the edit form once both the employee (from another page) and the branches are loaded
   useEffect(() => {
-    setCurrentPage(1);
-  }, [
-    filterIncomplete,
-    searchFilters.search_name,
-    searchFilters.search_id,
-    searchFilters.search_phone,
-    searchFilters.search_branch,
-  ]);
+    if (pendingEditEmployee && branches.length > 0) {
+      handleEdit(pendingEditEmployee);
+      setPendingEditEmployee(null);
+    }
+  }, [pendingEditEmployee, branches, handleEdit]);
 
   const openAddForm = () => {
     resetForm();
@@ -2457,6 +2274,8 @@ const Employees = () => {
                             })
                           }
                           required
+                          readOnly={Boolean(editingEmployee) && !isMainManager()}
+                          title={editingEmployee && !isMainManager() ? "لا يغيّر رقم الهوية إلا المدير الرئيسي" : undefined}
                           placeholder={isSaudi() ? "رقم الهوية" : "رقم الإقامة"}
                         />
                       </div>

@@ -80,6 +80,9 @@ export default function EmployeesView({
     return [...rows].sort((a, b) => value(a).localeCompare(value(b), 'ar') * dir);
   }, [employees, search, branchId, status, completion, sort, branchesMap]);
 
+  // The parent reads ?data_completion_status=incomplete from the URL after the first render.
+  useEffect(() => { if (initialIncomplete) setCompletion('incomplete'); }, [initialIncomplete]);
+
   // Back to the first page when the result set changes; keep the selection only for rows still listed.
   useEffect(() => { setPage(1); }, [search, branchId, status, completion, pageSize]);
   useEffect(() => {

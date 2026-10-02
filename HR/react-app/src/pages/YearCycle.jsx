@@ -59,7 +59,7 @@ function exportCsv(rows) {
     b.last_login_at ? String(b.last_login_at).slice(0, 10) : 'لم يدخل',
   ]);
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""').replace(/^([=+\-@])/, "'$1")}"`;
-  const csv = `﻿${[head, ...body].map((r) => r.map(esc).join(',')).join('\r\n')}`;
+  const csv = `\uFEFF${[head, ...body].map((r) => r.map(esc).join(',')).join('\r\n')}`;
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   const a = document.createElement('a');
   a.href = url;
