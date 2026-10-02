@@ -143,6 +143,14 @@ test('branch manager sees and changes only their own branch employees', async ()
   assert.equal(row.status, 'active');
 });
 
+test('branch manager statistics work (a scoped branch list used to crash the query and wedge the connection)', async () => {
+  const res = await api('/api/employees/statistics', { token: b1Token });
+  assert.equal(res.status, 200);
+  assert.ok(res.body.success !== false);
+  // the connection pool must still answer afterwards
+  assert.equal((await api(`/api/employees/${emp.b1a}`, { token: b1Token })).status, 200);
+});
+
 test('offboarding: reason, last working day, history; branch manager cannot restore, main manager can', async () => {
   const off = await api(`/api/employees/${emp.b1a}/offboard`, {
     method: 'POST', token: b1Token,

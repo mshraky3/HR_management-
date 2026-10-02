@@ -1072,7 +1072,7 @@ router.get("/statistics", async (req, res) => {
     const branchFilter = scopedBranch === null || scopedBranch === undefined
       ? sql`AND e.branch_id IN (SELECT id FROM branches WHERE is_active = true)`
       : Array.isArray(scopedBranch)
-        ? sql`AND e.branch_id = ANY(${sql(scopedBranch)})`
+        ? sql`AND e.branch_id = ANY(${scopedBranch}::int[])`
         : sql`AND e.branch_id = ${scopedBranch}`;
 
     // Helper: Total salary = computed total_salary column (sum of all allowances)
