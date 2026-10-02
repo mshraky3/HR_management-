@@ -416,7 +416,7 @@ export const applyEmployeeDecisions = async ({ branchId, decisions, actor }) => 
                     employeeId,
                     toStatus: leavingStatus,
                     reasonText: reason,
-                    lastWorkingDay: decision.last_working_day || null,
+                    lastWorkingDay: /^\d{4}-\d{2}-\d{2}$/.test(String(decision.last_working_day || '')) ? decision.last_working_day : null,
                     exitNotes: decision.exit_notes || null,
                     actor: lifecycleActor,
                     source: 'year_review',

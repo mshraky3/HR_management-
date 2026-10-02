@@ -61,7 +61,7 @@ const EmployeeYearReview = ({ onAddEmployee, onEditEmployee }) => {
     const [reviewPinned, setReviewPinned] = useState(false);
 
     const [contractUploadingId, setContractUploadingId] = useState(null);
-    const [leavingModal, setLeavingModal] = useState({ show: false, candidate: null, status: '', reason: '' });
+    const [leavingModal, setLeavingModal] = useState({ show: false, candidate: null, status: '', reason: '', last_working_day: '' });
     const [confirmModal, setConfirmModal] = useState({ show: false, note: '' });
 
     // Main manager only: pick a branch type to see the overview, then drill
@@ -221,7 +221,7 @@ const EmployeeYearReview = ({ onAddEmployee, onEditEmployee }) => {
         setDecidingId(candidate.id);
         try {
             const res = await employeesAPI.decideYearReview(
-                branchParams({ decisions: [{ employee_id: candidate.id, decision: 'leaving', leaving_status: leavingModal.status, reason }] })
+                branchParams({ decisions: [{ employee_id: candidate.id, decision: 'leaving', leaving_status: leavingModal.status, reason, last_working_day: leavingModal.last_working_day || undefined }] })
             );
             const result = res.data?.data?.results?.[0];
             if (!result?.ok) { showWarning(result?.error || 'تعذر حفظ القرار'); return; }
@@ -229,7 +229,7 @@ const EmployeeYearReview = ({ onAddEmployee, onEditEmployee }) => {
                 ? { ...c, decision: 'leaving', leaving_status: leavingModal.status, leaving_reason: reason, data_reviewed: true }
                 : c);
             setCandidates(patched);
-            setLeavingModal({ show: false, candidate: null, status: '', reason: '' });
+            setLeavingModal({ show: false, candidate: null, status: '', reason: '', last_working_day: '' });
             showSuccess('تم نقل الموظف إلى الأرشيف');
             loadStatus();
             goToNextUnfinished(patched);
@@ -575,14 +575,14 @@ const EmployeeYearReview = ({ onAddEmployee, onEditEmployee }) => {
                                                         <button className="btn btn-success" disabled={decidingId === currentCandidate.id} onClick={() => handleMarkContinuing(currentCandidate)}>
                                                             ✅ نعم، سيستمر
                                                         </button>
-                                                        <button className="btn btn-danger" disabled={decidingId === currentCandidate.id} onClick={() => setLeavingModal({ show: true, candidate: currentCandidate, status: '', reason: '' })}>
+                                                        <button className="btn btn-danger" disabled={decidingId === currentCandidate.id} onClick={() => setLeavingModal({ show: true, candidate: currentCandidate, status: '', reason: '', last_working_day: '' })}>
                                                             ⛔ لا، مغادر
                                                         </button>
                                                     </div>
                                                 ) : currentCandidate.decision === 'continuing' ? (
                                                     <div className="rollover-answered">
                                                         <span className="rollover-badge reviewed">✅ سيستمر هذا العام</span>
-                                                        <button className="rollover-link-btn" onClick={() => setLeavingModal({ show: true, candidate: currentCandidate, status: '', reason: '' })}>
+                                                        <button className="rollover-link-btn" onClick={() => setLeavingModal({ show: true, candidate: currentCandidate, status: '', reason: '', last_working_day: '' })}>
                                                             تغيير إلى «مغادر»
                                                         </button>
                                                     </div>
@@ -783,7 +783,7 @@ const EmployeeYearReview = ({ onAddEmployee, onEditEmployee }) => {
             )}
 
             {leavingModal.show && (
-                <div className="modal-overlay" onClick={() => setLeavingModal({ show: false, candidate: null, status: '', reason: '' })}>
+                <div className="modal-overlay" onClick={() => setLeavingModal({ show: false, candidate: null, status: '', reason: '', last_working_day: '' })}>
                     <div className="modal-content confirm-modal" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header"><h2>مغادرة الموظف</h2></div>
                         <div className="confirm-body">
@@ -807,6 +807,14 @@ const EmployeeYearReview = ({ onAddEmployee, onEditEmployee }) => {
                                 placeholder="مثال: انتقل للعمل في جهة أخرى"
                                 autoFocus
                             />
+                            <label className="rollover-reason-label">آخر يوم عمل (اختياري)</label>
+                            <input
+                                type="date"
+                                className="rollover-reason-input"
+                                value={leavingModal.last_working_day}
+                                max={new Date().toISOString().slice(0, 10)}
+                                onChange={(e) => setLeavingModal(prev => ({ ...prev, last_working_day: e.target.value }))}
+                            />
                         </div>
                         <div className="modal-actions">
                             <button
@@ -816,7 +824,7 @@ const EmployeeYearReview = ({ onAddEmployee, onEditEmployee }) => {
                             >
                                 تأكيد ونقل للأرشيف
                             </button>
-                            <button className="btn btn-secondary" onClick={() => setLeavingModal({ show: false, candidate: null, status: '', reason: '' })}>
+                            <button className="btn btn-secondary" onClick={() => setLeavingModal({ show: false, candidate: null, status: '', reason: '', last_working_day: '' })}>
                                 إلغاء
                             </button>
                         </div>
