@@ -1,3 +1,4 @@
+import { reportTermIds } from '../utils/reportTerms.js';
 import express from 'express';
 import { PDFDocument } from 'pdf-lib';
 import { authenticate } from '../middleware/auth.js';
@@ -81,7 +82,9 @@ router.post('/generate-pdf', authenticate, async (req, res) => {
         }
 
         // Fetch bus data for the requested branches using efficient IN query
-        const buses = await BusTransportation.findByBranchIds(normalizedBranchIds);
+        // Only the current term's fleet (or the term named in the request), never every term mixed together.
+        const termIds = await reportTermIds(req.body?.termId, branches.map((b) => b.branch_type));
+        const buses = await BusTransportation.findByBranchIds(normalizedBranchIds, termIds.length ? { term_ids: termIds } : {});
 
         const busIds = buses.map(b => b.id);
         const busStudents = await BusStudent.findByBusIds(busIds);
@@ -521,7 +524,9 @@ router.post('/driver-licenses', authenticate, async (req, res) => {
             }
         }
 
-        // Fetch every driver-license record for buses in the requested branches.
+        // Driver-license records of the current term's buses only (or the term named in the request).
+        const licenseBranches = await Branch.findManyByIds(normalizedBranchIds);
+        const licenseTermIds = await reportTermIds(req.body?.termId, licenseBranches.map((b) => b.branch_type));
         const licenses = await withDbRetry(() => sql`
             SELECT
                 dld.*,
@@ -534,6 +539,7 @@ router.post('/driver-licenses', authenticate, async (req, res) => {
             INNER JOIN branches b ON bt.branch_id = b.id
             INNER JOIN driver_license_data dld ON dld.bus_id = bt.id
             WHERE bt.branch_id = ANY(${normalizedBranchIds}::int[])
+              AND (${licenseTermIds.length === 0} OR bt.term_id = ANY(${licenseTermIds}::int[]))
             ORDER BY b.branch_name, dld.driver_full_name
         `, { label: 'driver-licenses-report' });
 

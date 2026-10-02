@@ -7,6 +7,7 @@ import express from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.js';
 import { resolveBranchAccessFromScope } from '../utils/policyScope.js';
+import { reportTermIds } from '../utils/reportTerms.js';
 import { requireAnyManager, checkBranchAccess, loadAssignedBranches } from '../middleware/authorization.js';
 import { validateRequired } from '../middleware/validation.js';
 import { BusTransportation } from '../models/BusTransportation.js';
@@ -1151,7 +1152,8 @@ router.post('/generate-pdf', authenticate, async (req, res) => {
     }
 
     // Fetch bus data for branch
-    const buses = await BusTransportation.findAll({ branch_id: branchId });
+    const [pdfTermId] = await reportTermIds(req.body?.termId, [branch.branch_type]);
+    const buses = await BusTransportation.findAll({ branch_id: branchId, ...(pdfTermId ? { term_id: pdfTermId } : {}) });
     const busIds = buses.map(b => b.id);
     const busStudents = await BusStudent.findByBusIds(busIds);
 

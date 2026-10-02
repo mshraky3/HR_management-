@@ -5,6 +5,7 @@ import { log } from '../utils/logger.js';
 import { BusStudent } from '../models/BusStudent.js';
 import { BusTransportation } from '../models/BusTransportation.js';
 import { Branch } from '../models/Branch.js';
+import { reportTermIds } from '../utils/reportTerms.js';
 import { printer as certificatePrinter } from '../utils/pdfFonts.js';
 import { handleRouteError } from '../utils/routeErrorHandler.js';
 
@@ -28,7 +29,9 @@ router.post('/generate-pdf', authenticate, async (req, res) => {
         }
 
         // Fetch buses for the branch so we can filter students by branch
-        const buses = await BusTransportation.findAll({ branch_id: branchId });
+        // Current term only (or the term named in the request): buses and students of last year are history.
+        const [reportTermId] = await reportTermIds(req.body?.termId, [branch.branch_type]);
+        const buses = await BusTransportation.findAll({ branch_id: branchId, ...(reportTermId ? { term_id: reportTermId } : {}) });
         const busIds = buses.map(bus => bus.id);
         const busMap = new Map(buses.map(bus => [bus.id, bus]));
 

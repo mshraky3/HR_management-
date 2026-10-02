@@ -196,6 +196,12 @@ export const BusTransportation = {
         paramIndex++;
       }
 
+      if (Array.isArray(filters.term_ids) && filters.term_ids.length > 0) {
+        whereClauses.push(`bt.term_id = ANY($${paramIndex}::int[])`);
+        params.push(filters.term_ids);
+        paramIndex++;
+      }
+
       if (filters.branch_type) {
         whereClauses.push(`b.branch_type = $${paramIndex}`);
         params.push(filters.branch_type);
