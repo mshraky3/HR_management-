@@ -187,18 +187,19 @@ app.use('/api', (req, res, next) => {
       res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.set('Pragma', 'no-cache');
       res.set('Expires', '0');
-    } else if (req.path.includes('/employees')) {
-      // Employee data - very short cache (5 seconds)
-      res.set('Cache-Control', 'private, max-age=5');
-    } else if (req.path.includes('/documents') || req.path.includes('/branch-documents')) {
-      // Documents - very short cache (5 seconds)
-      res.set('Cache-Control', 'private, max-age=5');
+    } else if (req.path.includes('/employees') || req.path.includes('/documents') || req.path.includes('/branch-documents') ||
+      req.path.includes('/users') || req.path.includes('/archive') || req.path.includes('/tasks') || req.path.includes('/year-cycle')) {
+      // Data people edit and then look at again straight away: never serve it from the browser cache.
+      // (A 5 s max-age made a saved edit disappear from the list for a few seconds.)
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
     } else if (req.path.includes('/branches') || req.path.includes('/terms') || req.path.includes('/academic-years')) {
-      // Static data - reduced from 5 minutes to 10 seconds
+      // Rarely changing data - 10 seconds
       res.set('Cache-Control', 'private, max-age=10');
     } else {
-      // Other GET requests - very short cache (5 seconds)
-      res.set('Cache-Control', 'private, max-age=5');
+      // Everything else: the browser may keep a copy but must revalidate it (ETag) before using it.
+      res.set('Cache-Control', 'private, no-cache');
     }
   }
   next();

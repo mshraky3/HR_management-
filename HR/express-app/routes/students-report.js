@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { resolveBranchAccessFromScope } from '../utils/policyScope.js';
 import { log } from '../utils/logger.js';
 import { BusStudent } from '../models/BusStudent.js';
 import { BusTransportation } from '../models/BusTransportation.js';
@@ -13,6 +14,12 @@ const router = express.Router();
 router.post('/generate-pdf', authenticate, async (req, res) => {
     try {
         const { branchId, sections, filters } = req.body;
+
+        // Only the branches this account may see (a branch manager: their own; operations manager: assigned ones).
+        const reportAccess = resolveBranchAccessFromScope(req.scope, branchId); // policy-scope:allow-direct
+        if (!reportAccess.allowed) {
+          return res.status(403).json({ error: 'تم رفض الوصول إلى هذا الفرع' });
+        }
 
         // Fetch branch data
         const branch = await Branch.findById(branchId);

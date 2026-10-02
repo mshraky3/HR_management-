@@ -351,3 +351,13 @@ test('deactivating a branch archives its employees atomically; reactivating rest
   const [still] = await sql`SELECT status FROM employees WHERE id = ${emp.b2b}`;
   assert.equal(still.status, 'resigned');
 });
+
+test('PDF report routes refuse another branch’s data and employee lists are never browser-cached', async () => {
+  const students = await api('/api/students-report/generate-pdf', { method: 'POST', token: b1Token, body: { branchId: B2.id } });
+  assert.equal(students.status, 403);
+  const buses = await api('/api/bus-transportation/generate-pdf', { method: 'POST', token: b1Token, body: { branchId: B2.id } });
+  assert.equal(buses.status, 403);
+
+  const res = await fetch(`${(await import('./helpers.js')).baseUrl}/api/employees`, { headers: { Authorization: `Bearer ${mainToken}` } });
+  assert.match(res.headers.get('cache-control'), /no-store/);
+});

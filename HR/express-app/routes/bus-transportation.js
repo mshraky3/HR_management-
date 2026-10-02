@@ -6,6 +6,7 @@
 import express from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.js';
+import { resolveBranchAccessFromScope } from '../utils/policyScope.js';
 import { requireAnyManager, checkBranchAccess, loadAssignedBranches } from '../middleware/authorization.js';
 import { validateRequired } from '../middleware/validation.js';
 import { BusTransportation } from '../models/BusTransportation.js';
@@ -1132,6 +1133,12 @@ router.delete('/:id/students/:studentId', checkBranchAccess, async (req, res) =>
 router.post('/generate-pdf', authenticate, async (req, res) => {
   try {
     const { branchId, sections } = req.body;
+
+    // Only the branches this account may see (a branch manager: their own; operations manager: assigned ones).
+    const reportAccess = resolveBranchAccessFromScope(req.scope, branchId); // policy-scope:allow-direct
+    if (!reportAccess.allowed) {
+      return res.status(403).json({ error: 'تم رفض الوصول إلى هذا الفرع' });
+    }
 
     if (!branchId) {
       return res.status(400).json({ error: 'branchId is required' });
