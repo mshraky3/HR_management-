@@ -535,9 +535,11 @@ const EmployeeExpiry = () => {
                                             </td>
                                             <td>
                                                 <span className={`days-badge ${row.days_until_expiry < 0 ? "negative" : row.days_until_expiry <= 30 ? "urgent" : row.days_until_expiry <= 90 ? "soon" : "safe"}`}>
-                                                    {row.days_until_expiry < 0
-                                                        ? `متأخر ${Math.abs(row.days_until_expiry)} يوم`
-                                                        : `${row.days_until_expiry} يوم`}
+                                                    {Math.abs(row.days_until_expiry) > 20000
+                                                        ? "تاريخ غير صحيح"
+                                                        : row.days_until_expiry < 0
+                                                            ? `متأخر ${Math.abs(row.days_until_expiry)} يوم`
+                                                            : `${row.days_until_expiry} يوم`}
                                                 </span>
                                             </td>
                                             <td>

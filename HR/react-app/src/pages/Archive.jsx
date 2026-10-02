@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { useConfirm } from '../ui';
+import { useConfirm, StatusBadge } from '../ui';
 import { archiveAPI, branchesAPI, documentsAPI, branchDocumentsAPI } from '../utils/api';
 import { getDocumentTypeLabel, getBranchDocumentTypeLabel } from '../utils/employeeConstants';
 import { formatDate } from '../utils/dateConverters';
@@ -613,17 +613,6 @@ const Archive = () => {
     other: 'محذوف'
   };
 
-  const statusColors = {
-    active: '#4caf50',
-    pending: '#ff9800',
-    terminated_article_80: '#f44336',
-    terminated_article_77: '#e91e63',
-    resigned: '#ff9800',
-    contract_ended: '#9c27b0',
-    non_renewal: '#607d8b',
-    other: '#795548'
-  };
-
   if (!isMainManager()) {
     return (
       <div className="archive-page">
@@ -838,12 +827,7 @@ const Archive = () => {
                       </td>
                       <td>{employee.branch_name || '-'}</td>
                       <td>
-                        <span
-                          className="status-badge"
-                          style={{ backgroundColor: statusColors[employee.status] || '#999' }}
-                        >
-                          {statusLabels[employee.status] || employee.status}
-                        </span>
+                        <StatusBadge status={employee.status} dot={false} />
                       </td>
                       <td>{employee.status_change_reason || '-'}</td>
                       <td>
@@ -864,12 +848,6 @@ const Archive = () => {
                               employee.id,
                               `${employee.first_name} ${employee.second_name} ${employee.third_name} ${employee.fourth_name}`
                             )}
-                            style={{
-                              backgroundColor: employee.branch_is_active === false ? '#9e9e9e' : '#4caf50',
-                              color: 'white',
-                              border: 'none',
-                              cursor: employee.branch_is_active === false ? 'not-allowed' : 'pointer'
-                            }}
                             disabled={employee.branch_is_active === false}
                             title={employee.branch_is_active === false ? 'يجب استعادة الفرع أولاً' : 'استعادة الموظف'}
                           >

@@ -228,6 +228,7 @@ textarea.ui-input { min-height: 5rem; resize: vertical; }
 @media (max-width: 720px) {
   .ui-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
   .ui-table, .ui-table tbody, .ui-table tr, .ui-table td { display: block; width: 100%; }
+  .ui-table { min-width: 0 !important; } /* a desktop min-width pushed the values of card rows off-screen */
   .ui-table tbody tr { padding: 0.75rem 1rem; border-block-end: 1px solid var(--border); }
   .ui-table tbody tr:last-child { border-block-end: 0; }
   .ui-table tbody td { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: 0.25rem 0; border: 0; text-align: end !important; }
@@ -469,3 +470,8 @@ textarea.ui-input { min-height: 5rem; resize: vertical; }
 .ui-steps > li > span { color: var(--text-light); font-size: var(--font-size-sm); }
 .ui-file { max-width: 100%; font: inherit; font-size: var(--font-size-sm); }
 .ui-error-list { margin: 0; padding-inline-start: 1rem; font-size: var(--font-size-xs); color: var(--danger-text); }
+
+/* Phones: names that open a record need a finger-sized target */
+@media (max-width: 720px) {
+  .ui-link-cell { min-height: 2.75rem; display: inline-flex; align-items: center; }
+}

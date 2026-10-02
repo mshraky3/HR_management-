@@ -70,7 +70,7 @@ const TaskProgressOverview = ({ tasks }) => {
           <div className="progress-header-right">
             <div className="progress-percentage-wrapper">
               <span className="progress-percentage">
-                {categoryProgress.overall.progress}%
+                {100 - categoryProgress.overall.progress}%
               </span>
               {getMilestoneBadge(categoryProgress.overall.progress) && (
                 <span className="milestone-badge">
@@ -105,7 +105,7 @@ const TaskProgressOverview = ({ tasks }) => {
         <div className="progress-bar-container">
           <div
             className={`progress-bar ${getProgressColor(categoryProgress.overall.progress)}`}
-            style={{ width: `${categoryProgress.overall.progress}%` }}
+            style={{ width: `${Math.max(100 - categoryProgress.overall.progress, 2)}%` }}
           >
             <div className="progress-bar-fill"></div>
           </div>
@@ -136,13 +136,13 @@ const TaskProgressOverview = ({ tasks }) => {
               <div className="progress-bar-container small">
                 <div
                   className={`progress-bar ${getProgressColor(progress.progress)}`}
-                  style={{ width: `${progress.progress}%` }}
+                  style={{ width: `${Math.max(100 - progress.progress, 2)}%` }}
                 >
                   <div className="progress-bar-fill"></div>
                 </div>
               </div>
               <div className="progress-item-footer">
-                <span className="progress-item-percentage">{progress.progress}%</span>
+                <span className="progress-item-percentage">{100 - progress.progress}%</span>
                 <span className="progress-item-remaining">
                   {progress.remaining} متبقي
                 </span>

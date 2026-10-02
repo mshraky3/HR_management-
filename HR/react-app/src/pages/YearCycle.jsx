@@ -175,7 +175,7 @@ export default function YearCycle() {
 
   const columns = [
     {
-      key: 'name', header: 'الفرع', sortable: true, mobilePrimary: true,
+      key: 'name', header: 'الفرع', sortable: true, mobilePrimary: true, width: '12rem',
       render: (b) => (
         <div className="ui-cell-stack">
           <strong>{b.name}</strong>
@@ -184,9 +184,9 @@ export default function YearCycle() {
       ),
     },
     ...ITEMS.filter((i) => i.key !== 'activity').map((i) => ({
-      key: i.key, header: i.label, render: (b) => <ItemCell item={b.items[i.key]} />,
+      key: i.key, header: i.label, width: '7.5rem', render: (b) => <ItemCell item={b.items[i.key]} />,
     })),
-    { key: 'activity', header: 'النشاط', mobileHidden: true, render: (b) => <ItemCell item={b.items.activity} /> },
+    { key: 'activity', header: 'النشاط', mobileHidden: true, width: '8rem', render: (b) => <ItemCell item={b.items.activity} /> },
     {
       key: 'score', header: 'الإنجاز', sortable: true,
       render: (b) => (

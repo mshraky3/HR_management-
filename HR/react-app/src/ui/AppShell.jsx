@@ -8,6 +8,7 @@ import Button from './Button';
 import { FormField, Input } from './forms';
 import { Alert } from './feedback';
 import { findNavItem, navForUser, ROLE_LABELS } from './nav.config';
+import { watchUnlabeledControls } from '../utils/a11yLabels';
 
 const APP_NAME = 'نظام الموارد البشرية';
 const OPEN_GROUPS_KEY = 'hr.nav.openGroups';
@@ -136,6 +137,9 @@ export default function AppShell() {
   };
 
   // Page title in the browser tab + move focus to the page on navigation (keyboard / screen reader users)
+  // legacy pages: give unlabeled inputs an accessible name
+  useEffect(() => watchUnlabeledControls(), []);
+
   useEffect(() => {
     document.title = active ? `${active.item.label} · ${APP_NAME}` : APP_NAME;
     setDrawerOpen(false);

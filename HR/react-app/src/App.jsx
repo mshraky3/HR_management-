@@ -105,7 +105,8 @@ const BranchArchive = lazyRetry(() => import("./pages/BranchArchive"));
 
 // /branch-documents: operations managers get the multi-branch management screen, branch managers their own documents
 const BranchDocumentsRoute = () => {
-  const { isBranchOperationsManager } = useAuth();
+  const { isMainManager, isBranchOperationsManager } = useAuth();
+  if (isMainManager()) return <Navigate to="/branches-monitoring" replace />; // head office has its own overview
   return isBranchOperationsManager() ? <BranchDocumentsManagement /> : <BranchDocuments />;
 };
 
@@ -147,7 +148,6 @@ const AppContent = () => {
               <Route path="/employees/:id" element={<EmployeeDetails />} />
               <Route path="/employee-expiry" element={<EmployeeExpiry />} />
               <Route path="/employee-statistics" element={<EmployeeStatistics />} />
-              <Route path="/employee-statistics-report" element={<EmployeeStatisticsReport />} />
               <Route path="/bus-transportation-report" element={<BusTransportationReport />} />
               <Route path="/students-report" element={<BusTransportationReport />} />
               <Route path="/reports" element={<Reports />} />
@@ -166,6 +166,7 @@ const AppContent = () => {
             {/* head office only */}
             <Route element={<RequireRole roles={ROLES.MAIN} />}>
               <Route path="/year-cycle" element={<YearCycle />} />
+              <Route path="/employee-statistics-report" element={<EmployeeStatisticsReport />} />
               <Route path="/account-management" element={<AccountManagement />} />
               <Route path="/branch-ops-accounts" element={<BranchOpsAccounts />} />
               <Route path="/branches" element={<Branches />} />

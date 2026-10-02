@@ -56,14 +56,15 @@ const FocusTaskCard = ({ task, onSkip }) => {
 
         {task.totalItems > 1 && (() => {
           const remainingItems = task.remainingItems ?? (task.totalItems - (task.completedItems ?? 0));
-          const progressPercentage = task.totalItems > 0 ? Math.round((remainingItems / task.totalItems) * 100) : 0;
+          // the bar shows how much is DONE (it used to show what was left, so 3 missing of 3 read "100%")
+          const progressPercentage = task.totalItems > 0 ? Math.round(((task.totalItems - remainingItems) / task.totalItems) * 100) : 0;
           return (
             <div className="focus-task-progress">
               <div className="focus-task-progress-info">
                 <span className="progress-text">
                   {remainingItems} متبقي
                 </span>
-                <span className="progress-percentage">{progressPercentage}%</span>
+                <span className="progress-percentage">{progressPercentage}% مكتمل</span>
               </div>
               <div className="focus-task-progress-bar">
                 <div

@@ -1123,9 +1123,9 @@ const LegacyDashboard = () => {
       <h1>لوحة التحكم</h1>
       <p className="welcome-message">
         {isMainManager()
-          ? `مرحباً، ${user?.full_name || user?.username}!`
+          ? `مرحباً، ⁨${user?.full_name || user?.username}⁩`
           : isBranchOpsUser
-            ? `مرحباً، ${user?.full_name || user?.username}! — ${branches.length} ${branches.length === 1 ? 'فرع' : 'فروع'} مُعينة`
+            ? `مرحباً، ⁨${user?.full_name || user?.username}⁩ — ${branches.length} ${branches.length === 1 ? 'فرع' : 'فروع'} مُعينة`
             : `${branches.find(b => b.id === user?.branch_id)?.branch_name || 'غير محدد'}`
         }
       </p>
@@ -1348,7 +1348,7 @@ const LegacyDashboard = () => {
             actionUrl: '/branch-documents',
             actionLabel: 'رفع المستندات',
             urgency: 'no_deadline',
-            estimatedTime: `${Math.max(missingGroups.length * 5, 5)} min`,
+            estimatedTime: `${Math.max(missingGroups.length * 5, 5)} دقائق`,
             dependencies: [],
           }]
           : [];

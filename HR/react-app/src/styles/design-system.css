@@ -292,3 +292,58 @@ bdi, .ltr, [dir='ltr'] { unicode-bidi: isolate; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+/* --- Review fixes (2026-10-02) ------------------------------------------------------------------ */
+/* The top bar repeated the page's own heading on desktop; keep it only where a page has no <h1> */
+@media (min-width: 1024px) {
+  .ui-shell-main:has(main h1) .ui-topbar-title { visibility: hidden; }
+}
+
+/* Legacy gradient cards lost their gradient to the flat card rule above but kept white text */
+.stat-card { color: var(--text); }
+.stat-card.total { border-inline-start: 4px solid var(--primary); }
+.stat-card.pending { border-inline-start: 4px solid var(--warning); }
+.stat-card.reviewed { border-inline-start: 4px solid var(--info); }
+.stat-card.implemented { border-inline-start: 4px solid var(--success); }
+
+/* Legacy greys that fail 4.5:1 on white */
+.emp-num, .sf-rcs-label, .sf-rc-rule, .ss-arrow, .card-label, .header-subtitle, .sf-sum-label, .sf-progress-text,
+.sf-ss-label, .page-description, .clear-filters-btn, .bar-count, .selection-counter, .summary-none,
+.y-axis-value, .metric-label, .days-ago { color: var(--text-muted); }
+.subtitle, .days-remaining.warning { color: var(--warning-text); }
+.subtitle { color: var(--text-muted); }
+
+/* Row action groups on legacy tables: one row of equal buttons that wraps, not a vertical stack */
+.action-buttons { display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center; }
+.action-buttons .btn { white-space: nowrap; }
+
+/* Employee profile key/value table: label+value pairs that wrap to one pair per line on phones
+   (the 4-column table was clipped at 390px) */
+.employee-info-table, .employee-info-table tbody { display: block; width: 100%; min-width: 0; }
+.employee-info-table tr {
+  display: grid; grid-template-columns: minmax(7rem, 0.8fr) minmax(0, 1.2fr) minmax(7rem, 0.8fr) minmax(0, 1.2fr);
+}
+.employee-info-table th, .employee-info-table td { width: auto; min-width: 0; overflow-wrap: anywhere; }
+.employee-info-table td[colspan] { grid-column: span 3; }
+.employee-info-table th:empty, .employee-info-table td:empty { display: none; }
+@media (max-width: 760px) {
+  .employee-info-table tr { grid-template-columns: minmax(6.5rem, 0.9fr) minmax(0, 1.4fr); }
+  .employee-info-table td[colspan] { grid-column: span 1; }
+}
+
+/* Contrast fixes found by the review audit */
+.stats-table td { color: var(--text) !important; }
+.btn-export { background: var(--success); border-color: var(--success); color: #fff; }
+.card-number { color: var(--text) !important; }
+.type-badge { background: var(--info-soft); color: var(--info-text); }
+.sf-pi-badge.deficit { background: var(--danger-soft); color: var(--danger-text); }
+
+/* More contrast fixes from the audit (all roles) */
+.hijri-date, .no-services, .service-badge.no, .rollover-arrow, .branch-name { color: var(--text-muted); }
+.service-badge.no { background: transparent; }
+.days-badge.negative { color: var(--danger-text); }
+.days-badge.urgent { color: var(--warning-text); }
+.term-status.past, .suggestion-date, .rollover-term-chip.previous, .rollover-done-sub { color: var(--text-muted); }
+.rollover-link-btn { color: var(--primary-dark); }
+.count-badge, .action-btn.edit, .rollover-pill.active { background-color: var(--primary); color: #fff; }
+.btn-delete.btn-sm, .btn.btn-sm.btn-delete { background: var(--danger); border-color: var(--danger); color: #fff; }

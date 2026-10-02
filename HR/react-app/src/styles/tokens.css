@@ -3,7 +3,7 @@
    NOT inside a cascade layer, so these values win over any legacy :root block.
    The old variable names (--primary, --bg-secondary, --font-size-sm ...) are kept
    and now resolve to the new palette, so every existing var() usage updates at once.
-   Contrast (on white): primary 6.6:1, text 17:1, text-muted 4.8:1, success 5.0:1,
+   Contrast (on white): primary 6.6:1, text 17:1, text-muted 6.0:1, success 5.0:1,
    danger 6.5:1, warning 5.0:1.
    ========================================================================== */
 
@@ -67,7 +67,7 @@
   --text-primary: #0f172a;   /* alias used by some pages */
   --text-secondary: #334155;
   --text-light: #475569;
-  --text-muted: #64748b;
+  --text-muted: #566377;
   --text-on-primary: #ffffff;
 
   /* --- Borders ------------------------------------------------------------- */
