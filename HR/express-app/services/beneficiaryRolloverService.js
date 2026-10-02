@@ -99,7 +99,7 @@ const emptyCounts = {
 /**
  * Counters + confirmation state for one branch's rollover.
  */
-export const getRolloverStatus = async (branchId, { targetTermId } = {}) => {
+export const getRolloverStatus = async (branchId, { targetTermId, readOnly = false } = {}) => {
     const { targetTerm, sourceTerm, lifecycleState } = await resolveRolloverTerms(branchId, { targetTermId });
 
     if (!targetTerm) {
@@ -166,7 +166,8 @@ export const getRolloverStatus = async (branchId, { targetTermId } = {}) => {
         WHERE branch_id = ${branchId} AND term_id = ${targetTerm.id}
     `;
 
-    if (busCounts.target_buses === 0 && sourceTerm) {
+    // readOnly: dashboards and the compliance page only read; the auto carry-over is a write.
+    if (!readOnly && busCounts.target_buses === 0 && sourceTerm) {
         try {
             const carried = await carryOverBuses({
                 branchId, sourceTermId: sourceTerm.id, targetTermId: targetTerm.id, actor: null
