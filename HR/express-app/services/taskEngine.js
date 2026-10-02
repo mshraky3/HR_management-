@@ -410,19 +410,24 @@ async function busTasks(branch) {
 }
 
 async function payrollTasks(branch) {
+  // Same rule as models/PayrollAbsence.js: entry is open for 4 days from the cycle's auto-open time, or while a
+  // manual opening by the head office has not expired. (The stored `status` column goes stale, so it is not used.)
   const [win] = await sql`
-    SELECT w.id, w.status, w.submission_count, w.manual_expires_at, c.month_start, c.month_end
+    SELECT w.id, w.entry_open_at, w.manual_opened, w.manual_expires_at, w.submission_count, c.month_start, c.month_end
     FROM branch_absence_windows w JOIN absence_cycles c ON c.id = w.cycle_id
-    WHERE w.branch_id = ${branch.id} AND w.status = 'entry_open'
+    WHERE w.branch_id = ${branch.id}
+      AND (
+        (w.entry_open_at <= NOW() AND NOW() < w.entry_open_at + INTERVAL '4 days')
+        OR (w.manual_opened = true AND (w.manual_expires_at IS NULL OR w.manual_expires_at > NOW()))
+      )
     ORDER BY c.month_start DESC
     LIMIT 1
   `;
   if (!win) return [];
   const submitted = win.submission_count > 0;
-  // Entry stays open 4 days after the month ends (head office can extend manually)
-  const closes = win.manual_expires_at
+  const closes = win.manual_opened && win.manual_expires_at
     ? isoDate(win.manual_expires_at)
-    : isoDate(new Date(new Date(win.month_end).getTime() + 4 * 86400000));
+    : isoDate(new Date(new Date(win.entry_open_at).getTime() + 4 * 86400000));
   return [{
     id: 'payroll-absence',
     section: 'payroll',

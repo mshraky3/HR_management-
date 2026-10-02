@@ -1080,6 +1080,44 @@ export const branchStatisticsAPI = {
 export const dashboardAPI = {
   getSummary: (params = {}) =>
     api.get('/api/dashboard/summary', { params }),
+
+  // Head office: headcount, incomplete data, open requests, account alerts, recent departures
+  getMainOverview: () =>
+    api.get('/api/dashboard/main-overview'),
+};
+
+// Tasks: computed on the server (see services/taskEngine.js)
+export const tasksAPI = {
+  getMy: (branchId) =>
+    api.get('/api/tasks/my', { params: branchId ? { branch_id: branchId } : {} }),
+
+  listManual: (params = {}) =>
+    api.get('/api/tasks/manual', { params }),
+
+  // { branch_ids | branch_type: 'school'|'healthcare_center'|'all', title, description?, due_date?, deep_link? }
+  assignManual: (data) =>
+    api.post('/api/tasks/manual', data),
+
+  completeManual: (id) =>
+    api.put(`/api/tasks/manual/${id}/done`),
+
+  withdrawManual: (id) =>
+    api.delete(`/api/tasks/manual/${id}`),
+};
+
+// Year cycle (head office): which branches finished the new-year update
+export const yearCycleAPI = {
+  getCompliance: (params = {}) =>
+    api.get('/api/year-cycle/compliance', { params }),
+
+  getEndYearPreview: (branchType) =>
+    api.get('/api/year-cycle/end-year-preview', { params: { branch_type: branchType } }),
+
+  setDeadline: (yearId, reviewDeadline) =>
+    api.put('/api/year-cycle/deadline', { year_id: yearId, review_deadline: reviewDeadline || null }),
+
+  remind: (branchIds, message) =>
+    api.post('/api/year-cycle/remind', { branch_ids: branchIds, message }),
 };
 
 // Utils API

@@ -231,8 +231,12 @@ export async function getYearCycleCompliance({ branchType = null } = {}) {
     const allDone = applicable.every((i) => i.done);
     const deadline = year?.review_deadline ? new Date(year.review_deadline) : null;
     const overdue = !allDone && deadline && deadline < new Date(new Date().toDateString());
-    const anyProgress = applicable.some((i) => i.state === 'in_progress' || (i.done && i !== items.activity));
-    const status = allDone ? 'complete' : overdue ? 'overdue' : anyProgress ? 'in_progress' : 'not_started';
+    // "Started" is judged on the new-year items (review, beneficiaries, buses). Generic items such as branch
+    // documents are usually already fine from last year and would make every branch look in progress.
+    const newYearItems = [items.review, items.beneficiaries, items.buses].filter((i) => i.applicable);
+    const basis = newYearItems.length > 0 ? newYearItems : applicable;
+    const started = basis.some((i) => i.done || i.state === 'in_progress');
+    const status = allDone ? 'complete' : overdue ? 'overdue' : started ? 'in_progress' : 'not_started';
 
     return {
       id: b.id,

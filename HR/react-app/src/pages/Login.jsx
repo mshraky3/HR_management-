@@ -1,27 +1,33 @@
 /**
- * Login Page — supports 2-step email OTP for branch managers
+ * Login: password step, then (for branch accounts and operations managers) an e-mailed 6-digit code.
+ * A branch with no e-mail on file can ask the head office to add one.
  */
-
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { authAPI } from '../utils/api';
+import { Button, FormField, Input, Alert, Icon } from '../ui';
 import './Login.css';
 
-const Login = () => {
+const TITLES = {
+  login: ['تسجيل الدخول', 'أدخل بيانات حسابك للمتابعة'],
+  otp: ['التحقق بخطوتين', 'أدخل الرمز المرسل إلى بريدك الإلكتروني'],
+  emailUpdate: ['طلب تحديث البريد الإلكتروني', 'لا يوجد بريد مسجل لحسابك'],
+};
+
+export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const [otpStep, setOtpStep] = useState(false);
-  const [, setOtpUsername] = useState('');
   const [otpSession, setOtpSession] = useState('');
   const [maskedEmail, setMaskedEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  // Email update request state
   const [emailUpdateStep, setEmailUpdateStep] = useState(false);
   const [emailUpdateUsername, setEmailUpdateUsername] = useState('');
   const [emailUpdateBranchName, setEmailUpdateBranchName] = useState('');
@@ -32,22 +38,24 @@ const Login = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (resendCooldown <= 0) return;
+    if (resendCooldown <= 0) return undefined;
     const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [resendCooldown]);
+
+  const backToLogin = () => {
+    setOtpStep(false); setOtp(''); setOtpSession(''); setEmailUpdateStep(false);
+    setEmailUpdateSuccess(false); setNewEmail(''); setError('');
+  };
 
   const handleCredentialsSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-
-    const result = await login(username, password);
-
+    const result = await login(username.trim(), password);
     if (result.success && result.requiresOTP) {
-      setOtpUsername(result.username);
-      setMaskedEmail(result.maskedEmail || '');
       setOtpSession(result.otpSession || '');
+      setMaskedEmail(result.maskedEmail || '');
       setOtpStep(true);
       setResendCooldown(60);
     } else if (result.success) {
@@ -59,7 +67,6 @@ const Login = () => {
     } else {
       setError(result.message || 'فشل تسجيل الدخول');
     }
-
     setLoading(false);
   };
 
@@ -69,29 +76,20 @@ const Login = () => {
       setError('أدخل الرمز المكوّن من 6 أرقام');
       return;
     }
-
     setError('');
     setLoading(true);
-
     const result = await completeOTPLogin(otpSession, otp);
-
     if (result.success) {
       navigate('/dashboard');
     } else {
       setError(result.message || 'فشل التحقق');
-      // If expired, go back to credentials
-      if (result.expired) {
-        setOtpStep(false);
-        setOtp('');
-      }
+      if (result.expired) { setOtpStep(false); setOtp(''); setOtpSession(''); }
     }
-
     setLoading(false);
   };
 
   const handleResend = async () => {
     if (resendCooldown > 0) return;
-
     setError('');
     setLoading(true);
     try {
@@ -104,11 +102,7 @@ const Login = () => {
       }
     } catch (err) {
       setError(err.response?.data?.message || 'فشل إعادة إرسال الرمز');
-      if (err.response?.data?.sessionExpired) {
-        // The login session ran out: start again from the password step
-        setOtpStep(false);
-        setOtp('');
-      }
+      if (err.response?.data?.sessionExpired) { setOtpStep(false); setOtp(''); setOtpSession(''); }
     }
     setLoading(false);
   };
@@ -117,186 +111,96 @@ const Login = () => {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
       const response = await authAPI.requestEmailUpdate(emailUpdateUsername, newEmail);
-      if (response.data.success) {
-        setEmailUpdateSuccess(true);
-      } else {
-        setError(response.data.message || 'فشل إرسال الطلب');
-      }
+      if (response.data.success) setEmailUpdateSuccess(true);
+      else setError(response.data.message || 'فشل إرسال الطلب');
     } catch (err) {
       setError(err.response?.data?.message || 'فشل إرسال الطلب');
     }
     setLoading(false);
   };
 
-  const currentStep = emailUpdateStep ? 'emailUpdate' : otpStep ? 'otp' : 'login';
-  const stepTitle = {
-    login: 'تسجيل الدخول',
-    otp: 'التحقق بخطوتين',
-    emailUpdate: 'طلب تحديث البريد الإلكتروني'
-  };
+  const step = emailUpdateStep ? 'emailUpdate' : otpStep ? 'otp' : 'login';
+  const [title, subtitle] = TITLES[step];
 
   return (
-    <div className="login-container">
-      <div className="login-card">
-        <h1>نظام إدارة الموارد البشرية</h1>
-        <h2>{stepTitle[currentStep]}</h2>
+    <div className="ui-auth">
+      <aside className="ui-auth-brand" aria-hidden="true">
+        <span className="ui-auth-mark"><Icon name="users" size={34} /></span>
+        <h1>نظام الموارد البشرية</h1>
+        <p>إدارة موظفي الفروع والمستندات والغياب والمستفيدين في مكان واحد، بخطوات واضحة وبياناتك دائماً محدّثة.</p>
+      </aside>
 
-        {error && <div className="error-message">{error}</div>}
+      <main className="ui-auth-panel">
+        <div className="ui-auth-card">
+          <div className="ui-auth-logo-mobile" aria-hidden="true"><Icon name="users" size={26} /></div>
+          <h2 className="ui-auth-title">{title}</h2>
+          <p className="ui-auth-subtitle">{subtitle}</p>
 
-        {currentStep === 'login' && (
-          <form onSubmit={handleCredentialsSubmit}>
-            <div className="form-group">
-              <label htmlFor="username">اسم المستخدم</label>
-              <input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                disabled={loading}
-                placeholder="أدخل اسم المستخدم"
-              />
-            </div>
+          {error && <Alert tone="danger">{error}</Alert>}
 
-            <div className="form-group">
-              <label htmlFor="password">كلمة المرور</label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={loading}
-                placeholder="أدخل كلمة المرور"
-              />
-            </div>
+          {step === 'login' && (
+            <form onSubmit={handleCredentialsSubmit} className="ui-form-stack" noValidate={false}>
+              <FormField label="اسم المستخدم" required>
+                <Input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus required disabled={loading} dir="ltr" placeholder="اسم المستخدم" />
+              </FormField>
+              <FormField label="كلمة المرور" required>
+                <div className="ui-password">
+                  <Input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required disabled={loading} dir="ltr" placeholder="كلمة المرور" />
+                  <button type="button" className="ui-password-toggle" onClick={() => setShowPassword((s) => !s)} aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}>
+                    <Icon name={showPassword ? 'lock' : 'eye'} size={18} />
+                  </button>
+                </div>
+              </FormField>
+              <Button variant="primary" size="lg" type="submit" block loading={loading}>تسجيل الدخول</Button>
+            </form>
+          )}
 
-            <button type="submit" disabled={loading} className="login-button">
-              {loading ? 'جاري التحقق...' : 'تسجيل الدخول'}
-            </button>
-          </form>
-        )}
-
-        {currentStep === 'otp' && (
-          <form onSubmit={handleOTPSubmit}>
-            <p style={{ textAlign: 'center', color: 'var(--text-light)', marginBottom: '1.5rem' }}>
-              تم إرسال رمز التحقق إلى
-              <strong> {maskedEmail}</strong>
-            </p>
-
-            <div className="form-group">
-              <label htmlFor="otp">رمز التحقق</label>
-              <input
-                id="otp"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]{6}"
-                maxLength={6}
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                required
-                disabled={loading}
-                placeholder="000000"
-                autoComplete="one-time-code"
-                style={{ letterSpacing: '0.4em', fontSize: '1.5rem', textAlign: 'center' }}
-              />
-            </div>
-
-            <button type="submit" disabled={loading || otp.length !== 6} className="login-button">
-              {loading ? 'جاري التحقق...' : 'تأكيد الدخول'}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleResend}
-              disabled={resendCooldown > 0 || loading}
-              className="login-button"
-              style={{ marginTop: 8, background: 'transparent', color: 'var(--primary)', border: '1px solid var(--primary)' }}
-            >
-              {resendCooldown > 0 ? `إعادة الإرسال بعد ${resendCooldown}ث` : 'إعادة إرسال الرمز'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setOtpStep(false);
-                setOtp('');
-                setError('');
-              }}
-              disabled={loading}
-              style={{ marginTop: 4, background: 'none', border: 'none', color: 'var(--text-light)', cursor: 'pointer', width: '100%', padding: '0.5rem' }}
-            >
-              ← رجوع
-            </button>
-          </form>
-        )}
-
-        {currentStep === 'emailUpdate' && (
-          emailUpdateSuccess ? (
-            <div style={{ textAlign: 'center' }}>
-              <p style={{ color: 'var(--success, #28a745)', marginBottom: '1rem', fontSize: '1.1rem' }}>
-                ✓ تم إرسال طلبك للمسؤول بنجاح. سيتم تحديث بريدك الإلكتروني قريبًا.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmailUpdateStep(false);
-                  setEmailUpdateSuccess(false);
-                  setNewEmail('');
-                  setError('');
-                }}
-                className="login-button"
-              >
-                العودة لتسجيل الدخول
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handleEmailUpdateRequest}>
-              <p style={{ textAlign: 'center', color: 'var(--text-light)', marginBottom: '1.5rem' }}>
-                لا يوجد بريد إلكتروني مسجل لفرع <strong>{emailUpdateBranchName}</strong>.
-                <br />أدخل بريدك الإلكتروني لإرسال طلب تحديث للمسؤول.
-              </p>
-
-              <div className="form-group">
-                <label htmlFor="newEmail">البريد الإلكتروني الجديد</label>
-                <input
-                  id="newEmail"
-                  type="email"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
+          {step === 'otp' && (
+            <form onSubmit={handleOTPSubmit} className="ui-form-stack">
+              <p className="ui-auth-hint">تم إرسال رمز مكوّن من 6 أرقام إلى <bdi>{maskedEmail}</bdi>. ينتهي خلال 10 دقائق.</p>
+              <FormField label="رمز التحقق" required>
+                <Input
+                  className="ui-otp-input"
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                  autoComplete="one-time-code"
+                  autoFocus
                   required
                   disabled={loading}
-                  placeholder="example@email.com"
                   dir="ltr"
+                  placeholder="000000"
                 />
-              </div>
-
-              <button type="submit" disabled={loading || !newEmail} className="login-button">
-                {loading ? 'جاري الإرسال...' : 'إرسال الطلب'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setEmailUpdateStep(false);
-                  setNewEmail('');
-                  setError('');
-                }}
-                disabled={loading}
-                style={{ marginTop: 4, background: 'none', border: 'none', color: 'var(--text-light)', cursor: 'pointer', width: '100%', padding: '0.5rem' }}
-              >
-                ← رجوع
-              </button>
+              </FormField>
+              <Button variant="primary" size="lg" type="submit" block loading={loading} disabled={otp.length !== 6}>تأكيد الدخول</Button>
+              <Button variant="secondary" block onClick={handleResend} disabled={resendCooldown > 0 || loading}>
+                {resendCooldown > 0 ? `إعادة الإرسال بعد ${resendCooldown} ث` : 'إعادة إرسال الرمز'}
+              </Button>
+              <Button variant="link" onClick={backToLogin} disabled={loading}>رجوع</Button>
             </form>
-          )
-        )}
-      </div>
+          )}
+
+          {step === 'emailUpdate' && (emailUpdateSuccess ? (
+            <div className="ui-form-stack">
+              <Alert tone="success">تم إرسال طلبك للإدارة. سيتم تحديث بريدك الإلكتروني قريباً، ثم يمكنك الدخول.</Alert>
+              <Button variant="primary" block onClick={backToLogin}>العودة لتسجيل الدخول</Button>
+            </div>
+          ) : (
+            <form onSubmit={handleEmailUpdateRequest} className="ui-form-stack">
+              <p className="ui-auth-hint">لا يوجد بريد إلكتروني مسجل لفرع <strong>{emailUpdateBranchName}</strong>. اكتب بريدك لإرسال طلب تحديث للإدارة.</p>
+              <FormField label="البريد الإلكتروني" required>
+                <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} required disabled={loading} dir="ltr" placeholder="name@example.com" />
+              </FormField>
+              <Button variant="primary" size="lg" type="submit" block loading={loading} disabled={!newEmail}>إرسال الطلب</Button>
+              <Button variant="link" onClick={backToLogin} disabled={loading}>رجوع</Button>
+            </form>
+          ))}
+        </div>
+      </main>
     </div>
   );
-};
-
-export default Login;
-
+}
