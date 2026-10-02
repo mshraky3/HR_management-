@@ -38,6 +38,24 @@ export async function up(db = sql) {
   `;
   await db`CREATE INDEX IF NOT EXISTS idx_login_events_account ON login_events (account_kind, account_id, created_at DESC)`;
   await db`CREATE INDEX IF NOT EXISTS idx_login_events_created ON login_events (created_at DESC)`;
+
+  // Last sign-in of existing accounts, from the per-day records the app already kept (user_logins).
+  await db`
+    UPDATE branches b SET last_login_at = x.last_seen
+    FROM (
+      SELECT branch_id, MAX(COALESCE(login_time, login_date::timestamp)) AS last_seen
+      FROM user_logins WHERE branch_id IS NOT NULL GROUP BY branch_id
+    ) x
+    WHERE x.branch_id = b.id AND b.last_login_at IS NULL
+  `;
+  await db`
+    UPDATE users u SET last_login_at = x.last_seen
+    FROM (
+      SELECT user_id, MAX(COALESCE(login_time, login_date::timestamp)) AS last_seen
+      FROM user_logins WHERE user_id IS NOT NULL GROUP BY user_id
+    ) x
+    WHERE x.user_id = u.id AND u.last_login_at IS NULL
+  `;
 }
 
 export async function down() {

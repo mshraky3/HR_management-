@@ -3,6 +3,8 @@ import { DATA_COMPLETION_STATUS } from '../../utils/employeeConstants';
 export const fullName = (e) =>
   [e?.first_name, e?.second_name, e?.third_name, e?.fourth_name].filter(Boolean).join(' ');
 
+export const isArchivedStatus = (status) => Boolean(status) && !['active', 'pending'].includes(status);
+
 export const isDataComplete = (e) => e?.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE;
 
 /** Normalises text for Arabic-friendly matching: lower-case, strips tashkeel and unifies alef/ya/ta-marbuta. */

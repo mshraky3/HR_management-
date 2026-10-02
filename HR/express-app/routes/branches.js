@@ -44,6 +44,19 @@ router.get('/', authenticate, loadAssignedBranches, async (req, res) => {
       branches = branches.filter(b => req.user.assigned_branches.includes(b.id));
     }
 
+    // Head office only: employee counts per branch, so "deactivate branch" can say how many people it affects.
+    if (req.user?.role === 'main_manager' && req.query.include_counts === 'true' && branches.length > 0) {
+      const sqlConn = (await import('../config/database.js')).default;
+      const counts = await sqlConn`
+        SELECT branch_id, COUNT(*)::int AS n
+        FROM employees
+        WHERE status IN ('active', 'pending') OR status IS NULL
+        GROUP BY branch_id
+      `;
+      const byBranch = new Map(counts.map((c) => [c.branch_id, c.n]));
+      branches = branches.map((b) => ({ ...b, active_employees: byBranch.get(b.id) || 0 }));
+    }
+
     res.json({ success: true, data: sanitizeAccountsFor(req.user, branches) });
   } catch (error) {
     handleRouteError(error, req, res, 'فشل جلب الفروع');
@@ -282,6 +295,10 @@ router.put('/:id',
       const branch = hasOtherFields
         ? await Branch.update(branchId, body)
         : (await sqlConn`SELECT * FROM branches WHERE id = ${branchId}`)[0];
+      // A new password ends the branch's current sessions.
+      if (body.password) {
+        await sqlConn`UPDATE branches SET token_version = token_version + 1 WHERE id = ${branchId}`;
+      }
       Branch.clearCache(branchId);
 
       if (!branch) {

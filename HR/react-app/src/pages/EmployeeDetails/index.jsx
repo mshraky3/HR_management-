@@ -6,18 +6,22 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { DATA_COMPLETION_STATUS } from '../../utils/employeeConstants';
 import './EmployeeDetails.css';
-import EmployeeDetailsHeader from "./components/EmployeeDetailsHeader.jsx";
-import EmployeeProfileCard from "./components/EmployeeProfileCard.jsx";
 import RenewalSection from "./components/RenewalSection.jsx";
 import EmployeeInfoSections from "./components/EmployeeInfoSections.jsx";
-import DocumentsSection from "./components/DocumentsSection.jsx";
-import GenerateFileSection from "./components/GenerateFileSection.jsx";
+import DocumentsPanel from "./components/DocumentsPanel.jsx";
+import HistoryPanel from "./components/HistoryPanel.jsx";
+import NotesPanel from "./components/NotesPanel.jsx";
+import BranchesPanel from "./components/BranchesPanel.jsx";
 import ImagePreviewModal from "./components/ImagePreviewModal.jsx";
+import OffboardModal from "../employees/OffboardModal.jsx";
+import { Page, PageHeader, Tabs, Button, Alert, Badge, StatusBadge, Spinner, EmptyState, useConfirm } from "../../ui";
+import { isArchivedStatus } from "../employees/employeeUtils.js";
 
 const EmployeeDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isBranchManager, _isMainManager, user } = useAuth();
+  const { isBranchManager, isMainManager, user } = useAuth();
+  const { confirm } = useConfirm();
   const { showError, showSuccess, showWarning } = useNotification();
 
   const [employee, setEmployee] = useState(null);
@@ -33,6 +37,9 @@ const EmployeeDetails = () => {
   const [showNonRenewalForm, setShowNonRenewalForm] = useState(false);
   const [nonRenewalData, setNonRenewalData] = useState({ status: '', reason: '' });
   const [generatingFile, setGeneratingFile] = useState(false);
+  const [tab, setTab] = useState('data');
+  const [offboardOpen, setOffboardOpen] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
   const missingFields = missingData?.missingFields || [];
   const hasMissingFields = missingFields.length > 0;
 
@@ -307,67 +314,142 @@ const EmployeeDetails = () => {
     }
   };
 
+  const restoreEmployee = async () => {
+    const ok = await confirm({
+      title: 'استعادة الموظف',
+      message: 'سيعود الموظف إلى قائمة موظفي فرعه بحالة "نشط".',
+      confirmText: 'استعادة',
+    });
+    if (!ok) return;
+    try {
+      await employeesAPI.updateStatus(id, { status: 'active', reason: 'تمت الاستعادة من ملف الموظف' });
+      showSuccess('تمت استعادة الموظف');
+      loadEmployeeData();
+      setHistoryKey((k) => k + 1);
+    } catch (error) {
+      showError(error.response?.data?.message || 'فشلت الاستعادة');
+    }
+  };
+
   if (loading) {
-    return <div className="loading">جاري تحميل بيانات الموظف...</div>;
+    return <Page><Spinner block size={36} label="جاري تحميل بيانات الموظف…" /></Page>;
   }
 
   if (!employee) {
     return (
-      <div className="table-page">
-        <div className="empty-state">
-          <p>الموظف غير موجود</p>
-          <button onClick={() => navigate('/employees')} className="btn btn-primary btn-md">
-            العودة للقائمة
-          </button>
-        </div>
-      </div>
+      <Page>
+        <EmptyState
+          icon="user"
+          title="الموظف غير موجود"
+          action={<Button variant="primary" to="/employees">العودة للقائمة</Button>}
+        />
+      </Page>
     );
   }
 
+  const name = [employee.first_name, employee.second_name, employee.third_name, employee.fourth_name].filter(Boolean).join(' ');
+  const archived = isArchivedStatus(employee.status);
+  const complete = employee.data_completion_status === DATA_COMPLETION_STATUS.COMPLETE;
+  const branchNames = (Array.isArray(employee.branches) ? employee.branches : [])
+    .map((b) => b.branch_name).filter(Boolean);
+  const canOffboard = !archived && (isMainManager() || (isBranchManager() && employee.branch_id === user?.branch_id));
+  const canEdit = !archived || isMainManager();
+
+  const tabs = [
+    { id: 'data', label: 'البيانات', icon: 'user' },
+    { id: 'documents', label: 'المستندات', icon: 'file-text', count: documents.length },
+    { id: 'branches', label: 'الفروع', icon: 'building' },
+    { id: 'history', label: 'السجل', icon: 'history' },
+    { id: 'notes', label: 'الملاحظات', icon: 'note' },
+  ];
+
   return (
-    <div className="employee-details-page">
-      <EmployeeDetailsHeader onBack={() => navigate('/employees')} />
-
-      <EmployeeProfileCard
-        employee={employee}
-        missingData={missingData}
-        hasMissingFields={hasMissingFields}
-        onOpenEdit={handleOpenFullEdit}
-      >
-        <>
-          {isBranchManager() && employee.status === 'pending' && (
-            <RenewalSection
-              processingRenewal={processingRenewal}
-              onRenew={handleRenewal}
-              showNonRenewalForm={showNonRenewalForm}
-              onStartNonRenewal={startNonRenewalFlow}
-              nonRenewalData={nonRenewalData}
-              onChangeNonRenewalField={handleNonRenewalFieldChange}
-              onSubmitNonRenewal={handleNonRenewalSubmit}
-              onCancelNonRenewal={cancelNonRenewalFlow}
-            />
-          )}
-
-          <EmployeeInfoSections employee={employee} branches={branches} />
-        </>
-      </EmployeeProfileCard>
-
-      <DocumentsSection
-        documents={documents}
-        onPreview={handlePreview}
-        onDownload={handleDownload}
-        previewLoading={previewLoading}
-        downloading={downloading}
+    <Page>
+      <PageHeader
+        back="/employees"
+        title={name}
+        subtitle={[employee.job_title || employee.occupation, branchNames.join('، ')].filter(Boolean).join(' · ')}
+        actions={(
+          <>
+            <Button variant="secondary" icon="file-text" loading={generatingFile} onClick={handleGenerateFile}>ملف الموظف PDF</Button>
+            {archived && isMainManager() && <Button variant="secondary" icon="restore" onClick={restoreEmployee}>استعادة</Button>}
+            {canOffboard && <Button variant="outline" icon="archive" onClick={() => setOffboardOpen(true)}>إنهاء الخدمة</Button>}
+            {canEdit && <Button variant="primary" icon="edit" onClick={handleOpenFullEdit}>تعديل البيانات</Button>}
+          </>
+        )}
       />
 
-      <GenerateFileSection
-        generatingFile={generatingFile}
-        onGenerate={handleGenerateFile}
-        disabled={!employee}
-      />
+      <div className="ui-profile-badges">
+        <StatusBadge status={employee.status || 'active'} />
+        {complete ? <Badge tone="success" dot>البيانات مكتملة</Badge> : <Badge tone="warning" dot>البيانات غير مكتملة</Badge>}
+        {employee.employee_id_number && <Badge>رقم الموظف: <bdi>{employee.employee_id_number}</bdi></Badge>}
+        <Badge>الهوية: <bdi>{employee.id_or_residency_number || '—'}</bdi></Badge>
+      </div>
+
+      {archived && (
+        <Alert tone="warning" title="هذا الموظف مؤرشف">
+          {employee.status_change_reason ? `السبب: ${employee.status_change_reason}. ` : ''}
+          {employee.last_working_day ? `آخر يوم عمل: ${String(employee.last_working_day).slice(0, 10)}. ` : ''}
+          {isMainManager() ? 'يمكنك استعادته من الزر أعلاه.' : 'يمكن للمدير الرئيسي فقط استعادته.'}
+        </Alert>
+      )}
+
+      {hasMissingFields && !archived && (
+        <Alert
+          tone="warning"
+          title="بيانات ناقصة"
+          action={canEdit ? <Button size="sm" variant="secondary" onClick={handleOpenFullEdit}>إكمال البيانات</Button> : null}
+        >
+          <ul className="ui-missing-list">
+            {missingFields.map((f, i) => <li key={`${f}-${i}`}>{typeof f === 'string' ? f : f.label || f.field}</li>)}
+          </ul>
+        </Alert>
+      )}
+
+      <Tabs items={tabs} value={tab} onChange={setTab} ariaLabel="أقسام ملف الموظف" />
+
+      <div role="tabpanel" aria-labelledby={`tab-${tab}`} className="ui-tabpanel">
+        {tab === 'data' && (
+          <>
+            {isBranchManager() && employee.status === 'pending' && (
+              <RenewalSection
+                processingRenewal={processingRenewal}
+                onRenew={handleRenewal}
+                showNonRenewalForm={showNonRenewalForm}
+                onStartNonRenewal={startNonRenewalFlow}
+                nonRenewalData={nonRenewalData}
+                onChangeNonRenewalField={handleNonRenewalFieldChange}
+                onSubmitNonRenewal={handleNonRenewalSubmit}
+                onCancelNonRenewal={cancelNonRenewalFlow}
+              />
+            )}
+            <div className="employee-details-page ui-legacy-embed">
+              <EmployeeInfoSections employee={employee} branches={branches} />
+            </div>
+          </>
+        )}
+        {tab === 'documents' && (
+          <DocumentsPanel
+            documents={documents}
+            onPreview={handlePreview}
+            onDownload={handleDownload}
+            previewLoading={previewLoading}
+            downloading={downloading}
+          />
+        )}
+        {tab === 'branches' && <BranchesPanel employeeId={id} isMain={isMainManager()} onChanged={loadEmployeeData} />}
+        {tab === 'history' && <HistoryPanel employeeId={id} reloadKey={historyKey} />}
+        {tab === 'notes' && <NotesPanel employeeId={id} />}
+      </div>
 
       <ImagePreviewModal document={previewDocument} previewUrl={previewUrl} onClose={closePreview} />
-    </div>
+      <OffboardModal
+        open={offboardOpen}
+        employees={[employee]}
+        onClose={() => setOffboardOpen(false)}
+        onDone={() => { loadEmployeeData(); setHistoryKey((k) => k + 1); }}
+      />
+    </Page>
   );
 };
 

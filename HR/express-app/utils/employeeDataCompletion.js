@@ -382,11 +382,16 @@ export async function updateEmployeeCompletionStatus(employeeId) {
     // Update status
     const newStatus = completion.isComplete ? 'complete' : 'incomplete';
 
-    await sql`
-      UPDATE employees 
-      SET data_completion_status = ${newStatus}, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${employeeId}
-    `;
+    // Completion is derived data: write it only when it changed, and never touch updated_at.
+    // (Bumping updated_at on every profile view made branch "activity" numbers meaningless and
+    // would defeat the stale-edit check.)
+    if (employee.data_completion_status !== newStatus) {
+      await sql`
+        UPDATE employees
+        SET data_completion_status = ${newStatus}
+        WHERE id = ${employeeId}
+      `;
+    }
 
     return {
       ...employee,

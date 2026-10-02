@@ -570,8 +570,24 @@ export const usersAPI = {
   unassignBranch: (id, branch_id) =>
     api.post(`/api/users/${id}/unassign-branch`, { branch_id }),
 
-  getBranchOpsList: () =>
-    api.get('/api/users/branch-ops/list'),
+  getBranchOpsList: (params = {}) =>
+    api.get('/api/users/branch-ops/list', { params }),
+
+  reactivate: (id) =>
+    api.put(`/api/users/${id}/reactivate`),
+
+  unlock: (id) =>
+    api.post(`/api/users/${id}/unlock`),
+
+  // Sets a temporary password (generated unless one is given); returned once in data.temporary_password
+  resetPassword: (id, password) =>
+    api.post(`/api/users/${id}/reset-password`, password ? { password } : {}),
+
+  getActivity: (id) =>
+    api.get(`/api/users/${id}/activity`),
+
+  setAssignedBranches: (id, branch_ids) =>
+    api.put(`/api/users/${id}/assigned-branches`, { branch_ids }),
 };
 
 // Branches API
@@ -593,6 +609,21 @@ export const branchesAPI = {
 
   delete: (id) =>
     api.delete(`/api/branches/${id}`),
+
+  reactivate: (id, restoreEmployees = true) =>
+    api.post(`/api/branches/${id}/reactivate`, { restore_employees: restoreEmployees }),
+
+  unlock: (id) =>
+    api.post(`/api/branches/${id}/unlock`),
+
+  resetPassword: (id, password) =>
+    api.post(`/api/branches/${id}/reset-password`, password ? { password } : {}),
+
+  getActivity: (id) =>
+    api.get(`/api/branches/${id}/activity`),
+
+  changePassword: (currentPassword, newPassword) =>
+    api.put('/api/auth/change-password', { current_password: currentPassword, new_password: newPassword }),
 };
 
 // Employees API

@@ -1,506 +1,274 @@
 /**
- * Branches Page
- * Manage branches
+ * Branches (head office): branch login accounts and contact details.
+ * Create / edit, temporary password, unlock, sign-in activity, and deactivate / reactivate with the
+ * consequence for the branch's employees spelled out before anything happens.
  */
-
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Page, PageHeader, Card, Tabs, Toolbar, SearchInput, Select, Button, Badge, DataTable, RowActions, Modal, FormField, Input,
+  Alert, useConfirm,
+} from '../ui';
 import { branchesAPI, clearCache } from '../utils/api';
-import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import BranchBadge from "../components/BranchBadge.jsx";
-// TablePage.css is now loaded in App.jsx to prevent FOUC
+import { normalizeSearch } from './employees/employeeUtils';
+import { AccountStatusBadge, LastLogin, SecretCell, ActivityModal, TempPasswordModal } from './accounts/shared';
 
-const Branches = () => {
-  const { isMainManager, user } = useAuth();
+const EMPTY = { branch_name: '', branch_location: '', branch_type: 'school', username: '', password: '', phone_number: '', email: '' };
+const TYPE_LABEL = { school: 'مدرسة', healthcare_center: 'مركز رعاية' };
+
+export default function Branches() {
   const { showError, showSuccess } = useNotification();
+  const { confirm } = useConfirm();
+
+  const [tab, setTab] = useState('active');
   const [branches, setBranches] = useState([]);
-  const [allBranches, setAllBranches] = useState([]); // Store all branches for filtering
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingBranch, setEditingBranch] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
-  const [formData, setFormData] = useState({
-    branch_name: '',
-    branch_location: '',
-    branch_type: 'school',
-    username: '',
-    password: '',
-    phone_number: '',
-    email: '',
-  });
+  const [error, setError] = useState(false);
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
 
-  // Function to filter and sort branches based on search query
-  const filterAndSortBranches = (branchesList, query) => {
-    if (!query || !query.trim()) {
-      setBranches(branchesList);
-      return;
-    }
+  const [form, setForm] = useState(null);
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [tempPassword, setTempPassword] = useState(null);
+  const [activityFor, setActivityFor] = useState(null);
 
-    const searchTerm = query.toLowerCase().trim();
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(false);
+    clearCache('/api/branches');
+    branchesAPI.getAll({ is_active: tab === 'active', include_counts: true })
+      .then((res) => setBranches(Array.isArray(res.data.data) ? res.data.data : []))
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  }, [tab]);
+  useEffect(load, [load]);
 
-    // Calculate relevance score for each branch
-    const branchesWithScore = branchesList.map(branch => {
-      let score = 0;
-      const searchableText = [
-        branch.branch_name || '',
-        branch.branch_location || '',
-        branch.username || '',
-        branch.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية',
-        branch.password || '',
-        branch.phone_number || '',
-        branch.email || ''
-      ].join(' ').toLowerCase();
-
-      // Exact match gets highest score
-      if (searchableText.includes(searchTerm)) {
-        score += 100;
-      }
-
-      // Check if search term appears at the start (higher priority)
-      if (branch.branch_name?.toLowerCase().startsWith(searchTerm)) {
-        score += 50;
-      }
-      if (branch.username?.toLowerCase().startsWith(searchTerm)) {
-        score += 40;
-      }
-      if (branch.branch_location?.toLowerCase().startsWith(searchTerm)) {
-        score += 30;
-      }
-
-      // Check for partial matches in each field
-      if (branch.branch_name?.toLowerCase().includes(searchTerm)) {
-        score += 20;
-      }
-      if (branch.username?.toLowerCase().includes(searchTerm)) {
-        score += 15;
-      }
-      if (branch.branch_location?.toLowerCase().includes(searchTerm)) {
-        score += 10;
-      }
-      if (branch.password?.toLowerCase().includes(searchTerm)) {
-        score += 5;
-      }
-
-      return { branch, score };
+  const rows = useMemo(() => {
+    const q = normalizeSearch(search);
+    return branches.filter((b) => {
+      if (typeFilter && b.branch_type !== typeFilter) return false;
+      if (!q) return true;
+      return normalizeSearch(`${b.branch_name} ${b.branch_location || ''} ${b.username} ${b.email || ''} ${b.phone_number || ''}`).includes(q);
     });
+  }, [branches, search, typeFilter]);
 
-    // Filter branches that have any match (score > 0)
-    const filteredBranches = branchesWithScore
-      .filter(item => item.score > 0)
-      .sort((a, b) => b.score - a.score) // Sort by score descending
-      .map(item => item.branch);
-
-    setBranches(filteredBranches);
+  const openCreate = () => { setForm({ ...EMPTY }); setFormError(''); };
+  const openEdit = (b) => {
+    setForm({
+      id: b.id, branch_name: b.branch_name || '', branch_location: b.branch_location || '', branch_type: b.branch_type,
+      username: b.username || '', password: '', phone_number: b.phone_number || '', email: b.email || '',
+    });
+    setFormError('');
   };
+  const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
-  const loadBranches = async () => {
-    try {
-      setLoading(true);
-      // Send boolean true instead of string 'true' for better reliability
-      const filters = { is_active: true };
-
-      // Branch managers only see their own branch
-      // Main managers should see all active branches
-      if (!isMainManager() && user?.branch_id) {
-        filters.id = user.branch_id;
-      }
-
-      const response = await branchesAPI.getAll(filters);
-      if (response && response.data && response.data.success) {
-        const branchesList = Array.isArray(response.data.data) ? response.data.data : [];
-        setAllBranches(branchesList);
-        // Apply search filter if exists
-        if (searchQuery && searchQuery.trim()) {
-          filterAndSortBranches(branchesList, searchQuery);
-        } else {
-          setBranches(branchesList);
-        }
-      } else {
-        setAllBranches([]);
-        setBranches([]);
-      }
-    } catch (error) {
-      console.error('Error loading branches:', error);
-      setBranches([]);
-      // Only show alert if we had branches before (not on initial load)
-      if (branches.length > 0) {
-        showError('فشل تحميل الفروع: ' + (error.response?.data?.message || error.message));
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (user !== undefined) {
-      loadBranches();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.branch_id]);
-
-  const handleSubmit = async (e) => {
+  const submit = async (e) => {
     e.preventDefault();
+    setFormError('');
+    if (!form.id && form.password.length < 6) return setFormError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+    setSaving(true);
     try {
-      let response;
-      if (editingBranch) {
-        // Don't send branch_type when updating - it cannot be changed
-        const updateData = { ...formData };
-        delete updateData.branch_type;
-
-        // If password is empty or same as current, don't send it (backend will keep current)
-        // Only send password if it's different from current
-        if (updateData.password === '' || updateData.password === editingBranch.password) {
-          delete updateData.password;
-        }
-
-        response = await branchesAPI.update(editingBranch.id, updateData);
-
-        // Clear cache to ensure fresh data everywhere
-        clearCache('/api/branches');
-        clearCache('/api/branch-statistics');
-        clearCache('/api/employees'); // Employee completion status may depend on branch info
-
-        // Immediately update local state to avoid lag
-        if (response?.data?.success && response?.data?.data) {
-          const updatedBranch = response.data.data;
-          setBranches(prevBranches =>
-            prevBranches.map(b => b.id === editingBranch.id ? updatedBranch : b)
-          );
-          setAllBranches(prevBranches =>
-            prevBranches.map(b => b.id === editingBranch.id ? updatedBranch : b)
-          );
-        }
+      const { id, ...fields } = form;
+      if (id) {
+        if (!fields.password) delete fields.password;
+        delete fields.branch_type; // the type of an existing branch is fixed (terms and year cycle depend on it)
+        await branchesAPI.update(id, fields);
       } else {
-        await branchesAPI.create(formData);
-        // Clear cache after creating
-        clearCache('/api/branches');
-        clearCache('/api/branch-statistics');
+        await branchesAPI.create(fields);
       }
-      setShowForm(false);
-      setEditingBranch(null);
-      resetForm();
-      // Only reload if not editing (for create) or if update didn't work
-      if (!editingBranch || !response?.data?.success) {
-        loadBranches();
-      }
-      const message = editingBranch ? 'تم تحديث الفرع بنجاح' : 'تم إنشاء الفرع بنجاح';
-      setSuccessMessage(message);
-      setShowSuccessAnimation(true);
-      setTimeout(() => {
-        setShowSuccessAnimation(false);
-        showSuccess(message);
-      }, 2000);
-    } catch (error) {
-      showError(error.response?.data?.message || 'فشل حفظ الفرع');
+      showSuccess(id ? 'تم تحديث الفرع' : 'تم إنشاء الفرع');
+      setForm(null);
+      load();
+    } catch (err) {
+      setFormError(err.response?.data?.message || 'فشل حفظ الفرع');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleEdit = (branch) => {
-    setEditingBranch(branch);
-    setFormData({
-      branch_name: branch.branch_name,
-      branch_location: branch.branch_location,
-      branch_type: branch.branch_type,
-      username: branch.username,
-      password: branch.password || '', // Show current password
-      phone_number: branch.phone_number || '',
-      email: branch.email || '',
-      number_of_employees: branch.number_of_employees || '',
+  const deactivate = async (b) => {
+    const n = b.active_employees || 0;
+    const ok = await confirm({
+      title: `إيقاف فرع "${b.branch_name}"`,
+      message: [
+        n > 0 ? `سيتم نقل ${n} موظف من هذا الفرع إلى الأرشيف.` : 'لا يوجد موظفون نشطون في الفرع.',
+        'سيتم تسجيل خروج مدير الفرع فوراً، وإزالة الفرع من حسابات مسؤولي الفروع.',
+        'يمكنك إعادة تفعيل الفرع لاحقاً، وسيعود موظفوه الذين أُرشفوا بسبب الإيقاف.',
+      ].join('\n\n'),
+      tone: 'danger',
+      confirmText: 'إيقاف الفرع',
     });
-    setShowForm(true);
-  };
-
-  const handleDelete = async (id) => {
-    if (!confirm('هل أنت متأكد من رغبتك في إلغاء تفعيل هذا الفرع؟')) return;
+    if (!ok) return;
     try {
-      await branchesAPI.delete(id);
-      loadBranches();
-      showSuccess('تم حذف الفرع بنجاح');
-    } catch (error) {
-      showError('فشل حذف الفرع');
+      const res = await branchesAPI.delete(b.id);
+      showSuccess(`تم إيقاف الفرع${res.data.archivedEmployeesCount ? ` وأرشفة ${res.data.archivedEmployeesCount} موظف` : ''}`);
+      load();
+    } catch (err) {
+      showError(err.response?.data?.message || 'فشل إيقاف الفرع');
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      branch_name: '',
-      branch_location: '',
-      branch_type: 'school',
-      username: '',
-      password: '',
-      phone_number: '',
-      email: '',
-      number_of_employees: '',
+  const reactivate = async (b) => {
+    const ok = await confirm({
+      title: `إعادة تفعيل فرع "${b.branch_name}"`,
+      message: 'سيعود الفرع للعمل ويعود إليه الموظفون الذين أُرشفوا بسبب إيقافه.',
+      confirmText: 'إعادة التفعيل',
     });
+    if (!ok) return;
+    try {
+      const res = await branchesAPI.reactivate(b.id, true);
+      showSuccess(`تم تفعيل الفرع${res.data.restoredEmployeesCount ? ` واستعادة ${res.data.restoredEmployeesCount} موظف` : ''}`);
+      load();
+    } catch (err) {
+      showError(err.response?.data?.message || 'فشل إعادة التفعيل');
+    }
   };
 
-  // Handle search input change
-  const handleSearchChange = (e) => {
-    const query = e.target.value;
-    setSearchQuery(query);
-    filterAndSortBranches(allBranches, query);
+  const reset = async (b) => {
+    const ok = await confirm({
+      title: 'كلمة مرور مؤقتة',
+      message: `سيتم إنشاء كلمة مرور مؤقتة لفرع "${b.branch_name}" وتنتهي جلسته الحالية، وسيُطلب من مدير الفرع تغييرها عند الدخول.`,
+      confirmText: 'إنشاء كلمة مرور',
+    });
+    if (!ok) return;
+    try { const res = await branchesAPI.resetPassword(b.id); setTempPassword({ ...res.data.data, username: res.data.data.username }); load(); } catch (err) { showError(err.response?.data?.message || 'فشل إنشاء كلمة المرور'); }
   };
 
-  if (loading) {
-    return (
-      <div className="table-page">
-        <div className="page-header">
-          <h1>{'جاري التحميل...'}</h1>
+  const unlock = async (b) => {
+    try { await branchesAPI.unlock(b.id); showSuccess('تم فك القفل'); load(); } catch (err) { showError(err.response?.data?.message || 'فشل فك القفل'); }
+  };
+
+  const columns = [
+    {
+      key: 'name', header: 'الفرع', mobilePrimary: true,
+      render: (b) => (
+        <div className="ui-cell-stack">
+          <strong>{b.branch_name}</strong>
+          <span className="ui-cell-sub">{b.branch_location || '—'}</span>
         </div>
-        <div style={{ padding: 'var(--spacing-xl)' }}>
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="skeleton skeleton-branch-row" style={{ animationDelay: `${i * 0.1}s` }}></div>
-          ))}
+      ),
+    },
+    { key: 'type', header: 'النوع', render: (b) => <Badge tone={b.branch_type === 'school' ? 'info' : 'success'}>{TYPE_LABEL[b.branch_type] || '—'}</Badge> },
+    {
+      key: 'login', header: 'بيانات الدخول', mobileHidden: true,
+      render: (b) => (
+        <div className="ui-cell-stack">
+          <bdi>{b.username}</bdi>
+          <SecretCell value={b.password} />
         </div>
-      </div>
-    );
-  }
+      ),
+    },
+    {
+      key: 'contact', header: 'التواصل', mobileHidden: true,
+      render: (b) => (
+        <div className="ui-cell-stack">
+          {b.email ? <bdi>{b.email}</bdi> : <Badge tone="danger">لا يوجد بريد</Badge>}
+          {b.phone_number && <bdi className="ui-cell-sub">{b.phone_number}</bdi>}
+        </div>
+      ),
+    },
+    { key: 'employees', header: 'الموظفون', align: 'center', render: (b) => b.active_employees ?? '—' },
+    { key: 'last', header: 'آخر دخول', render: (b) => <LastLogin value={b.last_login_at} /> },
+    { key: 'status', header: 'الحالة', render: (b) => <AccountStatusBadge account={b} /> },
+    {
+      key: 'actions', header: '', align: 'end',
+      render: (b) => (
+        <div className="ui-row-actions-group">
+          {tab === 'active'
+            ? <Button size="sm" variant="soft" onClick={() => openEdit(b)}>تعديل</Button>
+            : <Button size="sm" variant="primary" onClick={() => reactivate(b)}>إعادة التفعيل</Button>}
+          <RowActions actions={[
+            { label: 'كلمة مرور مؤقتة', icon: 'key', onClick: () => reset(b) },
+            { label: 'فك القفل', icon: 'lock', hidden: !(b.locked_until && new Date(b.locked_until) > new Date()), onClick: () => unlock(b) },
+            { label: 'سجل الدخول', icon: 'history', onClick: () => setActivityFor(b) },
+            { label: 'تعديل البيانات', icon: 'edit', hidden: tab === 'active', onClick: () => openEdit(b) },
+            { label: 'إيقاف الفرع', icon: 'x-circle', danger: true, hidden: tab !== 'active', onClick: () => deactivate(b) },
+          ]} />
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <div className="table-page">
-      <div className="page-header">
-        <h1>{isMainManager() ? 'إدارة الفروع' : 'فرعي'}</h1>
-        {isMainManager() && (
-          <button onClick={() => { setShowForm(true); resetForm(); setEditingBranch(null); }} className="btn-primary btn-lg">
-            إضافة فرع جديد
-          </button>
-        )}
-      </div>
-
-      {isMainManager() && (
-        <div style={{
-          marginBottom: '20px',
-          padding: '15px',
-          backgroundColor: '#f5f5f5',
-          borderRadius: '8px'
-        }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-            البحث في الفروع:
-          </label>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={handleSearchChange}
-            placeholder="ابحث عن فرع بالاسم، الموقع، اسم المستخدم، أو أي معلومة أخرى..."
-            style={{
-              width: '100%',
-              padding: '10px',
-              borderRadius: '4px',
-              border: '1px solid #ddd',
-              fontSize: '14px'
-            }}
+    <Page>
+      <PageHeader
+        title="حسابات الفروع"
+        subtitle="بيانات دخول كل فرع ومعلومات التواصل معه"
+        actions={<Button variant="primary" icon="plus" onClick={openCreate}>إضافة فرع</Button>}
+      />
+      <Tabs value={tab} onChange={setTab} items={[{ id: 'active', label: 'الفروع النشطة' }, { id: 'inactive', label: 'الفروع الموقوفة' }]} />
+      <Card flush>
+        <Toolbar>
+          <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} onClear={() => setSearch('')} placeholder="ابحث باسم الفرع أو المدينة أو اسم الدخول…" />
+          <Select
+            aria-label="نوع الفرع"
+            className="ui-toolbar-select"
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            options={[{ value: '', label: 'كل الأنواع' }, { value: 'school', label: 'مدارس' }, { value: 'healthcare_center', label: 'مراكز رعاية' }]}
           />
-          {searchQuery && (
-            <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
-              عرض {branches.length} من {allBranches.length} فرع
+        </Toolbar>
+        <DataTable
+          caption="الفروع"
+          columns={columns}
+          rows={rows}
+          loading={loading}
+          error={error}
+          onRetry={load}
+          emptyIcon="building"
+          emptyTitle={tab === 'active' ? 'لا توجد فروع مطابقة' : 'لا توجد فروع موقوفة'}
+        />
+      </Card>
+
+      <Modal
+        open={Boolean(form)}
+        onClose={saving ? undefined : () => setForm(null)}
+        size="lg"
+        title={form?.id ? 'تعديل الفرع' : 'إضافة فرع جديد'}
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setForm(null)} disabled={saving}>إلغاء</Button>
+            <Button variant="primary" type="submit" form="branch-form" loading={saving}>{form?.id ? 'حفظ التعديلات' : 'إنشاء الفرع'}</Button>
+          </>
+        )}
+      >
+        {form && (
+          <form id="branch-form" onSubmit={submit} className="ui-form-stack">
+            {formError && <Alert tone="danger">{formError}</Alert>}
+            <div className="ui-form-grid">
+              <FormField label="اسم الفرع" required><Input value={form.branch_name} onChange={set('branch_name')} required /></FormField>
+              <FormField label="المدينة / الموقع" required><Input value={form.branch_location} onChange={set('branch_location')} required /></FormField>
+              <FormField label="نوع الفرع" required hint={form.id ? 'لا يمكن تغيير نوع فرع قائم' : undefined}>
+                <Select
+                  value={form.branch_type}
+                  onChange={set('branch_type')}
+                  disabled={Boolean(form.id)}
+                  options={[{ value: 'school', label: 'مدرسة' }, { value: 'healthcare_center', label: 'مركز رعاية' }]}
+                />
+              </FormField>
+              <FormField label="اسم المستخدم" required><Input value={form.username} onChange={set('username')} dir="ltr" autoComplete="off" required /></FormField>
+              <FormField label="البريد الإلكتروني" hint="يصله رمز التحقق عند كل تسجيل دخول"><Input type="email" value={form.email} onChange={set('email')} dir="ltr" /></FormField>
+              <FormField label="رقم الجوال"><Input value={form.phone_number} onChange={set('phone_number')} dir="ltr" inputMode="tel" /></FormField>
             </div>
-          )}
-        </div>
-      )}
+            <FormField
+              label={form.id ? 'كلمة مرور جديدة' : 'كلمة المرور'}
+              required={!form.id}
+              hint={form.id ? 'اتركها فارغة للإبقاء على كلمة المرور الحالية. تغييرها يُنهي جلسة الفرع.' : '6 أحرف على الأقل'}
+            >
+              <Input type="text" value={form.password} onChange={set('password')} dir="ltr" autoComplete="new-password" />
+            </FormField>
+          </form>
+        )}
+      </Modal>
 
-      {showForm && isMainManager() && (
-        <div className="modal modal-animated">
-          <div className="modal-content modal-slide-up">
-            <h2>{editingBranch ? 'تعديل الفرع' : 'إنشاء فرع جديد'}</h2>
-            <form onSubmit={handleSubmit}>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>اسم الفرع *</label>
-                  <input
-                    type="text"
-                    value={formData.branch_name}
-                    onChange={(e) => setFormData({ ...formData, branch_name: e.target.value })}
-                    required
-                  />
-                </div>
-                {!editingBranch && (
-                  <div className="form-group">
-                    <label>نوع الفرع *</label>
-                    <select
-                      value={formData.branch_type}
-                      onChange={(e) => setFormData({ ...formData, branch_type: e.target.value })}
-                      required
-                    >
-                      <option value="school">مدرسة</option>
-                      <option value="healthcare_center">مركز رعاية نهارية</option>
-                    </select>
-                  </div>
-                )}
-                {editingBranch && (
-                  <div className="form-group">
-                    <label>نوع الفرع</label>
-                    <input
-                      type="text"
-                      value={formData.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية'}
-                      disabled
-                      style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
-                    />
-                    <small>
-                      نوع الفرع لا يمكن تغييره بعد الإنشاء
-                    </small>
-                  </div>
-                )}
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>موقع الفرع *</label>
-                  <input
-                    type="text"
-                    value={formData.branch_location}
-                    onChange={(e) => setFormData({ ...formData, branch_location: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>اسم المستخدم *</label>
-                  <input
-                    type="text"
-                    value={formData.username}
-                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>كلمة المرور {!editingBranch && '*'}</label>
-                  <input
-                    type="text"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    required={!editingBranch}
-                    placeholder={editingBranch ? 'اتركه فارغاً للاحتفاظ بالقيمة الحالية' : ''}
-                  />
-                  {editingBranch && (
-                    <small>
-                      اتركه فارغاً للاحتفاظ بالقيمة الحالية
-                    </small>
-                  )}
-                </div>
-              </div>
-
-              {/* معلومات الفرع */}
-              <h3>معلومات الفرع</h3>
-              <div className="form-row three-columns">
-                <div className="form-group">
-                  <label>رقم جوال الفرع</label>
-                  <input
-                    type="tel"
-                    value={formData.phone_number}
-                    onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                    placeholder="مثال: 0501234567"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>إيميل الفرع</label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="مثال: branch@example.com"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>عدد الموظفين في الفرع</label>
-                  <input
-                    type="number"
-                    value={formData.number_of_employees}
-                    onChange={(e) => setFormData({ ...formData, number_of_employees: e.target.value })}
-                    placeholder="مثال: 50"
-                    min="0"
-                  />
-                  <small>
-                    يستخدم هذا العدد لحساب نسبة اكتمال بيانات الموظفين بدقة أكبر في لوحة التحكم
-                  </small>
-                </div>
-              </div>
-
-              <div className="form-actions">
-                <button type="submit" className="btn-primary btn-lg">حفظ</button>
-                <button type="button" onClick={() => { setShowForm(false); resetForm(); setEditingBranch(null); }} className="btn-secondary btn-lg">
-                  إلغاء
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      <div className="table-container">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>اسم الفرع</th>
-              <th>النوع</th>
-              <th>الموقع</th>
-              <th>اسم المستخدم</th>
-              <th>كلمة المرور</th>
-              <th>معلومات الفرع</th>
-              {isMainManager() && <th>الإجراءات</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {branches.length === 0 ? (
-              <tr>
-                <td colSpan={isMainManager() ? "7" : "6"} style={{ textAlign: 'center' }}>لم يتم العثور على فروع</td>
-              </tr>
-            ) : (
-              branches.map((branch, index) => (
-                <tr key={branch.id} className="branch-row" style={{ animationDelay: `${index * 0.05}s` }}>
-                  <td><BranchBadge branch={branch} showName={true} /></td>
-                  <td>{branch.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية'}</td>
-                  <td>{branch.branch_location}</td>
-                  <td>{branch.username}</td>
-                  <td>{branch.password || '-'}</td>
-                  <td style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    {branch.phone_number && (
-                      <div style={{ fontSize: '13px' }}>
-                        <strong>جوال:</strong> {branch.phone_number}
-                      </div>
-                    )}
-                    {branch.email && (
-                      <div style={{ fontSize: '13px' }}>
-                        <strong>إيميل:</strong> {branch.email}
-                      </div>
-                    )}
-                    {!branch.phone_number && !branch.email && (
-                      <span style={{ color: '#999', fontSize: '13px' }}>-</span>
-                    )}
-                  </td>
-                  {isMainManager() && (
-                    <td>
-                      <button onClick={() => handleEdit(branch)} className="btn-sm btn-edit">تعديل</button>
-                      <button onClick={() => handleDelete(branch.id)} className="btn-sm btn-delete">حذف</button>
-                    </td>
-                  )}
-                  {!isMainManager() && (
-                    <td>
-                      <span className="badge badge-info" style={{ fontSize: '11px', padding: '4px 8px' }}>
-                        عرض فقط
-                      </span>
-                    </td>
-                  )}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Success Animation */}
-      {showSuccessAnimation && (
-        <div className="success-overlay">
-          <div className="success-card">
-            <div className="success-icon"></div>
-            <div className="success-message">{successMessage}</div>
-          </div>
-        </div>
-      )}
-    </div>
+      <TempPasswordModal data={tempPassword} onClose={() => setTempPassword(null)} />
+      <ActivityModal
+        open={Boolean(activityFor)}
+        onClose={() => setActivityFor(null)}
+        title={`سجل دخول ${activityFor?.branch_name || ''}`}
+        load={() => branchesAPI.getActivity(activityFor.id)}
+      />
+    </Page>
   );
-};
-
-export default Branches;
-
+}
