@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.*
+!.env.example
+dist/
+*.log
+.vercel/
+.claude/
+HR/backup-system/
+HR/express-app/test/.scratch/

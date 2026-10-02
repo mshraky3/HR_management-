@@ -23,7 +23,9 @@ const API_CONFIG = {
   // Current environment - Change this to switch between LOCAL and PRODUCTION
   // Options: 'LOCAL' or 'PRODUCTION'
   // For production deployment, set to 'PRODUCTION' or use VITE_API_URL env variable
-  CURRENT: "PRODUCTION", // <-- Change this to 'LOCAL' or 'PRODUCTION'
+  // `vite` dev server defaults to LOCAL so a local run never touches production;
+  // `vite build` (production) uses PRODUCTION. VITE_API_URL still wins over both.
+  CURRENT: import.meta.env.DEV ? "LOCAL" : "PRODUCTION",
 };
 
 const getApiUrl = () => {

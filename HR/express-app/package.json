@@ -9,16 +9,10 @@
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
-    "init-db": "node scripts/init-db.js",
-    "create-admin": "node scripts/create-admin.js",
-    "add-branches": "node scripts/add-branches.js",
-    "migrate:performance-indexes": "node scripts/migrate-add-performance-indexes.js",
-    "recalculate:completion-status": "node scripts/recalculate-all-employees-completion-status.js",
-    "archive:old-documents": "node scripts/archive-old-documents.js",
-    "report:unfixable": "node scripts/generate-unfixable-report.js",
     "test:email": "node scripts/test-email-send.mjs",
     "policy:report": "node scripts/policy-scope-report.mjs",
-    "policy:check": "node scripts/policy-scope-report.mjs --strict"
+    "policy:check": "node scripts/policy-scope-report.mjs --strict",
+    "test": "node --test test/"
   },
   "keywords": [],
   "author": "",
@@ -33,7 +27,6 @@
     "dotenv": "^17.2.3",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
-    "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.12",
