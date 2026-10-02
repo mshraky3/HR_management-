@@ -43,13 +43,61 @@ export const User = {
   },
 
   /**
+   * Find user by ID including disabled accounts (account management needs to see and re-enable them)
+   */
+  async findByIdAny(id) {
+    try {
+      const [user] = await sql`
+        SELECT u.id, u.username, u.role, u.branch_id, u.full_name, u.email, u.phone_number, u.is_active, u.created_at, u.updated_at,
+               u.last_login_at, u.locked_until, u.must_change_password,
+               b.branch_type
+        FROM users u
+        LEFT JOIN branches b ON u.branch_id = b.id
+        WHERE u.id = ${id}
+      `;
+      return user || null;
+    } catch (error) {
+      log.error('Error finding user by ID (any status)', { error: error.message });
+      throw error;
+    }
+  },
+
+  /**
+   * True when `username` is taken by an active user or by any branch login.
+   * Users are checked first at login, so a clash would silently shadow a branch.
+   */
+  async usernameTaken(username, { excludeUserId = null, db = sql } = {}) {
+    const [inUsers] = await db`
+      SELECT id FROM users
+      WHERE username = ${username} AND is_active = true
+        AND (${excludeUserId}::int IS NULL OR id <> ${excludeUserId})
+      LIMIT 1
+    `;
+    if (inUsers) return true;
+    const [inBranches] = await db`SELECT id FROM branches WHERE username = ${username} LIMIT 1`;
+    return Boolean(inBranches);
+  },
+
+  /**
+   * Number of other active head-office accounts (used to refuse removing the last one)
+   */
+  async countActiveMainManagers(excludeUserId = null) {
+    const [row] = await sql`
+      SELECT COUNT(*)::int AS n FROM users
+      WHERE role = 'main_manager' AND is_active = true
+        AND (${excludeUserId}::int IS NULL OR id <> ${excludeUserId})
+    `;
+    return row.n;
+  },
+
+  /**
    * Create new user
    */
-  async create(userData) {
+  async create(userData, db = sql) {
     try {
       const { username, password, role, branch_id, full_name, email, phone_number, created_by } = userData;
 
-      const [user] = await sql`
+      const [user] = await db`
         INSERT INTO users (username, password, role, branch_id, full_name, email, phone_number, created_by)
         VALUES (${username}, ${password}, ${role}, ${branch_id || null}, ${full_name}, ${email || null}, ${phone_number || null}, ${created_by || null})
         RETURNING id, username, role, branch_id, full_name, email, phone_number, is_active, created_at
@@ -68,7 +116,8 @@ export const User = {
   async findAll(filters = {}) {
     try {
       let query = sql`
-        SELECT id, username, password, role, branch_id, full_name, email, phone_number, is_active, created_at, updated_at 
+        SELECT id, username, password, role, branch_id, full_name, email, phone_number, is_active, created_at, updated_at,
+               last_login_at, locked_until, must_change_password
         FROM users 
         WHERE 1=1
       `;

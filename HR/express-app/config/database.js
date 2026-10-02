@@ -13,11 +13,24 @@ dotenv.config();
 // Supports both DATABASE_URL (Vercel/Heroku) and individual variables (local dev)
 let sql;
 
+// SSL is always required, except for a database on this machine (local development and
+// the scratch Postgres used for tests, which has no SSL). Only a hostname of
+// localhost / 127.0.0.1 / ::1 relaxes it, so a production URL can never end up unencrypted.
+function sslModeFor(connectionString) {
+  try {
+    const host = new URL(connectionString).hostname.replace(/^\[|\]$/g, "");
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return false;
+  } catch {
+    // not a parseable URL: keep the safe default
+  }
+  return "require";
+}
+
 if (process.env.DATABASE_URL) {
   // Use DATABASE_URL if available (Vercel, Heroku, etc.)
   log.info("Connecting to database using DATABASE_URL");
   sql = postgres(process.env.DATABASE_URL, {
-    ssl: "require",
+    ssl: sslModeFor(process.env.DATABASE_URL),
     // Reduced default pool size for serverless (Vercel) compatibility.
     // The provider is a scale-to-zero Postgres (Koyeb); keep the pool small.
     max: parseInt(process.env.DB_POOL_MAX || "8", 10),

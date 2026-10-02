@@ -4,11 +4,13 @@
  */
 
 import express from 'express';
+import crypto from 'crypto';
 import { authenticate } from '../middleware/auth.js';
 import { requireMainManager, checkBranchAccess, loadAssignedBranches } from '../middleware/authorization.js';
 import { validateRequired } from '../middleware/validation.js';
 import { isValidEmail, isValidPhone } from '../utils/validators.js';
 import { handleRouteError } from '../utils/routeErrorHandler.js';
+import { sanitizeAccountsFor } from '../utils/accountSanitize.js';
 
 const router = express.Router();
 
@@ -40,7 +42,7 @@ router.get('/', authenticate, loadAssignedBranches, async (req, res) => {
       branches = branches.filter(b => req.user.assigned_branches.includes(b.id));
     }
 
-    res.json({ success: true, data: branches });
+    res.json({ success: true, data: sanitizeAccountsFor(req.user, branches) });
   } catch (error) {
     handleRouteError(error, req, res, 'فشل جلب الفروع');
   }
@@ -86,6 +88,22 @@ router.put('/my-branch',
         }
       }
 
+      // The branch e-mail is where the login code is sent, so a branch manager may not
+      // swap it for another address on their own: changes go through the request flow
+      // (POST /api/auth/request-email-update) and the main manager. Setting it for the
+      // first time (no e-mail on file yet) is still allowed.
+      if (req.body.email !== undefined) {
+        const { Branch: BranchModel } = await import('../models/Branch.js');
+        const current = await BranchModel.findById(req.user.branch_id);
+        const newEmail = req.body.email === '' ? null : req.body.email;
+        if (current?.email && newEmail !== current.email) {
+          return res.status(403).json({
+            success: false,
+            message: 'لا يمكن تغيير البريد الإلكتروني مباشرة. أرسل طلب تحديث البريد إلى المسؤول الرئيسي.'
+          });
+        }
+      }
+
       // Only allow updating phone_number, email, and number_of_employees
       const allowedFields = ['phone_number', 'email', 'number_of_employees'];
       const updateData = {};
@@ -126,7 +144,7 @@ router.put('/my-branch',
         });
       }
 
-      res.json({ success: true, data: branch });
+      res.json({ success: true, data: sanitizeAccountsFor(req.user, branch) });
     } catch (error) {
       handleRouteError(error, req, res, 'فشل تحديث الفرع');
     }
@@ -146,7 +164,7 @@ router.get('/:id', authenticate, checkBranchAccess, async (req, res) => {
       });
     }
 
-    res.json({ success: true, data: branch });
+    res.json({ success: true, data: sanitizeAccountsFor(req.user, branch) });
   } catch (error) {
     handleRouteError(error, req, res, 'فشل جلب الفرع');
   }
@@ -293,5 +311,72 @@ router.delete('/:id',
   }
 );
 
-export default router;
+// --- Branch account security (main manager only) ---------------------------
 
+function branchTempPassword() {
+  const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = '';
+  for (let i = 0; i < 10; i++) out += alphabet[crypto.randomInt(alphabet.length)];
+  return out;
+}
+
+// Sets a temporary password (generated unless supplied); the branch must change it at next sign-in.
+router.post('/:id/reset-password', authenticate, requireMainManager, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const password = req.body?.password ? String(req.body.password) : branchTempPassword();
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' });
+    }
+    const sql = (await import('../config/database.js')).default;
+    const [branch] = await sql`
+      UPDATE branches SET password = ${password}, must_change_password = true,
+             token_version = token_version + 1, failed_attempts = 0, locked_until = NULL, updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING id, username, branch_name
+    `;
+    if (!branch) return res.status(404).json({ success: false, message: 'Branch not found' });
+    const { Branch } = await import('../models/Branch.js');
+    Branch.clearCache(id);
+    res.json({ success: true, data: { ...branch, temporary_password: password } });
+  } catch (error) {
+    handleRouteError(error, req, res, 'فشل إعادة تعيين كلمة المرور');
+  }
+});
+
+// Clears a lockout caused by wrong passwords.
+router.post('/:id/unlock', authenticate, requireMainManager, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const sql = (await import('../config/database.js')).default;
+    const [branch] = await sql`
+      UPDATE branches SET failed_attempts = 0, locked_until = NULL WHERE id = ${id} RETURNING id, username
+    `;
+    if (!branch) return res.status(404).json({ success: false, message: 'Branch not found' });
+    const { Branch } = await import('../models/Branch.js');
+    Branch.clearCache(id);
+    res.json({ success: true, data: branch });
+  } catch (error) {
+    handleRouteError(error, req, res, 'فشل فك القفل');
+  }
+});
+
+// Recent sign-ins and failures for one branch account.
+router.get('/:id/activity', authenticate, requireMainManager, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const sql = (await import('../config/database.js')).default;
+    const events = await sql`
+      SELECT event, ip_address, user_agent, created_at
+      FROM login_events
+      WHERE account_kind = 'branch' AND account_id = ${id}
+      ORDER BY created_at DESC
+      LIMIT 50
+    `;
+    res.json({ success: true, data: events });
+  } catch (error) {
+    handleRouteError(error, req, res, 'فشل جلب سجل الدخول');
+  }
+});
+
+export default router;
