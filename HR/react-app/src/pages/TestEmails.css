@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .test-emails-page {
     padding: var(--spacing-xl);
     max-width: 900px;
@@ -238,4 +240,5 @@
     .test-results-grid {
         grid-template-columns: 1fr;
     }
+}
 }

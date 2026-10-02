@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Branch Manager Layout - Uses same styles as Layout.css */
 /* Additional specific styles if needed */
 
@@ -592,4 +594,5 @@
         width: 100%;
         max-width: 100%;
     }
+}
 }

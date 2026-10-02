@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Salary Review Section Styles */
 .salary-review-card {
   background: #fff;
@@ -351,4 +353,5 @@
     padding: 8px 12px;
     font-size: 12px;
   }
+}
 }

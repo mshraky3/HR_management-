@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Layout Styles */
 .layout {
     min-height: 100vh;
@@ -547,4 +549,5 @@
 .branch-navbar {
     background: var(--bg);
     border-bottom: 1px solid var(--border);
+}
 }

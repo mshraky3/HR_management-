@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Smooth scrolling for the entire page */
 html {
   scroll-behavior: smooth;
@@ -316,4 +318,5 @@ html {
   color: #4CAF50;
   display: block;
   margin-top: 5px;
+}
 }

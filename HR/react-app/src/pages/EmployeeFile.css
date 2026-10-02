@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Employee File Page Styles */
 
 .employee-file-form {
@@ -663,4 +665,5 @@
     padding: var(--spacing-xs);
     max-height: 300px;
   }
+}
 }

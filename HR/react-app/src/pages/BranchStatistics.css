@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .branch-statistics-page {
   padding: var(--spacing-xl);
   max-width: 1400px;
@@ -1036,4 +1038,5 @@
   .branch-progress-name {
     width: 100%;
   }
+}
 }

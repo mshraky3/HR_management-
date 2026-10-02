@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Task Progress Overview */
 .task-progress-overview {
   background: var(--bg);
@@ -352,4 +354,5 @@
   .task-progress-overview.compact .progress-bar-container {
     height: 16px;
   }
+}
 }

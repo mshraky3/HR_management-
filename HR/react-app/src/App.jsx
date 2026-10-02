@@ -18,12 +18,12 @@ import "./pages/TablePage.css";
 import { BrowserRouter as Router, Navigate, Route, Routes } from "react-router-dom";
 import { Suspense } from "react";
 import { Analytics } from "@vercel/analytics/react";
-import Layout from "./components/Layout.jsx";
-import BranchOpsLayout from "./components/BranchOpsLayout.jsx";
-import BranchManagerLayout from "./components/BranchManagerLayout.jsx";
+import { Spinner } from "./ui/feedback.jsx";
+import AppShell from "./ui/AppShell.jsx";
+import { RequireAuth, RequireRole, NotFound, ROLES } from "./ui/RouteGuards.jsx";
+import { ConfirmProvider } from "./ui/ConfirmProvider.jsx";
 import MaintenancePage from "./pages/MaintenancePage.jsx";
 import Login from "./pages/Login.jsx";
-import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { BackendErrorProvider } from "./contexts/BackendErrorContext.jsx";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import { NotificationProvider } from "./contexts/NotificationContext.jsx";
@@ -33,33 +33,8 @@ import { NotificationProvider } from "./contexts/NotificationContext.jsx";
 // Loading component for Suspense fallback
 // This is shown while lazy-loaded components are being fetched
 const PageLoading = () => (
-  <div
-    style={{
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      minHeight: "60vh",
-      flexDirection: "column",
-      gap: "20px",
-      padding: "40px",
-    }}
-  >
-    <div
-      className="spinner-large"
-      style={{
-        border: "4px solid rgba(73, 136, 196, 0.3)",
-        borderTop: "4px solid var(--primary, #4988C4)",
-      }}
-    ></div>
-    <div
-      style={{
-        color: "var(--text-secondary, #334155)",
-        fontSize: "16px",
-        fontWeight: "500",
-      }}
-    >
-      جاري التحميل...
-    </div>
+  <div className="ui-fullpage">
+    <Spinner size={36} label="جاري التحميل…" block />
   </div>
 );
 
@@ -125,33 +100,19 @@ const Beneficiaries = lazyRetry(() => import("./pages/Beneficiaries"));
 const BeneficiariesArchive = lazyRetry(() => import("./pages/BeneficiariesArchive"));
 const TestEmails = lazyRetry(() => import("./pages/TestEmails"));
 const EmployeeExpiry = lazyRetry(() => import("./pages/EmployeeExpiry"));
+const YearCycle = lazyRetry(() => import("./pages/YearCycle"));
+const BranchArchive = lazyRetry(() => import("./pages/BranchArchive"));
 
-// Wrapper component to choose layout based on role
-const RoleBasedLayout = ({ children }) => {
-  const { isMainManager, isBranchOperationsManager } = useAuth();
-  if (isMainManager()) return <Layout>{children}</Layout>;
-  if (isBranchOperationsManager()) return <BranchOpsLayout>{children}</BranchOpsLayout>;
-  return <BranchManagerLayout>{children}</BranchManagerLayout>;
-};
-
-const BlockBranchOpsRoute = ({ children, fallback = "/dashboard" }) => {
-  const { isBranchOperationsManager } = useAuth();
-
-  if (isBranchOperationsManager()) {
-    return <Navigate to={fallback} replace />;
-  }
-
-  return children;
-};
-
+// /branch-documents: operations managers get the multi-branch management screen, branch managers their own documents
 const BranchDocumentsRoute = () => {
   const { isBranchOperationsManager } = useAuth();
+  return isBranchOperationsManager() ? <BranchDocumentsManagement /> : <BranchDocuments />;
+};
 
-  return (
-    <RoleBasedLayout>
-      {isBranchOperationsManager() ? <BranchDocumentsManagement /> : <BranchDocuments />}
-    </RoleBasedLayout>
-  );
+// /archive: the head office manages the archive, a branch manager sees who left their branch
+const ArchiveRoute = () => {
+  const { isMainManager } = useAuth();
+  return isMainManager() ? <Archive /> : <BranchArchive />;
 };
 
 // App content component that checks for backend errors
@@ -163,344 +124,69 @@ const AppContent = () => {
     return <MaintenancePage />;
   }
 
-  // Otherwise show normal app routes
+  // One shell for every role; each group of routes is limited to the roles that may open it
+  // (the same lists feed the sidebar in ui/nav.config.js, and the API enforces them again).
   return (
     <Suspense fallback={<PageLoading />}>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <Dashboard />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/account-management"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <AccountManagement />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/branch-ops-accounts"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <BranchOpsAccounts />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/branches"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <Branches />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/employees"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <Employees />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/employees/:id"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <EmployeeDetails />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/employee-transfer"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <EmployeeTransfer />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/branch-documents"
-          element={
-            <ProtectedRoute>
-              <BranchDocumentsRoute />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/reports"
-          element={
-            <ProtectedRoute>
-              <BlockBranchOpsRoute>
-                <RoleBasedLayout>
-                  <Reports />
-                </RoleBasedLayout>
-              </BlockBranchOpsRoute>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/branch-documents-report"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <BranchDocumentsReport />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/employee-file"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <EmployeeFile />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/experience-certificate"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <ExperienceCertificate />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/notify-branches"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <NotifyBranches />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/archive"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <Archive />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/branch-statistics"
-          element={
-            <ProtectedRoute>
-              <BlockBranchOpsRoute>
-                <RoleBasedLayout>
-                  <BranchStatistics />
-                </RoleBasedLayout>
-              </BlockBranchOpsRoute>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/term-management"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <TermManagement />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/branches-monitoring"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <BranchDocumentsManagement />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/direct-contact"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <DirectContact />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/branch-info"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <BranchInfo />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/branch-requests"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <BranchRequests />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/manage-requests"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <ManageRequests />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/fix-missing-dates"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <FixMissingDates />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/payroll-absence-admin"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <PayrollAbsenceAdmin />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/employee-expiry"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <EmployeeExpiry />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/employee-statistics"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <EmployeeStatistics />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/employee-statistics-report"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <EmployeeStatisticsReport />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/bus-transportation-report"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <BusTransportationReport />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/students-report"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <BusTransportationReport />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/bus-transportation"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <BusTransportation />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/suggestions"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <Suggestions />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/beneficiaries"
-          element={
-            <ProtectedRoute>
-              <RoleBasedLayout>
-                <Beneficiaries />
-              </RoleBasedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/beneficiaries-archive"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <BeneficiariesArchive />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/test-emails"
-          element={
-            <ProtectedRoute requireMainManager>
-              <Layout>
-                <TestEmails />
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<RootRedirect />} />
+
+        <Route element={<RequireAuth />}>
+          <Route element={<AppShell />}>
+            {/* all roles */}
+            <Route element={<RequireRole roles={ROLES.ALL} />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/bus-transportation" element={<BusTransportation />} />
+              <Route path="/branch-documents" element={<BranchDocumentsRoute />} />
+            </Route>
+
+            {/* head office + branch managers */}
+            <Route element={<RequireRole roles={ROLES.MAIN_BRANCH} />}>
+              <Route path="/employees" element={<Employees />} />
+              <Route path="/employees/:id" element={<EmployeeDetails />} />
+              <Route path="/employee-expiry" element={<EmployeeExpiry />} />
+              <Route path="/employee-statistics" element={<EmployeeStatistics />} />
+              <Route path="/employee-statistics-report" element={<EmployeeStatisticsReport />} />
+              <Route path="/bus-transportation-report" element={<BusTransportationReport />} />
+              <Route path="/students-report" element={<BusTransportationReport />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/branch-statistics" element={<BranchStatistics />} />
+              <Route path="/beneficiaries" element={<Beneficiaries />} />
+              <Route path="/suggestions" element={<Suggestions />} />
+              <Route path="/archive" element={<ArchiveRoute />} />
+            </Route>
+
+            {/* branch managers only */}
+            <Route element={<RequireRole roles={ROLES.BRANCH} />}>
+              <Route path="/branch-info" element={<BranchInfo />} />
+              <Route path="/branch-requests" element={<BranchRequests />} />
+            </Route>
+
+            {/* head office only */}
+            <Route element={<RequireRole roles={ROLES.MAIN} />}>
+              <Route path="/year-cycle" element={<YearCycle />} />
+              <Route path="/account-management" element={<AccountManagement />} />
+              <Route path="/branch-ops-accounts" element={<BranchOpsAccounts />} />
+              <Route path="/branches" element={<Branches />} />
+              <Route path="/employee-transfer" element={<EmployeeTransfer />} />
+              <Route path="/branch-documents-report" element={<BranchDocumentsReport />} />
+              <Route path="/employee-file" element={<EmployeeFile />} />
+              <Route path="/experience-certificate" element={<ExperienceCertificate />} />
+              <Route path="/notify-branches" element={<NotifyBranches />} />
+              <Route path="/term-management" element={<TermManagement />} />
+              <Route path="/branches-monitoring" element={<BranchDocumentsManagement />} />
+              <Route path="/direct-contact" element={<DirectContact />} />
+              <Route path="/manage-requests" element={<ManageRequests />} />
+              <Route path="/fix-missing-dates" element={<FixMissingDates />} />
+              <Route path="/payroll-absence-admin" element={<PayrollAbsenceAdmin />} />
+              <Route path="/beneficiaries-archive" element={<BeneficiariesArchive />} />
+              <Route path="/test-emails" element={<TestEmails />} />
+            </Route>
+          </Route>
+        </Route>
+
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>
   );
@@ -526,10 +212,12 @@ function App() {
     <BackendErrorProvider>
       <AuthProvider>
         <NotificationProvider>
-          <Router>
-            <AppContent />
-            <Analytics />
-          </Router>
+          <ConfirmProvider>
+            <Router>
+              <AppContent />
+              <Analytics />
+            </Router>
+          </ConfirmProvider>
         </NotificationProvider>
       </AuthProvider>
     </BackendErrorProvider>

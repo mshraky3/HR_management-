@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .branch-documents-report-page {
     padding: 1.25rem;
     max-width: 1400px;
@@ -776,4 +778,5 @@
     .documents-cards-grid {
         grid-template-columns: repeat(3, 1fr);
     }
+}
 }

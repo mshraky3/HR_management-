@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Focus Task Card - Modern Glass Design */
 .focus-task-card {
   background: linear-gradient(145deg,
@@ -736,4 +738,5 @@
   100% {
     box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
   }
+}
 }

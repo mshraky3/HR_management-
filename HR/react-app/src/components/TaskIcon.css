@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Task Icon - Modern Style */
 .task-icon {
   display: inline-flex;
@@ -95,4 +97,5 @@
 
 [data-theme="dark"] .task-icon.icon-alert {
   background: linear-gradient(135deg, rgba(239, 68, 68, 0.18) 0%, rgba(220, 38, 38, 0.12) 100%);
+}
 }

@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .branch-info-container {
   padding: 2rem;
   max-width: 800px;
@@ -106,3 +108,5 @@
   }
 }
 
+
+}

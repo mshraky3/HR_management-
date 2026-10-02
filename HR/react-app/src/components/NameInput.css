@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .name-input-group {
   width: 100%;
 }
@@ -48,3 +50,5 @@
   }
 }
 
+
+}

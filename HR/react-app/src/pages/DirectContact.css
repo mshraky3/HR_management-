@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .direct-contact-container {
   padding: var(--spacing-xl);
   max-width: 1400px;
@@ -425,4 +427,6 @@
     align-items: flex-start;
     gap: var(--spacing-xs);
   }
+}
+
 }

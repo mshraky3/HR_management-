@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /**
  * Suggestions Page Styles
  */
@@ -712,4 +714,5 @@
     .stats-charts {
         grid-template-columns: 1fr;
     }
+}
 }

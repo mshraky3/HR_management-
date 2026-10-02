@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .ss-wrap {
     position: relative;
     min-width: 0;
@@ -135,4 +137,5 @@
     text-align: center;
     color: #a0aec0;
     font-size: 13px;
+}
 }

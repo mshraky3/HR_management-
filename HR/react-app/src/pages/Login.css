@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Login Page */
 .login-container {
   display: flex;
@@ -185,4 +187,6 @@
     padding: var(--spacing-sm);
     font-size: var(--font-size-xs);
   }
+}
+
 }

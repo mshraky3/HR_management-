@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /**
  * Beneficiaries Page Styles (المستفيدين)
  */
@@ -2258,4 +2260,6 @@
 .rollover-bus-note {
     color: #9a7b1f;
     font-size: 12px;
+}
+
 }

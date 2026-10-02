@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .unified-date-picker {
   position: relative;
   margin-bottom: var(--spacing-md, 1rem);
@@ -305,4 +307,5 @@
 .age-value {
   font-weight: 700;
   font-size: var(--font-size-base, 1rem);
+}
 }

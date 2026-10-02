@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* EmployeeExpiry Page Styles */
 
 .expiry-page {
@@ -785,4 +787,5 @@
     .expiry-table tbody td {
         padding: 8px 6px;
     }
+}
 }

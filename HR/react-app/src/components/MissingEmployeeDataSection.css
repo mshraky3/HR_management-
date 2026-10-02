@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Missing Employee Data Section - No Hover/Scale Effects */
 .missing-data-card {
     background: #fff;
@@ -427,4 +429,6 @@
 .missing-data-card .date-format-popup,
 .missing-data-card .date-format-popup * {
     animation: initial !important;
+}
+
 }

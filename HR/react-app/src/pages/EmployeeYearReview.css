@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /**
  * Employee-specific pieces of the year review that don't belong in the shared
  * ../styles/yearReview.css wizard chrome (used identically by Beneficiaries.jsx).
@@ -55,4 +57,6 @@
     align-self: flex-start;
     margin-top: 6px;
     cursor: pointer;
+}
+
 }

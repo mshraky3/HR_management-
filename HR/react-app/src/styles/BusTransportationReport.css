@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Bus Transportation Report - Full Width Design */
 
 .bus-report-page {
@@ -907,4 +909,5 @@
     .dropdown-header-modern {
         flex-direction: column;
     }
+}
 }

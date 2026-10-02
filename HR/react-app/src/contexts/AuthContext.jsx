@@ -322,7 +322,7 @@ export const AuthProvider = ({ children }) => {
             requiresOTP: true,
             maskedEmail: response.data.maskedEmail,
             username: response.data.username,
-            isUserOTP: response.data.isUserOTP || false,
+            otpSession: response.data.otp_session,
           };
         }
         // Main manager: direct login
@@ -337,7 +337,8 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       return {
         success: false,
-        message: error.response?.data?.message || "Login failed",
+        message: error.response?.data?.message || "فشل تسجيل الدخول",
+        locked: error.response?.data?.locked,
         noEmail: error.response?.data?.noEmail,
         username: error.response?.data?.username,
         branchName: error.response?.data?.branchName,
@@ -345,9 +346,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const completeOTPLogin = async (username, otp, isUserOTP = false) => {
+  const completeOTPLogin = async (otpSession, otp) => {
     try {
-      const response = await authAPI.verifyOTP(username, otp, isUserOTP);
+      const response = await authAPI.verifyOTP(otpSession, otp);
       if (response.data.success) {
         const { token: newToken, user: userData } = response.data;
         localStorage.setItem("token", newToken);
@@ -361,8 +362,30 @@ export const AuthProvider = ({ children }) => {
       return {
         success: false,
         message: error.response?.data?.message || "فشل التحقق من الرمز",
-        expired: error.response?.data?.expired,
+        // Code expired / too many tries / login session expired: the user has to start again
+        expired: error.response?.data?.expired || error.response?.data?.sessionExpired,
       };
+    }
+  };
+
+  // Changes the signed-in account's own password. The server signs out every other session
+  // and returns a fresh token for this one.
+  const changePassword = async (currentPassword, newPassword) => {
+    try {
+      const response = await authAPI.changePassword(currentPassword, newPassword);
+      if (response.data.success) {
+        localStorage.setItem("token", response.data.token);
+        setToken(response.data.token);
+        setUser((prev) => {
+          const next = prev ? { ...prev, must_change_password: false } : prev;
+          if (next) localStorage.setItem("user", JSON.stringify(next));
+          return next;
+        });
+        return { success: true };
+      }
+      return { success: false, message: response.data.message };
+    } catch (error) {
+      return { success: false, message: error.response?.data?.message || "فشل تغيير كلمة المرور" };
     }
   };
 
@@ -421,6 +444,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     completeOTPLogin,
+    changePassword,
     logout,
     markActivity,
     isMainManager,

@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .religion-select select {
   width: 100%;
   padding: var(--spacing-sm) var(--spacing-md);
@@ -19,3 +21,5 @@
   color: var(--danger);
 }
 
+
+}

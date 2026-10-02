@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* App-level styles */
 /* Note: buttons.css and containers.css are now loaded in main.jsx
  * to prevent FOUC (Flash of Unstyled Content) when lazy-loading pages
@@ -394,4 +396,5 @@ button:disabled::before {
   .responsive-table-wrapper {
     overflow-x: visible;
   }
+}
 }

@@ -983,6 +983,34 @@ router.get("/year-review/overview", requireMainManager, async (req, res) => {
 });
 
 // Get employees with server-side pagination (optimized for large datasets)
+// Employees who left (archived statuses), limited to the caller's branch(es).
+// Read-only list for branch managers (the head office has the full Archive screen).
+router.get("/left", async (req, res) => {
+  try {
+    if (!["main_manager", "branch_manager"].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: "تم رفض الوصول" });
+    }
+    const branchIds = req.user.role === "branch_manager"
+      ? [Number(req.user.branch_id)]
+      : (req.query.branch_id ? [parseInt(req.query.branch_id, 10)] : null);
+
+    const rows = await sql`
+      SELECT e.id, e.first_name, e.second_name, e.third_name, e.fourth_name, e.job_title, e.nationality,
+             e.id_or_residency_number, e.branch_id, e.status, e.status_change_reason, e.status_changed_at,
+             e.last_working_day, e.rehire_eligible, e.exit_notes
+      FROM employees e
+      WHERE e.status NOT IN ('active', 'pending')
+        AND e.status IS NOT NULL
+        ${branchIds ? sql`AND e.branch_id = ANY(${branchIds}::int[])` : sql``}
+      ORDER BY e.status_changed_at DESC NULLS LAST
+      LIMIT 1000
+    `;
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    handleRouteError(error, req, res, 'فشل جلب من غادروا');
+  }
+});
+
 router.get("/paginated", async (req, res) => {
   try {
     const { Employee } = await import("../models/Employee.js");

@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Employee Transfer & Multi-Branch Page Styles */
 
 .transfer-section {
@@ -261,4 +263,5 @@
         min-width: unset;
         width: 100%;
     }
+}
 }

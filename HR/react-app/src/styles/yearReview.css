@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /**
  * Shared "year-end review wizard" chrome — extracted from Beneficiaries.css.
  *
@@ -783,4 +785,6 @@
 
 .rollover-checklist-add {
     justify-content: space-between;
+}
+
 }

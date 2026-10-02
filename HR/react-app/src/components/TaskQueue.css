@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Task Queue */
 .task-queue {
   background: var(--bg);
@@ -302,4 +304,6 @@
     align-items: flex-start;
     gap: var(--spacing-sm);
   }
+}
+
 }

@@ -496,8 +496,10 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       const errorMessage = error.response?.data?.message || '';
 
-      // Check if this is an authentication error
+      // Check if this is an authentication error (the API sends code AUTH_*; the message checks keep old servers working)
+      const errorCode = error.response?.data?.code || '';
       const isAuthError =
+        String(errorCode).startsWith('AUTH_') ||
         errorMessage.includes('token') ||
         errorMessage.includes('Token') ||
         errorMessage.includes('Authentication required') ||
@@ -522,11 +524,15 @@ export const authAPI = {
   login: (username, password) =>
     api.post('/api/auth/login', { username, password }),
 
-  verifyOTP: (username, otp, isUserOTP = false) =>
-    api.post('/api/auth/verify-otp', { username, otp, isUserOTP }),
+  // The OTP steps are authorised by the otp_session returned from login (proof that the password step passed).
+  verifyOTP: (otpSession, otp) =>
+    api.post('/api/auth/verify-otp', { otp_session: otpSession, otp }),
 
-  resendOTP: (username, isUserOTP = false) =>
-    api.post('/api/auth/resend-otp', { username, isUserOTP }),
+  resendOTP: (otpSession) =>
+    api.post('/api/auth/resend-otp', { otp_session: otpSession }),
+
+  changePassword: (currentPassword, newPassword) =>
+    api.put('/api/auth/change-password', { current_password: currentPassword, new_password: newPassword }),
 
   requestEmailUpdate: (username, newEmail) =>
     api.post('/api/auth/request-email-update', { username, newEmail }),
@@ -652,6 +658,29 @@ export const employeesAPI = {
 
   updateStatus: (id, data) =>
     api.put(`/api/employees/${id}/status`, data),
+
+  // End of service: { status, reason?, last_working_day?, exit_notes?, rehire_eligible? }
+  offboard: (id, data) =>
+    api.post(`/api/employees/${id}/offboard`, data),
+
+  bulkArchive: (data) =>
+    api.post('/api/employees/bulk/archive', data),
+
+  bulkTransfer: (data) =>
+    api.post('/api/employees/bulk/transfer', data),
+
+  // Employees of the caller's branch(es) who left (read-only list)
+  getLeft: (params = {}) =>
+    api.get('/api/employees/left', { params }),
+
+  getHistory: (id) =>
+    api.get(`/api/employees/${id}/history`),
+
+  getNotes: (id) =>
+    api.get(`/api/employees/${id}/notes`),
+
+  addNote: (id, note) =>
+    api.post(`/api/employees/${id}/notes`, { note }),
 
   renew: (id) =>
     api.post(`/api/employees/${id}/renew`),

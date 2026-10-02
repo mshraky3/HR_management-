@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .bus-transportation-container {
   padding: 2rem;
   max-width: 1400px;
@@ -3030,4 +3032,5 @@ html {
   .details-actions-bar button {
     width: 100%;
   }
+}
 }

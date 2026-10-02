@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .term-management-page {
   padding: var(--spacing-xl);
   max-width: 1400px;
@@ -442,4 +444,5 @@
   .years-grid {
     grid-template-columns: 1fr;
   }
+}
 }

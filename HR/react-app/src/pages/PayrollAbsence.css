@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Payroll Absence Page - Modern Design */
 .payroll-absence-page {
   width: 100%;
@@ -887,4 +889,5 @@
   border-radius: var(--radius-full, 9999px);
   margin-right: var(--spacing-sm, 0.5rem);
   font-weight: 600;
+}
 }

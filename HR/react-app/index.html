@@ -3,21 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap"
-      rel="stylesheet"
-    />
     <link rel="icon" type="image/png" href="/logo-for-tab/Gemini_Generated_Image_rpacgjrpacgjrpac-removebg-preview.png" />
     <link rel="shortcut icon" type="image/png" href="/logo-for-tab/Gemini_Generated_Image_rpacgjrpacgjrpac-removebg-preview.png" />
     <title>نظام إدارة الموارد البشرية</title>
   </head>
   <body>
     <div id="root">
-      <div style="padding: 20px; text-align: center; font-family: Arial;">
-        <p>Loading application...</p>
+      <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;font-family:Tahoma,Arial,sans-serif;color:#475569;background:#f4f7fb;">
+        <div style="width:36px;height:36px;border:3px solid #e2e8f0;border-top-color:#215f9a;border-radius:50%;animation:boot-spin .8s linear infinite;"></div>
+        <p style="margin:0;font-size:15px;">جاري تحميل النظام…</p>
       </div>
+      <style>@keyframes boot-spin{to{transform:rotate(360deg)}}</style>
     </div>
     <script>
       // Debug: Check if JavaScript is running
@@ -30,7 +26,7 @@
       setTimeout(function() {
         if (!window.reactMounted) {
           const root = document.getElementById('root');
-          if (root && root.children.length === 1 && root.children[0].textContent.includes('Loading')) {
+          if (root && root.textContent.includes('جاري تحميل النظام')) {
             // Check if scripts are loading
             const scripts = document.querySelectorAll('script[type="module"]');
             let scriptStatus = 'No module scripts found';

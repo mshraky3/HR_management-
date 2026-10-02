@@ -1,10 +1,23 @@
 import { createRoot } from "react-dom/client";
 
+// Self-hosted Cairo (Arabic + Latin subsets, 400-700): no third-party font request, works offline.
+import "@fontsource/cairo/arabic-400.css";
+import "@fontsource/cairo/arabic-500.css";
+import "@fontsource/cairo/arabic-600.css";
+import "@fontsource/cairo/arabic-700.css";
+import "@fontsource/cairo/latin-400.css";
+import "@fontsource/cairo/latin-500.css";
+import "@fontsource/cairo/latin-600.css";
+import "@fontsource/cairo/latin-700.css";
 // Load critical CSS first - before any components
 import "./index.css";
 // Load shared styles immediately to prevent FOUC (Flash of Unstyled Content)
 import "./styles/buttons.css";
 import "./styles/containers.css";
+// Design system: tokens and the in-place restyle. Unlayered, so it always beats the legacy layer.
+import "./styles/tokens.css";
+import "./styles/design-system.css";
+import "./ui/ui.css";
 import { initErrorTracking } from "./utils/errorTracking.js";
 import { StrictMode } from "react";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";

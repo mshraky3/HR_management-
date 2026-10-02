@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .archive-page {
   padding: var(--spacing-xl);
   max-width: 1400px;
@@ -542,4 +544,5 @@
 .btn-success:disabled {
   background-color: #a5d6a7;
   cursor: not-allowed;
+}
 }

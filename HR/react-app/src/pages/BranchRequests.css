@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .branch-requests-container {
   padding: 2rem;
   max-width: 1400px;
@@ -287,4 +289,6 @@
   .detail-label {
     min-width: auto;
   }
+}
+
 }

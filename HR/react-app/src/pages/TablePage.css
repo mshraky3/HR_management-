@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Table Page Styles */
 .table-page {
   width: 100%;
@@ -2061,4 +2063,5 @@ tbody tr:last-child td:last-child {
   border-right-width: 3px;
   border-right-color: #4CAF50;
   background: rgba(76, 175, 80, 0.05);
+}
 }

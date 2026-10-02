@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /**
  * Unified Button System
  * Consistent button styles across the entire application
@@ -297,3 +299,5 @@
   }
 }
 
+
+}

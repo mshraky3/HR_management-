@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .branch-badge-inline {
     display: inline-flex;
     align-items: center;
@@ -7,4 +9,5 @@
 .branch-badge-name {
     font-weight: 600;
     color: var(--text);
+}
 }

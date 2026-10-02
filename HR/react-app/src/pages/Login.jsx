@@ -15,8 +15,8 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
 
   const [otpStep, setOtpStep] = useState(false);
-  const [otpUsername, setOtpUsername] = useState('');
-  const [isUserOTP, setIsUserOTP] = useState(false);
+  const [, setOtpUsername] = useState('');
+  const [otpSession, setOtpSession] = useState('');
   const [maskedEmail, setMaskedEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -47,7 +47,7 @@ const Login = () => {
     if (result.success && result.requiresOTP) {
       setOtpUsername(result.username);
       setMaskedEmail(result.maskedEmail || '');
-      setIsUserOTP(result.isUserOTP || false);
+      setOtpSession(result.otpSession || '');
       setOtpStep(true);
       setResendCooldown(60);
     } else if (result.success) {
@@ -65,15 +65,15 @@ const Login = () => {
 
   const handleOTPSubmit = async (e) => {
     e.preventDefault();
-    if (otp.length !== 4) {
-      setError('أدخل الرمز المكوّن من 4 أرقام');
+    if (otp.length !== 6) {
+      setError('أدخل الرمز المكوّن من 6 أرقام');
       return;
     }
 
     setError('');
     setLoading(true);
 
-    const result = await completeOTPLogin(otpUsername, otp, isUserOTP);
+    const result = await completeOTPLogin(otpSession, otp);
 
     if (result.success) {
       navigate('/dashboard');
@@ -95,7 +95,7 @@ const Login = () => {
     setError('');
     setLoading(true);
     try {
-      const response = await authAPI.resendOTP(otpUsername, isUserOTP);
+      const response = await authAPI.resendOTP(otpSession);
       if (response.data.success) {
         setResendCooldown(60);
         setMaskedEmail(response.data.maskedEmail || maskedEmail);
@@ -104,6 +104,11 @@ const Login = () => {
       }
     } catch (err) {
       setError(err.response?.data?.message || 'فشل إعادة إرسال الرمز');
+      if (err.response?.data?.sessionExpired) {
+        // The login session ran out: start again from the password step
+        setOtpStep(false);
+        setOtp('');
+      }
     }
     setLoading(false);
   };
@@ -188,19 +193,19 @@ const Login = () => {
                 id="otp"
                 type="text"
                 inputMode="numeric"
-                pattern="[0-9]{4}"
-                maxLength={4}
+                pattern="[0-9]{6}"
+                maxLength={6}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                 required
                 disabled={loading}
-                placeholder="xxxx"
+                placeholder="000000"
                 autoComplete="one-time-code"
                 style={{ letterSpacing: '0.4em', fontSize: '1.5rem', textAlign: 'center' }}
               />
             </div>
 
-            <button type="submit" disabled={loading || otp.length !== 4} className="login-button">
+            <button type="submit" disabled={loading || otp.length !== 6} className="login-button">
               {loading ? 'جاري التحقق...' : 'تأكيد الدخول'}
             </button>
 

@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /**
  * Unified Container System
  * Consistent container sizes and spacing across the application
@@ -210,3 +212,5 @@
   }
 }
 
+
+}

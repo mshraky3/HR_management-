@@ -4,6 +4,7 @@
  */
 
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import Icon from "../ui/Icon";
 
 // Ensure a single context instance even if Vite loads this module twice
 // (e.g. different dev query strings like `?v=dev` causing duplicate module ids).
@@ -114,34 +115,32 @@ export const NotificationProvider = ({ children }) => {
   return (
     <NotificationContext.Provider value={value}>
       {children}
-      {/* Toast Notifications Container */}
-      <div className="notifications-container">
-        {notifications.map((notification) => (
-          <div
-            key={notification.id}
-            className={`notification-toast notification-${notification.type}`}
-            onClick={() => removeNotification(notification.id)}
-          >
-            <div className="notification-content">
-              <span className="notification-icon">
-                {notification.type === "success" && "✓"}
-                {notification.type === "error" && "✗"}
-                {notification.type === "warning" && (
-                  <img
-                    src="https://img.icons8.com/material-rounded/20/error.png"
-                    alt="تحذير"
-                    style={{ width: "20px", height: "20px" }}
-                  />
-                )}
-                {notification.type === "info" && "ℹ"}
-                {notification.type === "server-error" && "⚠️"}
-              </span>
-              <span className="notification-message">
-                {notification.message}
-              </span>
+      {/* Toasts: polite live region; errors are announced assertively */}
+      <div className="ui-toasts" aria-live="polite" aria-atomic="false">
+        {notifications.map((notification) => {
+          const isError = notification.type === "error" || notification.type === "server-error";
+          const icon = notification.type === "success" ? "check-circle"
+            : isError ? "x-circle"
+              : notification.type === "warning" ? "alert" : "info";
+          return (
+            <div
+              key={notification.id}
+              className={`ui-toast ui-toast-${notification.type}`}
+              role={isError ? "alert" : "status"}
+            >
+              <Icon name={icon} size={20} />
+              <span className="ui-toast-message">{notification.message}</span>
+              <button
+                type="button"
+                className="ui-toast-close"
+                onClick={() => removeNotification(notification.id)}
+                aria-label="إغلاق التنبيه"
+              >
+                <Icon name="x" size={16} />
+              </button>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </NotificationContext.Provider>
   );

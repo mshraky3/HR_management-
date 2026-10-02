@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 .nationality-select {
   position: relative;
 }
@@ -65,3 +67,5 @@
   background: var(--text-light);
 }
 
+
+}

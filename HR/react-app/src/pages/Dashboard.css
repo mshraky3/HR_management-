@@ -1,3 +1,5 @@
+/* @layer legacy */
+@layer legacy {
 /* Dashboard Page */
 .dashboard {
   width: 100%;
@@ -1850,4 +1852,5 @@ html {
   .completion-description {
     font-size: var(--font-size-sm);
   }
+}
 }
