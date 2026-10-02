@@ -48,6 +48,12 @@ const emailRequestLimiter = rateLimit({
   key: (req) => `${clientIp(req)}:${String(req.body?.username || '').toLowerCase()}`
 });
 
+function devSkipsOtp(username) {
+  if (process.env.VERCEL || process.env.NODE_ENV === 'production') return false;
+  const allowed = String(process.env.DEV_SKIP_OTP_USERNAMES || '').split(',').map((u) => u.trim()).filter(Boolean);
+  return allowed.includes(username);
+}
+
 function userPayload(account, extra = {}) {
   return {
     id: account.id,
@@ -154,6 +160,20 @@ router.post('/login', loginLimiter, async (req, res) => {
 
     // --- branch account: password OK -> e-mailed code -------------------------
     if (kind === 'branch') {
+      // Local development only: DEV_SKIP_OTP_USERNAMES=bbbb signs that branch in without the e-mailed code.
+      // Ignored on Vercel and when NODE_ENV=production, so it can never weaken the live system.
+      if (devSkipsOtp(account.username)) {
+        await registerLoginSuccess('branch', account.id);
+        await logLoginEvent('branch', account.id, account.username, 'login_ok_dev_skip_otp', req);
+        const devAccount = branchAccount(account);
+        await trackBranchDailyLogin(account.id, null, req);
+        return res.json({
+          success: true,
+          message: 'تم تسجيل الدخول بنجاح',
+          token: generateToken({ ...devAccount, kind: 'branch' }),
+          user: userPayload(devAccount)
+        });
+      }
       if (!account.email) {
         return res.status(400).json({
           success: false,
