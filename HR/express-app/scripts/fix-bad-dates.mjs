@@ -150,12 +150,14 @@ const outFile = path.resolve(`date-fix-before-${stamp}.json`);
 fs.writeFileSync(outFile, JSON.stringify([...plan.values()].map(({ table, id, before, after }) => ({ table, id, before, after })), null, 1));
 console.log(`\nBefore-image saved: ${outFile}`);
 
+const [{ has_audit }] = await sql`SELECT to_regclass('public.audit_log') IS NOT NULL AS has_audit`;
+if (!has_audit) console.log('audit_log table does not exist yet (migration 026 not applied): skipping audit entries; the before-image file is the record.');
 await sql.begin(async (tx) => {
   for (const p of plan.values()) {
     const cols = Object.keys(p.after);
     const sets = cols.map((c, i) => `${c} = ${isHijriCol(c) ? `$${i + 2}` : `$${i + 2}::date`}`).join(', ');
     await tx.unsafe(`UPDATE ${p.table} SET ${sets} WHERE id = $1`, [p.id, ...cols.map((c) => p.after[c])]);
-    if (p.table === 'employees') {
+    if (has_audit && p.table === 'employees') {
       await tx`
         INSERT INTO audit_log (entity_type, entity_id, action, actor_kind, actor_name, changes)
         VALUES ('employee', ${p.id}, 'data_fix_dates', NULL, 'system: fix-bad-dates', ${tx.json({ before: p.before, after: p.after })})`;
