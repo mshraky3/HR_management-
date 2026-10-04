@@ -42,25 +42,22 @@ const BranchStatistics = () => {
         const stats = response.data.data || [];
         setStatistics(stats);
 
-        // Load documents for all branches to calculate overall progress
+        // Load documents for all branches to calculate overall progress.
+        // One call: without branch_id the API already returns every document
+        // the user may see (same rows as one call per branch, which used to be
+        // 1 + 29 requests, each re-running the expiry archive), grouped here.
         const documentsMap = {};
-        await Promise.all(
-          stats.map(async (stat) => {
-            try {
-              const docsResponse = await branchDocumentsAPI.getAll({
-                branch_id: stat.branch_id
-              });
-              if (docsResponse.data.success) {
-                documentsMap[stat.branch_id] = docsResponse.data.data || [];
-              } else {
-                documentsMap[stat.branch_id] = [];
-              }
-            } catch (error) {
-              console.error(`Error loading documents for branch ${stat.branch_id}:`, error);
-              documentsMap[stat.branch_id] = [];
-            }
-          })
-        );
+        stats.forEach((stat) => { documentsMap[stat.branch_id] = []; });
+        try {
+          const docsResponse = await branchDocumentsAPI.getAll();
+          if (docsResponse.data.success) {
+            (docsResponse.data.data || []).forEach((doc) => {
+              if (documentsMap[doc.branch_id]) documentsMap[doc.branch_id].push(doc);
+            });
+          }
+        } catch (error) {
+          console.error('Error loading branch documents:', error);
+        }
         setBranchDocuments(documentsMap);
       }
     } catch (error) {

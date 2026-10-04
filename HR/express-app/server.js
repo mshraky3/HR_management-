@@ -36,7 +36,7 @@ app.use(compression({
     // Use compression for all text-based responses
     return compression.filter(req, res);
   },
-  level: 6, // Balance between compression ratio and CPU usage (1-9, 6 is optimal)
+  level: 1, // Several times cheaper than 6 for ~10-15% larger payloads; every ms is billed function time
   threshold: 1024, // Only compress responses larger than 1KB
 }));
 
@@ -46,7 +46,11 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'X-Branch-Documents-Password', 'x-branch-documents-password'],
   credentials: true,
-  optionsSuccessStatus: 204
+  optionsSuccessStatus: 204,
+  // The SPA is on another domain (hr-react-theta), so without this the browser
+  // re-asks with a preflight (a separate function call) before nearly every
+  // request. 7200 s is Chrome's ceiling.
+  maxAge: 7200
 }));
 
 app.use(express.json());
@@ -97,17 +101,36 @@ async function schemaFingerprint() {
     hash.update(readFileSync(new URL(file, migrationsDir)));
   }
   const week = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
-  return `${hash.digest('hex')}:${week}`;
+  const code = hash.digest('hex');
+  return { code, full: `${code}:${week}` };
 }
+
+// Requests wait on this before reaching a route. Until 2026-10-03 the schema
+// check ran detached, so a release whose code needed new columns served
+// requests before its migrations ran (and Vercel froze the function after
+// the first response, so they never finished): login returned 500 for hours.
+// It resolves at once when the schema matches this code - including when
+// only the weekly safety re-run is due, which then continues in the
+// background - and only after DDL + migrations when the code changed.
+let releaseSchemaGate;
+const schemaGate = new Promise((resolve) => { releaseSchemaGate = resolve; });
 
 async function ensureSchemaCurrent() {
   let fingerprint = null;
   try {
-    fingerprint = await schemaFingerprint();
+    const fp = await schemaFingerprint();
+    fingerprint = fp.full;
     const [row] = await sql`SELECT fingerprint FROM schema_fingerprint WHERE id = 1`.catch(() => []);
     if (row?.fingerprint === fingerprint && process.env.FORCE_DB_INIT !== 'true') {
       log.info('Schema unchanged since last init - skipping DDL and migrations');
       return;
+    }
+    const codeUnchanged = typeof row?.fingerprint === 'string'
+      && row.fingerprint.startsWith(`${fp.code}:`)
+      && process.env.FORCE_DB_INIT !== 'true';
+    if (codeUnchanged) {
+      log.info('Weekly schema re-check due - running in the background');
+      releaseSchemaGate();
     }
   } catch (error) {
     // Fail open: if the check itself breaks, do exactly what this used to do.
@@ -159,7 +182,13 @@ async function startup() {
   // Only run if not in Vercel or if explicitly enabled
   // On Vercel, tables should already exist, but this ensures they're created if needed
   if (process.env.INIT_DB_ON_STARTUP !== 'false') {
-    await ensureSchemaCurrent();
+    try {
+      await ensureSchemaCurrent();
+    } finally {
+      releaseSchemaGate();
+    }
+  } else {
+    releaseSchemaGate();
   }
 
   // Initialize daily alerts for main manager
@@ -174,6 +203,31 @@ async function startup() {
 // Run startup asynchronously (don't block server start)
 startup().catch(err => {
   log.error('Startup error', { error: err.message });
+  releaseSchemaGate();
+});
+
+// Hold requests until the schema gate opens (see schemaGate above). Bounded,
+// so a slow or unreachable database cannot hold a request past the function
+// limit: after the wait the request is served anyway, as it was before.
+const SCHEMA_WAIT_MS = 8000;
+let schemaReady = false;
+schemaGate.then(() => { schemaReady = true; });
+app.use((req, res, next) => {
+  if (schemaReady) return next();
+  let handedOff = false;
+  const proceed = () => {
+    if (handedOff) return;
+    handedOff = true;
+    next();
+  };
+  const giveUp = setTimeout(() => {
+    log.warn(`Schema setup still running after ${SCHEMA_WAIT_MS}ms, serving request anyway`);
+    proceed();
+  }, SCHEMA_WAIT_MS);
+  schemaGate.then(() => {
+    clearTimeout(giveUp);
+    proceed();
+  });
 });
 
 // Performance Optimization: Add caching headers for static data

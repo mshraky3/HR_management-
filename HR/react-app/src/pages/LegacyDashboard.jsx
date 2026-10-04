@@ -431,18 +431,28 @@ const LegacyDashboard = () => {
     loadStats();
   }, [location.pathname, loadStats]); // Reload when route changes (including returning to Dashboard)
 
-  // Also reload when page becomes visible (user switches back to tab/window)
+  // Also reload when page becomes visible (user switches back to tab/window).
+  // Returning to the tab fires both 'visibilitychange' and 'focus', which used
+  // to load everything twice; one reload per 15 s is enough.
+  const lastAutoReloadRef = useRef(0);
   useEffect(() => {
+    const reloadIfStale = () => {
+      const now = Date.now();
+      if (now - lastAutoReloadRef.current < 15000) return;
+      lastAutoReloadRef.current = now;
+      loadStats();
+    };
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         // Reload data when page becomes visible to ensure fresh data
-        loadStats();
+        reloadIfStale();
       }
     };
 
     const handleFocus = () => {
       // Reload data when window regains focus
-      loadStats();
+      reloadIfStale();
     };
 
     // Listen for branch info updates from BranchInfo page
