@@ -68,8 +68,9 @@ router.post('/', optionalAuth, async (req, res) => {
             userId: errorData.userId,
         });
 
-        // Send email notification (async - don't wait)
-        sendErrorNotification(errorData).catch(err => {
+        // Send the email before answering: on Vercel the function is frozen once the
+        // response is sent, so a fire-and-forget send can be dropped silently.
+        await sendErrorNotification(errorData).catch(err => {
             log.error('Failed to send error notification from route', { error: err.message });
         });
 
@@ -124,8 +125,8 @@ router.post('/batch', optionalAuth, async (req, res) => {
                 source: 'FRONTEND_BATCH',
             };
 
-            // Send notifications (don't wait for each)
-            sendErrorNotification(errorData).catch(() => { });
+            // Await each send: the function is frozen after the response (see above)
+            await sendErrorNotification(errorData).catch(() => { });
             processed++;
         }
 

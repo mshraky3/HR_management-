@@ -1450,7 +1450,7 @@ const Employees = () => {
         `يوجد ${existingCount} مستند ${existingCount > 1 ? "موجودة" : "موجود"} مسبقاً لهذا النوع.\n\n` +
         `رفع مستند جديد سيحذف المستند(ات) الموجودة.\n\n` +
         `هل تريد المتابعة؟`;
-      if (!await await confirm({ message: { message: message } })) {
+      if (!await confirm({ message })) {
         // Reset the file input
         if (inputElement) {
           inputElement.value = "";

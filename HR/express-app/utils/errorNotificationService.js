@@ -130,7 +130,7 @@ function getErrorSeverity(errorData) {
   }
 
   // Unknown errors are treated as high
-  if (errorType === 'UNKNOWN_ERROR' || errorType === 'UNHANDLED_ERROR') {
+  if (errorType === 'UNKNOWN_ERROR' || errorType === 'UNHANDLED_ERROR' || errorType === 'RENDER_ERROR') {
     return 'HIGH';
   }
 
