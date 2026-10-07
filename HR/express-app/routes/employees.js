@@ -1030,6 +1030,7 @@ router.get("/paginated", async (req, res) => {
       occupation: req.query.occupation,
       data_completion_status: req.query.data_completion_status,
       status: req.query.status,
+      search: req.query.search,
       search_name: req.query.search_name,
       search_id: req.query.search_id,
       search_phone: req.query.search_phone,
@@ -2486,6 +2487,7 @@ router.get("/", async (req, res) => {
       ),
       contract_type: parseArrayFilter(req.query.contract_type),
       // Search filters (only for main manager)
+      search: req.query.search,
       search_name: req.query.search_name,
       search_id: req.query.search_id,
       search_phone: req.query.search_phone,

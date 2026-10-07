@@ -90,6 +90,7 @@ router.get('/', async (req, res) => {
       registration_date_to: req.query.registration_date_to,
       status_change_date_from: req.query.status_change_date_from,
       status_change_date_to: req.query.status_change_date_to,
+      search: req.query.search,
       search_name: req.query.search_name,
       search_id: req.query.search_id
     };
@@ -671,6 +672,7 @@ router.get('/export', async (req, res) => {
       registration_date_to: req.query.registration_date_to,
       status_change_date_from: req.query.status_change_date_from,
       status_change_date_to: req.query.status_change_date_to,
+      search: req.query.search,
       search_name: req.query.search_name,
       search_id: req.query.search_id
       // No pagination for export - get all matching records

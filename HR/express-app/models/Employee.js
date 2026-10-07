@@ -6,6 +6,19 @@
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
 
+/**
+ * Universal employee search: one term matched against the name (full or any part), ID / residency number,
+ * employee number, phone, email and job title. Returns the SQL condition for placeholder $n.
+ */
+const universalSearchSql = (n) => `(
+          TRIM(COALESCE(e.first_name, '') || ' ' || COALESCE(e.second_name, '') || ' ' || COALESCE(e.third_name, '') || ' ' || COALESCE(e.fourth_name, '')) ILIKE $${n} OR
+          e.id_or_residency_number ILIKE $${n} OR
+          e.employee_id_number ILIKE $${n} OR
+          e.phone_number ILIKE $${n} OR
+          e.email ILIKE $${n} OR
+          e.occupation ILIKE $${n}
+        )`;
+
 export const Employee = {
   /**
    * Find employee by ID
@@ -201,6 +214,12 @@ export const Employee = {
       }
 
       // Search by name (partial match on full name or any individual name field)
+      if (filters.search && String(filters.search).trim()) {
+        conditions.push(universalSearchSql(paramIndex));
+        params.push(`%${String(filters.search).trim()}%`);
+        paramIndex++;
+      }
+
       if (filters.search_name && filters.search_name.trim()) {
         const namePattern = `%${filters.search_name.trim()}%`;
         conditions.push(`(
@@ -325,6 +344,12 @@ export const Employee = {
       if (filters.data_completion_status) {
         conditions.push(`data_completion_status = $${paramIndex++}`);
         params.push(filters.data_completion_status);
+      }
+
+      if (filters.search && String(filters.search).trim()) {
+        conditions.push(universalSearchSql(paramIndex));
+        params.push(`%${String(filters.search).trim()}%`);
+        paramIndex++;
       }
 
       if (filters.search_name && filters.search_name.trim()) {
@@ -754,6 +779,12 @@ export const Employee = {
         params.push(filters.status_change_date_to);
       }
       // Server-side search by name (using ILIKE for partial match on full name or individual fields)
+      if (filters.search && String(filters.search).trim()) {
+        conditions.push(universalSearchSql(paramIndex));
+        params.push(`%${String(filters.search).trim()}%`);
+        paramIndex++;
+      }
+
       if (filters.search_name && filters.search_name.trim()) {
         const namePattern = `%${filters.search_name.trim()}%`;
         conditions.push(`(

@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import {
-  Page, PageHeader, Card, Tabs, Button, Badge, StatusBadge, FormField, Input, Select, Textarea, DataTable, Pagination,
+  Page, PageHeader, Card, Tabs, Button, Badge, StatusBadge, FormField, Input, SearchInput, Select, Textarea, DataTable, Pagination,
   Modal, Alert, Skeleton, EmptyState, useConfirm,
 } from '../ui';
 import { archiveAPI, branchesAPI, documentsAPI, branchDocumentsAPI } from '../utils/api';
@@ -65,8 +65,7 @@ const Archive = () => {
     emp_doc_document_type: '',
     emp_doc_employee_id: '',
     // Employee filters
-    search_name: '',
-    search_id: '',
+    search: '',
     branch_id: '',
     status: '',
     academic_year: '',
@@ -142,11 +141,8 @@ const Archive = () => {
       const filterParams = {};
 
       // Add search filters (now server-side)
-      if (filters.search_name) {
-        filterParams.search_name = filters.search_name;
-      }
-      if (filters.search_id) {
-        filterParams.search_id = filters.search_id;
+      if (filters.search.trim()) {
+        filterParams.search = filters.search.trim();
       }
       if (filters.branch_id) {
         filterParams.branch_id = parseInt(filters.branch_id);
@@ -242,7 +238,7 @@ const Archive = () => {
       loadArchivedEmployees(1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.search_name, filters.search_id, filters.branch_id, filters.status,
+  }, [filters.search, filters.branch_id, filters.status,
   filters.academic_year, filters.registration_date_from, filters.registration_date_to,
   filters.status_change_date_from, filters.status_change_date_to, itemsPerPage]);
 
@@ -548,8 +544,7 @@ const Archive = () => {
       const filterParams = {};
 
       // Build filter params same as loadArchivedEmployees
-      if (filters.search_name) filterParams.search_name = filters.search_name;
-      if (filters.search_id) filterParams.search_id = filters.search_id;
+      if (filters.search.trim()) filterParams.search = filters.search.trim();
       if (filters.branch_id) filterParams.branch_id = parseInt(filters.branch_id);
       if (filters.status) filterParams.status = filters.status;
       if (filters.academic_year) filterParams.academic_year = filters.academic_year;
@@ -639,7 +634,7 @@ const Archive = () => {
   const resetFilters = () => {
     setFilters((prev) => ({
       ...prev,
-      search_name: '', search_id: '', branch_id: '', status: '', academic_year: '',
+      search: '', branch_id: '', status: '', academic_year: '',
       registration_date_from: '', registration_date_to: '', status_change_date_from: '', status_change_date_to: '',
     }));
     setCurrentPage(1);
@@ -732,8 +727,7 @@ const Archive = () => {
         <>
           <Card title="البحث والفلترة" actions={<Button size="sm" variant="ghost" icon="refresh" onClick={resetFilters}>إعادة تعيين</Button>}>
             <div className="ar-filters">
-              <FormField label="الاسم"><Input value={filters.search_name} onChange={setFilter('search_name')} placeholder="ابحث بالاسم…" /></FormField>
-              <FormField label="رقم الهوية/الموظف"><Input value={filters.search_id} onChange={setFilter('search_id')} placeholder="ابحث بالرقم…" /></FormField>
+              <FormField label="بحث"><SearchInput value={filters.search} onChange={setFilter('search')} onClear={() => setFilters((prev) => ({ ...prev, search: '' }))} placeholder="ابحث بالاسم أو رقم الهوية أو رقم الموظف أو الجوال أو البريد…" /></FormField>
               <FormField label="الفرع"><Select value={filters.branch_id} onChange={setFilter('branch_id')} options={branchOptions} placeholder="الكل" /></FormField>
               <FormField label="الحالة"><Select value={filters.status} onChange={setFilter('status')} options={statusOptions} placeholder="الكل" /></FormField>
               <FormField label="السنة الدراسية"><Input value={filters.academic_year} onChange={setFilter('academic_year')} placeholder="مثال: 2025/2026" /></FormField>

@@ -3,12 +3,11 @@
  * them to extra branches while keeping their primary one.
  */
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Page, PageHeader, Card, FormField, Input, Select, Button, Badge, DataTable, StatusBadge, useConfirm } from '../ui';
+import { Page, PageHeader, Card, SearchInput, FormField, Select, Button, Badge, DataTable, StatusBadge, useConfirm } from '../ui';
 import { employeesAPI, branchesAPI } from '../utils/api';
 import { useNotification } from '../contexts/NotificationContext';
 import './EmployeeTransfer.css';
 
-const EMPTY_SEARCH = { search_name: '', search_id: '', search_phone: '' };
 const nameOf = (e) => e.full_name || [e.first_name, e.second_name, e.third_name, e.fourth_name].filter(Boolean).join(' ');
 
 export default function EmployeeTransfer() {
@@ -16,7 +15,7 @@ export default function EmployeeTransfer() {
   const { confirm } = useConfirm();
 
   const [branches, setBranches] = useState([]);
-  const [search, setSearch] = useState(EMPTY_SEARCH);
+  const [search, setSearch] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const timerRef = useRef(null);
@@ -42,17 +41,14 @@ export default function EmployeeTransfer() {
     })();
   }, []);
 
-  // Debounced search: needs 2+ characters of a name or phone, or any part of an ID
+  // Debounced single-box search (name, ID, phone, email, employee number): needs 2+ characters
   useEffect(() => {
-    const hasQuery = search.search_name.length >= 2 || search.search_id.length >= 1 || search.search_phone.length >= 2;
-    if (!hasQuery) { setResults([]); return undefined; }
+    const term = search.trim();
+    if (term.length < 2) { setResults([]); return undefined; }
     timerRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const params = { page: 1, pageSize: 20 };
-        if (search.search_name.length >= 2) params.search_name = search.search_name.trim();
-        if (search.search_id.length >= 1) params.search_id = search.search_id.trim();
-        if (search.search_phone.length >= 2) params.search_phone = search.search_phone.trim();
+        const params = { page: 1, pageSize: 20, search: term };
         const response = await employeesAPI.getPaginated(params);
         setResults(response.data?.data || []);
       } catch (error) {
@@ -80,7 +76,7 @@ export default function EmployeeTransfer() {
   const select = async (employee) => {
     setSelected(employee);
     setResults([]);
-    setSearch(EMPTY_SEARCH);
+    setSearch('');
     setTargetBranchId('');
     setLinkBranchId('');
     await loadLinked(employee.id);
@@ -156,7 +152,6 @@ export default function EmployeeTransfer() {
   const branchName = (id) => branches.find((b) => b.id === id)?.branch_name || '—';
   const transferable = useMemo(() => branches.filter((b) => selected && b.id !== selected.branch_id), [branches, selected]);
   const linkable = useMemo(() => branches.filter((b) => !linked.some((lb) => lb.branch_id === b.id)), [branches, linked]);
-  const set = (field) => (e) => setSearch((prev) => ({ ...prev, [field]: e.target.value }));
 
   const resultColumns = [
     { key: 'name', header: 'الاسم', mobilePrimary: true, render: (e) => <strong>{nameOf(e)}</strong> },
@@ -182,18 +177,9 @@ export default function EmployeeTransfer() {
     <Page>
       <PageHeader title="نقل وربط الموظفين" subtitle="انقل موظفاً إلى فرع آخر، أو اربطه بفروع إضافية مع بقاء فرعه الأساسي" />
 
-      <Card title="البحث عن موظف" subtitle="اكتب جزءاً من الاسم أو رقم الهوية أو رقم الهاتف">
-        <div className="et-search">
-          <FormField label="الاسم" hint={search.search_name.length === 1 ? 'أدخل حرفين على الأقل' : undefined}>
-            <Input value={search.search_name} onChange={set('search_name')} placeholder="مثال: محمد" />
-          </FormField>
-          <FormField label="رقم الهوية / الإقامة">
-            <Input value={search.search_id} onChange={set('search_id')} placeholder="أدخل رقم الهوية" dir="ltr" inputMode="numeric" />
-          </FormField>
-          <FormField label="رقم الهاتف" hint={search.search_phone.length === 1 ? 'أدخل رقمين على الأقل' : undefined}>
-            <Input value={search.search_phone} onChange={set('search_phone')} placeholder="05…" dir="ltr" inputMode="tel" />
-          </FormField>
-        </div>
+      <Card title="البحث عن موظف" subtitle="اكتب جزءاً من الاسم أو رقم الهوية أو الجوال أو البريد في خانة واحدة">
+        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} onClear={() => setSearch('')} placeholder="ابحث بالاسم أو رقم الهوية أو الجوال أو البريد…" />
+        {search.trim().length === 1 && <p className="et-hint">أدخل حرفين على الأقل</p>}
       </Card>
 
       {(searching || results.length > 0) && (
