@@ -1,455 +1,210 @@
+/**
+ * Payroll absences (head office): for a chosen month, which branches saved their absence sheet, re-open or close
+ * a branch's entry, reset the month, inspect a branch's entries, and export to Excel.
+ */
 import { useEffect, useMemo, useState } from 'react';
+import {
+  Page, PageHeader, Card, StatCard, Toolbar, Select, Input, FormField, Button, Badge, DataTable, Modal, Alert, useConfirm,
+} from '../ui';
 import { payrollAbsenceAPI } from '../utils/api';
+import { useNotification } from '../contexts/NotificationContext';
 import { downloadFile } from '../utils/downloadFile';
 import './PayrollAbsence.css';
-import { Fragment } from "react";
 
-// Format date as dd/mm/yyyy (Gregorian calendar only)
-import { useConfirm } from '../ui';
-
-const formatDateDDMMYYYY = (value) => {
+const ddmmyyyy = (value) => {
   if (!value) return '—';
-  const date = new Date(value);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
+  const d = new Date(value);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 };
-
-// Format month as mm/yyyy (Gregorian calendar only)
-const formatMonthMMYYYY = (value) => {
+const mmyyyy = (value) => {
   if (!value) return '';
-  const date = new Date(value);
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${month}/${year}`;
+  const d = new Date(value);
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 };
 
-const statusLabel = (status) => {
-  switch (status) {
-    case 'entry_open':
-      return { text: 'مفتوح للتسجيل', className: 'tag entry' };
-    case 'view_only':
-      return { text: 'عرض فقط', className: 'tag view' };
-    case 'closed':
-      return { text: 'مغلق', className: 'tag closed' };
-    default:
-      return { text: 'عد تنازلي', className: 'tag warning' };
-  }
+const STATUS = {
+  entry_open: { text: 'مفتوح للتسجيل', tone: 'success' },
+  view_only: { text: 'عرض فقط', tone: 'info' },
+  closed: { text: 'مغلق', tone: 'neutral' },
 };
+const statusOf = (status) => STATUS[status] || { text: 'عد تنازلي', tone: 'warning' };
 
-const PayrollAbsenceAdmin = () => {
+export default function PayrollAbsenceAdmin() {
   const { confirm } = useConfirm();
+  const { showError, showSuccess } = useNotification();
+
   const [cycles, setCycles] = useState([]);
-  const [selectedCycleId, setSelectedCycleId] = useState(null);
+  const [cycleId, setCycleId] = useState(null);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [selectedBranches, setSelectedBranches] = useState(new Set());
+  const [processing, setProcessing] = useState(null); // null | 'reopen' | 'close' | 'reset' | 'export'
+  const [selected, setSelected] = useState(new Set());
   const [reopenNote, setReopenNote] = useState('');
   const [reopenUntil, setReopenUntil] = useState('');
-  const [expandedBranches, setExpandedBranches] = useState(new Set());
-  const [branchEntries, setBranchEntries] = useState({});
-  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
+  const [detail, setDetail] = useState(null); // { branch, data }
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const loadCycles = async () => {
     setLoading(true);
-    setError('');
     try {
       const res = await payrollAbsenceAPI.getCycles();
       const data = res?.data?.data || [];
       setCycles(data);
       if (data.length > 0) {
-        // Get current month (YYYY-MM format)
         const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth(); // 0-indexed
-
-        // Find the cycle that matches current month
-        let defaultCycle = data.find(c => {
-          const cycleDate = new Date(c.month_start);
-          return cycleDate.getFullYear() === currentYear && cycleDate.getMonth() === currentMonth;
-        });
-
-        // If no current month cycle, find the most recent one (first in the list, assuming sorted by date desc)
-        if (!defaultCycle) {
-          defaultCycle = data[0];
-        }
-
-        setSelectedCycleId(defaultCycle?.id || data[0].id);
+        const current = data.find((c) => { const d = new Date(c.month_start); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(); });
+        setCycleId((current || data[0]).id);
       } else {
-        setSelectedCycleId(null);
+        setCycleId(null);
       }
     } catch (err) {
-      setError(err?.response?.data?.message || 'فشل تحميل الأشهر');
+      showError(err?.response?.data?.message || 'فشل تحميل الأشهر');
     } finally {
       setLoading(false);
     }
   };
 
-  const loadBranches = async (cycleId) => {
-    if (!cycleId) return;
+  const loadBranches = async (id) => {
+    if (!id) return;
     setLoading(true);
-    setError('');
-    setSelectedBranches(new Set());
+    setSelected(new Set());
     try {
-      const res = await payrollAbsenceAPI.getBranches(cycleId);
+      const res = await payrollAbsenceAPI.getBranches(id);
       setBranches(res?.data?.data?.branches || []);
     } catch (err) {
-      setError(err?.response?.data?.message || 'فشل تحميل فروع الشهر');
+      showError(err?.response?.data?.message || 'فشل تحميل فروع الشهر');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadCycles();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadCycles(); }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (cycleId) loadBranches(cycleId); }, [cycleId]);
 
-  useEffect(() => {
-    if (selectedCycleId) {
-      loadBranches(selectedCycleId);
+  const summary = useMemo(() => ({
+    submitted: branches.filter((b) => (b.submission_count || 0) > 0).length,
+    entryOpen: branches.filter((b) => b.status === 'entry_open' || b.manual_opened).length,
+    totalAbsences: branches.reduce((sum, b) => sum + (parseInt(b.total_absences, 10) || 0), 0),
+  }), [branches]);
+
+  const allSelected = branches.length > 0 && selected.size === branches.length;
+  const ids = () => Array.from(selected);
+
+  const run = async (kind, action, doneMessage, failMessage) => {
+    setProcessing(kind);
+    try {
+      const result = await action();
+      showSuccess(doneMessage);
+      if (kind !== 'export') await loadBranches(cycleId);
+      return result;
+    } catch (err) {
+      showError(err?.response?.data?.message || failMessage);
+      return null;
+    } finally {
+      setProcessing(null);
     }
-  }, [selectedCycleId]);
+  };
 
-  const summary = useMemo(() => {
-    const submitted = branches.filter((b) => (b.submission_count || 0) > 0).length;
-    const entryOpen = branches.filter((b) => b.status === 'entry_open' || b.manual_opened).length;
-    const totalAbsences = branches.reduce((sum, b) => sum + (parseInt(b.total_absences, 10) || 0), 0);
-    return { submitted, entryOpen, total: branches.length, totalAbsences };
-  }, [branches]);
-
-  const toggleBranch = (branchId) => {
-    setSelectedBranches((prev) => {
-      const next = new Set(prev);
-      if (next.has(branchId)) next.delete(branchId);
-      else next.add(branchId);
-      return next;
+  const reopen = () => run('reopen', () => payrollAbsenceAPI.reopenBranches({ cycle_id: cycleId, branch_ids: ids(), note: reopenNote || null, manual_expires_at: reopenUntil || null }), 'تم فتح الفروع المختارة لإعادة الإدخال', 'فشل إعادة الفتح');
+  const close = () => run('close', () => payrollAbsenceAPI.closeBranches({ cycle_id: cycleId, branch_ids: ids() }), 'تم إغلاق الإدخال للفروع المختارة', 'فشل إغلاق الإدخال');
+  const exportExcel = async () => {
+    const res = await run('export', () => payrollAbsenceAPI.exportBranches({ cycle_id: cycleId, branch_ids: ids() }), 'تم إنشاء ملف الإكسل', 'فشل إنشاء ملف الإكسل');
+    if (res) downloadFile(new Blob([res.data]), 'branch-absences.xlsx');
+  };
+  const reset = async () => {
+    const ok = await confirm({
+      title: 'إعادة تعيين الشهر',
+      message: 'سيتم إعادة تعيين الشهر الحالي لجميع الفروع إلى حالة العد التنازلي وحذف البيانات المحفوظة. هل أنت متأكد؟',
+      tone: 'danger',
+      confirmText: 'إعادة التعيين',
     });
+    if (ok) run('reset', () => payrollAbsenceAPI.resetCycle({ cycle_id: cycleId }), 'تمت إعادة تعيين الشهر وإرجاع جميع الفروع إلى العد التنازلي', 'فشل إعادة التعيين');
   };
 
-  const toggleAll = () => {
-    if (selectedBranches.size === branches.length) {
-      setSelectedBranches(new Set());
-    } else {
-      setSelectedBranches(new Set(branches.map((b) => b.branch_id)));
-    }
-  };
-
-  const handleReopen = async () => {
-    if (!selectedCycleId || selectedBranches.size === 0) return;
-    setProcessing(true);
-    setError('');
-    setSuccess('');
+  const openDetail = async (branch) => {
+    setDetail({ branch, data: null });
+    setDetailLoading(true);
     try {
-      await payrollAbsenceAPI.reopenBranches({
-        cycle_id: selectedCycleId,
-        branch_ids: Array.from(selectedBranches),
-        note: reopenNote || null,
-        manual_expires_at: reopenUntil || null
-      });
-      setSuccessMessage('تم فتح الفروع المختارة لإعادة الإدخال');
-      setShowSuccessAnimation(true);
-      setTimeout(() => {
-        setShowSuccessAnimation(false);
-        setSuccess('تم فتح الفروع المختارة لإعادة الإدخال');
-      }, 2000);
-      await loadBranches(selectedCycleId);
-    } catch (err) {
-      setError(err?.response?.data?.message || 'فشل إعادة الفتح');
+      const res = await payrollAbsenceAPI.getBranchEntries(cycleId, branch.branch_id);
+      setDetail({ branch, data: res?.data?.data || { entries: [] } });
+    } catch {
+      setDetail({ branch, data: { entries: [] } });
     } finally {
-      setProcessing(false);
+      setDetailLoading(false);
     }
   };
 
-  const handleClose = async () => {
-    if (!selectedCycleId || selectedBranches.size === 0) return;
-    setProcessing(true);
-    setError('');
-    setSuccess('');
-    try {
-      await payrollAbsenceAPI.closeBranches({
-        cycle_id: selectedCycleId,
-        branch_ids: Array.from(selectedBranches)
-      });
-      setSuccessMessage('تم إغلاق الإدخال للفروع المختارة');
-      setShowSuccessAnimation(true);
-      setTimeout(() => {
-        setShowSuccessAnimation(false);
-        setSuccess('تم إغلاق الإدخال للفروع المختارة');
-      }, 2000);
-      await loadBranches(selectedCycleId);
-    } catch (err) {
-      setError(err?.response?.data?.message || 'فشل إغلاق الإدخال');
-    } finally {
-      setProcessing(false);
-    }
-  };
+  const columns = [
+    { key: 'branch_name', header: 'الفرع', mobilePrimary: true, render: (b) => <strong>{b.branch_name}</strong> },
+    { key: 'status', header: 'الحالة', render: (b) => { const s = statusOf(b.status); return <Badge tone={s.tone} dot>{s.text}</Badge>; } },
+    { key: 'submission_count', header: 'مرات الحفظ', align: 'center', render: (b) => b.submission_count || 0 },
+    { key: 'total_excused', header: 'غياب بعذر', align: 'center', render: (b) => b.total_excused || 0 },
+    { key: 'total_unexcused', header: 'غياب بدون عذر', align: 'center', render: (b) => b.total_unexcused || 0 },
+    { key: 'total_absences', header: 'الإجمالي', align: 'center', render: (b) => <strong>{b.total_absences || 0}</strong> },
+    { key: 'last', header: 'آخر حفظ', mobileHidden: true, render: (b) => ddmmyyyy(b.last_submitted_at) },
+    { key: 'details', header: '', align: 'end', render: (b) => <Button size="sm" variant="soft" icon="eye" onClick={() => openDetail(b)}>التفاصيل</Button> },
+  ];
 
-  const handleExport = async () => {
-    if (!selectedCycleId || selectedBranches.size === 0) return;
-    setProcessing(true);
-    setError('');
-    setSuccess('');
-    try {
-      const res = await payrollAbsenceAPI.exportBranches({
-        cycle_id: selectedCycleId,
-        branch_ids: Array.from(selectedBranches)
-      });
-      downloadFile(new Blob([res.data]), 'branch-absences.xlsx');
-      setSuccess('تم إنشاء ملف الإكسل');
-    } catch (err) {
-      setError(err?.response?.data?.message || 'فشل إنشاء ملف الإكسل');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleReset = async () => {
-    if (!selectedCycleId) return;
-    const confirmReset = await confirm({ message: 'سيتم إعادة تعيين الشهر الحالي لجميع الفروع إلى حالة العد التنازلي وحذف البيانات المحفوظة. هل أنت متأكد؟', tone: 'danger' });
-    if (!confirmReset) return;
-    setProcessing(true);
-    setError('');
-    setSuccess('');
-    try {
-      await payrollAbsenceAPI.resetCycle({ cycle_id: selectedCycleId });
-      setSuccess('تمت إعادة تعيين الشهر وإرجاع جميع الفروع إلى العد التنازلي');
-      await loadBranches(selectedCycleId);
-    } catch (err) {
-      setError(err?.response?.data?.message || 'فشل إعادة التعيين');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const toggleExpand = async (branchId) => {
-    const next = new Set(expandedBranches);
-    if (next.has(branchId)) {
-      next.delete(branchId);
-      setExpandedBranches(next);
-      return;
-    }
-    next.add(branchId);
-    setExpandedBranches(next);
-    if (!branchEntries[branchId]) {
-      try {
-        const res = await payrollAbsenceAPI.getBranchEntries(selectedCycleId, branchId);
-        setBranchEntries((prev) => ({ ...prev, [branchId]: res?.data?.data || { entries: [], submission: null } }));
-      } catch (err) {
-        setBranchEntries((prev) => ({ ...prev, [branchId]: { entries: [], submission: null } }));
-      }
-    }
-  };
+  const entryColumns = [
+    { key: 'full_name', header: 'الموظف', mobilePrimary: true },
+    { key: 'employee_id_number', header: 'رقم الهوية', mobileHidden: true, render: (r) => <bdi>{r.employee_id_number}</bdi> },
+    { key: 'excused', header: 'بعذر', align: 'center', render: (r) => r.excused_absences ?? 0 },
+    { key: 'unexcused', header: 'بدون عذر', align: 'center', render: (r) => r.unexcused_absences ?? 0 },
+    { key: 'total', header: 'الإجمالي', align: 'center', render: (r) => r.absences ?? ((r.excused_absences ?? 0) + (r.unexcused_absences ?? 0)) },
+    { key: 'notes', header: 'ملاحظات', render: (r) => r.notes || '—' },
+  ];
 
   return (
-    <div className="payroll-absence-page">
-      <div className="payroll-absence-card">
-        <h2>المسيرات </h2>
+    <Page>
+      <PageHeader title="مسيرات الرواتب" subtitle="متابعة إدخال غيابات الموظفين الشهرية لكل فرع" />
 
-        {error && <div className="error-text">{error}</div>}
-        {success && <div className="success-text">{success}</div>}
-
-        <div className="selection-bar">
-          <label>
-            الشهر:
-            <select
-              className="inline-input"
-              value={selectedCycleId || ''}
-              onChange={(e) => {
-                const val = e.target.value;
-                setSelectedCycleId(val ? parseInt(val, 10) : null);
-              }}
-            >
-              {cycles.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {formatMonthMMYYYY(c.month_start)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className="pill info">الفروع: {summary.total}</span>
-          <span className="pill success">تم الحفظ: {summary.submitted}</span>
-          <span className="pill warning">مفتوح الآن: {summary.entryOpen}</span>
-          <span className="pill">إجمالي الغيابات: {summary.totalAbsences}</span>
-        </div>
-
-        <div className="selection-bar">
-          <label>
-            ملاحظة إعادة الفتح:
-            <input
-              className="inline-input"
-              type="text"
-              value={reopenNote}
-              onChange={(e) => setReopenNote(e.target.value)}
-              placeholder="اختياري"
-            />
-          </label>
-          <label>
-            حد زمني لإعادة الفتح:
-            <input
-              className="inline-input"
-              type="date"
-              value={reopenUntil}
-              onChange={(e) => setReopenUntil(e.target.value)}
-            />
-          </label>
-        </div>
-
-        <div className="payroll-actions">
-          <button
-            className="btn btn-secondary"
-            onClick={toggleAll}
-            disabled={loading}
-          >
-            {selectedBranches.size === branches.length ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={handleReopen}
-            disabled={processing || selectedBranches.size === 0}
-          >
-            {processing ? 'جارٍ التنفيذ...' : 'فتح إدخال يدوي'}
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={handleClose}
-            disabled={processing || selectedBranches.size === 0}
-          >
-            {processing ? 'جارٍ الإغلاق...' : 'إغلاق الإدخال'}
-          </button>
-          <button
-            className="btn"
-            onClick={handleReset}
-            disabled={processing || !selectedCycleId}
-          >
-            {processing ? 'جارٍ إعادة التعيين...' : 'إعادة تعيين الشهر'}
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={handleExport}
-            disabled={processing || selectedBranches.size === 0}
-          >
-            {processing ? 'جارٍ التصدير...' : 'تصدير إكسل'}
-          </button>
-        </div>
-
-        {loading ? (
-          <div style={{ padding: 'var(--spacing-xl)' }}>
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="skeleton skeleton-branch-row" style={{ animationDelay: `${i * 0.1}s` }}></div>
-            ))}
-          </div>
-        ) : (
-          <div style={{ position: 'relative', zIndex: 2 }}>
-            <table className="payroll-table">
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      checked={selectedBranches.size === branches.length && branches.length > 0}
-                      onChange={toggleAll}
-                    />
-                  </th>
-                  <th></th>
-                  <th>الفرع</th>
-                  <th>الحالة</th>
-                  <th>عدد مرات الحفظ</th>
-                  <th>ايام الغياب بعذر</th>
-                  <th>ايام الغياب بدون عذر</th>
-                  <th>إجمالي الغيابات</th>
-                  <th>آخر حفظ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {branches.map((b) => {
-                  const st = statusLabel(b.status);
-                  return (
-                    <Fragment key={b.branch_id}>
-                      <tr className="branch-row">
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={selectedBranches.has(b.branch_id)}
-                            onChange={() => toggleBranch(b.branch_id)}
-                          />
-                        </td>
-                        <td>
-                          <button className="btn btn-secondary btn-sm" onClick={() => toggleExpand(b.branch_id)}>
-                            {expandedBranches.has(b.branch_id) ? 'إخفاء' : 'عرض التفاصيل'}
-                          </button>
-                        </td>
-                        <td>{b.branch_name}</td>
-                        <td>
-                          <span className={st.className}>{st.text}</span>
-                        </td>
-                        <td>{b.submission_count || 0}</td>
-                        <td>{b.total_excused || 0}</td>
-                        <td>{b.total_unexcused || 0}</td>
-                        <td>{b.total_absences || 0}</td>
-                        <td>{formatDateDDMMYYYY(b.last_submitted_at)}</td>
-                      </tr>
-                      {expandedBranches.has(b.branch_id) && (
-                        <tr>
-                          <td colSpan={9}>
-                            <div className="state-block branch-details-expanded">
-                              <div className="state-title">تفاصيل الموظفين</div>
-                              {branchEntries[b.branch_id]?.entries?.length ? (
-                                <table className="payroll-table" style={{ marginTop: 'var(--spacing-md)' }}>
-                                  <thead>
-                                    <tr>
-                                      <th>الموظف</th>
-                                      <th>رقم الهوية</th>
-                                      <th>ايام الغياب بعذر</th>
-                                      <th>ايام الغياب بدون عذر</th>
-                                      <th>إجمالي الغياب</th>
-                                      <th>ملاحظات</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {branchEntries[b.branch_id].entries.map((row) => (
-                                      <tr key={row.employee_id}>
-                                        <td>{row.full_name}</td>
-                                        <td>{row.employee_id_number}</td>
-                                        <td>{row.excused_absences ?? 0}</td>
-                                        <td>{row.unexcused_absences ?? 0}</td>
-                                        <td>{row.absences ?? ((row.excused_absences ?? 0) + (row.unexcused_absences ?? 0))}</td>
-                                        <td>{row.notes || '—'}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              ) : (
-                                <div className="helper-text">لا توجد بيانات محفوظة لهذا الفرع.</div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+      <div className="ui-grid-stats">
+        <StatCard label="الفروع" value={branches.length} icon="building" tone="primary" loading={loading && branches.length === 0} />
+        <StatCard label="تم الحفظ" value={summary.submitted} icon="check-circle" tone="success" loading={loading && branches.length === 0} />
+        <StatCard label="مفتوح الآن" value={summary.entryOpen} icon="clock" tone="warning" loading={loading && branches.length === 0} />
+        <StatCard label="إجمالي الغيابات" value={summary.totalAbsences} icon="chart" tone="danger" loading={loading && branches.length === 0} />
       </div>
 
-      {/* Success Animation */}
-      {showSuccessAnimation && (
-        <div className="success-overlay">
-          <div className="success-card">
-            <div className="success-icon"></div>
-            <div className="success-message">{successMessage}</div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
+      <Card flush>
+        <Toolbar>
+          <FormField label="الشهر" className="pa-filter">
+            <Select value={cycleId ? String(cycleId) : ''} onChange={(e) => setCycleId(e.target.value ? parseInt(e.target.value, 10) : null)} options={cycles.map((c) => ({ value: String(c.id), label: mmyyyy(c.month_start) }))} />
+          </FormField>
+          <FormField label="ملاحظة إعادة الفتح" className="pa-filter">
+            <Input value={reopenNote} onChange={(e) => setReopenNote(e.target.value)} placeholder="اختياري" />
+          </FormField>
+          <FormField label="حد زمني لإعادة الفتح" className="pa-filter">
+            <Input type="date" value={reopenUntil} onChange={(e) => setReopenUntil(e.target.value)} />
+          </FormField>
+        </Toolbar>
+        <Toolbar>
+          <Button variant="secondary" onClick={() => setSelected(allSelected ? new Set() : new Set(branches.map((b) => b.branch_id)))} disabled={loading || branches.length === 0}>{allSelected ? 'إلغاء تحديد الكل' : 'تحديد الكل'}</Button>
+          <Badge tone="info"><bdi>{selected.size}</bdi> محدد</Badge>
+          <Button variant="primary" icon="refresh" loading={processing === 'reopen'} disabled={Boolean(processing) || selected.size === 0} onClick={reopen}>فتح إدخال يدوي</Button>
+          <Button variant="secondary" icon="lock" loading={processing === 'close'} disabled={Boolean(processing) || selected.size === 0} onClick={close}>إغلاق الإدخال</Button>
+          <Button variant="secondary" icon="download" loading={processing === 'export'} disabled={Boolean(processing) || selected.size === 0} onClick={exportExcel}>تصدير إكسل</Button>
+          <Button variant="danger" icon="restore" loading={processing === 'reset'} disabled={Boolean(processing) || !cycleId} onClick={reset} className="pa-push">إعادة تعيين الشهر</Button>
+        </Toolbar>
+        <DataTable
+          columns={columns}
+          rows={branches}
+          rowKey="branch_id"
+          loading={loading}
+          selectable
+          selectedKeys={selected}
+          onSelectionChange={setSelected}
+          emptyIcon="building"
+          emptyTitle="لا توجد فروع لهذا الشهر"
+        />
+      </Card>
 
-export default PayrollAbsenceAdmin;
+      <Modal open={Boolean(detail)} onClose={() => setDetail(null)} title={detail ? `تفاصيل الموظفين · ${detail.branch.branch_name}` : ''} size="xl">
+        {detail && (detailLoading || !detail.data ? <p className="pa-muted">جاري التحميل…</p> : detail.data.entries?.length ? (
+          <DataTable columns={entryColumns} rows={detail.data.entries} rowKey="employee_id" dense />
+        ) : <Alert tone="info">لا توجد بيانات محفوظة لهذا الفرع.</Alert>)}
+      </Modal>
+    </Page>
+  );
+}

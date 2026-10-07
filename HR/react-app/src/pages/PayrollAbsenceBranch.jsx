@@ -1,299 +1,150 @@
+/**
+ * Payroll absences panel (branch managers; shown inside the dashboard task): enter each employee's excused / unexcused absence days for the month
+ * when the entry window is open. Saving is allowed once per month; afterwards the saved sheet is read-only.
+ */
 import { useEffect, useMemo, useState } from 'react';
+import { Card, Badge, Alert, Button, Input, Textarea, DataTable, Skeleton, useConfirm } from '../ui';
 import { payrollAbsenceAPI } from '../utils/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
 import './PayrollAbsence.css';
 
-// Format date as dd/mm/yyyy (Gregorian calendar only)
-import { useConfirm } from '../ui';
-
-const formatDateDDMMYYYY = (value) => {
+const ddmmyyyy = (value) => {
   if (!value) return '';
-  const date = new Date(value);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
+  const d = new Date(value);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 };
-
-// Format month as mm/yyyy (Gregorian calendar only)
-const formatMonthMMYYYY = (value) => {
+const mmyyyy = (value) => {
   if (!value) return '';
-  const date = new Date(value);
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${month}/${year}`;
+  const d = new Date(value);
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 };
 
 const PayrollAbsenceBranch = ({ onComplete }) => {
   const { confirm } = useConfirm();
-  const { _user } = useAuth();
+  const { showError, showSuccess } = useNotification();
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [entries, setEntries] = useState({});
 
   const activeCycle = state?.active_cycle || state?.cycle;
-  const cycleLabel = useMemo(() => {
-    if (!activeCycle?.month_start) return '';
-    return formatMonthMMYYYY(activeCycle.month_start);
-  }, [activeCycle]);
+  const cycleLabel = useMemo(() => (activeCycle?.month_start ? mmyyyy(activeCycle.month_start) : ''), [activeCycle]);
 
   const loadState = async () => {
     setLoading(true);
-    setError('');
+    setLoadError('');
     try {
       const res = await payrollAbsenceAPI.getBranchState();
       const data = res?.data?.data;
       setState(data);
       if (data?.employees?.length) {
+        // Pre-filled by the server (includes the earlier submission when the window was re-opened)
         const defaults = {};
         data.employees.forEach((emp) => {
-          // Use pre-filled data from backend (includes previous submission data for reopened entries)
-          defaults[emp.id] = {
-            excused_absences: emp.excused_absences ?? 0,
-            unexcused_absences: emp.unexcused_absences ?? 0,
-            notes: emp.notes || ''
-          };
+          defaults[emp.id] = { excused_absences: emp.excused_absences ?? 0, unexcused_absences: emp.unexcused_absences ?? 0, notes: emp.notes || '' };
         });
         setEntries(defaults);
       }
     } catch (err) {
-      setError(err?.response?.data?.message || 'تعذر تحميل حالة الغياب');
+      setLoadError(err?.response?.data?.message || 'تعذر تحميل حالة الغياب');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadState();
-     
-  }, []);
+  useEffect(() => { loadState(); }, []);
 
-  const handleAbsenceChange = (employeeId, value, type) => {
-    setEntries((prev) => ({
-      ...prev,
-      [employeeId]: {
-        ...prev[employeeId],
-        ...(type === 'excused'
-          ? { excused_absences: value < 0 ? 0 : value }
-          : { unexcused_absences: value < 0 ? 0 : value })
-      }
-    }));
-  };
+  const setField = (id, field, value) => setEntries((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+  const setDays = (id, field) => (e) => setField(id, field, Math.max(0, Number(e.target.value) || 0));
 
-  const handleNoteChange = (employeeId, value) => {
-    setEntries((prev) => ({
-      ...prev,
-      [employeeId]: {
-        ...prev[employeeId],
-        notes: value
-      }
-    }));
-  };
-
-  const handleSubmit = async () => {
+  const submit = async () => {
     if (!state?.employees?.length) return;
-    const confirmSave = await confirm({ message: 'سيتم الحفظ لمرة واحدة لهذا الشهر ولا يمكن التعديل بعد الحفظ. هل أنت متأكد؟' });
-    if (!confirmSave) return;
+    const ok = await confirm({ title: 'حفظ الغيابات', message: 'سيتم الحفظ لمرة واحدة لهذا الشهر ولا يمكن التعديل بعد الحفظ. هل أنت متأكد؟', confirmText: 'حفظ' });
+    if (!ok) return;
     setSaving(true);
-    setError('');
-    setSuccess('');
     try {
-      const payloadEntries = state.employees.map((emp) => ({
-        employee_id: emp.id,
-        excused_absences: parseInt(entries[emp.id]?.excused_absences, 10) || 0,
-        unexcused_absences: parseInt(entries[emp.id]?.unexcused_absences, 10) || 0,
-        notes: entries[emp.id]?.notes || ''
-      }));
       await payrollAbsenceAPI.submitBranch({
-        entries: payloadEntries,
-        cycle_id: activeCycle?.id
+        entries: state.employees.map((emp) => ({
+          employee_id: emp.id,
+          excused_absences: parseInt(entries[emp.id]?.excused_absences, 10) || 0,
+          unexcused_absences: parseInt(entries[emp.id]?.unexcused_absences, 10) || 0,
+          notes: entries[emp.id]?.notes || '',
+        })),
+        cycle_id: activeCycle?.id,
       });
-      setSuccess('تم الحفظ. للتعديل لاحقاً، يرجى مراسلة إدارة الموارد البشرية لفتح الإدخال.');
+      showSuccess('تم الحفظ. للتعديل لاحقاً، يرجى مراسلة إدارة الموارد البشرية لفتح الإدخال.');
       await loadState();
-
-      // Call onComplete callback if provided (for task completion tracking)
-      if (onComplete) {
-        onComplete();
-      }
+      if (onComplete) onComplete();
     } catch (err) {
-      setError(err?.response?.data?.message || 'فشل الحفظ، حاول مرة أخرى');
+      showError(err?.response?.data?.message || 'فشل الحفظ، حاول مرة أخرى');
     } finally {
       setSaving(false);
     }
   };
 
-  const renderStateBlock = () => {
-    if (!state) return null;
+  const total = (id) => (entries[id]?.excused_absences || 0) + (entries[id]?.unexcused_absences || 0);
 
-    if (state.state === 'countdown' || state.state === 'countdown_next') {
-      return (
-        <div className="state-block compact-state-block countdown-compact">
-          <p className="helper-text" style={{ margin: 0, fontSize: 'var(--font-size-xs)', lineHeight: '1.4' }}>
-            <strong style={{ color: 'var(--text)' }}>انتظار فتح التسجيل:</strong> يبدأ في {formatDateDDMMYYYY(state.target_open_at)} (بعد {state.days_until_open} يوم) | يفتح تلقائياً في آخر يوم من الشهر
-          </p>
-        </div>
-      );
-    }
+  const entryColumns = [
+    {
+      key: 'name', header: 'الموظف', mobilePrimary: true,
+      render: (emp) => (<span>{emp.full_name}{emp.is_new && <> <Badge tone="info">جديد</Badge></>}</span>),
+    },
+    { key: 'id', header: 'رقم الهوية', mobileHidden: true, render: (emp) => <bdi>{emp.employee_id}</bdi> },
+    { key: 'excused', header: 'أيام الغياب بعذر', width: '9rem', render: (emp) => <Input type="number" min="0" aria-label={`غياب بعذر: ${emp.full_name}`} value={entries[emp.id]?.excused_absences ?? 0} onChange={setDays(emp.id, 'excused_absences')} /> },
+    { key: 'unexcused', header: 'أيام الغياب بدون عذر', width: '9rem', render: (emp) => <Input type="number" min="0" aria-label={`غياب بدون عذر: ${emp.full_name}`} value={entries[emp.id]?.unexcused_absences ?? 0} onChange={setDays(emp.id, 'unexcused_absences')} /> },
+    { key: 'total', header: 'الإجمالي', align: 'center', render: (emp) => <strong>{total(emp.id)}</strong> },
+    { key: 'notes', header: 'ملاحظات', render: (emp) => <Textarea rows={2} aria-label={`ملاحظات: ${emp.full_name}`} value={entries[emp.id]?.notes || ''} onChange={(e) => setField(emp.id, 'notes', e.target.value)} placeholder="ملاحظات إضافية" /> },
+  ];
 
-    if (state.state === 'entry_open') {
-      return (
-        <div className="state-block">
-          <div className="state-title">الحالة الحالية: التسجيل مفتوح اليوم</div>
-          <p className="helper-text">
-            يرجى إدخال عدد الغيابات وملاحظات كل موظف. الحفظ متاح مرة واحدة فقط لهذا الشهر.
-          </p>
-        </div>
-      );
-    }
+  const savedColumns = [
+    { key: 'full_name', header: 'الموظف', mobilePrimary: true },
+    { key: 'employee_id_number', header: 'رقم الهوية', mobileHidden: true, render: (r) => <bdi>{r.employee_id_number}</bdi> },
+    { key: 'excused', header: 'غياب بعذر', align: 'center', render: (r) => r.excused_absences ?? 0 },
+    { key: 'unexcused', header: 'غياب بدون عذر', align: 'center', render: (r) => r.unexcused_absences ?? 0 },
+    { key: 'total', header: 'الإجمالي', align: 'center', render: (r) => r.absences ?? ((r.excused_absences ?? 0) + (r.unexcused_absences ?? 0)) },
+    { key: 'notes', header: 'ملاحظات', render: (r) => r.notes || '—' },
+  ];
 
-    if (state.state === 'view_only') {
-      return (
-        <div className="state-block compact-state-block">
-          <div className="state-title" style={{ marginBottom: 'var(--spacing-xs)' }}>الحالة الحالية: عرض البيانات المحفوظة</div>
-          <p className="helper-text" style={{ margin: 0, fontSize: 'var(--font-size-sm)' }}>
-            ينتهي في {formatDateDDMMYYYY(state.view_until)} | بعدها سيظهر العد التنازلي للشهر التالي
-          </p>
-        </div>
-      );
-    }
-
-    return null;
-  };
-
-  if (loading) {
-    return (
-      <div className="payroll-absence-page">
-        <div className="payroll-absence-card">
-          <div className="helper-text" style={{ textAlign: 'center', padding: 'var(--spacing-2xl)' }}>
-            جاري التحميل...
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <Skeleton lines={5} height={16} />;
 
   return (
-    <div className="payroll-absence-page">
-      <div className="payroll-absence-card">
-        <h2>مسيرات الرواتب</h2>
-        <div className="payroll-absence-meta">
-          <span className="pill info">شهر: {cycleLabel || 'غير محدد'}</span>
-          {state?.last_submission && (
-            <span className="pill success">
-              تم الحفظ. للمراجعة: {formatDateDDMMYYYY(state.last_submission.submitted_at)}
-            </span>
-          )}
-        </div>
-
-        {renderStateBlock()}
-
-        {error && <div className="error-text">{error}</div>}
-        {success && <div className="success-text">{success}</div>}
-
-        {state?.state === 'entry_open' && (
-          <>
-            <div style={{ position: 'relative', zIndex: 2 }}>
-              <table className="payroll-table">
-                <thead>
-                  <tr>
-                    <th>الموظف</th>
-                    <th>رقم الهوية</th>
-                    <th> ايام الغياب بعذر</th>
-                    <th> ايام الغياب بدون عذر</th>
-                    <th>الإجمالي</th>
-                    <th>ملاحظات</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {state.employees.map((emp) => (
-                    <tr key={emp.id} className={emp.is_new ? 'new-employee-row' : ''}>
-                      <td data-label="الموظف">
-                        {emp.full_name}
-                        {emp.is_new && <span className="new-badge">جديد</span>}
-                      </td>
-                      <td data-label="رقم الهوية">{emp.employee_id}</td>
-                      <td data-label="غياب بعذر">
-                        <input
-                          type="number"
-                          min="0"
-                          className="table-input"
-                          value={entries[emp.id]?.excused_absences ?? 0}
-                          onChange={(e) => handleAbsenceChange(emp.id, Number(e.target.value), 'excused')}
-                        />
-                      </td>
-                      <td data-label="غياب بدون عذر">
-                        <input
-                          type="number"
-                          min="0"
-                          className="table-input"
-                          value={entries[emp.id]?.unexcused_absences ?? 0}
-                          onChange={(e) => handleAbsenceChange(emp.id, Number(e.target.value), 'unexcused')}
-                        />
-                      </td>
-                      <td data-label="الإجمالي">
-                        {(entries[emp.id]?.excused_absences || 0) + (entries[emp.id]?.unexcused_absences || 0)}
-                      </td>
-                      <td data-label="ملاحظات">
-                        <textarea
-                          className="note-input"
-                          placeholder="ملاحظات إضافية"
-                          value={entries[emp.id]?.notes || ''}
-                          onChange={(e) => handleNoteChange(emp.id, e.target.value)}
-                          rows="2"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="payroll-actions">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)', alignItems: 'flex-start' }}>
-                <button className="btn btn-primary" onClick={handleSubmit} disabled={saving}>
-                  {saving ? 'جاري الحفظ...' : 'حفظ الغيابات'}
-                </button>
-                <span className="helper-text" style={{ fontSize: 'var(--font-size-xs)' }}>
-                  الحفظ متاح مرة واحدة فقط لكل شهر.
-                </span>
-              </div>
-            </div>
-          </>
-        )}
-
-        {state?.state === 'view_only' && (
-          <div className="view-only-container">
-            <div style={{ position: 'relative', zIndex: 2 }}>
-              <table className="payroll-table compact-table">
-                <thead>
-                  <tr>
-                    <th>الموظف</th>
-                    <th>رقم الهوية</th>
-                    <th>غياب بعذر</th>
-                    <th>غياب بدون عذر</th>
-                    <th>الإجمالي</th>
-                    <th>ملاحظات</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {state.entries?.map((row) => (
-                    <tr key={row.employee_id}>
-                      <td data-label="الموظف">{row.full_name}</td>
-                      <td data-label="رقم الهوية">{row.employee_id_number}</td>
-                      <td data-label="غياب بعذر">{row.excused_absences ?? 0}</td>
-                      <td data-label="غياب بدون عذر">{row.unexcused_absences ?? 0}</td>
-                      <td data-label="الإجمالي">{row.absences ?? ((row.excused_absences ?? 0) + (row.unexcused_absences ?? 0))}</td>
-                      <td data-label="ملاحظات">{row.notes || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+    <div className="pa-panel">
+      <div className="pa-meta">
+        <Badge tone="info">الشهر: <bdi>{cycleLabel || 'غير محدد'}</bdi></Badge>
+        {state?.last_submission && <Badge tone="success" dot>تم الحفظ في <bdi>{ddmmyyyy(state.last_submission.submitted_at)}</bdi></Badge>}
       </div>
+
+      {loadError && <Alert tone="danger" action={<Button size="sm" variant="secondary" icon="refresh" onClick={loadState}>إعادة المحاولة</Button>}>{loadError}</Alert>}
+
+      {(state?.state === 'countdown' || state?.state === 'countdown_next') && (
+        <Alert tone="info" title="انتظار فتح التسجيل">
+          يبدأ في {ddmmyyyy(state.target_open_at)} (بعد <bdi>{state.days_until_open}</bdi> يوماً). يفتح التسجيل تلقائياً في آخر يوم من الشهر.
+        </Alert>
+      )}
+      {state?.state === 'view_only' && (
+        <Alert tone="info" title="عرض البيانات المحفوظة">
+          ينتهي العرض في {ddmmyyyy(state.view_until)}، وبعدها يظهر العد التنازلي للشهر التالي.
+        </Alert>
+      )}
+
+      {state?.state === 'entry_open' && (
+        <>
+          <p className="pa-muted">أدخل عدد أيام الغياب وملاحظات كل موظف. الحفظ متاح مرة واحدة فقط لهذا الشهر.</p>
+          <Card flush>
+            <DataTable columns={entryColumns} rows={state.employees || []} rowKey="id" emptyIcon="users" emptyTitle="لا يوجد موظفون لتسجيل غيابهم" />
+          </Card>
+          <div>
+            <Button variant="primary" icon="check" loading={saving} onClick={submit}>حفظ الغيابات</Button>
+          </div>
+        </>
+      )}
+
+      {state?.state === 'view_only' && (
+        <Card title="الغيابات المحفوظة" flush>
+          <DataTable columns={savedColumns} rows={state.entries || []} rowKey="employee_id" emptyIcon="clipboard" emptyTitle="لا توجد بيانات محفوظة" />
+        </Card>
+      )}
     </div>
   );
 };
