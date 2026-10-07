@@ -1,60 +1,52 @@
 /**
- * Notify Branches Page
- * Main Manager can create notifications and view response reports
+ * Notify branches (head office): send a notification to chosen branches and follow who responded.
  */
-
-import { useState, useEffect } from "react";
-import { useAuth } from "../contexts/AuthContext";
-import { useNotification } from "../contexts/NotificationContext";
-import { useConfirm } from '../ui';
-import { notificationsAPI, branchesAPI } from "../utils/api";
+import { useState, useEffect, useMemo } from 'react';
+import {
+  Page, PageHeader, Card, Button, IconButton, Badge, Alert, Modal, FormField, Select, Input, Textarea, Checkbox, Chip,
+  ChipGroup, SearchInput, EmptyState, Skeleton, Icon, useConfirm,
+} from '../ui';
+import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
+import { notificationsAPI, branchesAPI } from '../utils/api';
 import { formatDate } from '../utils/dateConverters';
 import { getSeenCounts, setSeenCounts } from '../utils/notificationTracker';
-import "./NotifyBranches.css";
-import BranchBadge from "../components/BranchBadge.jsx";
+import './NotifyBranches.css';
 
-const NotifyBranches = () => {
-  const { _user, isMainManager } = useAuth();
+const SEEN_KEY = 'notify_branches_seen_responses';
+const IMPORTANCE = {
+  1: { label: 'تنبيه', tone: 'success' },
+  2: { label: 'هام و غير عاجل', tone: 'warning' },
+  3: { label: 'هام و عاجل', tone: 'danger' },
+  4: { label: 'تعميم', tone: 'info' },
+  5: { label: 'تنبيه لمرة واحدة', tone: 'neutral' },
+};
+const RESPONSE_STATUS = {
+  done: { text: 'تم', tone: 'success' },
+  working_on_it: { text: 'قيد العمل', tone: 'info' },
+  seen: { text: 'شوهد', tone: 'neutral' },
+};
+const EMPTY_FORM = { message: '', importance_level: 2, branch_ids: [], duration_days: 7, one_time: false };
+
+export default function NotifyBranches() {
+  const { isMainManager } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const { confirm } = useConfirm();
+
   const [notifications, setNotifications] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [selectedNotification, setSelectedNotification] = useState(null);
-  const [notificationDetails, setNotificationDetails] = useState(null);
-  const [loadingDetails, setLoadingDetails] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
-  const [newResponsesCount, setNewResponsesCount] = useState(0);
-  const [newResponsesByNotification, setNewResponsesByNotification] = useState({});
-
-  // Create form state
-  const [formData, setFormData] = useState({
-    message: "",
-    importance_level: 2,
-    branch_ids: [],
-    duration_days: 7,
-    one_time: false,
-  });
-  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [attachment, setAttachment] = useState(null);
+  const [branchQuery, setBranchQuery] = useState('');
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!isMainManager()) {
-      return;
-    }
-    loadData();
-    // Update last visit time when viewing notifications page
-    localStorage.setItem('notifications_last_visit', new Date().toISOString());
-  }, [isMainManager]);
-
-  // Reload data when showInactive changes
-  useEffect(() => {
-    if (!isMainManager()) {
-      return;
-    }
-    loadData();
-  }, [showInactive]);
+  const [openId, setOpenId] = useState(null);
+  const [details, setDetails] = useState(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [newResponsesCount, setNewResponsesCount] = useState(0);
+  const [newByNotification, setNewByNotification] = useState({});
 
   const loadData = async () => {
     try {
@@ -63,748 +55,296 @@ const NotifyBranches = () => {
         notificationsAPI.getAll({ include_inactive: showInactive }),
         branchesAPI.getAll({ is_active: true }),
       ]);
-
       if (notificationsRes.data.success) {
-        setNotifications(notificationsRes.data.data || []);
-        const seenKey = 'notify_branches_seen_responses';
-        const seenCounts = getSeenCounts(seenKey);
-        const { totalNew, byId } = (notificationsRes.data.data || []).reduce(
-          (acc, notif) => {
-            const responded = parseInt(notif?.stats?.responded_count || 0, 10);
-            const seen = parseInt(seenCounts?.[notif.id] || 0, 10);
-            const delta = Math.max(0, responded - seen);
-            if (delta > 0) {
-              acc.totalNew += delta;
-              acc.byId[notif.id] = delta;
-            }
-            return acc;
-          },
-          { totalNew: 0, byId: {} }
-        );
+        const list = notificationsRes.data.data || [];
+        setNotifications(list);
+        const seen = getSeenCounts(SEEN_KEY);
+        const { totalNew, byId } = list.reduce((acc, n) => {
+          const delta = Math.max(0, parseInt(n?.stats?.responded_count || 0, 10) - parseInt(seen?.[n.id] || 0, 10));
+          if (delta > 0) { acc.totalNew += delta; acc.byId[n.id] = delta; }
+          return acc;
+        }, { totalNew: 0, byId: {} });
         setNewResponsesCount(totalNew);
-        setNewResponsesByNotification(byId);
+        setNewByNotification(byId);
       }
-
-      if (branchesRes.data.success) {
-        setBranches(branchesRes.data.data || []);
-      }
+      if (branchesRes.data.success) setBranches(branchesRes.data.data || []);
     } catch (error) {
-      console.error("Error loading data:", error);
-      showError("فشل تحميل البيانات");
+      console.error('Error loading data:', error);
+      showError('فشل تحميل البيانات');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateNotification = async (e) => {
+  useEffect(() => {
+    if (!isMainManager()) return;
+    loadData();
+    localStorage.setItem('notifications_last_visit', new Date().toISOString());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMainManager, showInactive]);
+
+  const closeCreate = () => {
+    if (saving) return;
+    setCreateOpen(false);
+    setForm(EMPTY_FORM);
+    setAttachment(null);
+    setBranchQuery('');
+  };
+
+  const submitCreate = async (e) => {
     e.preventDefault();
-
-    if (!formData.message.trim()) {
-      showWarning("الرسالة مطلوبة");
-      return;
-    }
-
-    if (formData.branch_ids.length === 0) {
-      showWarning("يجب اختيار فرع واحد على الأقل");
-      return;
-    }
-
+    if (!form.message.trim()) { showWarning('الرسالة مطلوبة'); return; }
+    if (form.branch_ids.length === 0) { showWarning('يجب اختيار فرع واحد على الأقل'); return; }
     try {
       setSaving(true);
-
-      // Create FormData for file upload
-      const formDataToSend = new FormData();
-      formDataToSend.append('message', formData.message.trim());
-      formDataToSend.append('importance_level', parseInt(formData.importance_level));
-      formDataToSend.append('duration_days', parseInt(formData.duration_days) || 7);
-      formDataToSend.append('one_time', formData.one_time ? 'true' : 'false');
-
-      // Append branch_ids as JSON string to ensure proper parsing on server
-      // This is more reliable than multiple append() calls with same key
-      formDataToSend.append('branch_ids', JSON.stringify(formData.branch_ids.map(id => parseInt(id))));
-
-      // Add file if selected
-      if (attachmentFile) {
-        formDataToSend.append('file', attachmentFile);
-      }
-
-      const response = await notificationsAPI.create(formDataToSend);
-
+      const data = new FormData();
+      data.append('message', form.message.trim());
+      data.append('importance_level', parseInt(form.importance_level, 10));
+      data.append('duration_days', parseInt(form.duration_days, 10) || 7);
+      data.append('one_time', form.one_time ? 'true' : 'false');
+      data.append('branch_ids', JSON.stringify(form.branch_ids.map((id) => parseInt(id, 10)))); // JSON: parsed reliably server-side
+      if (attachment) data.append('file', attachment);
+      const response = await notificationsAPI.create(data);
       if (response.data.success) {
-        showSuccess("تم إرسال الإشعار بنجاح");
-        setFormData({
-          message: "",
-          importance_level: 2,
-          branch_ids: [],
-          duration_days: 7,
-          one_time: false,
-        });
-        setAttachmentFile(null);
-        setShowCreateForm(false);
+        showSuccess('تم إرسال الإشعار بنجاح');
+        setCreateOpen(false);
+        setForm(EMPTY_FORM);
+        setAttachment(null);
         loadData();
       }
     } catch (error) {
-      console.error("Error creating notification:", error);
-      showError(error.response?.data?.message || "فشل إنشاء الإشعار");
+      console.error('Error creating notification:', error);
+      showError(error.response?.data?.message || 'فشل إنشاء الإشعار');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleViewDetails = async (notificationId) => {
-    if (selectedNotification === notificationId && notificationDetails) {
-      setSelectedNotification(null);
-      setNotificationDetails(null);
-      return;
-    }
-
+  const toggleDetails = async (id) => {
+    if (openId === id && details) { setOpenId(null); setDetails(null); return; }
     try {
       setLoadingDetails(true);
-      setSelectedNotification(notificationId);
-      const response = await notificationsAPI.getById(notificationId);
-
+      setOpenId(id);
+      const response = await notificationsAPI.getById(id);
       if (response.data.success) {
-        setNotificationDetails(response.data.data);
-        const seenKey = 'notify_branches_seen_responses';
-        const seenCounts = getSeenCounts(seenKey);
+        setDetails(response.data.data);
         const responded = parseInt(response.data.data?.stats?.responded_count || 0, 10);
         if (responded > 0) {
-          const nextCounts = { ...seenCounts, [notificationId]: responded };
-          setSeenCounts(seenKey, nextCounts);
-          const remaining = Object.entries(newResponsesByNotification)
-            .filter(([id]) => parseInt(id, 10) !== notificationId)
-            .reduce((sum, [, count]) => sum + count, 0);
-          setNewResponsesByNotification((prev) => {
-            const next = { ...prev };
-            delete next[notificationId];
-            return next;
-          });
+          setSeenCounts(SEEN_KEY, { ...getSeenCounts(SEEN_KEY), [id]: responded });
+          const remaining = Object.entries(newByNotification).filter(([k]) => parseInt(k, 10) !== id).reduce((sum, [, c]) => sum + c, 0);
+          setNewByNotification((prev) => { const next = { ...prev }; delete next[id]; return next; });
           setNewResponsesCount(remaining);
         }
       }
     } catch (error) {
-      console.error("Error loading notification details:", error);
-      showError("فشل تحميل تفاصيل الإشعار");
+      console.error('Error loading notification details:', error);
+      showError('فشل تحميل تفاصيل الإشعار');
     } finally {
       setLoadingDetails(false);
     }
   };
 
-  const handleDeleteNotification = async (notificationId) => {
-    if (!await confirm({ message: "هل أنت متأكد من حذف هذا الإشعار؟", tone: 'danger' })) {
-      return;
-    }
-
+  const remove = async (id) => {
+    const ok = await confirm({ title: 'حذف الإشعار', message: 'هل أنت متأكد من حذف هذا الإشعار؟', tone: 'danger', confirmText: 'حذف' });
+    if (!ok) return;
     try {
-      const response = await notificationsAPI.delete(notificationId);
+      const response = await notificationsAPI.delete(id);
       if (response.data.success) {
-        showSuccess("تم حذف الإشعار بنجاح");
+        showSuccess('تم حذف الإشعار بنجاح');
         loadData();
-        if (selectedNotification === notificationId) {
-          setSelectedNotification(null);
-          setNotificationDetails(null);
-        }
+        if (openId === id) { setOpenId(null); setDetails(null); }
       }
     } catch (error) {
-      console.error("Error deleting notification:", error);
-      showError(error.response?.data?.message || "فشل حذف الإشعار");
+      console.error('Error deleting notification:', error);
+      showError(error.response?.data?.message || 'فشل حذف الإشعار');
     }
   };
 
-  const handleToggleActive = async (notificationId) => {
+  const toggleActive = async (id) => {
     try {
-      const response = await notificationsAPI.toggleActive(notificationId);
-      if (response.data.success) {
-        showSuccess(response.data.message);
-        loadData();
-      }
+      const response = await notificationsAPI.toggleActive(id);
+      if (response.data.success) { showSuccess(response.data.message); loadData(); }
     } catch (error) {
-      console.error("Error toggling notification status:", error);
-      showError(error.response?.data?.message || "فشل تحديث حالة الإشعار");
+      console.error('Error toggling notification status:', error);
+      showError(error.response?.data?.message || 'فشل تحديث حالة الإشعار');
     }
   };
 
-  const toggleBranchSelection = (branchId) => {
-    setFormData((prev) => ({
-      ...prev,
-      branch_ids: prev.branch_ids.includes(branchId)
-        ? prev.branch_ids.filter((id) => id !== branchId)
-        : [...prev.branch_ids, branchId],
-    }));
+  const markAllSeen = () => {
+    setSeenCounts(SEEN_KEY, notifications.reduce((acc, n) => { acc[n.id] = parseInt(n?.stats?.responded_count || 0, 10); return acc; }, {}));
+    setNewByNotification({});
+    setNewResponsesCount(0);
   };
 
-  const selectAllBranches = () => {
-    setFormData((prev) => ({
-      ...prev,
-      branch_ids: branches.map((b) => b.id),
-    }));
-  };
-
-  const deselectAllBranches = () => {
-    setFormData((prev) => ({
-      ...prev,
-      branch_ids: [],
-    }));
-  };
-
-  const importanceColors = {
-    1: "#4CAF50", // Low - Green
-    2: "#FF9800", // Medium - Orange
-    3: "#F44336", // High - Red
-    4: "#2196F3", // Circular - Blue
-    5: "#9C27B0", // One-time - Purple
-  };
-
-  const importanceLabels = {
-    1: "تنبيه",
-    2: "هام و غير عاجل",
-    3: "هام و عاجل",
-    4: "تعميم",
-    5: "تنبيه لمرة واحدة",
-  };
-
-  const responseStatusLabels = {
-    done: { text: "تم", label: "Completed", color: "#4CAF50" },
-    working_on_it: { text: "قيد العمل", label: "Working on", color: "var(--primary)" },
-    seen: { text: "شوهد", label: "Aware", color: "#9E9E9E" },
-  };
+  const toggleBranch = (id) => setForm((prev) => ({ ...prev, branch_ids: prev.branch_ids.includes(id) ? prev.branch_ids.filter((x) => x !== id) : [...prev.branch_ids, id] }));
+  const visibleBranches = useMemo(() => branches.filter((b) => b.branch_name.includes(branchQuery.trim())), [branches, branchQuery]);
 
   if (!isMainManager()) {
-    return (
-      <div className="notify-branches-page">
-        <h1>غير مصرح</h1>
-        <p>هذه الصفحة متاحة فقط للمدير الرئيسي</p>
-      </div>
-    );
+    return <Page><PageHeader title="غير مصرح" /><Card><EmptyState icon="shield" title="هذه الصفحة متاحة فقط للمدير الرئيسي" /></Card></Page>;
   }
 
   return (
-    <div className="notify-branches-page">
-      <div className="page-header">
-        <h1>إشعارات الفروع</h1>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <label className="modern-toggle" style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={showInactive}
-                onChange={(e) => {
-                  setShowInactive(e.target.checked);
-                }}
-                className="toggle-input"
-              />
-              <span className="toggle-slider"></span>
-            </div>
-            <span style={{ userSelect: 'none', fontWeight: '500', fontSize: '14px' }}>عرض الإشعارات غير النشطة</span>
-          </label>
-          <button
-            className="btn btn-primary"
-            onClick={() => setShowCreateForm(!showCreateForm)}
-          >
-            {showCreateForm ? "إلغاء" : "إرسال إشعار جديد"}
-          </button>
-        </div>
-      </div>
+    <Page>
+      <PageHeader
+        title="إشعارات الفروع"
+        subtitle="أرسل إشعاراً لفروع محددة وتابع من ردّ عليه"
+        actions={(
+          <>
+            <Checkbox label="عرض الإشعارات غير النشطة" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+            <Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>إرسال إشعار جديد</Button>
+          </>
+        )}
+      />
 
       {newResponsesCount > 0 && (
-        <div className="notification-banner">
-          <span>لديك {newResponsesCount} رد جديد من الفروع</span>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => {
-              const seenKey = 'notify_branches_seen_responses';
-              const nextCounts = notifications.reduce((acc, notif) => {
-                acc[notif.id] = parseInt(notif?.stats?.responded_count || 0, 10);
-                return acc;
-              }, {});
-              setSeenCounts(seenKey, nextCounts);
-              setNewResponsesByNotification({});
-              setNewResponsesCount(0);
-            }}
-          >
-            تم الاطلاع
-          </button>
-        </div>
+        <Alert tone="info" action={<Button size="sm" variant="secondary" onClick={markAllSeen}>تم الاطلاع</Button>}>
+          لديك {newResponsesCount} رد جديد من الفروع
+        </Alert>
       )}
 
-      {/* Create Notification Form */}
-      {showCreateForm && (
-        <div className="create-notification-form modern-form">
-          <div className="form-header">
-            <h2>إرسال إشعار جديد</h2>
-          </div>
-
-          <form onSubmit={handleCreateNotification} className="modern-form-content">
-            <div className="form-row">
-              <div className="form-group form-group-full">
-                <label htmlFor="message" className="form-label">
-                  <span className="label-text">الرسالة</span>
-                  <span className="required-badge">*</span>
-                </label>
-                <textarea
-                  id="message"
-                  className="form-textarea"
-                  value={formData.message}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, message: e.target.value }))
-                  }
-                  rows="5"
-                  required
-                  placeholder="اكتب الرسالة هنا..."
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="importance_level" className="form-label">
-                  <span className="label-text">مستوى الأهمية</span>
-                  <span className="required-badge">*</span>
-                </label>
-                <select
-                  id="importance_level"
-                  className="form-select"
-                  value={formData.importance_level}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      importance_level: parseInt(e.target.value),
-                    }))
-                  }
-                  required
-                >
-                  <option value={1}>تنبيه</option>
-                  <option value={2}>هام و غير عاجل</option>
-                  <option value={3}>هام و عاجل</option>
-                  <option value={4}>تعميم</option>
-                  <option value={5}>تنبيه لمرة واحدة</option>
-                </select>
-              </div>
-
-              <div className="form-group form-group-small">
-                <label htmlFor="duration_days" className="form-label">
-                  <span className="label-text">مدة الإشعار (أيام)</span>
-                </label>
-                <input
-                  type="number"
-                  id="duration_days"
-                  className="form-input form-input-small"
-                  min="1"
-                  max="365"
-                  value={formData.duration_days}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, duration_days: parseInt(e.target.value) || 7 }))}
-                  placeholder="7"
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group form-group-full">
-                <label className="modern-toggle" style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
-                  <div className="toggle-switch">
-                    <input
-                      type="checkbox"
-                      id="one_time"
-                      checked={formData.one_time}
-                      onChange={(e) => {
-                        const isOneTime = e.target.checked;
-                        setFormData((prev) => ({
-                          ...prev,
-                          one_time: isOneTime,
-                          // Automatically set importance level to 5 if one-time is checked
-                          importance_level: isOneTime ? 5 : (prev.importance_level === 5 ? 2 : prev.importance_level)
-                        }));
-                      }}
-                      className="toggle-input"
-                    />
-                    <span className="toggle-slider"></span>
-                  </div>
-                  <span style={{ userSelect: 'none', fontWeight: '500', fontSize: '14px' }}>إشعار لمرة واحدة فقط</span>
-                </label>
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group form-group-full">
-                <label htmlFor="attachment" className="form-label">
-                  <span className="label-text">إرفاق ملف أو صورة</span>
-                  <span className="optional-badge">(اختياري)</span>
-                </label>
-                <div className="file-upload-container">
-                  <input
-                    id="attachment"
-                    type="file"
-                    className="file-input"
-                    accept=".pdf,.jpg,.jpeg,.png,.gif"
-                    onChange={(e) => setAttachmentFile(e.target.files[0] || null)}
-                  />
-                  {attachmentFile && (
-                    <div className="file-selected">
-                      <span className="file-icon">📎</span>
-                      <div className="file-info">
-                        <span className="file-name">{attachmentFile.name}</span>
-                        <span className="file-size">
-                          ({(attachmentFile.size / 1024 / 1024).toFixed(2)} ميجابايت)
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        className="remove-file-btn"
-                        onClick={() => setAttachmentFile(null)}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group form-group-full">
-                <div className="branches-selection-header modern-header">
-                  <label className="form-label">
-                    <span className="label-text">اختر الفروع</span>
-                    <span className="required-badge">*</span>
-                  </label>
-                  <div className="selection-actions">
-                    <button
-                      type="button"
-                      className="action-link-btn"
-                      onClick={selectAllBranches}
-                    >
-                      تحديد الكل
-                    </button>
-                    <button
-                      type="button"
-                      className="action-link-btn"
-                      onClick={deselectAllBranches}
-                    >
-                      إلغاء التحديد
-                    </button>
-                  </div>
-                </div>
-                <div className="branches-button-grid">
-                  {branches.map((branch) => (
-                    <button
-                      key={branch.id}
-                      type="button"
-                      className={`branch-select-button ${formData.branch_ids.includes(branch.id) ? 'selected' : ''}`}
-                      onClick={() => toggleBranchSelection(branch.id)}
-                    >
-                      <BranchBadge branch={branch} />
-                      <span className="branch-name-text">{branch.branch_name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="form-actions modern-actions">
-              <button
-                type="button"
-                className="btn btn-secondary modern-btn-secondary"
-                onClick={() => {
-                  setShowCreateForm(false);
-                  setFormData({
-                    message: "",
-                    importance_level: 2,
-                    branch_ids: [],
-                    duration_days: 7,
-                    one_time: false,
-                  });
-                  setAttachmentFile(null);
-                }}
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                className="btn btn-primary modern-btn-primary"
-                disabled={saving || formData.branch_ids.length === 0}
-              >
-                {saving ? "جاري الإرسال..." : "إرسال الإشعار"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Notifications List */}
       {loading ? (
-        <div className="loading">جاري التحميل...</div>
+        <Card><Skeleton lines={4} height={16} /></Card>
+      ) : notifications.length === 0 ? (
+        <Card><EmptyState icon="bell" title="لا توجد إشعارات مرسلة بعد" action={<Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>إرسال إشعار جديد</Button>} /></Card>
       ) : (
-        <div className="notifications-list">
-          <h2>{showInactive ? 'جميع الإشعارات' : 'الإشعارات النشطة'} ({notifications.length})</h2>
-
-          {notifications.length === 0 ? (
-            <div className="empty-state">
-              <p>لا توجد إشعارات مرسلة بعد</p>
-            </div>
-          ) : (
-            notifications.map((notification) => {
-              const stats = notification.stats || {};
-              const respondedCount = stats.responded_count || 0;
-              const totalBranches = stats.total_branches || 0;
-              const noResponseCount = stats.no_response_count || 0;
-
-              return (
-                <div
-                  key={notification.id}
-                  className="notification-card"
-                  style={{
-                    borderRight: `4px solid ${importanceColors[notification.importance_level]
-                      }`,
-                    opacity: notification.is_active ? 1 : 0.7,
-                  }}
-                >
-                  <div className="notification-card-header">
-                    <div className="notification-meta">
-                      <span
-                        className="importance-badge"
-                        style={{
-                          backgroundColor:
-                            importanceColors[notification.importance_level],
-                        }}
-                      >
-                        {importanceLabels[notification.importance_level]}
-                      </span>
-                      <span className="notification-date">
-                        {formatDate(notification.created_at)}
-                      </span>
-                      {notification.created_by_name && (
-                        <span className="notification-creator">
-                          بواسطة: {notification.created_by_name}
-                        </span>
-                      )}
-                    </div>
-                    <div className="notification-actions">
-                      <button
-                        className="btn btn-sm btn-primary"
-                        onClick={() => handleViewDetails(notification.id)}
-                      >
-                        {selectedNotification === notification.id
-                          ? "إخفاء التفاصيل"
-                          : "عرض التفاصيل"}
-                      </button>
-                      <button
-                        className={`btn btn-sm ${notification.is_active ? 'btn-warning' : 'btn-success'}`}
-                        onClick={() => handleToggleActive(notification.id)}
-                        title={notification.is_active ? 'إلغاء التفعيل' : 'تفعيل'}
-                      >
-                        {notification.is_active ? 'إلغاء التفعيل' : 'تفعيل'}
-                      </button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() =>
-                          handleDeleteNotification(notification.id)
-                        }
-                        style={{ marginLeft: '8px' }}
-                      >
-                        حذف
-                      </button>
-                    </div>
+        <ul className="nb-list">
+          {notifications.map((n) => {
+            const stats = n.stats || {};
+            const imp = IMPORTANCE[n.importance_level] || { label: n.importance_level, tone: 'neutral' };
+            const open = openId === n.id;
+            return (
+              <li key={n.id} className={`nb-card${n.is_active ? '' : ' is-inactive'}`}>
+                <header className="nb-head">
+                  <div className="nb-meta">
+                    <Badge tone={imp.tone}>{imp.label}</Badge>
+                    {!n.is_active && <Badge tone="neutral">غير نشط</Badge>}
+                    {newByNotification[n.id] > 0 && <Badge tone="info" dot><bdi>{newByNotification[n.id]}</bdi> رد جديد</Badge>}
+                    <span className="nb-muted">{formatDate(n.created_at)}</span>
+                    {n.created_by_name && <span className="nb-muted">بواسطة: {n.created_by_name}</span>}
                   </div>
-
-                  <div className="notification-message">
-                    {notification.message}
+                  <div className="nb-actions">
+                    <Button size="sm" variant="soft" iconEnd={open ? 'chevron-up' : 'chevron-down'} aria-expanded={open} onClick={() => toggleDetails(n.id)}>{open ? 'إخفاء التفاصيل' : 'عرض التفاصيل'}</Button>
+                    <Button size="sm" variant="secondary" onClick={() => toggleActive(n.id)}>{n.is_active ? 'إلغاء التفعيل' : 'تفعيل'}</Button>
+                    <IconButton icon="trash" label="حذف" className="nb-danger" onClick={() => remove(n.id)} />
                   </div>
+                </header>
 
-                  {/* Attachment Display */}
-                  {notification.attachment_url && (
-                    <div className="notification-attachment" style={{
-                      marginTop: '15px',
-                      padding: '12px',
-                      backgroundColor: '#f5f5f5',
-                      borderRadius: '6px',
-                      border: '1px solid #ddd'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '18px' }}>📎</span>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
-                            ملف مرفق: {notification.attachment_name || 'مرفق'}
-                          </div>
-                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                            <a
-                              href={notification.attachment_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                color: 'var(--primary)',
-                                textDecoration: 'none',
-                                fontSize: '14px'
-                              }}
-                            >
-                              📥 تحميل الملف
-                            </a>
-                            {(notification.attachment_type?.startsWith('image/') || notification.attachment_type === 'application/pdf') && (
-                              <a
-                                href={notification.attachment_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  color: 'var(--primary)',
-                                  textDecoration: 'none',
-                                  fontSize: '14px'
-                                }}
-                              >
-                                👁️ معاينة
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                <p className="nb-message">{n.message}</p>
 
-                  <div className="notification-stats">
-                    <div className="stat-item">
-                      <span className="stat-label">إجمالي الفروع:</span>
-                      <span className="stat-value">{totalBranches}</span>
-                    </div>
-                    <div className="stat-item stat-success">
-                      <span className="stat-label">تم الرد:</span>
-                      <span className="stat-value">{respondedCount}</span>
-                    </div>
-                    <div className="stat-item stat-warning">
-                      <span className="stat-label">لم يرد:</span>
-                      <span className="stat-value">{noResponseCount}</span>
-                    </div>
-                    {notification.one_time && stats.seen_branches_count > 0 && (
-                      <div className="stat-item stat-info">
-                        <span className="stat-label">تم المشاهدة:</span>
-                        <span className="stat-value">{stats.seen_branches_count}</span>
-                      </div>
-                    )}
-                    {stats.done_count > 0 && (
-                      <div className="stat-item stat-done">
-                        <span className="stat-label">تم:</span>
-                        <span className="stat-value">{stats.done_count}</span>
-                      </div>
-                    )}
-                    {stats.working_on_it_count > 0 && (
-                      <div className="stat-item stat-working">
-                        <span className="stat-label">قيد العمل:</span>
-                        <span className="stat-value">
-                          {stats.working_on_it_count}
-                        </span>
-                      </div>
-                    )}
-                    {stats.seen_count > 0 && (
-                      <div className="stat-item stat-seen">
-                        <span className="stat-label">شوهد:</span>
-                        <span className="stat-value">{stats.seen_count}</span>
-                      </div>
-                    )}
+                {n.attachment_url && (
+                  <div className="nb-attachment">
+                    <Icon name="link" size={16} />
+                    <span>{n.attachment_name || 'مرفق'}</span>
+                    <a href={n.attachment_url} target="_blank" rel="noopener noreferrer">{n.attachment_type?.startsWith('image/') || n.attachment_type === 'application/pdf' ? 'معاينة / تحميل' : 'تحميل'}</a>
                   </div>
+                )}
 
-                  {/* Notification Details */}
-                  {selectedNotification === notification.id && (
-                    <div className="notification-details">
-                      {loadingDetails ? (
-                        <div className="loading">جاري تحميل التفاصيل...</div>
-                      ) : notificationDetails ? (
-                        <div className="details-content">
-                          <h3>تفاصيل الردود</h3>
-
-                          {/* Branches with Responses */}
-                          {notificationDetails.responses &&
-                            notificationDetails.responses.length > 0 && (
-                              <div className="responses-section">
-                                <h4>
-                                  الفروع التي ردت (
-                                  {notificationDetails.responses.length})
-                                </h4>
-                                <div className="responses-list">
-                                  {notificationDetails.responses.map(
-                                    (response) => {
-                                      const statusInfo =
-                                        responseStatusLabels[
-                                        response.response_status
-                                        ] || {};
-                                      return (
-                                        <div
-                                          key={response.id}
-                                          className="response-item"
-                                        >
-                                          <div className="response-header">
-                                            <span className="branch-name">
-                                              {response.branch_name}
-                                            </span>
-                                            <span
-                                              className="response-status-badge"
-                                              style={{
-                                                backgroundColor:
-                                                  statusInfo.color,
-                                              }}
-                                            >
-                                              {statusInfo.text}
-                                            </span>
-                                          </div>
-                                          {response.response_message && (
-                                            <div className="response-message">
-                                              <strong>الرسالة:</strong>{" "}
-                                              {response.response_message}
-                                            </div>
-                                          )}
-                                          <div className="response-date">
-                                            {formatDate(response.responded_at)}
-                                          </div>
-                                        </div>
-                                      );
-                                    }
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                          {/* Branches without Responses */}
-                          {notificationDetails.branches && (
-                            <div className="no-responses-section">
-                              <h4>الفروع التي لم ترد ({noResponseCount})</h4>
-                              <div className="branches-list">
-                                {notificationDetails.branches
-                                  .filter(
-                                    (branch) =>
-                                      !notificationDetails.responses?.some(
-                                        (r) => r.branch_id === branch.id
-                                      )
-                                  )
-                                  .map((branch) => (
-                                    <div
-                                      key={branch.id}
-                                      className="branch-item no-response"
-                                    >
-                                      <span className="branch-name">
-                                        {branch.branch_name}
-                                      </span>
-                                      <span className="branch-type">
-                                        {branch.branch_type === "school"
-                                          ? "مدرسة"
-                                          : "مركز رعاية نهارية"}
-                                      </span>
-                                    </div>
-                                  ))}
-                              </div>
-                            </div>
-                          )}
-
-                        </div>
-                      ) : (
-                        <div className="error">فشل تحميل التفاصيل</div>
-                      )}
-                    </div>
-                  )}
+                <div className="nb-stats">
+                  <Badge tone="neutral">إجمالي الفروع <bdi>{stats.total_branches || 0}</bdi></Badge>
+                  <Badge tone="success">تم الرد <bdi>{stats.responded_count || 0}</bdi></Badge>
+                  <Badge tone="warning">لم يرد <bdi>{stats.no_response_count || 0}</bdi></Badge>
+                  {n.one_time && stats.seen_branches_count > 0 && <Badge tone="info">تمت المشاهدة <bdi>{stats.seen_branches_count}</bdi></Badge>}
+                  {stats.done_count > 0 && <Badge tone="success">تم <bdi>{stats.done_count}</bdi></Badge>}
+                  {stats.working_on_it_count > 0 && <Badge tone="info">قيد العمل <bdi>{stats.working_on_it_count}</bdi></Badge>}
+                  {stats.seen_count > 0 && <Badge tone="neutral">شوهد <bdi>{stats.seen_count}</bdi></Badge>}
                 </div>
-              );
-            })
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
 
-export default NotifyBranches;
+                {open && (
+                  <div className="nb-details">
+                    {loadingDetails ? <Skeleton lines={3} height={14} /> : details ? (
+                      <>
+                        {details.responses?.length > 0 && (
+                          <section>
+                            <h4>الفروع التي ردت ({details.responses.length})</h4>
+                            <ul className="nb-responses">
+                              {details.responses.map((r) => {
+                                const s = RESPONSE_STATUS[r.response_status] || { text: r.response_status, tone: 'neutral' };
+                                return (
+                                  <li key={r.id}>
+                                    <div className="nb-resp-head"><strong>{r.branch_name}</strong><Badge tone={s.tone} dot>{s.text}</Badge><span className="nb-muted">{formatDate(r.responded_at)}</span></div>
+                                    {r.response_message && <p>{r.response_message}</p>}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </section>
+                        )}
+                        {details.branches && (
+                          <section>
+                            <h4>الفروع التي لم ترد ({stats.no_response_count || 0})</h4>
+                            <ChipGroup aria-label="الفروع التي لم ترد">
+                              {details.branches.filter((b) => !details.responses?.some((r) => r.branch_id === b.id)).map((b) => (
+                                <Badge key={b.id} tone="neutral">{b.branch_name} · {b.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية'}</Badge>
+                              ))}
+                            </ChipGroup>
+                          </section>
+                        )}
+                      </>
+                    ) : <Alert tone="danger">فشل تحميل التفاصيل</Alert>}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <Modal
+        open={createOpen}
+        onClose={closeCreate}
+        title="إرسال إشعار جديد"
+        size="lg"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={closeCreate} disabled={saving}>إلغاء</Button>
+            <Button variant="primary" type="submit" form="nb-form" icon="bell" loading={saving} disabled={form.branch_ids.length === 0}>إرسال الإشعار</Button>
+          </>
+        )}
+      >
+        <form id="nb-form" onSubmit={submitCreate} className="ui-form-stack" noValidate>
+          <FormField label="الرسالة" required>
+            <Textarea rows={5} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="اكتب الرسالة هنا…" />
+          </FormField>
+          <div className="nb-grid">
+            <FormField label="مستوى الأهمية" required>
+              <Select
+                value={String(form.importance_level)}
+                onChange={(e) => setForm({ ...form, importance_level: parseInt(e.target.value, 10) })}
+                options={Object.entries(IMPORTANCE).map(([value, v]) => ({ value, label: v.label }))}
+              />
+            </FormField>
+            <FormField label="مدة الإشعار (أيام)">
+              <Input type="number" min="1" max="365" value={form.duration_days} onChange={(e) => setForm({ ...form, duration_days: parseInt(e.target.value, 10) || 7 })} />
+            </FormField>
+          </div>
+          <Checkbox
+            label="إشعار لمرة واحدة فقط"
+            checked={form.one_time}
+            onChange={(e) => {
+              const oneTime = e.target.checked;
+              setForm((prev) => ({ ...prev, one_time: oneTime, importance_level: oneTime ? 5 : (prev.importance_level === 5 ? 2 : prev.importance_level) }));
+            }}
+          />
+          <FormField label="إرفاق ملف أو صورة (اختياري)" hint="PDF أو صورة">
+            <input type="file" className="ui-file" accept=".pdf,.jpg,.jpeg,.png,.gif" onChange={(e) => setAttachment(e.target.files[0] || null)} />
+          </FormField>
+          {attachment && <p className="nb-muted"><bdi>{attachment.name}</bdi> · <bdi>{(attachment.size / 1024 / 1024).toFixed(2)}</bdi> ميجابايت</p>}
+
+          <div className="ui-form-stack">
+            <div className="nb-branch-head">
+              <span className="ui-field-label">الفروع <span className="ui-field-required" aria-hidden="true">*</span> <Badge tone="info"><bdi>{form.branch_ids.length}</bdi> محدد</Badge></span>
+              <span className="nb-actions">
+                <Button size="sm" variant="soft" onClick={() => setForm((p) => ({ ...p, branch_ids: branches.map((b) => b.id) }))}>تحديد الكل</Button>
+                <Button size="sm" variant="ghost" onClick={() => setForm((p) => ({ ...p, branch_ids: [] }))}>إلغاء التحديد</Button>
+              </span>
+            </div>
+            <SearchInput value={branchQuery} onChange={(e) => setBranchQuery(e.target.value)} onClear={() => setBranchQuery('')} placeholder="ابحث عن فرع…" />
+            <ChipGroup aria-label="الفروع">
+              {visibleBranches.map((b) => <Chip key={b.id} selected={form.branch_ids.includes(b.id)} onClick={() => toggleBranch(b.id)}>{b.branch_name}</Chip>)}
+            </ChipGroup>
+          </div>
+        </form>
+      </Modal>
+    </Page>
+  );
+}
