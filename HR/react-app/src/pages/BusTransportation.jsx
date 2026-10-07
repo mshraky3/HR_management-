@@ -8,13 +8,14 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { busTransportationAPI, branchesAPI, termsAPI } from "../utils/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
-import { useConfirm } from '../ui';
+import { useConfirm, PageHeader, StatCard, Button } from '../ui';
 import {
   formatTermDisplay,
   groupTermsByBranchType,
   deduplicateTerms,
 } from "../utils/termHelpers.js";
 import "./BusTransportation.css";
+import "./BusRestyle.css";
 import { Fragment } from "react";
 import BranchBadge from "../components/BranchBadge.jsx";
 import UnifiedDatePicker from "../components/UnifiedDatePicker.jsx";
@@ -665,193 +666,34 @@ const BusTransportation = () => {
 
   return (
     <div className="bus-transportation-container">
-      <div className="bus-transportation-header" ref={pageTopRef}>
-        <div className="header-content">
-          <div className="header-icon">
-            <svg
-              width="32"
-              height="32"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
+      <div ref={pageTopRef}>
+        <PageHeader
+          title="الباصات"
+          subtitle="إدارة بيانات حافلات نقل الطلاب"
+          actions={(
+            <Button
+              variant="primary"
+              icon="plus"
+              onClick={() => {
+                setEditingBus(null);
+                setBusFormInitialTab("basic");
+                setShowBusForm(true);
+              }}
             >
-              <path
-                d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"
-                fill="currentColor"
-              />
-              <path
-                d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2z"
-                stroke="currentColor"
-                strokeWidth="2"
-                fill="none"
-              />
-            </svg>
-          </div>
-          <div>
-            <h1>الباصات</h1>
-            <p className="page-description">إدارة بيانات حافلات نقل الطلاب</p>
-          </div>
-        </div>
-        <button
-          className="btn-primary"
-          onClick={() => {
-            setEditingBus(null);
-            setBusFormInitialTab("basic");
-            setShowBusForm(true);
-          }}
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M12 5v14m-7-7h14"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          </svg>
-          إضافة حافلة
-        </button>
+              إضافة حافلة
+            </Button>
+          )}
+        />
       </div>
 
       {/* Statistics Cards - Main Manager View */}
       {isMainManager() && (
         <div className="bus-stats-section">
-          <div className="stats-cards-grid">
-            <div className="stat-card">
-              <div
-                className="stat-card-icon"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                }}
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M8 17h8M8 7h8M4 12h16"
-                    stroke="white"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                  <rect
-                    x="2"
-                    y="3"
-                    width="20"
-                    height="18"
-                    rx="2"
-                    stroke="white"
-                    strokeWidth="2"
-                    fill="none"
-                  />
-                </svg>
-              </div>
-              <div className="stat-card-content">
-                <div className="stat-card-label">إجمالي الباصات</div>
-                <div className="stat-card-value">{stats.totalBuses}</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div
-                className="stat-card-icon"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
-                }}
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"
-                    stroke="white"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                  <circle
-                    cx="9"
-                    cy="7"
-                    r="4"
-                    stroke="white"
-                    strokeWidth="2"
-                    fill="none"
-                  />
-                  <path
-                    d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"
-                    stroke="white"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </div>
-              <div className="stat-card-content">
-                <div className="stat-card-label">إجمالي الطلاب</div>
-                <div className="stat-card-value">
-                  {parseInt(stats.totalStudents) || 0}
-                </div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div
-                className="stat-card-icon"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
-                }}
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M22 11.08V12a10 10 0 1 1-5.93-9.14"
-                    stroke="white"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                  <polyline
-                    points="22 4 12 14.01 9 11.01"
-                    stroke="white"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </div>
-              <div className="stat-card-content">
-                <div className="stat-card-label">باصات مكتملة</div>
-                <div className="stat-card-value">{stats.complete}</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div
-                className="stat-card-icon"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",
-                }}
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="white"
-                    strokeWidth="2"
-                  />
-                  <path
-                    d="M12 8v4M12 16h.01"
-                    stroke="white"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </div>
-              <div className="stat-card-content">
-                <div className="stat-card-label">باصات غير مكتملة</div>
-                <div className="stat-card-value">{stats.incomplete}</div>
-              </div>
-            </div>
+          <div className="ui-grid-stats">
+            <StatCard label="إجمالي الباصات" value={stats.totalBuses} icon="bus" tone="primary" />
+            <StatCard label="إجمالي الطلاب" value={parseInt(stats.totalStudents) || 0} icon="users" tone="danger" />
+            <StatCard label="باصات مكتملة" value={stats.complete} icon="check-circle" tone="success" />
+            <StatCard label="باصات غير مكتملة" value={stats.incomplete} icon="alert" tone="warning" />
           </div>
 
           {/* Charts Grid */}
@@ -872,14 +714,14 @@ const BusTransportation = () => {
                         const percentage =
                           maxCount > 0 ? (count / maxCount) * 100 : 0;
                         const colors = [
-                          "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                          "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
-                          "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
-                          "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",
-                          "linear-gradient(135deg, #30cfd0 0%, #330867 100%)",
-                          "linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)",
-                          "linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)",
-                          "linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)",
+                          "var(--primary-soft)",
+                          "var(--primary-soft)",
+                          "var(--primary-soft)",
+                          "var(--primary-soft)",
+                          "var(--primary-soft)",
+                          "var(--primary-soft)",
+                          "var(--primary-soft)",
+                          "var(--primary-soft)",
                         ];
                         return (
                           <div key={branchName} className="bus-chart-bar-item">
@@ -925,7 +767,7 @@ const BusTransportation = () => {
                                 ? `${(stats.owned / stats.totalBuses) * 100}%`
                                 : "0%",
                             background:
-                              "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                              "var(--primary-soft)",
                             minWidth: stats.owned > 0 ? "60px" : "0",
                           }}
                         >
@@ -944,7 +786,7 @@ const BusTransportation = () => {
                                 ? `${(stats.leased / stats.totalBuses) * 100}%`
                                 : "0%",
                             background:
-                              "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+                              "var(--primary-soft)",
                             minWidth: stats.leased > 0 ? "60px" : "0",
                           }}
                         >
@@ -1003,11 +845,11 @@ const BusTransportation = () => {
                           background:
                             stats.totalSeats > 0 &&
                               stats.totalStudents / stats.totalSeats >= 0.9
-                              ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
+                              ? "var(--primary-soft)"
                               : stats.totalSeats > 0 &&
                                 stats.totalStudents / stats.totalSeats >= 0.7
-                                ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
-                                : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                                ? "var(--primary-soft)"
+                                : "var(--primary-soft)",
                         }}
                       >
                         <span className="capacity-bar-text">
@@ -1323,7 +1165,7 @@ const BusTransportation = () => {
                       justifyContent: 'space-between',
                       padding: '0.9rem 1rem',
                       borderRadius: '16px',
-                      background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(16,185,129,0.08))',
+                      background: 'var(--primary-soft), rgba(16,185,129,0.08))',
                       border: '1px solid rgba(148,163,184,0.2)',
                       marginTop: index === 0 ? 0 : '0.5rem',
                     }}
@@ -2714,7 +2556,7 @@ const BusFormModal = ({
                       className="term-display"
                       style={{
                         padding: "8px",
-                        backgroundColor: "#f5f5f5",
+                        backgroundColor: "var(--gray-100)",
                         borderRadius: "4px",
                       }}
                     >
@@ -2727,7 +2569,7 @@ const BusFormModal = ({
                   ) : (
                     <div
                       className="term-display"
-                      style={{ padding: "8px", color: "#999" }}
+                      style={{ padding: "8px", color: "var(--text-muted)" }}
                     >
                       يرجى اختيار الفرع أولاً
                     </div>
@@ -3151,7 +2993,7 @@ const DocumentsFormTab = ({
           <div
             className="students-table-hint"
             style={{
-              color: uploadedDocs?.registration?.url ? "#16a34a" : "#dc2626",
+              color: uploadedDocs?.registration?.url ? "var(--success)" : "var(--danger)",
               fontWeight: uploadedDocs?.registration?.url ? "600" : "normal",
             }}
           >
@@ -3188,7 +3030,7 @@ const DocumentsFormTab = ({
                 gap: "6px",
               }}
             >
-              <div style={{ fontSize: "13px", color: "#0f172a" }}>
+              <div style={{ fontSize: "13px", color: "var(--text)" }}>
                 الملف المرفوع: {uploadedDocs.registration?.name || "ملف"}
               </div>
               <a
@@ -3207,7 +3049,7 @@ const DocumentsFormTab = ({
           <div
             className="students-table-hint"
             style={{
-              color: uploadedDocs?.driverLicense?.url ? "#16a34a" : "#dc2626",
+              color: uploadedDocs?.driverLicense?.url ? "var(--success)" : "var(--danger)",
               fontWeight: uploadedDocs?.driverLicense?.url ? "600" : "normal",
             }}
           >
@@ -3244,7 +3086,7 @@ const DocumentsFormTab = ({
                 gap: "6px",
               }}
             >
-              <div style={{ fontSize: "13px", color: "#0f172a" }}>
+              <div style={{ fontSize: "13px", color: "var(--text)" }}>
                 الملف المرفوع: {uploadedDocs.driverLicense?.name || "ملف"}
               </div>
               <a
@@ -3264,7 +3106,7 @@ const DocumentsFormTab = ({
             <div
               className="students-table-hint"
               style={{
-                color: uploadedDocs?.leaseContract?.url ? "#16a34a" : "#dc2626",
+                color: uploadedDocs?.leaseContract?.url ? "var(--success)" : "var(--danger)",
                 fontWeight: uploadedDocs?.leaseContract?.url ? "600" : "normal",
               }}
             >
@@ -3301,7 +3143,7 @@ const DocumentsFormTab = ({
                   gap: "6px",
                 }}
               >
-                <div style={{ fontSize: "13px", color: "#0f172a" }}>
+                <div style={{ fontSize: "13px", color: "var(--text)" }}>
                   الملف المرفوع: {uploadedDocs.leaseContract?.name || "ملف"}
                 </div>
                 <a

@@ -1,0 +1,81 @@
+/* Buses page: brings the legacy chrome onto the design tokens. Unlayered so it wins over the legacy layer in
+   BusTransportation.css. Logical properties only (RTL). */
+
+.bus-transportation-container { padding: 0; max-width: none; display: flex; flex-direction: column; gap: 1rem; background: none; }
+.bus-stats-section { display: flex; flex-direction: column; gap: 1rem; }
+
+/* Filters */
+.filters-section {
+  background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none; border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); padding: 1rem 1.25rem; margin: 0; transform: none;
+}
+.filters-section::before { content: none; }
+.filters-section:hover { box-shadow: var(--shadow-xs); transform: none; }
+
+/* Bus cards */
+.bus-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); padding: 1.25rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.bus-card:hover { transform: none; border-color: var(--primary); box-shadow: var(--shadow-sm); }
+.bus-card-header, .bus-card-actions { border-color: var(--border-light); }
+.bus-number { color: var(--text); }
+.info-label { color: var(--text-muted); }
+.info-value { color: var(--text); }
+
+/* Details: hero stats become plain stat tiles */
+.details-hero-stats { gap: 1rem; margin-bottom: 1.5rem; }
+.hero-stat-card, .hero-stat-card.primary, .hero-stat-card.success, .hero-stat-card.info, .hero-stat-card.warning {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); padding: 1rem 1.25rem; animation: none;
+}
+.hero-stat-card:hover { transform: none; box-shadow: var(--shadow-xs); border-color: var(--border); }
+.hero-stat-card::before { content: none; }
+.hero-stat-icon { width: 3rem; height: 3rem; border-radius: var(--radius-md); background: var(--primary-soft) !important; color: var(--primary); }
+.hero-stat-icon svg, .hero-stat-icon svg * { stroke: currentColor; }
+.hero-stat-card.success .hero-stat-icon { background: var(--success-soft) !important; color: var(--success); }
+.hero-stat-card.warning .hero-stat-icon { background: var(--warning-soft) !important; color: var(--warning); }
+.hero-stat-value { font-size: var(--font-size-2xl); font-weight: 700; }
+.hero-stat-label { color: var(--text-muted); opacity: 1; }
+
+/* Section cards on the detail page */
+.detail-section-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); overflow: hidden; }
+.section-card-header { background: var(--gray-50); border-block-end: 1px solid var(--border); padding: 1rem 1.25rem; }
+.section-card-header h3 { color: var(--text); font-size: var(--font-size-base); }
+.section-icon { background: var(--primary-soft) !important; color: var(--primary); }
+.section-icon svg, .section-icon svg * { stroke: currentColor; }
+
+/* Tabs inside the bus form / details */
+.tab-header { border-block-end: 1px solid var(--border-light); }
+.tab-header h3 { color: var(--text); font-size: var(--font-size-base); }
+
+/* Charts */
+.bus-charts-grid { gap: 1rem; }
+.bus-chart-container, .chart-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+.chart-title { color: var(--text); font-size: var(--font-size-base); }
+
+.bus-stats-section { margin: 0; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
+.stats-cards-grid { margin-bottom: 1rem; }
+
+/* Card actions use the kit button look */
+.bus-card-actions { flex-wrap: wrap; }
+.bus-card-actions .btn-view, .bus-card-actions .btn-edit, .bus-card-actions .btn-delete {
+  flex: 1 1 auto; padding: 0.45rem 0.9rem; border-radius: var(--radius-md); border: 1px solid var(--border); font: inherit; font-size: var(--font-size-sm); font-weight: 600; cursor: pointer; transition: background-color 0.15s ease;
+}
+.bus-card-actions .btn-view { background: var(--primary-soft); color: var(--primary-dark); border-color: var(--primary-light); }
+.bus-card-actions .btn-edit { background: var(--surface); color: var(--text-secondary); }
+.bus-card-actions .btn-edit:hover { background: var(--bg-hover); }
+.bus-card-actions .btn-delete { background: var(--danger-soft); color: var(--danger-text); border-color: transparent; }
+.bus-card-actions .btn-delete:hover { background: var(--danger); color: var(--text-on-primary); }
+
+/* No gradients: headings, badges and buttons use flat token colours */
+.filters-title, .quick-filters-label { background: none; -webkit-background-clip: border-box; background-clip: border-box; -webkit-text-fill-color: currentColor; color: var(--text); }
+.section-divider { background: none; border-block-start: 1px solid var(--border-light); height: 0; margin-block: 0.5rem; }
+.clear-filters-btn { background: var(--danger-soft); color: var(--danger-text); border: 1px solid transparent; box-shadow: none; }
+.clear-filters-btn:hover { background: var(--danger); color: var(--text-on-primary); }
+.details-header { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+.details-header h1, .details-header h2, .details-header .page-description { color: var(--text); }
+.bus-id-badge, .modern-badge.primary { background: var(--primary-soft); color: var(--primary-dark); border: 1px solid var(--primary-light); box-shadow: none; }
+.add-student-btn { background: var(--primary); color: var(--text-on-primary); border: 0; box-shadow: none; }
+.add-student-btn:hover { background: var(--primary-hover); }
+.detail-section-card::before, .detail-section-card::after { content: none; }
+.detail-section-card { border-inline-start: 1px solid var(--border); }
