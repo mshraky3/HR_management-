@@ -17,34 +17,11 @@ import { formatDate } from '../utils/dateConverters';
 import { getRequiredBranchDocuments, getMonthlyRequiredBranchDocuments } from '../utils/employeeHelpers';
 import { RESTRICTED_DOCUMENT_TYPES } from '../utils/documentRestrictions';
 import { downloadFile } from '../utils/downloadFile';
+import { BRANCH_DOCUMENT_LABELS as DOCUMENT_TYPE_LABELS } from '../utils/branchDocumentLabels';
 import UnifiedDatePicker from '../components/UnifiedDatePicker.jsx';
 import { MAX_UPLOAD_BYTES, fileTooLargeMessage } from '../utils/uploadLimits';
 import './BranchDocumentsManagement.css';
 
-const DOCUMENT_TYPE_LABELS = {
-  license: 'الترخيص',
-  permit: 'التصريح',
-  insurance: 'التأمين',
-  insurance_print: 'كشف التأمينات',
-  contract: 'العقد',
-  rental_contract: 'عقد الايجار',
-  registration: 'السجل التجاري',
-  security_contract: 'عقد الامن والسلامة',
-  civil_defense_certificate: 'شهادة الدفاع المدني',
-  municipality_certificate: 'شهادة بلدي',
-  insurance_certificate: 'شهادة التامينات',
-  insurance_statement: 'كشف التأمينات',
-  operational_plan: 'الخطة التشغلية',
-  owner_civil_id_copy: 'نسخة هوية المالك',
-  disclosure_commitment: 'إفصاح وتعهد',
-  certification_commitment_form: 'نموذج تصديق وتعاقد',
-  financial_platform_declaration: 'ملف إقرار المنصة المالية',
-  financial_claim_form: 'نموذج مطالبة مالية',
-  student_cadre_file: 'بيانات الطلاب',
-  dropped_students: 'الطلاب المنقطعين',
-  free_seats: 'المقاعد المتاحة',
-  acceptance_notifications: 'إشعارات القبول',
-};
 
 const EMPTY_FORM = {
   branch_id: '', document_type: '', description: '', document_number: '', issue_date: '', issue_date_hijri: '',
