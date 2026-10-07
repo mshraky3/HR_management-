@@ -8,7 +8,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { useConfirm, StatusBadge } from '../ui';
+import {
+  Page, PageHeader, Card, Tabs, Button, Badge, StatusBadge, FormField, Input, Select, Textarea, DataTable, Pagination,
+  Modal, Alert, Skeleton, EmptyState, useConfirm,
+} from '../ui';
 import { archiveAPI, branchesAPI, documentsAPI, branchDocumentsAPI } from '../utils/api';
 import { getDocumentTypeLabel, getBranchDocumentTypeLabel } from '../utils/employeeConstants';
 import { formatDate } from '../utils/dateConverters';
@@ -38,8 +41,6 @@ const Archive = () => {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [statusForm, setStatusForm] = useState({ status: '', reason: '' });
   const [updatingStatus, setUpdatingStatus] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [confirmAction, setConfirmAction] = useState(null);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -460,13 +461,6 @@ const Archive = () => {
     setShowStatusModal(true);
   };
 
-  const handleConfirmAction = async () => {
-    if (confirmAction) {
-      await confirmAction();
-      setShowConfirmModal(false);
-      setConfirmAction(null);
-    }
-  };
 
   const handleDownloadDocument = async (doc) => {
     try {
@@ -613,401 +607,182 @@ const Archive = () => {
     other: 'محذوف'
   };
 
+  const fullName = (e) => [e.first_name, e.second_name, e.third_name, e.fourth_name].filter(Boolean).join(' ');
+  const dateOrDash = (v) => (v ? formatDate(v) : '—');
+  const setFilter = (key) => (e) => setFilters((prev) => ({ ...prev, [key]: e.target.value }));
+  const branchOptions = branches.map((b) => ({ value: String(b.id), label: b.branch_name }));
+  const typeOptions = (docs, labelOf) => [...new Set(docs.map((d) => d.document_type))].map((t) => ({ value: t, label: labelOf(t) || t }));
+  const statusOptions = Object.entries(statusLabels).map(([value, label]) => ({ value, label }));
+
+  const closePreview = () => {
+    setPreviewDocument(null);
+    if (previewUrl) {
+      window.URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+  };
+  const closeStatusModal = () => {
+    if (updatingStatus) return;
+    setShowStatusModal(false);
+    setStatusForm({ status: '', reason: '' });
+  };
+
   if (!isMainManager()) {
     return (
-      <div className="archive-page">
-        <h1>غير مصرح</h1>
-        <p>هذه الصفحة متاحة فقط للمدير الرئيسي</p>
-      </div>
+      <Page>
+        <PageHeader title="غير مصرح" />
+        <Alert tone="warning">هذه الصفحة متاحة فقط للمدير الرئيسي</Alert>
+      </Page>
     );
   }
 
+  const resetFilters = () => {
+    setFilters((prev) => ({
+      ...prev,
+      search_name: '', search_id: '', branch_id: '', status: '', academic_year: '',
+      registration_date_from: '', registration_date_to: '', status_change_date_from: '', status_change_date_to: '',
+    }));
+    setCurrentPage(1);
+  };
+
+  const employeeColumns = [
+    { key: 'num', header: 'رقم الموظف', mobileHidden: true, render: (e) => <bdi>{e.employee_id_number || '—'}</bdi> },
+    { key: 'name', header: 'الاسم', mobilePrimary: true, render: (e) => <strong>{fullName(e)}</strong> },
+    { key: 'branch', header: 'الفرع', render: (e) => e.branch_name || '—' },
+    { key: 'status', header: 'الحالة', render: (e) => <StatusBadge status={e.status} dot={false} /> },
+    { key: 'reason', header: 'السبب', mobileHidden: true, render: (e) => e.status_change_reason || '—' },
+    { key: 'created', header: 'تاريخ التسجيل', mobileHidden: true, render: (e) => dateOrDash(e.created_at) },
+    { key: 'changed', header: 'تاريخ تغيير الحالة', render: (e) => dateOrDash(e.status_changed_at) },
+    {
+      key: 'actions', header: '', align: 'end', width: '1%',
+      render: (e) => (
+        <div className="ar-actions">
+          <Button size="sm" variant="success" icon="restore" disabled={e.branch_is_active === false} title={e.branch_is_active === false ? 'يجب استعادة الفرع أولاً' : 'استعادة الموظف'} onClick={() => handleRestoreEmployee(e.id, fullName(e))}>استعادة</Button>
+          <Button size="sm" variant="soft" icon="eye" onClick={() => handleViewEmployee(e.id)}>{selectedEmployee === e.id ? 'إخفاء' : 'عرض'}</Button>
+          <Button size="sm" variant="secondary" icon="edit" onClick={() => handleStatusUpdateClick(e)}>تعديل الحالة</Button>
+          <Button size="sm" variant="danger" icon="trash" onClick={() => handlePermanentDeleteEmployee(e.id, fullName(e))}>حذف نهائي</Button>
+        </div>
+      ),
+    },
+  ];
+
+  const branchColumns = [
+    { key: 'name', header: 'اسم الفرع', mobilePrimary: true, render: (b) => <strong>{b.branch_name}</strong> },
+    { key: 'type', header: 'نوع الفرع', render: (b) => <Badge tone="info">{b.branch_type === 'boys' ? 'بنين' : b.branch_type === 'girls' ? 'بنات' : b.branch_type}</Badge> },
+    { key: 'loc', header: 'الموقع', mobileHidden: true, render: (b) => b.branch_location || '—' },
+    { key: 'phone', header: 'رقم الجوال', mobileHidden: true, render: (b) => <bdi>{b.phone_number || '—'}</bdi> },
+    { key: 'email', header: 'البريد الإلكتروني', mobileHidden: true, render: (b) => b.email || '—' },
+    { key: 'count', header: 'عدد الموظفين', align: 'center', render: (b) => b.number_of_employees ?? '—' },
+    { key: 'created', header: 'تاريخ الإنشاء', mobileHidden: true, render: (b) => dateOrDash(b.created_at) },
+    { key: 'stopped', header: 'تاريخ الإيقاف', render: (b) => dateOrDash(b.updated_at) },
+    {
+      key: 'actions', header: '', align: 'end',
+      render: (b) => <Button size="sm" variant="success" icon="restore" loading={reactivatingBranchId === b.id} onClick={() => handleReactivateBranch(b.id, b.branch_name)}>إعادة تفعيل</Button>,
+    },
+  ];
+
+  const employeeDocColumns = [
+    { key: 'emp', header: 'الموظف', mobilePrimary: true, render: (d) => <strong>{fullName(d)}</strong> },
+    { key: 'num', header: 'رقم الموظف', mobileHidden: true, render: (d) => <bdi>{d.employee_id_number || '—'}</bdi> },
+    { key: 'branch', header: 'الفرع', render: (d) => d.branch_name || '—' },
+    { key: 'type', header: 'نوع المستند', render: (d) => getDocumentTypeLabel(d.document_type) || d.document_type },
+    { key: 'file', header: 'اسم الملف', mobileHidden: true, render: (d) => <bdi>{d.file_name}</bdi> },
+    { key: 'up', header: 'تاريخ الرفع', mobileHidden: true, render: (d) => dateOrDash(d.uploaded_at) },
+    { key: 'arch', header: 'تاريخ الأرشفة', mobileHidden: true, render: (d) => dateOrDash(d.updated_at) },
+    {
+      key: 'actions', header: '', align: 'end',
+      render: (d) => (
+        <div className="ar-actions">
+          <Button size="sm" variant="soft" icon="eye" disabled={!d.file_path} onClick={() => d.file_path && window.open(d.file_path, '_blank')}>عرض</Button>
+          <Button size="sm" variant="danger" icon="trash" loading={deletingDocumentId === d.id} onClick={() => handlePermanentDeleteDocument(d.id)}>حذف نهائي</Button>
+        </div>
+      ),
+    },
+  ];
+
+  const isRestoreChange = Boolean(employeeDetails) && ['terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'].includes(employeeDetails.status)
+    && (statusForm.status === 'active' || statusForm.status === 'pending');
+
   return (
-    <div className="archive-page">
-      <div className="page-header">
-        <h1>الأرشيف</h1>
-        {activeTab === 'employees' && (
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            {totalEmployees > 0 && (
-              <button
-                className="btn btn-primary"
-                onClick={handleExportExcel}
-                disabled={loadingEmployees}
-              >
-                {loadingEmployees ? 'جاري التحميل...' : 'تصدير Excel'}
-              </button>
-            )}
-            {archivedEmployees.length > 0 && (
-              <button
-                className="btn btn-primary"
-                onClick={handleGenerateReport}
-              >
-                إنشاء تقرير
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+    <Page>
+      <PageHeader
+        title="الأرشيف"
+        subtitle="الموظفون والفروع والمستندات المؤرشفة"
+        actions={activeTab === 'employees' ? (
+          <>
+            {totalEmployees > 0 && <Button variant="primary" icon="download" disabled={loadingEmployees} onClick={handleExportExcel}>تصدير Excel</Button>}
+            {archivedEmployees.length > 0 && <Button variant="secondary" icon="file-text" onClick={handleGenerateReport}>إنشاء تقرير</Button>}
+          </>
+        ) : null}
+      />
 
-      {/* Tabs */}
-      <div className="archive-tabs">
-        <button
-          className={`tab-button ${activeTab === 'employees' ? 'active' : ''}`}
-          onClick={() => setActiveTab('employees')}
-        >
-          الموظفين المؤرشفين ({archivedEmployees.length})
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'branches' ? 'active' : ''}`}
-          onClick={() => setActiveTab('branches')}
-        >
-          الفروع المؤرشفة ({archivedBranches.length})
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'documents' ? 'active' : ''}`}
-          onClick={() => setActiveTab('documents')}
-        >
-          مستندات الفروع المؤرشفة ({archivedDocuments.length})
-        </button>
-        <button
-          className={`tab-button ${activeTab === 'employee-documents' ? 'active' : ''}`}
-          onClick={() => setActiveTab('employee-documents')}
-        >
-          مستندات الموظفين المؤرشفة ({archivedEmployeeDocuments.length})
-        </button>
-      </div>
+      <Tabs
+        value={activeTab}
+        onChange={setActiveTab}
+        ariaLabel="أقسام الأرشيف"
+        items={[
+          { id: 'employees', label: 'الموظفون', icon: 'users', count: totalEmployees || archivedEmployees.length },
+          { id: 'branches', label: 'الفروع', icon: 'building', count: archivedBranches.length },
+          { id: 'documents', label: 'مستندات الفروع', icon: 'folder', count: archivedDocuments.length },
+          { id: 'employee-documents', label: 'مستندات الموظفين', icon: 'file', count: archivedEmployeeDocuments.length },
+        ]}
+      />
 
-      {/* Employees Tab */}
       {activeTab === 'employees' && (
-        <div className="archive-content">
-          {/* Search and Filters */}
-          <div className="archive-filters">
-            <h3>البحث والفلترة</h3>
-            <div className="filters-grid">
-              <div className="filter-group">
-                <label>البحث بالاسم</label>
-                <input
-                  type="text"
-                  value={filters.search_name}
-                  onChange={(e) => setFilters(prev => ({ ...prev, search_name: e.target.value }))}
-                  placeholder="ابحث بالاسم..."
-                />
-              </div>
-              <div className="filter-group">
-                <label>البحث برقم الهوية/الموظف</label>
-                <input
-                  type="text"
-                  value={filters.search_id}
-                  onChange={(e) => setFilters(prev => ({ ...prev, search_id: e.target.value }))}
-                  placeholder="ابحث برقم الهوية..."
-                />
-              </div>
-              <div className="filter-group">
-                <label>الفرع</label>
-                <select
-                  value={filters.branch_id}
-                  onChange={(e) => setFilters(prev => ({ ...prev, branch_id: e.target.value }))}
-                >
-                  <option value="">الكل</option>
-                  {branches.map(branch => (
-                    <option key={branch.id} value={branch.id}>{branch.branch_name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="filter-group">
-                <label>الحالة</label>
-                <select
-                  value={filters.status}
-                  onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
-                >
-                  <option value="">الكل</option>
-                  {Object.entries(statusLabels).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="filter-group">
-                <label>السنة الدراسية</label>
-                <input
-                  type="text"
-                  value={filters.academic_year}
-                  onChange={(e) => setFilters(prev => ({ ...prev, academic_year: e.target.value }))}
-                  placeholder="مثال: 2025/2026"
-                />
-              </div>
-              <div className="filter-group">
-                <label>تاريخ التسجيل من</label>
-                <input
-                  type="date"
-                  value={filters.registration_date_from}
-                  onChange={(e) => setFilters(prev => ({ ...prev, registration_date_from: e.target.value }))}
-                />
-              </div>
-              <div className="filter-group">
-                <label>تاريخ التسجيل إلى</label>
-                <input
-                  type="date"
-                  value={filters.registration_date_to}
-                  onChange={(e) => setFilters(prev => ({ ...prev, registration_date_to: e.target.value }))}
-                />
-              </div>
-              <div className="filter-group">
-                <label>تاريخ تغيير الحالة من</label>
-                <input
-                  type="date"
-                  value={filters.status_change_date_from}
-                  onChange={(e) => setFilters(prev => ({ ...prev, status_change_date_from: e.target.value }))}
-                />
-              </div>
-              <div className="filter-group">
-                <label>تاريخ تغيير الحالة إلى</label>
-                <input
-                  type="date"
-                  value={filters.status_change_date_to}
-                  onChange={(e) => setFilters(prev => ({ ...prev, status_change_date_to: e.target.value }))}
-                />
-              </div>
+        <>
+          <Card title="البحث والفلترة" actions={<Button size="sm" variant="ghost" icon="refresh" onClick={resetFilters}>إعادة تعيين</Button>}>
+            <div className="ar-filters">
+              <FormField label="الاسم"><Input value={filters.search_name} onChange={setFilter('search_name')} placeholder="ابحث بالاسم…" /></FormField>
+              <FormField label="رقم الهوية/الموظف"><Input value={filters.search_id} onChange={setFilter('search_id')} placeholder="ابحث بالرقم…" /></FormField>
+              <FormField label="الفرع"><Select value={filters.branch_id} onChange={setFilter('branch_id')} options={branchOptions} placeholder="الكل" /></FormField>
+              <FormField label="الحالة"><Select value={filters.status} onChange={setFilter('status')} options={statusOptions} placeholder="الكل" /></FormField>
+              <FormField label="السنة الدراسية"><Input value={filters.academic_year} onChange={setFilter('academic_year')} placeholder="مثال: 2025/2026" /></FormField>
+              <FormField label="تاريخ التسجيل من"><Input type="date" value={filters.registration_date_from} onChange={setFilter('registration_date_from')} /></FormField>
+              <FormField label="تاريخ التسجيل إلى"><Input type="date" value={filters.registration_date_to} onChange={setFilter('registration_date_to')} /></FormField>
+              <FormField label="تاريخ تغيير الحالة من"><Input type="date" value={filters.status_change_date_from} onChange={setFilter('status_change_date_from')} /></FormField>
+              <FormField label="تاريخ تغيير الحالة إلى"><Input type="date" value={filters.status_change_date_to} onChange={setFilter('status_change_date_to')} /></FormField>
             </div>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  setFilters({
-                    emp_doc_branch_id: '',
-                    emp_doc_document_type: '',
-                    emp_doc_employee_id: '',
-                    search_name: '',
-                    search_id: '',
-                    branch_id: '',
-                    status: '',
-                    academic_year: '',
-                    registration_date_from: '',
-                    registration_date_to: '',
-                    status_change_date_from: '',
-                    status_change_date_to: '',
-                    doc_branch_id: '',
-                    doc_document_type: ''
-                  });
-                  setCurrentPage(1);
-                }}
-              >
-                إعادة تعيين الفلاتر
-              </button>
-            </div>
-          </div>
+          </Card>
 
-          {/* Employees List */}
-          {loadingEmployees ? (
-            <div className="loading">جاري التحميل...</div>
-          ) : archivedEmployees.length === 0 ? (
-            <div className="empty-state">
-              <p>لا توجد موظفين مؤرشفين</p>
-            </div>
-          ) : (
-            <div className="archive-table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>رقم الموظف</th>
-                    <th>الاسم</th>
-                    <th>الفرع</th>
-                    <th>الحالة</th>
-                    <th>السبب</th>
-                    <th>تاريخ التسجيل</th>
-                    <th>تاريخ تغيير الحالة</th>
-                    <th>الإجراءات</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {archivedEmployees.map(employee => (
-                    <tr key={employee.id}>
-                      <td>{employee.employee_id_number || '-'}</td>
-                      <td>
-                        {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
-                      </td>
-                      <td>{employee.branch_name || '-'}</td>
-                      <td>
-                        <StatusBadge status={employee.status} dot={false} />
-                      </td>
-                      <td>{employee.status_change_reason || '-'}</td>
-                      <td>
-                        {employee.created_at
-                          ? formatDate(employee.created_at)
-                          : '-'}
-                      </td>
-                      <td>
-                        {employee.status_changed_at
-                          ? formatDate(employee.status_changed_at)
-                          : '-'}
-                      </td>
-                      <td>
-                        <div className="action-buttons">
-                          <button
-                            className="btn btn-sm btn-success"
-                            onClick={() => handleRestoreEmployee(
-                              employee.id,
-                              `${employee.first_name} ${employee.second_name} ${employee.third_name} ${employee.fourth_name}`
-                            )}
-                            disabled={employee.branch_is_active === false}
-                            title={employee.branch_is_active === false ? 'يجب استعادة الفرع أولاً' : 'استعادة الموظف'}
-                          >
-                            استعادة
-                          </button>
-                          <button
-                            className="btn btn-sm btn-primary"
-                            onClick={() => handleViewEmployee(employee.id)}
-                          >
-                            {selectedEmployee === employee.id ? 'إخفاء' : 'عرض'}
-                          </button>
-                          <button
-                            className="btn btn-sm btn-secondary"
-                            onClick={() => handleStatusUpdateClick(employee)}
-                          >
-                            تعديل الحالة
-                          </button>
-                          <button
-                            className="btn btn-sm btn-delete"
-                            onClick={() => handlePermanentDeleteEmployee(
-                              employee.id,
-                              `${employee.first_name} ${employee.second_name} ${employee.third_name} ${employee.fourth_name}`
-                            )}
-                          >
-                            حذف نهائي
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <Card flush>
+            <DataTable columns={employeeColumns} rows={archivedEmployees} rowKey="id" loading={loadingEmployees} emptyIcon="archive" emptyTitle="لا يوجد موظفون مؤرشفون" />
+            <Pagination
+              page={currentPage}
+              pageSize={itemsPerPage}
+              total={totalEmployees}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(size) => { setItemsPerPage(size); setCurrentPage(1); }}
+              pageSizeOptions={[25, 50, 100, 200]}
+            />
+          </Card>
 
-              {/* Pagination Controls */}
-              {totalEmployees > itemsPerPage && (
-                <div className="pagination" style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                  <div className="pagination-info" style={{ color: '#666', fontSize: '14px' }}>
-                    عرض {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, totalEmployees)} من {totalEmployees}
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <select
-                      value={itemsPerPage}
-                      onChange={(e) => {
-                        setItemsPerPage(parseInt(e.target.value, 10));
-                        setCurrentPage(1);
-                      }}
-                      style={{ padding: '6px 10px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '14px' }}
-                    >
-                      <option value={25}>25 لكل صفحة</option>
-                      <option value={50}>50 لكل صفحة</option>
-                      <option value={100}>100 لكل صفحة</option>
-                      <option value={200}>200 لكل صفحة</option>
-                    </select>
-
-                    <button
-                      onClick={() => setCurrentPage(1)}
-                      disabled={currentPage === 1}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      الأولى
-                    </button>
-                    <button
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={currentPage === 1}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      السابقة
-                    </button>
-
-                    {/* Page numbers */}
-                    {Array.from({ length: Math.min(5, Math.ceil(totalEmployees / itemsPerPage)) }, (_, i) => {
-                      const totalPages = Math.ceil(totalEmployees / itemsPerPage);
-                      let pageNum;
-                      if (totalPages <= 5) {
-                        pageNum = i + 1;
-                      } else if (currentPage <= 3) {
-                        pageNum = i + 1;
-                      } else if (currentPage >= totalPages - 2) {
-                        pageNum = totalPages - 4 + i;
-                      } else {
-                        pageNum = currentPage - 2 + i;
-                      }
-
-                      return (
-                        <button
-                          key={pageNum}
-                          onClick={() => setCurrentPage(pageNum)}
-                          className={`btn btn-sm ${currentPage === pageNum ? 'btn-primary' : 'btn-secondary'}`}
-                        >
-                          {pageNum}
-                        </button>
-                      );
-                    })}
-
-                    <button
-                      onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalEmployees / itemsPerPage), prev + 1))}
-                      disabled={currentPage >= Math.ceil(totalEmployees / itemsPerPage)}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      التالية
-                    </button>
-                    <button
-                      onClick={() => setCurrentPage(Math.ceil(totalEmployees / itemsPerPage))}
-                      disabled={currentPage >= Math.ceil(totalEmployees / itemsPerPage)}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      الأخيرة
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Employee Details */}
           {selectedEmployee && (
-            <div className="employee-details-section">
-              {loadingDetails ? (
-                <div className="loading">جاري تحميل التفاصيل...</div>
-              ) : employeeDetails ? (
-                <div className="details-content">
-                  <h3>تفاصيل الموظف</h3>
-                  <div className="employee-info-grid">
-                    <div><strong>الاسم:</strong> {employeeDetails.first_name} {employeeDetails.second_name} {employeeDetails.third_name} {employeeDetails.fourth_name}</div>
-                    <div><strong>رقم الموظف:</strong> {employeeDetails.employee_id_number || '-'}</div>
-                    <div><strong>رقم الهوية/الإقامة:</strong> {employeeDetails.id_or_residency_number || '-'}</div>
-                    <div><strong>الفرع:</strong> {employeeDetails.branch_name || '-'}</div>
-                    <div><strong>الحالة:</strong> {statusLabels[employeeDetails.status] || employeeDetails.status}</div>
-                    <div><strong>سبب تغيير الحالة:</strong> {employeeDetails.status_change_reason || '-'}</div>
-                    <div><strong>تاريخ تغيير الحالة:</strong> {employeeDetails.status_changed_at ? formatDate(employeeDetails.status_changed_at) : '-'}</div>
-                  </div>
-
-                  {/* Documents */}
-                  {employeeDetails.documents && employeeDetails.documents.length > 0 && (
-                    <div className="documents-section">
-                      <h4>المستندات ({employeeDetails.documents.length})</h4>
-                      <div className="documents-grid">
-                        {employeeDetails.documents.map(doc => (
-                          <div key={doc.id} className="document-card">
-                            <div className="document-info">
+            <Card title="تفاصيل الموظف" actions={<Button size="sm" variant="ghost" icon="x" onClick={() => { setSelectedEmployee(null); setEmployeeDetails(null); }}>إغلاق</Button>}>
+              {loadingDetails ? <Skeleton lines={4} height={16} /> : employeeDetails ? (
+                <div className="ui-form-stack">
+                  <dl className="ar-details">
+                    <div><dt>الاسم</dt><dd>{fullName(employeeDetails)}</dd></div>
+                    <div><dt>رقم الموظف</dt><dd><bdi>{employeeDetails.employee_id_number || '—'}</bdi></dd></div>
+                    <div><dt>رقم الهوية/الإقامة</dt><dd><bdi>{employeeDetails.id_or_residency_number || '—'}</bdi></dd></div>
+                    <div><dt>الفرع</dt><dd>{employeeDetails.branch_name || '—'}</dd></div>
+                    <div><dt>الحالة</dt><dd>{statusLabels[employeeDetails.status] || employeeDetails.status}</dd></div>
+                    <div><dt>سبب تغيير الحالة</dt><dd>{employeeDetails.status_change_reason || '—'}</dd></div>
+                    <div><dt>تاريخ تغيير الحالة</dt><dd>{dateOrDash(employeeDetails.status_changed_at)}</dd></div>
+                  </dl>
+                  {employeeDetails.documents?.length > 0 && (
+                    <div className="ui-form-stack">
+                      <strong>المستندات (<bdi>{employeeDetails.documents.length}</bdi>)</strong>
+                      <div className="ar-docs">
+                        {employeeDetails.documents.map((doc) => (
+                          <div key={doc.id} className="ar-doc">
+                            <div className="ar-doc-info">
                               <strong>{getDocumentTypeLabel(doc.document_type) || doc.document_type}</strong>
-                              <span className="document-name">{doc.file_name}</span>
-                              <span className="document-date">
-                                {formatDate(doc.uploaded_at)}
-                              </span>
+                              <span className="ar-muted"><bdi>{doc.file_name}</bdi></span>
+                              <span className="ar-muted">{dateOrDash(doc.uploaded_at)}</span>
                             </div>
-                            <div className="document-actions">
-                              <button
-                                className="btn btn-sm btn-primary"
-                                onClick={() => handlePreviewDocument(doc)}
-                              >
-                                عرض
-                              </button>
-                              <button
-                                className="btn btn-sm btn-secondary"
-                                onClick={() => handleDownloadDocument(doc)}
-                              >
-                                تحميل
-                              </button>
+                            <div className="ar-actions">
+                              <Button size="sm" variant="soft" icon="eye" onClick={() => handlePreviewDocument(doc)}>عرض</Button>
+                              <Button size="sm" variant="secondary" icon="download" onClick={() => handleDownloadDocument(doc)}>تحميل</Button>
                             </div>
                           </div>
                         ))}
@@ -1015,442 +790,101 @@ const Archive = () => {
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="error">فشل تحميل التفاصيل</div>
-              )}
-            </div>
+              ) : <Alert tone="danger">فشل تحميل التفاصيل</Alert>}
+            </Card>
           )}
-        </div>
+        </>
       )}
 
-      {/* Documents Tab */}
       {activeTab === 'documents' && (
-        <div className="archive-content">
-          {/* Document Filters */}
-          <div className="archive-filters">
-            <h3>البحث والفلترة</h3>
-            <div className="filters-grid">
-              <div className="filter-group">
-                <label>الفرع</label>
-                <select
-                  value={filters.doc_branch_id}
-                  onChange={(e) => setFilters(prev => ({ ...prev, doc_branch_id: e.target.value }))}
-                >
-                  <option value="">الكل</option>
-                  {branches.map(branch => (
-                    <option key={branch.id} value={branch.id}>{branch.branch_name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="filter-group">
-                <label>نوع المستند</label>
-                <select
-                  value={filters.doc_document_type}
-                  onChange={(e) => setFilters(prev => ({ ...prev, doc_document_type: e.target.value }))}
-                >
-                  <option value="">الكل</option>
-                  {archivedDocuments
-                    .reduce((types, doc) => {
-                      if (!types.includes(doc.document_type)) {
-                        types.push(doc.document_type);
-                      }
-                      return types;
-                    }, [])
-                    .map(type => (
-                      <option key={type} value={type}>
-                        {getBranchDocumentTypeLabel(type) || type}
-                      </option>
-                    ))}
-                </select>
-              </div>
+        <>
+          <Card title="البحث والفلترة">
+            <div className="ar-filters">
+              <FormField label="الفرع"><Select value={filters.doc_branch_id} onChange={setFilter('doc_branch_id')} options={branchOptions} placeholder="الكل" /></FormField>
+              <FormField label="نوع المستند"><Select value={filters.doc_document_type} onChange={setFilter('doc_document_type')} options={typeOptions(archivedDocuments, getBranchDocumentTypeLabel)} placeholder="الكل" /></FormField>
             </div>
-          </div>
-
-          {/* Documents List */}
-          {loadingDocuments ? (
-            <div className="loading">جاري التحميل...</div>
-          ) : archivedDocuments.length === 0 ? (
-            <div className="empty-state">
-              <p>لا توجد مستندات مؤرشفة</p>
-            </div>
+          </Card>
+          {loadingDocuments ? <Card><Skeleton lines={4} height={16} /></Card> : archivedDocuments.length === 0 ? (
+            <Card><EmptyState icon="folder" title="لا توجد مستندات مؤرشفة" /></Card>
           ) : (
-            <div className="documents-grid">
-              {archivedDocuments.map(doc => (
-                <div key={doc.id} className="document-card">
-                  <div className="document-info">
+            <div className="ar-docs">
+              {archivedDocuments.map((doc) => (
+                <Card key={doc.id}>
+                  <div className="ar-doc-info">
                     <strong>{getBranchDocumentTypeLabel(doc.document_type) || doc.document_type}</strong>
-                    <span className="document-name">{doc.file_name}</span>
-                    <span className="document-branch">{doc.branch_name}</span>
-                    <span className="document-date">
-                      {formatDate(doc.uploaded_at)}
-                    </span>
-                    {doc.version && <span className="document-version">الإصدار: {doc.version}</span>}
+                    <span className="ar-muted"><bdi>{doc.file_name}</bdi></span>
+                    <span className="ar-muted">{doc.branch_name}</span>
+                    <span className="ar-muted">{dateOrDash(doc.uploaded_at)}{doc.version ? ` · الإصدار: ${doc.version}` : ''}</span>
                   </div>
-                  <div className="document-actions">
-                    <button
-                      className="btn btn-sm btn-primary"
-                      onClick={() => handlePreviewBranchDocument(doc)}
-                    >
-                      عرض
-                    </button>
-                    <button
-                      className="btn btn-sm btn-secondary"
-                      onClick={() => handleDownloadBranchDocument(doc)}
-                    >
-                      تحميل
-                    </button>
+                  <div className="ar-actions">
+                    <Button size="sm" variant="soft" icon="eye" onClick={() => handlePreviewBranchDocument(doc)}>عرض</Button>
+                    <Button size="sm" variant="secondary" icon="download" onClick={() => handleDownloadBranchDocument(doc)}>تحميل</Button>
                   </div>
-                </div>
+                </Card>
               ))}
             </div>
           )}
-        </div>
+        </>
       )}
 
-      {/* Employee Documents Tab */}
       {activeTab === 'employee-documents' && (
-        <div className="archive-content">
-          {/* Employee Document Filters */}
-          <div className="archive-filters">
-            <h3>البحث والفلترة</h3>
-            <div className="filters-grid">
-              <div className="filter-group">
-                <label>الفرع</label>
-                <select
-                  value={filters.emp_doc_branch_id}
-                  onChange={(e) => setFilters(prev => ({ ...prev, emp_doc_branch_id: e.target.value }))}
-                >
-                  <option value="">الكل</option>
-                  {branches.map(branch => (
-                    <option key={branch.id} value={branch.id}>{branch.branch_name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="filter-group">
-                <label>نوع المستند</label>
-                <select
-                  value={filters.emp_doc_document_type}
-                  onChange={(e) => setFilters(prev => ({ ...prev, emp_doc_document_type: e.target.value }))}
-                >
-                  <option value="">الكل</option>
-                  {archivedEmployeeDocuments
-                    .reduce((types, doc) => {
-                      if (!types.includes(doc.document_type)) {
-                        types.push(doc.document_type);
-                      }
-                      return types;
-                    }, [])
-                    .map(type => (
-                      <option key={type} value={type}>
-                        {getDocumentTypeLabel(type) || type}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div className="filter-group">
-                <label>رقم الموظف</label>
-                <input
-                  type="text"
-                  value={filters.emp_doc_employee_id}
-                  onChange={(e) => setFilters(prev => ({ ...prev, emp_doc_employee_id: e.target.value }))}
-                  placeholder="ابحث برقم الموظف..."
-                />
-              </div>
+        <>
+          <Card title="البحث والفلترة">
+            <div className="ar-filters">
+              <FormField label="الفرع"><Select value={filters.emp_doc_branch_id} onChange={setFilter('emp_doc_branch_id')} options={branchOptions} placeholder="الكل" /></FormField>
+              <FormField label="نوع المستند"><Select value={filters.emp_doc_document_type} onChange={setFilter('emp_doc_document_type')} options={typeOptions(archivedEmployeeDocuments, getDocumentTypeLabel)} placeholder="الكل" /></FormField>
+              <FormField label="رقم الموظف"><Input value={filters.emp_doc_employee_id} onChange={setFilter('emp_doc_employee_id')} placeholder="ابحث برقم الموظف…" /></FormField>
             </div>
-          </div>
-
-          {/* Employee Documents List */}
-          {loadingEmployeeDocuments ? (
-            <div className="loading">جاري التحميل...</div>
-          ) : archivedEmployeeDocuments.length === 0 ? (
-            <div className="empty-state">
-              <p>لا توجد مستندات مؤرشفة</p>
-            </div>
-          ) : (
-            <div className="documents-table-container">
-              <table className="documents-table">
-                <thead>
-                  <tr>
-                    <th>الموظف</th>
-                    <th>رقم الموظف</th>
-                    <th>الفرع</th>
-                    <th>نوع المستند</th>
-                    <th>اسم الملف</th>
-                    <th>تاريخ الرفع</th>
-                    <th>تاريخ الأرشفة</th>
-                    <th>الإجراءات</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {archivedEmployeeDocuments.map((doc) => (
-                    <tr key={doc.id}>
-                      <td>
-                        {doc.first_name} {doc.second_name} {doc.third_name} {doc.fourth_name}
-                      </td>
-                      <td>{doc.employee_id_number || '-'}</td>
-                      <td>{doc.branch_name || '-'}</td>
-                      <td>{getDocumentTypeLabel(doc.document_type) || doc.document_type}</td>
-                      <td>{doc.file_name}</td>
-                      <td>
-                        {doc.uploaded_at
-                          ? formatDate(doc.uploaded_at)
-                          : '-'}
-                      </td>
-                      <td>
-                        {doc.updated_at
-                          ? formatDate(doc.updated_at)
-                          : '-'}
-                      </td>
-                      <td>
-                        <div className="action-buttons">
-                          <button
-                            className="btn btn-sm btn-primary"
-                            onClick={() => {
-                              const url = doc.file_path;
-                              if (url) {
-                                window.open(url, '_blank');
-                              }
-                            }}
-                          >
-                            عرض
-                          </button>
-                          <button
-                            className="btn btn-sm btn-danger"
-                            onClick={() => handlePermanentDeleteDocument(doc.id)}
-                            disabled={deletingDocumentId === doc.id}
-                          >
-                            {deletingDocumentId === doc.id ? 'جاري الحذف...' : 'حذف نهائي'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+          </Card>
+          <Card flush>
+            <DataTable columns={employeeDocColumns} rows={archivedEmployeeDocuments} rowKey="id" loading={loadingEmployeeDocuments} emptyIcon="file" emptyTitle="لا توجد مستندات مؤرشفة" />
+          </Card>
+        </>
       )}
 
-      {/* Branches Tab */}
       {activeTab === 'branches' && (
-        <div className="archive-content">
-          <div className="archive-info-box">
-            <p>الفروع المؤرشفة هي الفروع التي تم إيقافها. يمكنك إعادة تفعيلها لاستعادة جميع بياناتها وموظفيها.</p>
-          </div>
+        <>
+          <Alert tone="info">الفروع المؤرشفة هي الفروع التي تم إيقافها. يمكنك إعادة تفعيلها لاستعادة جميع بياناتها وموظفيها.</Alert>
+          <Card flush>
+            <DataTable columns={branchColumns} rows={archivedBranches} rowKey="id" loading={loadingBranches} emptyIcon="building" emptyTitle="لا توجد فروع مؤرشفة" />
+          </Card>
+        </>
+      )}
 
-          {/* Branches List */}
-          {loadingBranches ? (
-            <div className="loading">جاري التحميل...</div>
-          ) : archivedBranches.length === 0 ? (
-            <div className="empty-state">
-              <p>لا توجد فروع مؤرشفة</p>
-            </div>
-          ) : (
-            <div className="archive-table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>اسم الفرع</th>
-                    <th>نوع الفرع</th>
-                    <th>الموقع</th>
-                    <th>رقم الجوال</th>
-                    <th>البريد الإلكتروني</th>
-                    <th>عدد الموظفين</th>
-                    <th>تاريخ الإنشاء</th>
-                    <th>تاريخ الإيقاف</th>
-                    <th>الإجراءات</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {archivedBranches.map((branch, index) => (
-                    <tr key={branch.id}>
-                      <td>{index + 1}</td>
-                      <td>{branch.branch_name}</td>
-                      <td>
-                        <span className={`branch-type-badge ${branch.branch_type}`}>
-                          {branch.branch_type === 'boys' ? 'بنين' : branch.branch_type === 'girls' ? 'بنات' : branch.branch_type}
-                        </span>
-                      </td>
-                      <td>{branch.branch_location || '-'}</td>
-                      <td dir="ltr">{branch.phone_number || '-'}</td>
-                      <td>{branch.email || '-'}</td>
-                      <td>{branch.number_of_employees ?? '-'}</td>
-                      <td>
-                        {branch.created_at
-                          ? formatDate(branch.created_at)
-                          : '-'}
-                      </td>
-                      <td>
-                        {branch.updated_at
-                          ? formatDate(branch.updated_at)
-                          : '-'}
-                      </td>
-                      <td>
-                        <div className="action-buttons">
-                          <button
-                            className="btn btn-sm btn-success"
-                            onClick={() => handleReactivateBranch(branch.id, branch.branch_name)}
-                            disabled={reactivatingBranchId === branch.id}
-                          >
-                            {reactivatingBranchId === branch.id ? 'جاري التفعيل...' : 'إعادة تفعيل'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      <Modal
+        open={showStatusModal}
+        onClose={closeStatusModal}
+        title="تعديل حالة الموظف"
+        footer={(
+          <>
+            <Button variant="primary" loading={updatingStatus} disabled={!statusForm.status} onClick={handleUpdateStatus}>حفظ</Button>
+            <Button variant="secondary" disabled={updatingStatus} onClick={closeStatusModal}>إلغاء</Button>
+          </>
+        )}
+      >
+        <div className="ui-form-stack">
+          {employeeDetails && (
+            <Alert tone="info">
+              <strong>الموظف:</strong> {fullName(employeeDetails)} · <strong>الحالة الحالية:</strong> {statusLabels[employeeDetails.status] || employeeDetails.status}
+            </Alert>
           )}
+          <FormField label="الحالة الجديدة" required>
+            <Select value={statusForm.status} onChange={(e) => setStatusForm((prev) => ({ ...prev, status: e.target.value }))} options={statusOptions} placeholder="اختر الحالة" disabled={updatingStatus} />
+          </FormField>
+          {isRestoreChange && <Alert tone="info">سيتم استعادة الموظف من الأرشيف</Alert>}
+          <FormField label="السبب (اختياري)">
+            <Textarea rows={3} value={statusForm.reason} onChange={(e) => setStatusForm((prev) => ({ ...prev, reason: e.target.value }))} placeholder="اكتب سبب تغيير الحالة…" disabled={updatingStatus} />
+          </FormField>
         </div>
-      )}
+      </Modal>
 
-      {/* Status Update Modal */}
-      {showStatusModal && (
-        <div className="modal-overlay" onClick={() => {
-          if (!updatingStatus) {
-            setShowStatusModal(false);
-            setStatusForm({ status: '', reason: '' });
-          }
-        }}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>تعديل حالة الموظف</h3>
-            {employeeDetails && (
-              <div style={{ marginBottom: '15px', padding: '10px', background: '#f5f5f5', borderRadius: '4px', fontSize: '14px' }}>
-                <strong>الموظف:</strong> {employeeDetails.first_name} {employeeDetails.second_name} {employeeDetails.third_name} {employeeDetails.fourth_name}
-                <br />
-                <strong>الحالة الحالية:</strong> {statusLabels[employeeDetails.status] || employeeDetails.status}
-              </div>
-            )}
-            <div className="form-group">
-              <label>الحالة الجديدة *</label>
-              <select
-                value={statusForm.status}
-                onChange={(e) => setStatusForm(prev => ({ ...prev, status: e.target.value }))}
-                required
-                disabled={updatingStatus}
-              >
-                <option value="">اختر الحالة</option>
-                {Object.entries(statusLabels).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-              {employeeDetails && (() => {
-                const archivedStatuses = ['terminated_article_80', 'terminated_article_77', 'resigned', 'contract_ended', 'non_renewal', 'other'];
-                const isRestore = archivedStatuses.includes(employeeDetails.status) &&
-                  (statusForm.status === 'active' || statusForm.status === 'pending');
-                if (isRestore) {
-                  return (
-                    <div style={{ marginTop: '8px', padding: '8px', background: '#e3f2fd', borderRadius: '4px', fontSize: '12px', color: '#1976d2' }}>
-                      ⓘ سيتم استعادة الموظف من الأرشيف
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-            </div>
-            <div className="form-group">
-              <label>السبب (اختياري)</label>
-              <textarea
-                value={statusForm.reason}
-                onChange={(e) => setStatusForm(prev => ({ ...prev, reason: e.target.value }))}
-                rows="3"
-                placeholder="اكتب سبب تغيير الحالة..."
-                disabled={updatingStatus}
-              />
-            </div>
-            <div className="modal-actions">
-              <button
-                className="btn btn-primary"
-                onClick={handleUpdateStatus}
-                disabled={updatingStatus || !statusForm.status}
-              >
-                {updatingStatus ? 'جاري الحفظ...' : 'حفظ'}
-              </button>
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  if (!updatingStatus) {
-                    setShowStatusModal(false);
-                    setStatusForm({ status: '', reason: '' });
-                  }
-                }}
-                disabled={updatingStatus}
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirmation Modal */}
-      {showConfirmModal && (
-        <div className="modal-overlay" onClick={() => setShowConfirmModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>تأكيد الإجراء</h3>
-            <p>هل أنت متأكد من تنفيذ هذا الإجراء؟</p>
-            <div className="modal-actions">
-              <button
-                className="btn btn-primary"
-                onClick={handleConfirmAction}
-              >
-                تأكيد
-              </button>
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  setShowConfirmModal(false);
-                  setConfirmAction(null);
-                }}
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Document Preview Modal */}
-      {previewDocument && previewUrl && (
-        <div className="modal-overlay" onClick={() => {
-          setPreviewDocument(null);
-          if (previewUrl) {
-            window.URL.revokeObjectURL(previewUrl);
-            setPreviewUrl(null);
-          }
-        }}>
-          <div className="modal-content preview-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>{previewDocument.file_name}</h3>
-              <button
-                className="close-button"
-                onClick={() => {
-                  setPreviewDocument(null);
-                  if (previewUrl) {
-                    window.URL.revokeObjectURL(previewUrl);
-                    setPreviewUrl(null);
-                  }
-                }}
-              >
-                ×
-              </button>
-            </div>
-            <div className="preview-content">
-              {previewDocument.mime_type?.startsWith('image/') ? (
-                <img src={previewUrl} alt={previewDocument.file_name} />
-              ) : (
-                <iframe src={previewUrl} title={previewDocument.file_name} />
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      <Modal open={Boolean(previewDocument && previewUrl)} onClose={closePreview} title={previewDocument?.file_name || ''} size="xl">
+        {previewDocument && previewUrl && (previewDocument.mime_type?.startsWith('image/')
+          ? <img className="ar-preview" src={previewUrl} alt={previewDocument.file_name} />
+          : <iframe className="ar-preview" src={previewUrl} title={previewDocument.file_name} />)}
+      </Modal>
+    </Page>
   );
 };
 
 export default Archive;
-
