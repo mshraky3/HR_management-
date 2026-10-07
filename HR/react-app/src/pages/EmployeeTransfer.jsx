@@ -1,554 +1,243 @@
 /**
- * Employee Transfer & Multi-Branch Linking Page
- * Main manager only - transfer employees between branches and manage branch links
+ * Transfer and multi-branch linking (head office): find an employee, move them to another branch, or link
+ * them to extra branches while keeping their primary one.
  */
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { Page, PageHeader, Card, FormField, Input, Select, Button, Badge, DataTable, StatusBadge, useConfirm } from '../ui';
+import { employeesAPI, branchesAPI } from '../utils/api';
+import { useNotification } from '../contexts/NotificationContext';
+import './EmployeeTransfer.css';
 
-import { useState, useEffect, useRef } from "react";
-import { employeesAPI, branchesAPI } from "../utils/api";
-import { useNotification } from "../contexts/NotificationContext";
-import { useConfirm } from '../ui';
-import "./EmployeeTransfer.css";
-import "./Employees.css";
+const EMPTY_SEARCH = { search_name: '', search_id: '', search_phone: '' };
+const nameOf = (e) => e.full_name || [e.first_name, e.second_name, e.third_name, e.fourth_name].filter(Boolean).join(' ');
 
-const EmployeeTransfer = () => {
+export default function EmployeeTransfer() {
   const { showSuccess, showError, showWarning } = useNotification();
   const { confirm } = useConfirm();
 
-  // Branches list
   const [branches, setBranches] = useState([]);
-
-  // Search state - separate fields like Employees page
-  const [searchFilters, setSearchFilters] = useState({
-    search_name: "",
-    search_id: "",
-    search_phone: "",
-  });
-  const [searchResults, setSearchResults] = useState([]);
+  const [search, setSearch] = useState(EMPTY_SEARCH);
+  const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
-  const searchTimerRef = useRef(null);
-  const searchNameRef = useRef(null);
+  const timerRef = useRef(null);
 
-  // Selected employee
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [linkedBranches, setLinkedBranches] = useState([]);
-  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [linked, setLinked] = useState([]);
+  const [loadingLinked, setLoadingLinked] = useState(false);
 
-  // Transfer form
-  const [targetBranchId, setTargetBranchId] = useState("");
-  const [transferBranchText, setTransferBranchText] = useState("");
-  const [transferDropdownOpen, setTransferDropdownOpen] = useState(false);
+  const [targetBranchId, setTargetBranchId] = useState('');
   const [transferring, setTransferring] = useState(false);
-  const transferPickerRef = useRef(null);
-
-  // Link form
-  const [linkBranchId, setLinkBranchId] = useState("");
-  const [linkBranchText, setLinkBranchText] = useState("");
-  const [linkDropdownOpen, setLinkDropdownOpen] = useState(false);
+  const [linkBranchId, setLinkBranchId] = useState('');
   const [linking, setLinking] = useState(false);
-  const linkPickerRef = useRef(null);
 
-  // Close dropdowns when clicking outside
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (transferPickerRef.current && !transferPickerRef.current.contains(e.target)) {
-        setTransferDropdownOpen(false);
+    (async () => {
+      try {
+        const response = await branchesAPI.getAll();
+        const data = response.data?.data || response.data || [];
+        setBranches(data.filter((b) => b.is_active !== false));
+      } catch (error) {
+        console.error('Error loading branches:', error);
       }
-      if (linkPickerRef.current && !linkPickerRef.current.contains(e.target)) {
-        setLinkDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    })();
   }, []);
 
-  // Load branches on mount
+  // Debounced search: needs 2+ characters of a name or phone, or any part of an ID
   useEffect(() => {
-    loadBranches();
-  }, []);
-
-  const loadBranches = async () => {
-    try {
-      const response = await branchesAPI.getAll();
-      const data = response.data?.data || response.data || [];
-      setBranches(data.filter(b => b.is_active !== false));
-    } catch (error) {
-      console.error("Error loading branches:", error);
-    }
-  };
-
-  // Search employees - debounced auto-search
-  useEffect(() => {
-    const hasQuery = searchFilters.search_name.length >= 2 || 
-                     searchFilters.search_id.length >= 1 ||
-                     searchFilters.search_phone.length >= 2;
-    
-    if (!hasQuery) {
-      setSearchResults([]);
-      return;
-    }
-
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(async () => {
+    const hasQuery = search.search_name.length >= 2 || search.search_id.length >= 1 || search.search_phone.length >= 2;
+    if (!hasQuery) { setResults([]); return undefined; }
+    timerRef.current = setTimeout(async () => {
       setSearching(true);
       try {
         const params = { page: 1, pageSize: 20 };
-        if (searchFilters.search_name.length >= 2) params.search_name = searchFilters.search_name.trim();
-        if (searchFilters.search_id.length >= 1) params.search_id = searchFilters.search_id.trim();
-        if (searchFilters.search_phone.length >= 2) params.search_phone = searchFilters.search_phone.trim();
-
+        if (search.search_name.length >= 2) params.search_name = search.search_name.trim();
+        if (search.search_id.length >= 1) params.search_id = search.search_id.trim();
+        if (search.search_phone.length >= 2) params.search_phone = search.search_phone.trim();
         const response = await employeesAPI.getPaginated(params);
-        setSearchResults(response.data?.data || []);
+        setResults(response.data?.data || []);
       } catch (error) {
-        console.error("Error searching employees:", error);
+        console.error('Error searching employees:', error);
       } finally {
         setSearching(false);
       }
     }, 400);
+    return () => clearTimeout(timerRef.current);
+  }, [search]);
 
-    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
-  }, [searchFilters]);
-
-  // Select employee & load their branches
-  const handleSelectEmployee = async (employee) => {
-    setSelectedEmployee(employee);
-    setSearchResults([]);
-    setSearchFilters({ search_name: "", search_id: "", search_phone: "" });
-    setTargetBranchId("");
-    setTransferBranchText("");
-    setLinkBranchId("");
-    setLinkBranchText("");
-    await loadLinkedBranches(employee.id);
-  };
-
-  const loadLinkedBranches = async (employeeId) => {
-    setLoadingBranches(true);
+  const loadLinked = async (employeeId) => {
+    setLoadingLinked(true);
     try {
       const response = await employeesAPI.getLinkedBranches(employeeId);
-      setLinkedBranches(response.data?.data || []);
+      setLinked(response.data?.data || []);
     } catch (error) {
-      console.error("Error loading linked branches:", error);
-      setLinkedBranches([]);
+      console.error('Error loading linked branches:', error);
+      setLinked([]);
     } finally {
-      setLoadingBranches(false);
+      setLoadingLinked(false);
     }
   };
 
-  // Transfer employee
-  const handleTransfer = async () => {
-    if (!targetBranchId) {
-      showWarning("يرجى اختيار الفرع المستهدف");
-      return;
-    }
+  const select = async (employee) => {
+    setSelected(employee);
+    setResults([]);
+    setSearch(EMPTY_SEARCH);
+    setTargetBranchId('');
+    setLinkBranchId('');
+    await loadLinked(employee.id);
+  };
 
-    const targetBranch = branches.find(b => b.id === parseInt(targetBranchId));
-    if (!await confirm({ message: `هل أنت متأكد من نقل الموظف "${selectedEmployee.full_name || `${selectedEmployee.first_name} ${selectedEmployee.second_name}`}" إلى فرع "${targetBranch?.branch_name}"؟` })) {
-      return;
-    }
+  const clearSelection = () => {
+    setSelected(null);
+    setLinked([]);
+    setTargetBranchId('');
+    setLinkBranchId('');
+  };
 
+  const transfer = async () => {
+    if (!targetBranchId) { showWarning('يرجى اختيار الفرع المستهدف'); return; }
+    const target = branches.find((b) => b.id === parseInt(targetBranchId, 10));
+    const ok = await confirm({
+      title: 'نقل الموظف',
+      message: `هل أنت متأكد من نقل الموظف «${nameOf(selected)}» إلى فرع «${target?.branch_name}»؟ سيصبح فرعه الأساسي.`,
+      confirmText: 'نقل',
+    });
+    if (!ok) return;
     setTransferring(true);
     try {
-      const response = await employeesAPI.transfer(selectedEmployee.id, {
-        target_branch_id: parseInt(targetBranchId),
-      });
+      const response = await employeesAPI.transfer(selected.id, { target_branch_id: parseInt(targetBranchId, 10) });
       if (response.data.success) {
         showSuccess(response.data.message);
-        // Reload employee data
-        const empResponse = await employeesAPI.getById(selectedEmployee.id);
-        setSelectedEmployee(empResponse.data?.data || empResponse.data);
-        await loadLinkedBranches(selectedEmployee.id);
-        setTargetBranchId("");
-        setTransferBranchText("");
+        const fresh = await employeesAPI.getById(selected.id);
+        setSelected(fresh.data?.data || fresh.data);
+        await loadLinked(selected.id);
+        setTargetBranchId('');
       }
     } catch (error) {
-      console.error("Error transferring employee:", error);
-      showError(error.response?.data?.message || "فشل نقل الموظف");
+      console.error('Error transferring employee:', error);
+      showError(error.response?.data?.message || 'فشل نقل الموظف');
     } finally {
       setTransferring(false);
     }
   };
 
-  // Link to branch
-  const handleLink = async () => {
-    if (!linkBranchId) {
-      showWarning("يرجى اختيار الفرع للربط");
-      return;
-    }
-
+  const link = async () => {
+    if (!linkBranchId) { showWarning('يرجى اختيار الفرع للربط'); return; }
     setLinking(true);
     try {
-      const response = await employeesAPI.linkToBranch({
-        employee_id: selectedEmployee.id,
-        branch_id: parseInt(linkBranchId),
-      });
+      const response = await employeesAPI.linkToBranch({ employee_id: selected.id, branch_id: parseInt(linkBranchId, 10) });
       if (response.data.success) {
         showSuccess(response.data.message);
-        await loadLinkedBranches(selectedEmployee.id);
-        setLinkBranchId("");
-        setLinkBranchText("");
+        await loadLinked(selected.id);
+        setLinkBranchId('');
       }
     } catch (error) {
-      console.error("Error linking employee:", error);
-      showError(error.response?.data?.message || "فشل ربط الموظف بالفرع");
+      console.error('Error linking employee:', error);
+      showError(error.response?.data?.message || 'فشل ربط الموظف بالفرع');
     } finally {
       setLinking(false);
     }
   };
 
-  // Unlink from branch
-  const handleUnlink = async (branchId, branchName) => {
-    if (!await confirm({ message: `هل أنت متأكد من إلغاء ربط الموظف بفرع "${branchName}"؟` })) return;
-
+  const unlink = async (branchId, branchName) => {
+    const ok = await confirm({ title: 'إلغاء الربط', message: `هل أنت متأكد من إلغاء ربط الموظف بفرع «${branchName}»؟`, tone: 'danger', confirmText: 'إلغاء الربط' });
+    if (!ok) return;
     try {
-      const response = await employeesAPI.unlinkFromBranch(selectedEmployee.id, branchId);
+      const response = await employeesAPI.unlinkFromBranch(selected.id, branchId);
       if (response.data.success) {
         showSuccess(response.data.message);
-        await loadLinkedBranches(selectedEmployee.id);
+        await loadLinked(selected.id);
       }
     } catch (error) {
-      console.error("Error unlinking:", error);
-      showError(error.response?.data?.message || "فشل إلغاء ربط الموظف");
+      console.error('Error unlinking:', error);
+      showError(error.response?.data?.message || 'فشل إلغاء ربط الموظف');
     }
   };
 
-  // Clear selection
-  const handleClearSelection = () => {
-    setSelectedEmployee(null);
-    setLinkedBranches([]);
-    setTargetBranchId("");
-    setTransferBranchText("");
-    setLinkBranchId("");
-    setLinkBranchText("");
-  };
+  const branchName = (id) => branches.find((b) => b.id === id)?.branch_name || '—';
+  const transferable = useMemo(() => branches.filter((b) => selected && b.id !== selected.branch_id), [branches, selected]);
+  const linkable = useMemo(() => branches.filter((b) => !linked.some((lb) => lb.branch_id === b.id)), [branches, linked]);
+  const set = (field) => (e) => setSearch((prev) => ({ ...prev, [field]: e.target.value }));
 
-  // Get branch name for display
-  const getCurrentBranchName = () => {
-    if (!selectedEmployee) return "";
-    const branch = branches.find(b => b.id === selectedEmployee.branch_id);
-    return branch?.branch_name || "غير محدد";
-  };
+  const resultColumns = [
+    { key: 'name', header: 'الاسم', mobilePrimary: true, render: (e) => <strong>{nameOf(e)}</strong> },
+    { key: 'id', header: 'رقم الهوية', render: (e) => (e.id_or_residency_number ? <bdi>{e.id_or_residency_number}</bdi> : '—') },
+    { key: 'branch', header: 'الفرع', render: (e) => branchName(e.branch_id) },
+    { key: 'status', header: 'الحالة', render: (e) => <StatusBadge status={e.status || 'active'} /> },
+    { key: 'pick', header: '', align: 'end', render: (e) => <Button size="sm" variant="primary" onClick={() => select(e)}>اختيار</Button> },
+  ];
 
-  // Filter branches for transfer (exclude current primary)
-  const transferableBranches = branches.filter(
-    b => selectedEmployee && b.id !== selectedEmployee.branch_id
-  );
-
-  // Filter branches for linking (exclude already linked)
-  const linkableBranches = branches.filter(
-    b => !linkedBranches.some(lb => lb.branch_id === b.id)
-  );
-
-  // Filtered lists based on text input
-  const filteredTransferBranches = transferableBranches.filter(
-    b => !transferBranchText || b.branch_name.includes(transferBranchText)
-  );
-  const filteredLinkBranches = linkableBranches.filter(
-    b => !linkBranchText || b.branch_name.includes(linkBranchText)
-  );
+  const linkedColumns = [
+    { key: 'branch', header: 'الفرع', mobilePrimary: true, render: (lb) => <strong>{lb.branch_name}</strong> },
+    { key: 'primary', header: 'النوع', render: (lb) => (lb.is_primary ? <Badge tone="success">أساسي</Badge> : <Badge tone="neutral">إضافي</Badge>) },
+    { key: 'added', header: 'تاريخ الربط', render: (lb) => (lb.added_at ? new Date(lb.added_at).toLocaleDateString('ar-SA') : '—') },
+    {
+      key: 'actions', header: '', align: 'end',
+      render: (lb) => (lb.is_primary
+        ? <span className="et-hint">لا يمكن إلغاء ربط الفرع الأساسي</span>
+        : <Button size="sm" variant="danger" onClick={() => unlink(lb.branch_id, lb.branch_name)}>إلغاء الربط</Button>),
+    },
+  ];
 
   return (
-    <div className="table-page">
-      <div className="page-header">
-        <h1>نقل وربط الموظفين</h1>
-      </div>
+    <Page>
+      <PageHeader title="نقل وربط الموظفين" subtitle="انقل موظفاً إلى فرع آخر، أو اربطه بفروع إضافية مع بقاء فرعه الأساسي" />
 
-      {/* Search Section - matching Employees page style */}
-      <div className="employees-search-bar">
-        <div className="employees-search-field">
-          <label className="employees-search-label">
-            البحث بالاسم:
-            {searchFilters.search_name.length > 0 &&
-              searchFilters.search_name.length < 2 && (
-                <span className="employees-search-hint">
-                  (أدخل حرفين على الأقل)
-                </span>
-              )}
-          </label>
-          <input
-            ref={searchNameRef}
-            type="text"
-            value={searchFilters.search_name}
-            onChange={(e) =>
-              setSearchFilters({ ...searchFilters, search_name: e.target.value })
-            }
-            placeholder="أدخل حرفين على الأقل للبحث (مثال: محمد)"
-            className="employees-search-input"
-          />
+      <Card title="البحث عن موظف" subtitle="اكتب جزءاً من الاسم أو رقم الهوية أو رقم الهاتف">
+        <div className="et-search">
+          <FormField label="الاسم" hint={search.search_name.length === 1 ? 'أدخل حرفين على الأقل' : undefined}>
+            <Input value={search.search_name} onChange={set('search_name')} placeholder="مثال: محمد" />
+          </FormField>
+          <FormField label="رقم الهوية / الإقامة">
+            <Input value={search.search_id} onChange={set('search_id')} placeholder="أدخل رقم الهوية" dir="ltr" inputMode="numeric" />
+          </FormField>
+          <FormField label="رقم الهاتف" hint={search.search_phone.length === 1 ? 'أدخل رقمين على الأقل' : undefined}>
+            <Input value={search.search_phone} onChange={set('search_phone')} placeholder="05…" dir="ltr" inputMode="tel" />
+          </FormField>
         </div>
-        <div className="employees-search-field">
-          <label className="employees-search-label">
-            البحث برقم الهوية/الإقامة:
-          </label>
-          <input
-            type="text"
-            value={searchFilters.search_id}
-            onChange={(e) =>
-              setSearchFilters({ ...searchFilters, search_id: e.target.value })
-            }
-            placeholder="أدخل رقم الهوية أو الإقامة"
-            className="employees-search-input"
-          />
-        </div>
-        <div className="employees-search-field">
-          <label className="employees-search-label">
-            البحث برقم الهاتف:
-            {searchFilters.search_phone.length > 0 &&
-              searchFilters.search_phone.length < 2 && (
-                <span className="employees-search-hint">
-                  (أدخل حرفين على الأقل)
-                </span>
-              )}
-          </label>
-          <input
-            type="text"
-            value={searchFilters.search_phone}
-            onChange={(e) =>
-              setSearchFilters({ ...searchFilters, search_phone: e.target.value })
-            }
-            placeholder="أدخل حرفين على الأقل للبحث"
-            className="employees-search-input"
-          />
-        </div>
-      </div>
+      </Card>
 
-      {/* Search Results */}
-      {searching && (
-        <div className="transfer-section" style={{ textAlign: 'center', padding: '16px', color: '#64748b' }}>
-          جاري البحث...
-        </div>
-      )}
-      {!searching && searchResults.length > 0 && (
-        <div className="transfer-section" style={{ padding: '0' }}>
-          <table className="transfer-table">
-            <thead>
-              <tr>
-                <th>الاسم</th>
-                <th>رقم الهوية</th>
-                <th>الفرع</th>
-                <th>الحالة</th>
-                <th>اختيار</th>
-              </tr>
-            </thead>
-            <tbody>
-              {searchResults.map(emp => (
-                <tr key={emp.id}>
-                  <td>{emp.full_name || `${emp.first_name} ${emp.second_name} ${emp.third_name || ""} ${emp.fourth_name || ""}`}</td>
-                  <td>{emp.id_or_residency_number || "-"}</td>
-                  <td>{branches.find(b => b.id === emp.branch_id)?.branch_name || "-"}</td>
-                  <td>
-                    <span className={`status-badge status-${emp.status || "active"}`}>
-                      {emp.status === "active" ? "نشط" : emp.status === "pending" ? "قيد الانتظار" : emp.status || "نشط"}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      onClick={() => handleSelectEmployee(emp)}
-                      className="btn-primary btn-sm"
-                    >
-                      اختيار
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {(searching || results.length > 0) && (
+        <Card title="نتائج البحث" flush>
+          <DataTable columns={resultColumns} rows={results} rowKey="id" loading={searching} emptyIcon="search" emptyTitle="لا توجد نتائج" />
+        </Card>
       )}
 
-      {/* Selected Employee Info */}
-      {selectedEmployee && (
+      {selected && (
         <>
-          <div className="transfer-section transfer-employee-info">
-            <div className="transfer-info-header">
-              <h2 className="transfer-section-title">بيانات الموظف المختار</h2>
-              <button
-                onClick={handleClearSelection}
-                className="btn-secondary btn-sm"
-              >
-                إلغاء الاختيار
-              </button>
+          <Card
+            title="الموظف المختار"
+            actions={<Button size="sm" variant="secondary" icon="x" onClick={clearSelection}>إلغاء الاختيار</Button>}
+          >
+            <dl className="et-info">
+              <div><dt>الاسم</dt><dd>{nameOf(selected)}</dd></div>
+              <div><dt>رقم الهوية</dt><dd><bdi>{selected.id_or_residency_number || '—'}</bdi></dd></div>
+              <div><dt>الفرع الأساسي</dt><dd>{branchName(selected.branch_id)}</dd></div>
+              <div><dt>الوظيفة</dt><dd>{selected.occupation || '—'}</dd></div>
+            </dl>
+          </Card>
+
+          <Card title="نقل الموظف إلى فرع آخر" subtitle="سيتم تغيير فرعه الأساسي إلى الفرع المختار">
+            <div className="et-row">
+              <FormField label="الفرع المستهدف">
+                <Select value={targetBranchId} onChange={(e) => setTargetBranchId(e.target.value)} options={transferable.map((b) => ({ value: String(b.id), label: b.branch_name }))} placeholder="اختر الفرع" />
+              </FormField>
+              <Button variant="primary" icon="transfer" loading={transferring} disabled={!targetBranchId} onClick={transfer}>نقل الموظف</Button>
             </div>
-            <div className="transfer-info-grid">
-              <div className="transfer-info-item">
-                <span className="transfer-info-label">الاسم:</span>
-                <span className="transfer-info-value">
-                  {selectedEmployee.full_name || `${selectedEmployee.first_name} ${selectedEmployee.second_name} ${selectedEmployee.third_name || ""} ${selectedEmployee.fourth_name || ""}`}
-                </span>
-              </div>
-              <div className="transfer-info-item">
-                <span className="transfer-info-label">رقم الهوية:</span>
-                <span className="transfer-info-value">{selectedEmployee.id_or_residency_number || "-"}</span>
-              </div>
-              <div className="transfer-info-item">
-                <span className="transfer-info-label">الفرع الأساسي:</span>
-                <span className="transfer-info-value transfer-primary-branch">{getCurrentBranchName()}</span>
-              </div>
-              <div className="transfer-info-item">
-                <span className="transfer-info-label">الوظيفة:</span>
-                <span className="transfer-info-value">{selectedEmployee.occupation || "-"}</span>
-              </div>
-            </div>
-          </div>
+          </Card>
 
-          {/* Transfer Section */}
-          <div className="transfer-section">
-            <h2 className="transfer-section-title">نقل الموظف إلى فرع آخر</h2>
-            <p className="transfer-section-desc">سيتم نقل الموظف وتغيير فرعه الأساسي إلى الفرع المختار</p>
-            <div className="transfer-action-row">
-              <div className="branch-picker" ref={transferPickerRef}>
-                <input
-                  type="text"
-                  value={transferBranchText}
-                  onChange={(e) => {
-                    setTransferBranchText(e.target.value);
-                    setTargetBranchId("");
-                    setTransferDropdownOpen(true);
-                  }}
-                  onFocus={() => setTransferDropdownOpen(true)}
-                  placeholder="ابحث عن الفرع المستهدف..."
-                  className="branch-picker-input"
-                />
-                {transferDropdownOpen && filteredTransferBranches.length > 0 && (
-                  <ul className="branch-picker-dropdown">
-                    {filteredTransferBranches.map(b => (
-                      <li
-                        key={b.id}
-                        className={`branch-picker-item${targetBranchId === String(b.id) ? " selected" : ""}`}
-                        onClick={() => {
-                          setTargetBranchId(String(b.id));
-                          setTransferBranchText(b.branch_name);
-                          setTransferDropdownOpen(false);
-                        }}
-                      >
-                        {b.branch_name}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {transferDropdownOpen && transferBranchText && filteredTransferBranches.length === 0 && (
-                  <ul className="branch-picker-dropdown">
-                    <li className="branch-picker-empty">لا توجد نتائج</li>
-                  </ul>
-                )}
-              </div>
-              <button
-                onClick={handleTransfer}
-                disabled={transferring || !targetBranchId}
-                className="btn-primary"
-              >
-                {transferring ? "جاري النقل..." : "نقل الموظف"}
-              </button>
-            </div>
-          </div>
-
-          {/* Multi-Branch Linking Section */}
-          <div className="transfer-section">
-            <h2 className="transfer-section-title">ربط الموظف بفروع إضافية</h2>
-            <p className="transfer-section-desc">يمكنك ربط الموظف بعدة فروع مع الاحتفاظ بفرعه الأساسي</p>
-
-            {/* Linked Branches Table */}
-            {loadingBranches ? (
-              <div className="transfer-loading">جاري تحميل الفروع المرتبطة...</div>
-            ) : (
-              <table className="transfer-table">
-                <thead>
-                  <tr>
-                    <th>الفرع</th>
-                    <th>أساسي</th>
-                    <th>تاريخ الربط</th>
-                    <th>إجراء</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {linkedBranches.length === 0 ? (
-                    <tr>
-                      <td colSpan="4" style={{ textAlign: "center", color: "#999" }}>
-                        لا توجد فروع مرتبطة
-                      </td>
-                    </tr>
-                  ) : (
-                    linkedBranches.map(lb => (
-                      <tr key={lb.branch_id}>
-                        <td>{lb.branch_name}</td>
-                        <td>
-                          {lb.is_primary ? (
-                            <span className="transfer-badge transfer-badge-primary">أساسي</span>
-                          ) : (
-                            <span className="transfer-badge transfer-badge-secondary">إضافي</span>
-                          )}
-                        </td>
-                        <td>{lb.added_at ? new Date(lb.added_at).toLocaleDateString("ar-SA") : "-"}</td>
-                        <td>
-                          {lb.is_primary ? (
-                            <span className="transfer-hint">لا يمكن إلغاء ربط الفرع الأساسي</span>
-                          ) : (
-                            <button
-                              onClick={() => handleUnlink(lb.branch_id, lb.branch_name)}
-                              className="btn-danger btn-sm"
-                            >
-                              إلغاء الربط
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            )}
-
-            {/* Add new branch link */}
-            {linkableBranches.length > 0 && (
-              <div className="transfer-action-row" style={{ marginTop: "16px" }}>
-                <div className="branch-picker" ref={linkPickerRef}>
-                  <input
-                    type="text"
-                    value={linkBranchText}
-                    onChange={(e) => {
-                      setLinkBranchText(e.target.value);
-                      setLinkBranchId("");
-                      setLinkDropdownOpen(true);
-                    }}
-                    onFocus={() => setLinkDropdownOpen(true)}
-                    placeholder="ابحث عن فرع للربط..."
-                    className="branch-picker-input"
-                  />
-                  {linkDropdownOpen && filteredLinkBranches.length > 0 && (
-                    <ul className="branch-picker-dropdown">
-                      {filteredLinkBranches.map(b => (
-                        <li
-                          key={b.id}
-                          className={`branch-picker-item${linkBranchId === String(b.id) ? " selected" : ""}`}
-                          onClick={() => {
-                            setLinkBranchId(String(b.id));
-                            setLinkBranchText(b.branch_name);
-                            setLinkDropdownOpen(false);
-                          }}
-                        >
-                          {b.branch_name}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {linkDropdownOpen && linkBranchText && filteredLinkBranches.length === 0 && (
-                    <ul className="branch-picker-dropdown">
-                      <li className="branch-picker-empty">لا توجد نتائج</li>
-                    </ul>
-                  )}
-                </div>
-                <button
-                  onClick={handleLink}
-                  disabled={linking || !linkBranchId}
-                  className="btn-primary"
-                >
-                  {linking ? "جاري الربط..." : "ربط بالفرع"}
-                </button>
+          <Card title="ربط الموظف بفروع إضافية" subtitle="يمكن ربط الموظف بعدة فروع مع الاحتفاظ بفرعه الأساسي" flush>
+            <DataTable columns={linkedColumns} rows={linked} rowKey="branch_id" loading={loadingLinked} emptyIcon="building" emptyTitle="لا توجد فروع مرتبطة" />
+            {linkable.length > 0 && (
+              <div className="et-row et-row-pad">
+                <FormField label="فرع للربط">
+                  <Select value={linkBranchId} onChange={(e) => setLinkBranchId(e.target.value)} options={linkable.map((b) => ({ value: String(b.id), label: b.branch_name }))} placeholder="اختر الفرع" />
+                </FormField>
+                <Button variant="primary" icon="link" loading={linking} disabled={!linkBranchId} onClick={link}>ربط بالفرع</Button>
               </div>
             )}
-          </div>
+          </Card>
         </>
       )}
-    </div>
+    </Page>
   );
-};
-
-export default EmployeeTransfer;
+}
