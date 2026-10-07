@@ -1,34 +1,29 @@
 /**
- * Beneficiaries Page (المستفيدين)
- * - Branch managers: Add/edit/delete beneficiaries for their healthcare center
- * - Main managers: View all, filter, stats, export Excel, archive
+ * Beneficiaries (المستفيدون)
+ * - Branch managers: add / edit / delete beneficiaries of their healthcare centre, and review last year's
+ *   beneficiaries during the new-year window.
+ * - Head office: staffing requirements, statistics, exports, archive, and every branch's review status.
+ * State and handlers live here; the panels under ./beneficiaries are layout.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { beneficiariesAPI, branchesAPI, termsAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { useConfirm } from '../ui';
+import {
+    Page, PageHeader, Card, StatCard, Tabs, Toolbar, Select, FormField, Textarea, Button, Badge, Alert, Modal, Spinner,
+    EmptyState, useConfirm,
+} from '../ui';
 import { downloadFile } from '../utils/downloadFile';
-import '../styles/yearReview.css';
 import './Beneficiaries.css';
-import SearchableSelect from "../components/SearchableSelect.jsx";
-
-const SERVICE_LABELS = {
-    speech_therapy: 'نطق وتخاطب',
-    physical_therapy: 'علاج طبيعي',
-    occupational_therapy: 'علاج وظيفي',
-    autism_therapy: 'علاج توحد',
-    transport_service: 'خدمة نقل',
-};
-
-const ENROLLMENT_OPTIONS = ['صباحية', 'مسائية'];
-const GENDER_OPTIONS = ['ذكر', 'أنثى'];
-// Ceiling matches the beneficiaries_age_check constraint (migration 024). It
-// has to exceed the oldest beneficiary on file, or the rollover cannot record
-// them a year older when they continue into the new term.
-const AGE_OPTIONS = Array.from({ length: 60 }, (_, i) => i + 1);
+import { SERVICE_LABELS, EMPTY_BENEFICIARY } from './beneficiaries/constants';
+import BeneficiaryFields from './beneficiaries/BeneficiaryFields';
+import DataPanel from './beneficiaries/DataPanel';
+import StatsPanel from './beneficiaries/StatsPanel';
+import StaffingPanel from './beneficiaries/StaffingPanel';
+import ExportsPanel from './beneficiaries/ExportsPanel';
+import RolloverPanel from './beneficiaries/RolloverPanel';
 
 const Beneficiaries = () => {
     const { isMainManager, user } = useAuth();
@@ -65,29 +60,11 @@ const Beneficiaries = () => {
         term_id: '',
     });
 
-    // Modal state
+    // Add / edit dialog
     const [showModal, setShowModal] = useState(false);
     const [editingId, setEditingId] = useState(null);
-    const [formData, setFormData] = useState({
-        beneficiary_number: '',
-        enrollment_period: 'صباحية',
-        beneficiary_name: '',
-        civil_id: '',
-        contact_number: '',
-        gender: 'ذكر',
-        age: '',
-        speech_therapy: false,
-        physical_therapy: false,
-        occupational_therapy: false,
-        autism_therapy: false,
-        transport_service: false,
-        free_student: false,
-        notes: '',
-    });
+    const [formData, setFormData] = useState(EMPTY_BENEFICIARY);
     const [submitting, setSubmitting] = useState(false);
-
-    // Confirm delete state
-    const [deleteConfirm, setDeleteConfirm] = useState({ show: false, id: null, name: '' });
 
     // Active tab. Main managers get the full set; branch managers only ever see
     // 'data' and — during the between-years window — 'rollover'.
@@ -156,18 +133,6 @@ const Beneficiaries = () => {
     // "all done" panel does not hide the wizard they just asked for.
     const [reviewPinned, setReviewPinned] = useState(false);
     const [showStepsHelp, setShowStepsHelp] = useState(true);
-
-    // Inline edit mode: null | 'add' | beneficiary_id
-    const [inlineMode, setInlineMode] = useState(null);
-    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-    const inlineRowRef = useRef(null);
-
-    // Detect mobile/desktop
-    useEffect(() => {
-        const handleResize = () => setIsMobile(window.innerWidth <= 768);
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
 
     // Load initial data
     useEffect(() => {
@@ -663,38 +628,20 @@ const Beneficiaries = () => {
 
     // Form handlers
     const resetForm = () => {
-        setFormData({
-            beneficiary_number: '',
-            enrollment_period: 'صباحية',
-            beneficiary_name: '',
-            civil_id: '',
-            contact_number: '',
-            gender: 'ذكر',
-            age: '',
-            speech_therapy: false,
-            physical_therapy: false,
-            occupational_therapy: false,
-            autism_therapy: false,
-            transport_service: false,
-            free_student: false,
-            notes: '',
-        });
+        setFormData(EMPTY_BENEFICIARY);
         setEditingId(null);
     };
 
-    const cancelInline = () => {
-        setInlineMode(null);
+    const closeForm = () => {
+        if (submitting) return;
+        setShowModal(false);
         resetForm();
+        setImportedFromBus(false);
     };
 
     const openAddModal = () => {
         resetForm();
-        if (isMobile) {
-            setShowModal(true);
-        } else {
-            setInlineMode('add');
-            setTimeout(() => inlineRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-        }
+        setShowModal(true);
     };
 
     const openEditModal = (beneficiary) => {
@@ -715,12 +662,7 @@ const Beneficiaries = () => {
             notes: beneficiary.notes || '',
         });
         setEditingId(beneficiary.id);
-        if (isMobile) {
-            setShowModal(true);
-        } else {
-            setInlineMode(beneficiary.id);
-            setTimeout(() => inlineRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-        }
+        setShowModal(true);
     };
 
     const handleSubmit = async (e) => {
@@ -777,7 +719,6 @@ const Beneficiaries = () => {
             }
 
             setShowModal(false);
-            setInlineMode(null);
             resetForm();
             setImportedFromBus(false);
             loadBeneficiaries();
@@ -793,11 +734,17 @@ const Beneficiaries = () => {
         }
     };
 
-    const handleDelete = async () => {
+    const handleDelete = async (beneficiary) => {
+        const ok = await confirm({
+            title: 'تأكيد الحذف',
+            message: `هل أنت متأكد من حذف المستفيد «${beneficiary.beneficiary_name}»؟`,
+            tone: 'danger',
+            confirmText: 'حذف',
+        });
+        if (!ok) return;
         try {
-            await beneficiariesAPI.delete(deleteConfirm.id);
+            await beneficiariesAPI.delete(beneficiary.id);
             showSuccess('تم حذف المستفيد بنجاح');
-            setDeleteConfirm({ show: false, id: null, name: '' });
             loadBeneficiaries();
             if (isMainManager()) { loadStats(); loadStaffingRequirements(); }
             if (!isMainManager()) loadBranchStats(filters.term_id || activeTerm?.id);
@@ -937,12 +884,7 @@ const Beneficiaries = () => {
             transport_service: true,
         }));
         setShowImportModal(false);
-        if (isMobile) {
-            setShowModal(true);
-        } else {
-            setInlineMode('add');
-            setTimeout(() => inlineRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-        }
+        setShowModal(true);
     };
 
     // Bus assignment handlers
@@ -1003,14 +945,14 @@ const Beneficiaries = () => {
     const visibleTabs = [
         ...(isMainManager()
             ? [
-                { key: 'staffing', label: '📋 متطلبات التوظيف' },
-                { key: 'data', label: '📄 بيانات المستفيدين' },
-                { key: 'stats', label: '📊 الإحصائيات' },
-                { key: 'exports', label: '📥 التصدير' },
+                { key: 'staffing', label: 'متطلبات التوظيف', icon: 'clipboard' },
+                { key: 'data', label: 'بيانات المستفيدين', icon: 'users' },
+                { key: 'stats', label: 'الإحصائيات', icon: 'chart' },
+                { key: 'exports', label: 'التصدير', icon: 'download' },
             ]
-            : [{ key: 'data', label: '📄 بيانات المستفيدين' }]),
+            : [{ key: 'data', label: 'بيانات المستفيدين', icon: 'users' }]),
         ...(rolloverAvailable || isMainManager()
-            ? [{ key: 'rollover', label: '🔄 مراجعة السنة الجديدة' }]
+            ? [{ key: 'rollover', label: 'مراجعة السنة الجديدة', icon: 'refresh' }]
             : []),
     ];
 
@@ -1052,2020 +994,295 @@ const Beneficiaries = () => {
 
     if (loading) {
         return (
-            <div className="beneficiaries-page">
-                <div className="loading-container">
-                    <div className="spinner-large"></div>
-                    <p>جاري التحميل...</p>
-                </div>
-            </div>
+            <Page>
+                <PageHeader title="المستفيدون" />
+                <Card><Spinner block label="جاري التحميل…" /></Card>
+            </Page>
         );
     }
 
+    const termOptions = terms.map((t) => ({
+        value: t.id.toString(),
+        label: `${t.term_name}${activeTerm && t.id === activeTerm.id ? ' (نشط)' : ''}`,
+    }));
+    const showArchive = filters.term_id && activeTerm && filters.term_id !== activeTerm.id.toString();
+
+    const tabItems = visibleTabs.map((tab) => ({
+        id: tab.key,
+        label: tab.label,
+        icon: tab.icon,
+        count: tab.key === 'rollover' && rolloverPending > 0 ? rolloverPending : undefined,
+    }));
+
+    const rolloverProps = {
+        isMain: isMainManager(), branchId: filters.branch_id, setFilters, rolloverOverview, rolloverStatus, navigate, setActiveTab,
+        openAddModal, rolloverLive, rolloverDoneCount, showStepsHelp, setShowStepsHelp, rolloverView, setRolloverView,
+        setReviewPinned, rolloverLoading, rolloverAllDone, reviewPinned, currentCandidate, reviewIndex, setReviewIndex,
+        rolloverCandidates, rolloverRemaining, decidingId, handleMarkContinuing, setReasonModal, reviewForm, setReviewForm,
+        availableBuses, reviewBusId, setReviewBusId, handleStartRollover, savingReview, handleSaveReview, goToNextUnfinished,
+        rolloverFilter, setRolloverFilter, filteredCandidates, openInGuidedReview, isCandidateDone, handleUnconfirmReview,
+        rolloverCanConfirm, setConfirmModal,
+    };
+
     return (
-        <div className="beneficiaries-page">
-            {/* Header */}
-            <div className="page-header">
-                <div className="header-top">
-                    <div>
-                        <h1>المستفيدين</h1>
-                        <p className="page-description">
-                            {isMainManager()
-                                ? 'إدارة ومتابعة بيانات المستفيدين ومتطلبات التوظيف'
-                                : 'تسجيل بيانات المستفيدين والخدمات المقدمة لهم'}
-                        </p>
-                    </div>
-                    <div className="header-actions">
-                        {canEdit && !isMainManager() && (
-                            <>
-                                <button className="btn btn-primary" onClick={openAddModal}>
-                                    + إضافة مستفيد
-                                </button>
-                                <button className="btn btn-info" onClick={openImportModal}>
-                                    🚌 استيراد من الباص
-                                </button>
-                                {/* The rollover tab supersedes the blind bulk copy — showing
-                                    both lets the two mechanisms fight over the same rows. */}
-                                {!rolloverAvailable && (
-                                    <button className="btn btn-secondary" onClick={openCopyModal}>
-                                        نسخ من فصل سابق
-                                    </button>
-                                )}
-                            </>
-                        )}
-                    </div>
-                </div>
-
-                {/* Term info */}
-                {!isMainManager() && activeTerm && (
-                    <div className="term-info-bar">
-                        <span className="term-badge">
-                            الفصل النشط: {activeTerm.term_name}
-                        </span>
-                    </div>
+        <Page>
+            <PageHeader
+                title="المستفيدون"
+                subtitle={isMainManager()
+                    ? 'إدارة ومتابعة بيانات المستفيدين ومتطلبات التوظيف'
+                    : 'تسجيل بيانات المستفيدين والخدمات المقدمة لهم'}
+                actions={canEdit && !isMainManager() && (
+                    <>
+                        <Button variant="primary" icon="plus" onClick={openAddModal}>إضافة مستفيد</Button>
+                        <Button variant="secondary" icon="bus" onClick={openImportModal}>استيراد من الباص</Button>
+                        {/* The rollover tab supersedes the blind bulk copy: showing both lets the two mechanisms
+                            fight over the same rows. */}
+                        {!rolloverAvailable && <Button variant="secondary" icon="restore" onClick={openCopyModal}>نسخ من فصل سابق</Button>}
+                    </>
                 )}
-                {!activeTerm && (
-                    <div className="no-term-warning">
-                        ⚠️ لا يوجد فصل دراسي نشط حالياً لمراكز الرعاية الصحية
-                    </div>
-                )}
-            </div>
+            />
 
-            {/* Main Manager: Filters + Tabs */}
-            {isMainManager() && (
-                <>
-                    <div className="mm-controls">
-                        <div className="mm-filters">
-                            <div className="filter-group">
-                                <label>الفصل الدراسي</label>
-                                <SearchableSelect
-                                    value={filters.term_id}
-                                    onChange={(val) => setFilters(prev => ({ ...prev, term_id: val }))}
-                                    placeholder="اختر الفصل"
-                                    options={[
-                                        { value: '', label: 'اختر الفصل' },
-                                        ...terms.map(t => ({ value: t.id.toString(), label: `${t.term_name} ${activeTerm && t.id === activeTerm.id ? '(نشط)' : ''}` }))
-                                    ]}
-                                />
-                            </div>
-                            {activeTab !== 'staffing' && (
-                                <div className="filter-group">
-                                    <label>الفرع</label>
-                                    <SearchableSelect
-                                        value={filters.branch_id}
-                                        onChange={(val) => setFilters(prev => ({ ...prev, branch_id: val }))}
-                                        placeholder="جميع الفروع"
-                                        options={[
-                                            { value: '', label: 'جميع الفروع' },
-                                            ...branches.map(b => ({ value: b.id.toString(), label: b.branch_name }))
-                                        ]}
-                                    />
-                                </div>
-                            )}
-                            {filters.term_id && activeTerm && filters.term_id !== activeTerm.id.toString() && (
-                                <button className="btn btn-warning btn-sm" onClick={handleArchive}>
-                                    📦 أرشفة هذا الفصل
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                </>
+            {!activeTerm && <Alert tone="warning">لا يوجد فصل دراسي نشط حالياً لمراكز الرعاية الصحية.</Alert>}
+            {!isMainManager() && activeTerm && (
+                <div><Badge tone="info" dot>الفصل النشط: {activeTerm.term_name}</Badge></div>
             )}
 
-            {/* Tabs — shared by both roles. Rendered only when more than one tab
-                applies, so outside the between-years window a branch manager's
-                page looks exactly as it did before. */}
-            {visibleTabs.length > 1 && (
-                <div className="mm-tabs">
-                    {visibleTabs.map(tab => (
-                        <button
-                            key={tab.key}
-                            className={`mm-tab ${activeTab === tab.key ? 'active' : ''}`}
-                            onClick={() => setActiveTab(tab.key)}
-                        >
-                            {tab.label}
-                            {tab.key === 'rollover' && rolloverPending > 0 && (
-                                <span className="tab-badge">{rolloverPending}</span>
-                            )}
-                        </button>
+            {isMainManager() && (
+                <Card flush>
+                    <Toolbar>
+                        <FormField label="الفصل الدراسي" className="bn-filter">
+                            <Select
+                                value={filters.term_id}
+                                onChange={(e) => setFilters((prev) => ({ ...prev, term_id: e.target.value }))}
+                                options={termOptions}
+                                placeholder="اختر الفصل"
+                            />
+                        </FormField>
+                        {activeTab !== 'staffing' && (
+                            <FormField label="الفرع" className="bn-filter">
+                                <Select
+                                    value={filters.branch_id}
+                                    onChange={(e) => setFilters((prev) => ({ ...prev, branch_id: e.target.value }))}
+                                    options={branches.map((b) => ({ value: b.id.toString(), label: b.branch_name }))}
+                                    placeholder="جميع الفروع"
+                                />
+                            </FormField>
+                        )}
+                        {showArchive && <Button variant="warning" icon="archive" onClick={handleArchive} className="bn-push">أرشفة هذا الفصل</Button>}
+                    </Toolbar>
+                </Card>
+            )}
+
+            {/* Tabs show only when more than one applies, so outside the between-years window a branch
+                manager's page is just the list. */}
+            {tabItems.length > 1 && <Tabs items={tabItems} value={activeTab} onChange={setActiveTab} ariaLabel="أقسام المستفيدين" />}
+
+            {!isMainManager() && branchStats && activeTab === 'data' && (
+                <div className="ui-grid-stats">
+                    <StatCard label="إجمالي المستفيدين" value={branchStats.total || 0} icon="users" tone="primary" />
+                    <StatCard label="ذكور" value={branchStats.male_count || 0} icon="user" tone="primary" />
+                    <StatCard label="إناث" value={branchStats.female_count || 0} icon="user" tone="primary" />
+                    {Object.entries(SERVICE_LABELS).map(([key, label]) => (
+                        <StatCard key={key} label={label} value={branchStats[`${key}_count`] || 0} icon="graduation-cap" tone="success" />
                     ))}
                 </div>
             )}
 
-            {/* Branch Manager Summary */}
-            {!isMainManager() && branchStats && (
-                <div className="branch-summary">
-                    <div className="summary-cards">
-                        <div className="summary-card total">
-                            <span className="summary-value">{branchStats.total || 0}</span>
-                            <span className="summary-label">إجمالي المستفيدين</span>
-                        </div>
-                        <div className="summary-card male">
-                            <span className="summary-value">{branchStats.male_count || 0}</span>
-                            <span className="summary-label">ذكور</span>
-                        </div>
-                        <div className="summary-card female">
-                            <span className="summary-value">{branchStats.female_count || 0}</span>
-                            <span className="summary-label">إناث</span>
-                        </div>
-                        {Object.entries(SERVICE_LABELS).map(([key, label]) => (
-                            <div className="summary-card service" key={key}>
-                                <span className="summary-value">{branchStats[`${key}_count`] || 0}</span>
-                                <span className="summary-label">{label}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+            {isMainManager() && activeTab === 'stats' && <StatsPanel stats={stats} submissionStatus={submissionStatus} />}
+
+            {isMainManager() && activeTab === 'staffing' && (
+                <StaffingPanel
+                    hasTerm={Boolean(filters.term_id)}
+                    staffingData={staffingData}
+                    staffingLoading={staffingLoading}
+                    includeFreeStudents={includeFreeStudents}
+                    setIncludeFreeStudents={setIncludeFreeStudents}
+                    mergeTherapy={mergeTherapy}
+                    setMergeTherapy={setMergeTherapy}
+                    onExport={handleStaffingExport}
+                    staffingBranchFilter={staffingBranchFilter}
+                    setStaffingBranchFilter={setStaffingBranchFilter}
+                    staffingSearch={staffingSearch}
+                    setStaffingSearch={setStaffingSearch}
+                />
             )}
 
-            {/* Main Manager Stats View */}
-            {isMainManager() && activeTab === 'stats' && stats && (
-                <div className="stats-dashboard">
-                    {/* Overall Stats */}
-                    <div className="stats-section">
-                        <h2>إحصائيات عامة</h2>
-                        <div className="stats-grid">
-                            <div className="stat-card total">
-                                <span className="stat-icon">👥</span>
-                                <div className="stat-content">
-                                    <span className="stat-value">{stats.totals?.total || 0}</span>
-                                    <span className="stat-label">إجمالي المستفيدين</span>
-                                </div>
-                            </div>
-                            <div className="stat-card paid">
-                                <span className="stat-icon">💰</span>
-                                <div className="stat-content">
-                                    <span className="stat-value">{stats.totals?.paid_student_count || 0}</span>
-                                    <span className="stat-label">مستفيدين مدفوعين</span>
-                                </div>
-                            </div>
-                            <div className="stat-card free">
-                                <span className="stat-icon">🎓</span>
-                                <div className="stat-content">
-                                    <span className="stat-value">{stats.totals?.free_student_count || 0}</span>
-                                    <span className="stat-label">مستفيدين مجانيين</span>
-                                </div>
-                            </div>
-                            <div className="stat-card male">
-                                <span className="stat-icon">👨</span>
-                                <div className="stat-content">
-                                    <span className="stat-value">{stats.totals?.male_count || 0}</span>
-                                    <span className="stat-label">ذكور</span>
-                                </div>
-                            </div>
-                            <div className="stat-card female">
-                                <span className="stat-icon">👩</span>
-                                <div className="stat-content">
-                                    <span className="stat-value">{stats.totals?.female_count || 0}</span>
-                                    <span className="stat-label">إناث</span>
-                                </div>
-                            </div>
-                            <div className="stat-card morning">
-                                <span className="stat-icon">🌅</span>
-                                <div className="stat-content">
-                                    <span className="stat-value">{stats.totals?.morning_count || 0}</span>
-                                    <span className="stat-label">فترة صباحية</span>
-                                </div>
-                            </div>
-                            <div className="stat-card evening">
-                                <span className="stat-icon">🌆</span>
-                                <div className="stat-content">
-                                    <span className="stat-value">{stats.totals?.evening_count || 0}</span>
-                                    <span className="stat-label">فترة مسائية</span>
-                                </div>
-                            </div>
-                            <div className="stat-card avg-age">
-                                <span className="stat-icon">📊</span>
-                                <div className="stat-content">
-                                    <span className="stat-value">{stats.totals?.avg_age || '-'}</span>
-                                    <span className="stat-label">متوسط العمر</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Service Stats */}
-                    <div className="stats-section">
-                        <h2>إحصائيات الخدمات</h2>
-                        <div className="stats-grid">
-                            {Object.entries(SERVICE_LABELS).map(([key, label]) => (
-                                <div className="stat-card service-stat" key={key}>
-                                    <div className="stat-content">
-                                        <span className="stat-value">{stats.totals?.[`${key}_count`] || 0}</span>
-                                        <span className="stat-label">{label}</span>
-                                    </div>
-                                    <div className="stat-bar">
-                                        <div
-                                            className="stat-bar-fill"
-                                            style={{
-                                                width: stats.totals?.total
-                                                    ? `${((stats.totals[`${key}_count`] || 0) / stats.totals.total) * 100}%`
-                                                    : '0%'
-                                            }}
-                                        ></div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Per-branch breakdown */}
-                    {stats.branchStats && stats.branchStats.length > 0 && (
-                        <div className="stats-section">
-                            <h2>توزيع المستفيدين حسب الفروع</h2>
-                            <div className="table-wrapper">
-                                <table className="data-table branch-stats-table">
-                                    <thead>
-                                        <tr>
-                                            <th>الفرع</th>
-                                            <th>الإجمالي</th>
-                                            <th>مدفوع</th>
-                                            <th>مجاني</th>
-                                            <th>ذكور</th>
-                                            <th>إناث</th>
-                                            <th>صباحية</th>
-                                            <th>مسائية</th>
-                                            {Object.values(SERVICE_LABELS).map(label => (
-                                                <th key={label}>{label}</th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {stats.branchStats.map(bs => (
-                                            <tr key={bs.branch_id}>
-                                                <td className="branch-name-cell">{bs.branch_name}</td>
-                                                <td className="number-cell">{bs.total}</td>
-                                                <td className="number-cell">{bs.paid_student_count}</td>
-                                                <td className="number-cell">{bs.free_student_count}</td>
-                                                <td className="number-cell">{bs.male_count}</td>
-                                                <td className="number-cell">{bs.female_count}</td>
-                                                <td className="number-cell">{bs.morning_count}</td>
-                                                <td className="number-cell">{bs.evening_count}</td>
-                                                <td className="number-cell">{bs.speech_therapy_count}</td>
-                                                <td className="number-cell">{bs.physical_therapy_count}</td>
-                                                <td className="number-cell">{bs.occupational_therapy_count}</td>
-                                                <td className="number-cell">{bs.autism_therapy_count}</td>
-                                                <td className="number-cell">{bs.transport_service_count}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Age distribution */}
-                    {stats.ageDistribution && stats.ageDistribution.length > 0 && (
-                        <div className="stats-section">
-                            <h2>توزيع الأعمار</h2>
-                            <div className="age-distribution">
-                                {stats.ageDistribution.map(ad => (
-                                    <div className="age-bar-group" key={ad.age_group}>
-                                        <span className="age-label">{ad.age_group}</span>
-                                        <div className="age-bar-container">
-                                            <div
-                                                className="age-bar-fill"
-                                                style={{
-                                                    width: stats.totals?.total
-                                                        ? `${(parseInt(ad.count) / parseInt(stats.totals.total)) * 100}%`
-                                                        : '0%'
-                                                }}
-                                            ></div>
-                                        </div>
-                                        <span className="age-count">{ad.count}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Service combination analysis */}
-                    {stats.serviceCombinations && stats.serviceCombinations.length > 0 && (
-                        <div className="stats-section">
-                            <h2>عدد الخدمات لكل مستفيد</h2>
-                            <div className="service-combo-grid">
-                                {stats.serviceCombinations.map(sc => (
-                                    <div className="combo-card" key={sc.service_count}>
-                                        <span className="combo-count">{sc.beneficiary_count}</span>
-                                        <span className="combo-label">
-                                            {sc.service_count === 0
-                                                ? 'بدون خدمات'
-                                                : sc.service_count === 1
-                                                    ? 'خدمة واحدة'
-                                                    : sc.service_count === 2
-                                                        ? 'خدمتان'
-                                                        : `${sc.service_count} خدمات`}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Submission Status */}
-                    {submissionStatus.length > 0 && (
-                        <div className="stats-section">
-                            <h2>حالة إدخال البيانات</h2>
-                            <div className="submission-grid">
-                                {submissionStatus.map(ss => (
-                                    <div
-                                        className={`submission-card ${ss.has_submitted ? 'submitted' : 'not-submitted'}`}
-                                        key={ss.branch_id}
-                                    >
-                                        <span className="submission-icon">{ss.has_submitted ? '✅' : '⏳'}</span>
-                                        <span className="submission-branch">{ss.branch_name}</span>
-                                        <span className="submission-count">
-                                            {ss.has_submitted ? `${ss.beneficiary_count} مستفيد` : 'لم يتم الإدخال'}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
+            {isMainManager() && activeTab === 'exports' && (
+                <ExportsPanel
+                    hasTerm={Boolean(filters.term_id)}
+                    exportColumns={exportColumns}
+                    setExportColumns={setExportColumns}
+                    onExport={handleExport}
+                    onStaffingExport={handleStaffingExport}
+                    hasStaffing={staffingData.length > 0}
+                />
             )}
 
-            {/* Staffing Controls (shared across all staffing states) */}
-            {isMainManager() && activeTab === 'staffing' && filters.term_id && (
-                <div className="sf-controls">
-                    <button
-                        className={`sf-toggle-btn ${includeFreeStudents ? 'active' : ''}`}
-                        onClick={() => setIncludeFreeStudents(prev => !prev)}
-                    >
-                        {includeFreeStudents ? '✅' : '⬜'} تضمين الطلاب المجانيين
-                    </button>
-                    <button
-                        className={`sf-toggle-btn ${mergeTherapy ? 'active' : ''}`}
-                        onClick={() => setMergeTherapy(prev => !prev)}
-                    >
-                        {mergeTherapy ? '✅' : '⬜'} دمج العلاج الطبيعي والوظيفي
-                    </button>
-                    {staffingData.length > 0 && (
-                        <button
-                            className="btn btn-sm btn-success"
-                            onClick={handleStaffingExport}
-                            title="تصدير متطلبات التوظيف"
-                        >
-                            📥 تصدير
-                        </button>
-                    )}
-                </div>
-            )}
+            {activeTab === 'rollover' && <RolloverPanel {...rolloverProps} />}
 
-            {/* Staffing Requirements Section */}
-            {isMainManager() && activeTab === 'staffing' && filters.term_id && staffingData.length > 0 && (() => {
-                // Auto-select first branch if none selected
-                const selectedId = staffingBranchFilter || staffingData[0]?.branch_id?.toString();
-                const branch = staffingData.find(b => b.branch_id.toString() === selectedId);
-                const filteredBranches = staffingSearch
-                    ? staffingData.filter(b => b.branch_name.includes(staffingSearch))
-                    : staffingData;
-
-                return (
-                    <div className="staffing-section">
-
-                        <div className="sf-picker">
-                            <div className="sf-picker-search">
-                                <input
-                                    type="text"
-                                    placeholder="🔍 ابحث عن فرع..."
-                                    value={staffingSearch}
-                                    onChange={(e) => setStaffingSearch(e.target.value)}
-                                />
-                            </div>
-                            <div className="sf-picker-list">
-                                {filteredBranches.map(b => (
-                                    <button
-                                        key={b.branch_id}
-                                        className={`sf-picker-item ${b.branch_id.toString() === selectedId ? 'selected' : ''} ${b.total_deficit > 0 ? 'has-deficit' : 'all-ok'}`}
-                                        onClick={() => { setStaffingBranchFilter(b.branch_id.toString()); setStaffingSearch(''); }}
-                                    >
-                                        <span className="sf-pi-name">{b.branch_name}</span>
-                                        {b.total_deficit > 0 ? (
-                                            <span className="sf-pi-badge deficit">−{b.total_deficit}</span>
-                                        ) : (
-                                            <span className="sf-pi-badge ok">✓</span>
-                                        )}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Branch Dashboard */}
-                        {branch && (
-                            <div className="sf-dashboard">
-                                {/* Branch Header */}
-                                <div className="sf-dash-header">
-                                    <div className="sf-dash-title">
-                                        <h2>{branch.branch_name}</h2>
-                                        <span className={`sf-dash-status ${branch.total_deficit > 0 ? 'status-deficit' : 'status-ok'}`}>
-                                            {branch.total_deficit > 0 ? `⚠️ يوجد نقص ${branch.total_deficit} وظيفة` : '✅ التوظيف مكتمل'}
-                                        </span>
-                                    </div>
-                                    <div className="sf-dash-summary">
-                                        <div className="sf-sum-item">
-                                            <span className="sf-sum-num">{branch.total_required}</span>
-                                            <span className="sf-sum-label">المطلوب</span>
-                                        </div>
-                                        <div className="sf-sum-item">
-                                            <span className="sf-sum-num">{branch.total_current}</span>
-                                            <span className="sf-sum-label">الموجود</span>
-                                        </div>
-                                        <div className={`sf-sum-item ${branch.total_deficit > 0 ? 'sum-deficit' : 'sum-ok'}`}>
-                                            <span className="sf-sum-num">{branch.total_deficit}</span>
-                                            <span className="sf-sum-label">النقص</span>
-                                        </div>
-                                        {/* Progress bar */}
-                                        <div className="sf-sum-progress">
-                                            <div className="sf-progress-bar">
-                                                <div
-                                                    className={`sf-progress-fill ${branch.total_deficit > 0 ? 'fill-deficit' : 'fill-ok'}`}
-                                                    style={{ width: `${branch.total_required > 0 ? Math.min(100, ((branch.total_required - branch.total_deficit) / branch.total_required) * 100) : 100}%` }}
-                                                />
-                                            </div>
-                                            <span className="sf-progress-text">
-                                                {branch.total_required > 0 ? Math.round(((branch.total_required - branch.total_deficit) / branch.total_required) * 100) : 100}% مكتمل
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Beneficiaries breakdown */}
-                                <div className="sf-students-strip">
-                                    <div className="sf-ss-item sf-ss-total">
-                                        <span className="sf-ss-icon">👥</span>
-                                        <span className="sf-ss-num">{branch.total_beneficiaries}</span>
-                                        <span className="sf-ss-label">إجمالي</span>
-                                    </div>
-                                    <div className="sf-ss-item">
-                                        <span className="sf-ss-icon">🌅</span>
-                                        <span className="sf-ss-num">{branch.morning_count}</span>
-                                        <span className="sf-ss-label">صباحية</span>
-                                    </div>
-                                    <div className="sf-ss-item">
-                                        <span className="sf-ss-icon">🌆</span>
-                                        <span className="sf-ss-num">{branch.evening_count}</span>
-                                        <span className="sf-ss-label">مسائية</span>
-                                    </div>
-                                    <div className="sf-ss-divider" />
-                                    <div className="sf-ss-item">
-                                        <span className="sf-ss-icon">🗣️</span>
-                                        <span className="sf-ss-num">{branch.speech_therapy_count}</span>
-                                        <span className="sf-ss-label">نطق</span>
-                                    </div>
-                                    <div className="sf-ss-item">
-                                        <span className="sf-ss-icon">🦿</span>
-                                        <span className="sf-ss-num">{branch.physical_therapy_count}</span>
-                                        <span className="sf-ss-label">طبيعي</span>
-                                    </div>
-                                    <div className="sf-ss-item">
-                                        <span className="sf-ss-icon">🧩</span>
-                                        <span className="sf-ss-num">{branch.occupational_therapy_count}</span>
-                                        <span className="sf-ss-label">وظيفي</span>
-                                    </div>
-                                    <div className="sf-ss-item">
-                                        <span className="sf-ss-icon">🧠</span>
-                                        <span className="sf-ss-num">{branch.autism_therapy_count}</span>
-                                        <span className="sf-ss-label">توحد</span>
-                                    </div>
-                                    <div className="sf-ss-item">
-                                        <span className="sf-ss-icon">🚐</span>
-                                        <span className="sf-ss-num">{branch.transport_service_count}</span>
-                                        <span className="sf-ss-label">نقل</span>
-                                    </div>
-                                </div>
-
-                                {/* Role cards */}
-                                <div className="sf-roles">
-                                    {branch.staffing.filter(s => s.required > 0).map(s => (
-                                        <div className={`sf-role-card ${s.deficit > 0 ? 'rc-deficit' : s.surplus > 0 ? 'rc-surplus' : 'rc-met'}`} key={s.role}>
-                                            <div className="sf-rc-top">
-                                                <div className="sf-rc-icon">{s.icon}</div>
-                                                <div className="sf-rc-header">
-                                                    <h4 className="sf-rc-name">{s.role}</h4>
-                                                    <span className="sf-rc-rule">{s.rule}</span>
-                                                </div>
-                                                <div className="sf-rc-gauge">
-                                                    <div className="sf-gauge-ring">
-                                                        <svg viewBox="0 0 36 36" className="sf-gauge-svg">
-                                                            <path className="sf-gauge-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                                            <path className={`sf-gauge-fill ${s.deficit > 0 ? 'gauge-deficit' : 'gauge-ok'}`}
-                                                                strokeDasharray={`${s.required > 0 ? Math.min(100, (s.current / s.required) * 100) : 100}, 100`}
-                                                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                                        </svg>
-                                                        <span className="sf-gauge-text">{s.current}/{s.required}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="sf-rc-reason">{s.reason}</div>
-                                            <div className="sf-rc-footer">
-                                                <div className="sf-rc-stat">
-                                                    <span className="sf-rcs-label">المطلوب</span>
-                                                    <span className="sf-rcs-val">{s.required}</span>
-                                                </div>
-                                                <div className="sf-rc-stat">
-                                                    <span className="sf-rcs-label">الموجود</span>
-                                                    <span className="sf-rcs-val">{s.current}</span>
-                                                </div>
-                                                {s.deficit > 0 && (
-                                                    <div className="sf-rc-stat sf-rcs-deficit">
-                                                        <span className="sf-rcs-label">النقص</span>
-                                                        <span className="sf-rcs-val">{s.deficit}</span>
-                                                    </div>
-                                                )}
-                                                {s.surplus > 0 && (
-                                                    <div className="sf-rc-stat sf-rcs-surplus">
-                                                        <span className="sf-rcs-label">الفائض</span>
-                                                        <span className="sf-rcs-val">{s.surplus}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                );
-            })()}
-            {isMainManager() && activeTab === 'staffing' && filters.term_id && staffingLoading && (
-                <div className="staffing-section staffing-section-centered">
-                    <div className="staffing-loading">جاري حساب متطلبات التوظيف...</div>
-                </div>
-            )}
-            {isMainManager() && activeTab === 'staffing' && filters.term_id && !staffingLoading && staffingData.length === 0 && (
-                <div className="staffing-section staffing-section-centered">
-                    <div className="empty-state">
-                        <span className="empty-icon">📋</span>
-                        <h3>لا توجد بيانات مستفيدين</h3>
-                        <p>يجب إدخال بيانات المستفيدين أولاً لحساب متطلبات التوظيف</p>
-                    </div>
-                </div>
-            )}
-            {isMainManager() && activeTab === 'staffing' && !filters.term_id && (
-                <div className="staffing-section staffing-section-centered">
-                    <div className="empty-state">
-                        <span className="empty-icon">📅</span>
-                        <h3>اختر الفصل الدراسي</h3>
-                        <p>يجب اختيار فصل دراسي لعرض متطلبات التوظيف</p>
-                    </div>
-                </div>
-            )}
-
-            {/* Exports Tab */}
-            {isMainManager() && activeTab === 'exports' && filters.term_id && (
-                <div className="exports-tab">
-                    {/* Beneficiaries Excel Export */}
-                    <div className="export-card">
-                        <div className="export-card-header">
-                            <h3>📄 تصدير بيانات المستفيدين</h3>
-                            <p>اختر الأعمدة التي تريد تضمينها في ملف Excel</p>
-                        </div>
-                        <div className="export-columns">
-                            {[
-                                { key: 'sequence_number', label: 'التسلسل' },
-                                { key: 'branch_name', label: 'الفرع' },
-                                { key: 'enrollment_period', label: 'فترة الالتحاق' },
-                                { key: 'beneficiary_name', label: 'اسم المستفيد' },
-                                { key: 'beneficiary_number', label: 'رقم المستفيد' },
-                                { key: 'civil_id', label: 'السجل المدني' },
-                                { key: 'contact_number', label: 'رقم التواصل' },
-                                { key: 'gender', label: 'الجنس' },
-                                { key: 'age', label: 'العمر' },
-                                { key: 'speech_therapy', label: 'نطق وتخاطب' },
-                                { key: 'physical_therapy', label: 'علاج طبيعي' },
-                                { key: 'occupational_therapy', label: 'علاج وظيفي' },
-                                { key: 'autism_therapy', label: 'علاج توحد' },
-                                { key: 'transport_service', label: 'خدمة نقل' },
-                                { key: 'free_student', label: 'طالب مجاني' },
-                                { key: 'notes', label: 'ملاحظات' },
-                            ].map(col => (
-                                <label key={col.key} className="export-col-check">
-                                    <input
-                                        type="checkbox"
-                                        checked={exportColumns[col.key]}
-                                        onChange={() => setExportColumns(prev => ({ ...prev, [col.key]: !prev[col.key] }))}
-                                    />
-                                    <span>{col.label}</span>
-                                </label>
-                            ))}
-                        </div>
-                        <div className="export-card-actions">
-                            <button
-                                className="btn btn-sm"
-                                onClick={() => setExportColumns(prev => {
-                                    const allOn = Object.values(prev).every(v => v);
-                                    const next = {};
-                                    for (const k of Object.keys(prev)) next[k] = !allOn;
-                                    return next;
-                                })}
-                            >
-                                {Object.values(exportColumns).every(v => v) ? 'إلغاء الكل' : 'تحديد الكل'}
-                            </button>
-                            <button
-                                className="btn btn-success"
-                                onClick={() => handleExport()}
-                                disabled={!Object.values(exportColumns).some(v => v)}
-                            >
-                                📥 تصدير بيانات المستفيدين
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Staffing Export */}
-                    <div className="export-card">
-                        <div className="export-card-header">
-                            <h3>📋 تصدير متطلبات التوظيف</h3>
-                            <p>تصدير قائمة الوظائف المطلوبة حسب اللائحة لكل فرع</p>
-                        </div>
-                        <div className="export-card-actions">
-                            <button
-                                className="btn btn-success"
-                                onClick={handleStaffingExport}
-                                disabled={!staffingData.length}
-                            >
-                                📥 تصدير متطلبات التوظيف
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            {isMainManager() && activeTab === 'exports' && !filters.term_id && (
-                <div className="exports-tab">
-                    <div className="empty-state">
-                        <span className="empty-icon">📅</span>
-                        <h3>اختر الفصل الدراسي</h3>
-                        <p>يجب اختيار فصل دراسي لتصدير البيانات</p>
-                    </div>
-                </div>
-            )}
-
-            {/* New-Year Rollover Tab */}
-            {activeTab === 'rollover' && (
-                <div className="rollover-tab">
-                    {isMainManager() && !filters.branch_id ? (
-                        <>
-                            <div className="rollover-overview-header">
-                                <h2>حالة مراجعة المستفيدين للسنة الجديدة</h2>
-                                <span className="rollover-summary-chip">
-                                    {rolloverOverview.filter(b => b.is_confirmed).length} / {rolloverOverview.length} فرع أكّد
-                                </span>
-                            </div>
-                            {rolloverOverview.length === 0 ? (
-                                <div className="empty-state">
-                                    <span className="empty-icon">🏥</span>
-                                    <h3>لا توجد فروع</h3>
-                                    <p>اختر فصلاً دراسياً لعرض حالة الفروع</p>
-                                </div>
-                            ) : (
-                                <div className="table-wrapper">
-                                    <table className="data-table rollover-overview-table">
-                                        <thead>
-                                            <tr>
-                                                <th>الفرع</th>
-                                                <th>مستفيدو الفصل السابق</th>
-                                                <th>تم القرار</th>
-                                                <th>مستمر</th>
-                                                <th>غير مستمر</th>
-                                                <th>بانتظار المراجعة</th>
-                                                <th>مستفيدون جدد</th>
-                                                <th>الحالة</th>
-                                                <th>تأكيد بواسطة</th>
-                                                <th>التاريخ</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {rolloverOverview.map(row => (
-                                                <tr
-                                                    key={row.branch_id}
-                                                    className="clickable-row"
-                                                    onClick={() => setFilters(prev => ({ ...prev, branch_id: row.branch_id.toString() }))}
-                                                >
-                                                    <td>{row.branch_name}</td>
-                                                    <td>{row.source_total}</td>
-                                                    <td>{row.decided} / {row.source_total}</td>
-                                                    <td>{row.continuing}</td>
-                                                    <td>{row.not_continuing}</td>
-                                                    <td>{row.pending_review}</td>
-                                                    <td>{row.new_in_target}</td>
-                                                    <td>
-                                                        <span className={`rollover-badge ${row.is_confirmed ? 'confirmed' : 'not-confirmed'}`}>
-                                                            {row.is_confirmed ? '🟢 مكتمل' : '🔴 غير مكتمل'}
-                                                        </span>
-                                                    </td>
-                                                    <td>{row.confirmed_by_label || '-'}</td>
-                                                    <td>
-                                                        {row.confirmed_at
-                                                            ? new Date(row.confirmed_at).toLocaleDateString('ar-SA')
-                                                            : '-'}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </>
-                    ) : !rolloverStatus ? (
-                        <div className="loading-container"><div className="spinner-large"></div><p>جاري التحميل...</p></div>
-                    ) : !rolloverStatus.is_active ? (
-                        <div className="empty-state">
-                            <span className="empty-icon">📅</span>
-                            <h3>لا يوجد فصل دراسي للسنة الجديدة</h3>
-                            <p>{rolloverStatus.blocking_reason}</p>
-                            {isMainManager() && (
-                                <button className="btn btn-primary" onClick={() => navigate('/term-management')}>
-                                    إدارة السنوات والفصول الدراسية
-                                </button>
-                            )}
-                        </div>
-                    ) : (
-                        <>
-                            {isMainManager() && (
-                                <button
-                                    className="btn btn-secondary btn-sm rollover-back-btn"
-                                    onClick={() => setFilters(prev => ({ ...prev, branch_id: '' }))}
-                                >
-                                    ← العودة لحالة كل الفروع
-                                </button>
-                            )}
-
-                            <div className="rollover-header">
-                                <div className="rollover-terms">
-                                    <span className="rollover-term-chip previous">
-                                        بيانات الفصل السابق: {rolloverStatus.source_term
-                                            ? `${rolloverStatus.source_term.academic_year_label} — ${rolloverStatus.source_term.term_name}`
-                                            : 'لا يوجد'}
-                                    </span>
-                                    <span className="rollover-arrow">←</span>
-                                    <span className="rollover-term-chip next">
-                                        الفصل الجديد: {rolloverStatus.target_term?.academic_year_label} — {rolloverStatus.target_term?.term_name}
-                                    </span>
-                                </div>
-                                <div className="rollover-progress">
-                                    <div className="rollover-progress-bar">
-                                        <div
-                                            className="rollover-progress-fill"
-                                            style={{
-                                                width: `${rolloverLive.total > 0
-                                                    ? Math.round((rolloverDoneCount / rolloverLive.total) * 100)
-                                                    : 100}%`
-                                            }}
-                                        />
-                                    </div>
-                                    <span className="rollover-progress-label">
-                                        أنجزت {rolloverDoneCount} من {rolloverLive.total} مستفيد
-                                    </span>
-                                </div>
-                            </div>
-
-                            {/* How this page works — spelled out, because getting the
-                                order wrong here means losing a year of data. */}
-                            <div className="rollover-help">
-                                <button className="rollover-help-toggle" onClick={() => setShowStepsHelp(v => !v)}>
-                                    {showStepsHelp ? '▼' : '◀'} كيف أكمل مراجعة المستفيدين؟ (اقرأ الخطوات)
-                                </button>
-                                {showStepsHelp && (
-                                    <ol className="rollover-help-list">
-                                        <li><strong>حدّد المصير:</strong> لكل مستفيد من العام الماضي، اختر «سيستمر» أو «لن يستمر».</li>
-                                        <li><strong>راجع البيانات:</strong> إذا كان سيستمر، تأكد من صحة بياناته وعدّل ما تغيّر (العمر، رقم التواصل، الخدمات...).</li>
-                                        <li><strong>اختر الحافلة:</strong> إذا كانت خدمة النقل مفعلة، حدّد الحافلة التي سيركبها هذا العام.</li>
-                                        <li><strong>احفظ:</strong> اضغط «حفظ والانتقال للتالي» — سينتقل تلقائياً للمستفيد التالي.</li>
-                                        <li><strong>كرّر</strong> حتى تنتهي من جميع المستفيدين.</li>
-                                        <li><strong>أضف الجدد:</strong> من تبويب «بيانات المستفيدين» أضف المستفيدين الجدد الذين لم يكونوا مسجلين العام الماضي.</li>
-                                        <li><strong>أكّد:</strong> في نهاية هذه الصفحة اضغط «تأكيد اكتمال البيانات 100%» — بعد أن تنتهي من كل ما سبق.</li>
-                                    </ol>
-                                )}
-                                <p className="rollover-help-note">
-                                    ⚠️ المستفيد الذي تحدده «لن يستمر» يُنقل مباشرة إلى الأرشيف ولن يظهر في قوائم هذا العام.
-                                </p>
-                            </div>
-
-                            {rolloverStatus.counts.total_source === 0 ? (
-                                <div className="empty-state">
-                                    <span className="empty-icon">🆕</span>
-                                    <h3>لا توجد بيانات من الفصل السابق</h3>
-                                    <p>لا يوجد مستفيدون لمراجعتهم — يمكنك إضافة المستفيدين مباشرة للفصل الجديد</p>
-                                    <button
-                                        className="btn btn-primary"
-                                        onClick={() => { setActiveTab('data'); setTimeout(openAddModal, 0); }}
-                                    >
-                                        + إضافة مستفيد
-                                    </button>
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="rollover-view-switch">
-                                        <button
-                                            className={`rollover-pill ${rolloverView === 'guided' ? 'active' : ''}`}
-                                            onClick={() => setRolloverView('guided')}
-                                        >
-                                            📝 المراجعة خطوة بخطوة
-                                        </button>
-                                        <button
-                                            className={`rollover-pill ${rolloverView === 'list' ? 'active' : ''}`}
-                                            onClick={() => { setReviewPinned(false); setRolloverView('list'); }}
-                                        >
-                                            📋 عرض القائمة كاملة
-                                        </button>
-                                    </div>
-
-                                    {rolloverLoading ? (
-                                        <div className="loading-container"><div className="spinner-large"></div><p>جاري التحميل...</p></div>
-                                    ) : rolloverView === 'guided' ? (
-                                        ((rolloverAllDone && !reviewPinned) || !currentCandidate) ? (
-                                            /* All old beneficiaries handled — the per-person steps are
-                                               finished, so hand over to the one remaining action. */
-                                            <div className="rollover-done-panel">
-                                                <span className="rollover-done-icon">🎉</span>
-                                                <h3>انتهيت من مراجعة جميع مستفيدي العام الماضي</h3>
-                                                <p className="rollover-done-sub">
-                                                    {rolloverDoneCount} من {rolloverCandidates.length} — لم يتبقَ أحد للمراجعة
-                                                </p>
-                                                <div className="rollover-done-next">
-                                                    <span className="rollover-done-next-label">الخطوة التالية</span>
-                                                    <p>هل هناك مستفيدون <strong>جدد</strong> لم يكونوا مسجلين العام الماضي؟ أضفهم الآن.</p>
-                                                    <button
-                                                        className="btn btn-primary btn-lg"
-                                                        onClick={() => { setActiveTab('data'); setTimeout(openAddModal, 0); }}
-                                                    >
-                                                        + إضافة مستفيد جديد
-                                                    </button>
-                                                    <p className="rollover-done-hint">
-                                                        وإذا لم يكن هناك مستفيدون جدد، انتقل مباشرة إلى «تأكيد اكتمال البيانات 100%» في الأسفل.
-                                                    </p>
-                                                </div>
-                                                <button className="rollover-link-btn" onClick={() => { setReviewPinned(false); setRolloverView('list'); }}>
-                                                    مراجعة القائمة كاملة مرة أخرى
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="rollover-wizard">
-                                                {/* Position in the queue */}
-                                                <div className="rollover-wizard-nav">
-                                                    <button
-                                                        className="btn btn-sm btn-secondary"
-                                                        disabled={reviewIndex === 0}
-                                                        onClick={() => setReviewIndex(i => Math.max(0, i - 1))}
-                                                    >
-                                                        → السابق
-                                                    </button>
-                                                    <span className="rollover-wizard-pos">
-                                                        المستفيد {reviewIndex + 1} من {rolloverCandidates.length}
-                                                        {rolloverRemaining > 0 && (
-                                                            <span className="rollover-wizard-remaining"> · متبقٍ {rolloverRemaining}</span>
-                                                        )}
-                                                    </span>
-                                                    <button
-                                                        className="btn btn-sm btn-secondary"
-                                                        disabled={reviewIndex >= rolloverCandidates.length - 1}
-                                                        onClick={() => setReviewIndex(i => Math.min(rolloverCandidates.length - 1, i + 1))}
-                                                    >
-                                                        التالي ←
-                                                    </button>
-                                                </div>
-
-                                                {/* Who we are looking at — gender is set once at registration
-                                                    and never changes, so it is context here, not a field to review. */}
-                                                <div className="rollover-identity">
-                                                    <h3 className="rollover-identity-name">{currentCandidate.beneficiary_name}</h3>
-                                                    <div className="rollover-identity-meta">
-                                                        <span>السجل المدني: <strong>{currentCandidate.civil_id}</strong></span>
-                                                        <span>الجنس: <strong>{currentCandidate.gender}</strong></span>
-                                                        <span>رقم المستفيد: <strong>{currentCandidate.beneficiary_number}</strong></span>
-                                                        <span>عمره العام الماضي: <strong>{currentCandidate.age}</strong></span>
-                                                    </div>
-                                                    <div className="rollover-identity-services">
-                                                        <span className="muted">خدماته العام الماضي:</span>
-                                                        {Object.entries(SERVICE_LABELS)
-                                                            .filter(([key]) => currentCandidate[key])
-                                                            .map(([key, label]) => (
-                                                                <span className="service-pill" key={key}>{label}</span>
-                                                            ))}
-                                                        {!Object.keys(SERVICE_LABELS).some(k => currentCandidate[k]) && <span className="muted">لا يوجد</span>}
-                                                    </div>
-                                                </div>
-
-                                                {/* ── STEP 1 ── */}
-                                                <div className={`rollover-step ${currentCandidate.continuity_status ? 'done' : 'active'}`}>
-                                                    <div className="rollover-step-head">
-                                                        <span className="rollover-step-num">1</span>
-                                                        <h4>هل سيستمر هذا المستفيد معنا هذا العام؟</h4>
-                                                    </div>
-                                                    <div className="rollover-step-body">
-                                                        {!currentCandidate.continuity_status ? (
-                                                            <div className="rollover-choice">
-                                                                <button
-                                                                    className="btn btn-success"
-                                                                    disabled={decidingId === currentCandidate.id}
-                                                                    onClick={() => handleMarkContinuing(currentCandidate)}
-                                                                >
-                                                                    ✅ نعم، سيستمر
-                                                                </button>
-                                                                <button
-                                                                    className="btn btn-danger"
-                                                                    disabled={decidingId === currentCandidate.id}
-                                                                    onClick={() => setReasonModal({ show: true, candidate: currentCandidate, reason: '' })}
-                                                                >
-                                                                    ⛔ لا، لن يستمر
-                                                                </button>
-                                                            </div>
-                                                        ) : currentCandidate.continuity_status === 'continuing' ? (
-                                                            <div className="rollover-answered">
-                                                                <span className="rollover-badge reviewed">✅ سيستمر هذا العام</span>
-                                                                <button
-                                                                    className="rollover-link-btn"
-                                                                    onClick={() => setReasonModal({ show: true, candidate: currentCandidate, reason: '' })}
-                                                                >
-                                                                    تغيير إلى «لن يستمر»
-                                                                </button>
-                                                                {/* Decided "continuing" but nothing exists in the new term.
-                                                                    Steps 2-4 are all gated on the carried row, so without a way
-                                                                    out this beneficiary would be a dead end — visible, marked
-                                                                    unfinished, and impossible to finish. Re-applying the same
-                                                                    decision recreates the row (applyDecisions inserts when it
-                                                                    finds no child and no civil_id match), so the repair is just
-                                                                    the original action again. */}
-                                                                {!currentCandidate.target_id && (
-                                                                    <div className="rollover-inline-warning">
-                                                                        لم يتم إنشاء سجل هذا المستفيد في الفصل الجديد.
-                                                                        <button
-                                                                            className="btn btn-sm btn-primary"
-                                                                            disabled={decidingId === currentCandidate.id}
-                                                                            onClick={() => handleMarkContinuing(currentCandidate)}
-                                                                        >
-                                                                            إعادة إنشاء السجل
-                                                                        </button>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        ) : (
-                                                            <div className="rollover-answered">
-                                                                <span className="rollover-badge stopped">⛔ لن يستمر — تم نقله إلى الأرشيف</span>
-                                                                <span className="rollover-reason-shown">السبب: {currentCandidate.non_continuation_reason}</span>
-                                                                <button
-                                                                    className="rollover-link-btn"
-                                                                    disabled={decidingId === currentCandidate.id}
-                                                                    onClick={() => handleMarkContinuing(currentCandidate)}
-                                                                >
-                                                                    تراجع — سيستمر فعلاً
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                {/* ── STEP 2 ── */}
-                                                {currentCandidate.continuity_status === 'continuing' && reviewForm && (
-                                                    <div className={`rollover-step ${currentCandidate.target_review_status === 'pending' ? 'active' : 'done'}`}>
-                                                        <div className="rollover-step-head">
-                                                            <span className="rollover-step-num">2</span>
-                                                            <h4>راجع بياناته وعدّل ما تغيّر</h4>
-                                                            {currentCandidate.target_review_status !== 'pending' && (
-                                                                <span className="rollover-badge reviewed">تمت المراجعة</span>
-                                                            )}
-                                                        </div>
-                                                        <div className="rollover-step-body">
-                                                            <div className="rollover-form-grid">
-                                                                <div className="inline-form-group">
-                                                                    <label>اسم المستفيد <span className="required">*</span></label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={reviewForm.beneficiary_name}
-                                                                        onChange={(e) => setReviewForm(p => ({ ...p, beneficiary_name: e.target.value }))}
-                                                                    />
-                                                                </div>
-                                                                <div className="inline-form-group">
-                                                                    <label>رقم المستفيد <span className="required">*</span></label>
-                                                                    <input
-                                                                        type="text"
-                                                                        maxLength={7}
-                                                                        value={reviewForm.beneficiary_number}
-                                                                        onChange={(e) => setReviewForm(p => ({ ...p, beneficiary_number: e.target.value.replace(/\D/g, '').slice(0, 7) }))}
-                                                                    />
-                                                                </div>
-                                                                <div className="inline-form-group">
-                                                                    <label>السجل المدني <span className="required">*</span></label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={reviewForm.civil_id}
-                                                                        onChange={(e) => setReviewForm(p => ({ ...p, civil_id: e.target.value }))}
-                                                                    />
-                                                                </div>
-                                                                <div className="inline-form-group">
-                                                                    <label>رقم التواصل <span className="required">*</span></label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={reviewForm.contact_number}
-                                                                        onChange={(e) => setReviewForm(p => ({ ...p, contact_number: e.target.value }))}
-                                                                    />
-                                                                </div>
-                                                                <div className="inline-form-group">
-                                                                    <label>العمر هذا العام <span className="required">*</span></label>
-                                                                    <select
-                                                                        value={reviewForm.age}
-                                                                        onChange={(e) => setReviewForm(p => ({ ...p, age: e.target.value }))}
-                                                                    >
-                                                                        <option value="">اختر</option>
-                                                                        {AGE_OPTIONS.map(a => <option key={a} value={a}>{a}</option>)}
-                                                                    </select>
-                                                                </div>
-                                                                <div className="inline-form-group">
-                                                                    <label>فترة الالتحاق <span className="required">*</span></label>
-                                                                    <select
-                                                                        value={reviewForm.enrollment_period}
-                                                                        onChange={(e) => setReviewForm(p => ({ ...p, enrollment_period: e.target.value }))}
-                                                                    >
-                                                                        {ENROLLMENT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                                                                    </select>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="rollover-services-block">
-                                                                <label className="rollover-block-label">الخدمات التي سيتلقاها هذا العام</label>
-                                                                <div className="rollover-services">
-                                                                    {Object.entries(SERVICE_LABELS).map(([key, label]) => (
-                                                                        <label key={key} className={`rollover-service-check ${reviewForm[key] ? 'on' : ''}`}>
-                                                                            <input
-                                                                                type="checkbox"
-                                                                                checked={reviewForm[key]}
-                                                                                onChange={(e) => setReviewForm(p => ({ ...p, [key]: e.target.checked }))}
-                                                                            />
-                                                                            {label}
-                                                                        </label>
-                                                                    ))}
-                                                                    <label className={`rollover-service-check ${reviewForm.free_student ? 'on' : ''}`}>
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={reviewForm.free_student}
-                                                                            onChange={(e) => setReviewForm(p => ({ ...p, free_student: e.target.checked }))}
-                                                                        />
-                                                                        طالب مجاني
-                                                                    </label>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="inline-form-group">
-                                                                <label>ملاحظات</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={reviewForm.notes}
-                                                                    onChange={(e) => setReviewForm(p => ({ ...p, notes: e.target.value }))}
-                                                                    placeholder="اختياري"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* ── STEP 3 — only when transport is on ── */}
-                                                {currentCandidate.continuity_status === 'continuing' && reviewForm?.transport_service && (
-                                                    <div className={`rollover-step ${reviewBusId ? 'done' : 'active'}`}>
-                                                        <div className="rollover-step-head">
-                                                            <span className="rollover-step-num">3</span>
-                                                            <h4>خدمة النقل مفعلة — اختر الحافلة</h4>
-                                                        </div>
-                                                        <div className="rollover-step-body">
-                                                            {availableBuses.length === 0 ? (
-                                                                <div className="rollover-inline-warning">
-                                                                    لا توجد حافلات مسجلة في الفصل الجديد بعد.
-                                                                    <button className="btn btn-sm btn-secondary" onClick={handleStartRollover} disabled={rolloverLoading}>
-                                                                        🚌 نقل حافلات العام الماضي
-                                                                    </button>
-                                                                    <button className="btn btn-sm btn-info" onClick={() => navigate('/bus-transportation')}>
-                                                                        إدارة الحافلات
-                                                                    </button>
-                                                                </div>
-                                                            ) : (
-                                                                <select
-                                                                    className="rollover-select"
-                                                                    value={reviewBusId}
-                                                                    onChange={(e) => setReviewBusId(e.target.value)}
-                                                                >
-                                                                    <option value="">— اختر الحافلة —</option>
-                                                                    {availableBuses.map(bus => (
-                                                                        <option key={bus.id} value={bus.id}>
-                                                                            حافلة {bus.bus_number}
-                                                                            {bus.driver_full_name ? ` — ${bus.driver_full_name}` : ''}
-                                                                            {bus.number_of_seats ? ` (${bus.student_count}/${bus.number_of_seats} مقعد)` : ''}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* ── STEP 4 ── */}
-                                                {currentCandidate.continuity_status === 'continuing' && reviewForm && (
-                                                    <div className="rollover-step active">
-                                                        <div className="rollover-step-head">
-                                                            <span className="rollover-step-num">4</span>
-                                                            <h4>احفظ وانتقل للمستفيد التالي</h4>
-                                                        </div>
-                                                        <div className="rollover-step-body rollover-save-row">
-                                                            <button
-                                                                className="btn btn-primary btn-lg"
-                                                                disabled={savingReview}
-                                                                onClick={handleSaveReview}
-                                                            >
-                                                                {savingReview ? 'جاري الحفظ...' : 'حفظ والانتقال للمستفيد التالي ←'}
-                                                            </button>
-                                                            <button className="btn btn-secondary" onClick={goToNextUnfinished}>
-                                                                تخطٍ مؤقتاً
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {currentCandidate.continuity_status === 'not_continuing' && (
-                                                    <div className="rollover-step-actions">
-                                                        <button className="btn btn-primary" onClick={goToNextUnfinished}>
-                                                            الانتقال للمستفيد التالي ←
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )
-                                    ) : (
-                                        /* ── List view: overview + jump into the guided flow ── */
-                                        <>
-                                            <div className="rollover-filters">
-                                                {[
-                                                    { key: 'undecided', label: `لم يتم القرار (${rolloverLive.undecided})` },
-                                                    { key: 'continuing', label: `مستمر (${rolloverLive.continuing})` },
-                                                    { key: 'not_continuing', label: `غير مستمر (${rolloverLive.notContinuing})` },
-                                                    { key: 'all', label: `الكل (${rolloverLive.total})` },
-                                                ].map(pill => (
-                                                    <button
-                                                        key={pill.key}
-                                                        className={`rollover-pill ${rolloverFilter === pill.key ? 'active' : ''}`}
-                                                        onClick={() => setRolloverFilter(pill.key)}
-                                                    >
-                                                        {pill.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            {filteredCandidates.length === 0 ? (
-                                                <div className="empty-state">
-                                                    <span className="empty-icon">✅</span>
-                                                    <h3>لا توجد سجلات في هذا التصنيف</h3>
-                                                </div>
-                                            ) : (
-                                                <div className="table-wrapper">
-                                                    <table className="data-table rollover-table">
-                                                        <thead>
-                                                            <tr>
-                                                                <th>#</th>
-                                                                <th>اسم المستفيد</th>
-                                                                <th>السجل المدني</th>
-                                                                <th>التواصل</th>
-                                                                <th>الخدمات السابقة</th>
-                                                                <th>الحافلة</th>
-                                                                <th>الحالة</th>
-                                                                <th>الإجراء</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {filteredCandidates.map((c, index) => (
-                                                                <tr key={c.id} className={`rollover-row ${c.continuity_status || 'undecided'}`}>
-                                                                    <td>{index + 1}</td>
-                                                                    <td>{c.beneficiary_name}</td>
-                                                                    <td>{c.civil_id}</td>
-                                                                    <td>{c.contact_number}</td>
-                                                                    <td>
-                                                                        <div className="service-pills">
-                                                                            {Object.entries(SERVICE_LABELS)
-                                                                                .filter(([key]) => c[key])
-                                                                                .map(([key, label]) => (
-                                                                                    <span className="service-pill" key={key}>{label}</span>
-                                                                                ))}
-                                                                            {!Object.keys(SERVICE_LABELS).some(k => c[k]) && <span className="muted">-</span>}
-                                                                        </div>
-                                                                    </td>
-                                                                    <td>{c.bus_number ? `🚌 ${c.bus_number}` : <span className="muted">-</span>}</td>
-                                                                    <td>
-                                                                        {!c.continuity_status && <span className="rollover-badge undecided">⏳ بانتظار القرار</span>}
-                                                                        {c.continuity_status === 'continuing' && c.target_review_status === 'pending' && (
-                                                                            <span className="rollover-badge pending">✅ مستمر — بانتظار المراجعة</span>
-                                                                        )}
-                                                                        {c.continuity_status === 'continuing' && c.target_review_status !== 'pending' && (
-                                                                            <span className="rollover-badge reviewed">✅ مكتمل</span>
-                                                                        )}
-                                                                        {c.continuity_status === 'not_continuing' && (
-                                                                            <span className="rollover-badge stopped" title={c.non_continuation_reason || ''}>⛔ غير مستمر</span>
-                                                                        )}
-                                                                    </td>
-                                                                    <td>
-                                                                        <button className="btn btn-sm btn-primary" onClick={() => openInGuidedReview(c.id)}>
-                                                                            {isCandidateDone(c) ? 'عرض / تعديل' : 'ابدأ المراجعة'}
-                                                                        </button>
-                                                                    </td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                </>
-                            )}
-
-                            {/* ── Final step: add the new intake, then confirm ── */}
-                            <div className="rollover-final">
-                                <div className="rollover-step-head">
-                                    <span className="rollover-step-num final">✓</span>
-                                    <h4>الخطوة الأخيرة — تأكيد اكتمال البيانات</h4>
-                                </div>
-                                <ul className="rollover-checklist">
-                                    <li className={rolloverLive.undecided === 0 ? 'ok' : 'todo'}>
-                                        {rolloverLive.undecided === 0 ? '✅' : '⬜'} تحديد مصير جميع مستفيدي العام الماضي
-                                        <span className="rollover-checklist-count">
-                                            ({rolloverLive.decided} من {rolloverLive.total})
-                                        </span>
-                                    </li>
-                                    <li className={rolloverLive.pendingReview === 0 ? 'ok' : 'todo'}>
-                                        {rolloverLive.pendingReview === 0 ? '✅' : '⬜'} مراجعة بيانات المستفيدين المستمرين
-                                        {rolloverLive.pendingReview > 0 && (
-                                            <span className="rollover-checklist-count">(متبقٍ {rolloverLive.pendingReview})</span>
-                                        )}
-                                    </li>
-                                    <li className="info rollover-checklist-add">
-                                        <span>
-                                            ℹ️ إضافة المستفيدين الجدد الذين لم يكونوا مسجلين العام الماضي
-                                            <span className="rollover-checklist-count">(تمت إضافة {rolloverStatus.counts.new_in_target})</span>
-                                        </span>
-                                        <button
-                                            className={`btn btn-sm ${rolloverAllDone ? 'btn-primary' : 'btn-secondary'}`}
-                                            onClick={() => { setActiveTab('data'); setTimeout(openAddModal, 0); }}
-                                        >
-                                            + إضافة مستفيد جديد
-                                        </button>
-                                    </li>
-                                </ul>
-
-                                {/* Advisory only — never blocks confirming. Saving the review
-                                    form marks a beneficiary reviewed independently of the bus
-                                    seat, so transport riders can slip through unassigned and
-                                    nothing else would ever show it. The carry-over button is
-                                    the point: last year's buses come across with their data
-                                    already filled in, so the branch updates them instead of
-                                    re-entering every bus from scratch. */}
-                                {rolloverStatus.counts.transport_without_bus > 0 && (
-                                    <div className="rollover-inline-warning">
-                                        <div>
-                                            <strong>
-                                                ⚠️ {rolloverStatus.counts.transport_without_bus} مستفيد لديهم خدمة نقل بدون حافلة
-                                            </strong>
-                                            {rolloverStatus.counts.transport_without_bus_names?.length > 0 && (
-                                                <div>
-                                                    {rolloverStatus.counts.transport_without_bus_names.join('، ')}
-                                                    {rolloverStatus.counts.transport_without_bus >
-                                                        rolloverStatus.counts.transport_without_bus_names.length && ' ...'}
-                                                </div>
-                                            )}
-                                            <div>يمكنك التأكيد الآن وإكمال تعيين الحافلات لاحقاً.</div>
-                                        </div>
-                                        <div className="rollover-warning-actions">
-                                            {rolloverStatus.counts.target_buses === 0 && (
-                                                <button
-                                                    className="btn btn-sm btn-primary"
-                                                    onClick={handleStartRollover}
-                                                    disabled={rolloverLoading}
-                                                >
-                                                    🚌 نقل حافلات العام الماضي
-                                                </button>
-                                            )}
-                                            <button
-                                                className="btn btn-sm btn-secondary"
-                                                onClick={() => navigate('/bus-transportation')}
-                                            >
-                                                إدارة الحافلات
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div className="rollover-confirm-bar">
-                                    {rolloverStatus.confirmation ? (
-                                        <div className="rollover-confirmed">
-                                            <span className="rollover-confirmed-text">
-                                                ✅ تم تأكيد اكتمال البيانات بواسطة {rolloverStatus.confirmation.confirmed_by_label || '—'} بتاريخ{' '}
-                                                {new Date(rolloverStatus.confirmation.confirmed_at).toLocaleDateString('ar-SA')}
-                                            </span>
-                                            {rolloverStatus.confirmation.is_stale && (
-                                                <span className="rollover-stale-note">⚠️ تم تعديل بيانات بعد التأكيد</span>
-                                            )}
-                                            <button className="btn btn-sm btn-secondary" onClick={handleUnconfirmReview}>
-                                                تراجع عن التأكيد
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <button
-                                                className="btn btn-primary btn-lg"
-                                                disabled={!rolloverCanConfirm}
-                                                onClick={() => setConfirmModal({ show: true, note: '' })}
-                                            >
-                                                تأكيد اكتمال البيانات 100%
-                                            </button>
-                                            <span className="rollover-blocking-reason">
-                                                {rolloverLive.undecided > 0
-                                                    ? `يوجد ${rolloverLive.undecided} مستفيد لم يتم اتخاذ قرار بشأنه`
-                                                    : rolloverLive.pendingReview > 0
-                                                        ? `يوجد ${rolloverLive.pendingReview} مستفيد لم تتم مراجعة بياناته`
-                                                        : 'اضغط الزر فقط بعد إضافة المستفيدين الجدد أيضاً'}
-                                            </span>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </div>
-            )}
-
-            {/* Data Table */}
             {activeTab === 'data' && (
-                <div className="table-section">
-                    {beneficiaries.length > 0 && (
-                        <div className="table-search-bar">
-                            <input
-                                type="text"
-                                placeholder="بحث بالاسم أو رقم الهوية أو رقم المستفيد..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="table-search-input"
-                            />
-                            {searchQuery && (
-                                <span className="search-result-count">
-                                    {beneficiaries.filter(b => {
-                                        const q = searchQuery.trim().toLowerCase();
-                                        return (b.beneficiary_name || '').toLowerCase().includes(q)
-                                            || (b.civil_id || '').includes(q)
-                                            || (b.beneficiary_number || '').includes(q);
-                                    }).length} نتيجة
-                                </span>
-                            )}
-                        </div>
-                    )}
-                    {beneficiaries.length === 0 && inlineMode !== 'add' ? (
-                        <div className="empty-state">
-                            <span className="empty-icon">📋</span>
-                            <h3>لا توجد بيانات</h3>
-                            <p>
-                                {!activeTerm
-                                    ? 'لا يوجد فصل دراسي نشط حالياً'
-                                    : canEdit
-                                        ? 'ابدأ بإضافة المستفيدين'
-                                        : 'لا توجد بيانات مسجلة لهذا الفصل'}
-                            </p>
-                            {canEdit && activeTerm && (
-                                <button className="btn btn-primary" onClick={openAddModal}>
-                                    + إضافة مستفيد
-                                </button>
-                            )}
-                        </div>
-                    ) : (<>
-                        {/* Inline Add/Edit Form Panel */}
-                        {(inlineMode === 'add' || (inlineMode && inlineMode !== 'add')) && (
-                            <div className="inline-form-panel" ref={inlineRowRef}>
-                                <div className="inline-form-header">
-                                    <h3>{inlineMode === 'add' ? 'إضافة مستفيد جديد' : 'تعديل بيانات المستفيد'}</h3>
-                                    <button className="btn btn-sm btn-cancel" onClick={cancelInline} title="إلغاء">✕</button>
-                                </div>
-                                <div className="inline-form-grid">
-                                    <div className="inline-form-group">
-                                        <label>اسم المستفيد <span className="required">*</span></label>
-                                        <input
-                                            type="text"
-                                            value={formData.beneficiary_name}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, beneficiary_name: e.target.value }))}
-                                            placeholder="اسم المستفيد الكامل"
-                                            autoFocus
-                                        />
-                                    </div>
-                                    <div className="inline-form-group">
-                                        <label>رقم المستفيد <span className="required">*</span></label>
-                                        <input
-                                            type="text"
-                                            value={formData.beneficiary_number}
-                                            onChange={(e) => {
-                                                const val = e.target.value.replace(/\D/g, '').slice(0, 7);
-                                                setFormData(prev => ({ ...prev, beneficiary_number: val }));
-                                            }}
-                                            placeholder="6-7 أرقام"
-                                            maxLength={7}
-                                        />
-                                    </div>
-                                    <div className="inline-form-group">
-                                        <label>السجل المدني <span className="required">*</span></label>
-                                        <input
-                                            type="text"
-                                            value={formData.civil_id}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, civil_id: e.target.value }))}
-                                            placeholder="السجل المدني"
-                                        />
-                                    </div>
-                                    <div className="inline-form-group">
-                                        <label>رقم التواصل <span className="required">*</span></label>
-                                        <input
-                                            type="text"
-                                            value={formData.contact_number}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, contact_number: e.target.value }))}
-                                            placeholder="05XXXXXXXX"
-                                        />
-                                    </div>
-                                    <div className="inline-form-group">
-                                        <label>فترة الالتحاق <span className="required">*</span></label>
-                                        <select
-                                            value={formData.enrollment_period}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, enrollment_period: e.target.value }))}
-                                        >
-                                            {ENROLLMENT_OPTIONS.map(opt => (
-                                                <option key={opt} value={opt}>{opt}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="inline-form-group">
-                                        <label>الجنس <span className="required">*</span></label>
-                                        <select
-                                            value={formData.gender}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, gender: e.target.value }))}
-                                        >
-                                            {GENDER_OPTIONS.map(opt => (
-                                                <option key={opt} value={opt}>{opt}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="inline-form-group">
-                                        <label>العمر <span className="required">*</span></label>
-                                        <SearchableSelect
-                                            value={formData.age?.toString() || ''}
-                                            onChange={(val) => setFormData(prev => ({ ...prev, age: val }))}
-                                            placeholder="اختر العمر"
-                                            options={[
-                                                { value: '', label: 'اختر العمر' },
-                                                ...AGE_OPTIONS.map(age => ({ value: age.toString(), label: age.toString() }))
-                                            ]}
-                                        />
-                                    </div>
-                                    <div className="inline-form-group">
-                                        <label>طالب مجاني</label>
-                                        <select
-                                            value={formData.free_student ? 'true' : 'false'}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, free_student: e.target.value === 'true' }))}
-                                            className={formData.free_student ? 'select-active' : ''}
-                                        >
-                                            <option value="false">لا</option>
-                                            <option value="true">نعم</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div className="inline-form-services">
-                                    <label>الخدمات المقدمة</label>
-                                    <div className="inline-services-row">
-                                        {Object.entries(SERVICE_LABELS).map(([key, label]) => (
-                                            <button
-                                                key={key}
-                                                type="button"
-                                                className={`service-chip ${formData[key] ? 'active' : ''}`}
-                                                onClick={() => setFormData(prev => ({ ...prev, [key]: !prev[key] }))}
-                                            >
-                                                {label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="inline-form-notes">
-                                    <label>ملاحظات</label>
-                                    <textarea
-                                        value={formData.notes}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                                        placeholder="أدخل ملاحظات (اختياري)"
-                                        rows={2}
-                                    />
-                                </div>
-                                <div className="inline-form-actions">
-                                    <button
-                                        className="btn btn-primary"
-                                        onClick={handleSubmit}
-                                        disabled={submitting}
-                                    >
-                                        {submitting ? 'جاري الحفظ...' : inlineMode === 'add' ? '+ إضافة' : 'تحديث'}
-                                    </button>
-                                    <button
-                                        className="btn btn-secondary"
-                                        onClick={cancelInline}
-                                    >
-                                        إلغاء
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="table-wrapper">
-                            <table className="data-table beneficiaries-table">
-                                <thead>
-                                    <tr>
-                                        <th>#</th>
-                                        {isMainManager() && <th>الفرع</th>}
-                                        <th>الفترة</th>
-                                        <th>اسم المستفيد</th>
-                                        <th>رقم المستفيد</th>
-                                        <th>السجل المدني</th>
-                                        <th>التواصل</th>
-                                        <th>الجنس</th>
-                                        <th>العمر</th>
-                                        <th>الخدمات</th>
-                                        <th>مجاني</th>
-                                        <th>ملاحظات</th>
-                                        {canEdit && <th></th>}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {beneficiaries.filter(b => {
-                                        if (!searchQuery.trim()) return true;
-                                        const q = searchQuery.trim().toLowerCase();
-                                        return (b.beneficiary_name || '').toLowerCase().includes(q)
-                                            || (b.civil_id || '').includes(q)
-                                            || (b.beneficiary_number || '').includes(q);
-                                    }).map((b, displayIndex) => (
-                                        <tr key={b.id} className={inlineMode === b.id ? 'editing-row' : ''}>
-                                            <td className="number-cell">{displayIndex + 1}</td>
-                                            {isMainManager() && <td className="branch-name-cell">{b.branch_name}</td>}
-                                            <td>{b.enrollment_period}</td>
-                                            <td className="name-cell">{b.beneficiary_name}</td>
-                                            <td className="number-cell">{b.beneficiary_number}</td>
-                                            <td className="number-cell">{b.civil_id}</td>
-                                            <td className="number-cell">{b.contact_number}</td>
-                                            <td>{b.gender}</td>
-                                            <td className="number-cell">{b.age}</td>
-                                            <td className="services-cell">
-                                                {Object.entries(SERVICE_LABELS).filter(([key]) => b[key]).map(([key, label]) => (
-                                                    <span key={key} className="service-pill">{label}</span>
-                                                ))}
-                                                {Object.keys(SERVICE_LABELS).every(key => !b[key]) && (
-                                                    <span className="no-services">—</span>
-                                                )}
-                                            </td>
-                                            <td>
-                                                {b.free_student ? (
-                                                    <span className="free-badge">مجاني</span>
-                                                ) : (
-                                                    <span className="no-services">—</span>
-                                                )}
-                                            </td>
-                                            <td className="notes-cell" title={b.notes || ''}>
-                                                {b.notes ? (
-                                                    <span className="notes-text">{b.notes}</span>
-                                                ) : '—'}
-                                            </td>
-                                            {canEdit && (
-                                                <td className="actions-cell">
-                                                    <button
-                                                        className="btn btn-sm btn-edit"
-                                                        onClick={() => openEditModal(b)}
-                                                        title="تعديل"
-                                                    >
-                                                        ✏️
-                                                    </button>
-                                                    <button
-                                                        className="btn btn-sm btn-delete"
-                                                        onClick={() => setDeleteConfirm({ show: true, id: b.id, name: b.beneficiary_name })}
-                                                        title="حذف"
-                                                    >
-                                                        🗑️
-                                                    </button>
-                                                </td>
-                                            )}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </>)}
-                </div>
+                <DataPanel
+                    beneficiaries={beneficiaries}
+                    isMain={isMainManager()}
+                    canEdit={Boolean(canEdit)}
+                    activeTerm={activeTerm}
+                    searchQuery={searchQuery}
+                    onSearch={setSearchQuery}
+                    onAdd={openAddModal}
+                    onEdit={openEditModal}
+                    onDelete={handleDelete}
+                />
             )}
 
-            {/* Add/Edit Modal (Mobile Only) */}
-            {showModal && isMobile && (
-                <div className="modal-overlay" onClick={() => setShowModal(false)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>{editingId ? 'تعديل بيانات المستفيد' : 'إضافة مستفيد جديد'}</h2>
-                            <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
-                        </div>
-                        <form onSubmit={handleSubmit} className="modal-form">
-                            <div className="form-grid">
-                                <div className="form-group">
-                                    <label>اسم المستفيد <span className="required">*</span></label>
-                                    <input
-                                        type="text"
-                                        value={formData.beneficiary_name}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, beneficiary_name: e.target.value }))}
-                                        placeholder="ادخل اسم المستفيد الكامل"
-                                        required
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label>رقم المستفيد <span className="required">*</span></label>
-                                    <input
-                                        type="text"
-                                        value={formData.beneficiary_number}
-                                        onChange={(e) => {
-                                            const val = e.target.value.replace(/\D/g, '').slice(0, 7);
-                                            setFormData(prev => ({ ...prev, beneficiary_number: val }));
-                                        }}
-                                        placeholder="أدخل 6 أو 7 أرقام"
-                                        maxLength={7}
-                                        required
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label>السجل المدني <span className="required">*</span></label>
-                                    <input
-                                        type="text"
-                                        value={formData.civil_id}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, civil_id: e.target.value }))}
-                                        placeholder="أدخل رقم السجل المدني"
-                                        required
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label>رقم التواصل <span className="required">*</span></label>
-                                    <input
-                                        type="text"
-                                        value={formData.contact_number}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, contact_number: e.target.value }))}
-                                        placeholder="05XXXXXXXX"
-                                        required
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label>فترة الالتحاق <span className="required">*</span></label>
-                                    <select
-                                        value={formData.enrollment_period}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, enrollment_period: e.target.value }))}
-                                        required
-                                    >
-                                        {ENROLLMENT_OPTIONS.map(opt => (
-                                            <option key={opt} value={opt}>{opt}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="form-group">
-                                    <label>الجنس <span className="required">*</span></label>
-                                    <select
-                                        value={formData.gender}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, gender: e.target.value }))}
-                                        required
-                                    >
-                                        {GENDER_OPTIONS.map(opt => (
-                                            <option key={opt} value={opt}>{opt}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="form-group">
-                                    <label>العمر <span className="required">*</span></label>
-                                    <SearchableSelect
-                                        value={formData.age?.toString() || ''}
-                                        onChange={(val) => setFormData(prev => ({ ...prev, age: val }))}
-                                        placeholder="اختر العمر"
-                                        options={[
-                                            { value: '', label: 'اختر العمر' },
-                                            ...AGE_OPTIONS.map(age => ({ value: age.toString(), label: age.toString() }))
-                                        ]}
-                                    />
-                                </div>
-                            </div>
+            {/* Add / edit */}
+            <Modal
+                open={showModal}
+                onClose={closeForm}
+                title={editingId ? 'تعديل بيانات المستفيد' : 'إضافة مستفيد جديد'}
+                size="lg"
+                footer={(
+                    <>
+                        <Button variant="secondary" onClick={closeForm} disabled={submitting}>إلغاء</Button>
+                        <Button variant="primary" type="submit" form="bn-form" loading={submitting}>{editingId ? 'تحديث' : 'إضافة'}</Button>
+                    </>
+                )}
+            >
+                <form id="bn-form" onSubmit={handleSubmit} noValidate>
+                    <BeneficiaryFields values={formData} onChange={(patch) => setFormData((prev) => ({ ...prev, ...patch }))} autoFocus />
+                </form>
+            </Modal>
 
-                            {/* Services Section */}
-                            <div className="services-section">
-                                <h3>الخدمات المقدمة</h3>
-                                <div className="services-grid">
-                                    {Object.entries(SERVICE_LABELS).map(([key, label]) => (
-                                        <div className="service-toggle" key={key}>
-                                            <label className="toggle-label">
-                                                <span className="toggle-text">{label}</span>
-                                                <div className="toggle-wrapper">
-                                                    <select
-                                                        value={formData[key] ? 'true' : 'false'}
-                                                        onChange={(e) => setFormData(prev => ({
-                                                            ...prev,
-                                                            [key]: e.target.value === 'true'
-                                                        }))}
-                                                        className={`service-select ${formData[key] ? 'active' : ''}`}
-                                                    >
-                                                        <option value="false">لا</option>
-                                                        <option value="true">نعم</option>
-                                                    </select>
-                                                </div>
-                                            </label>
-                                        </div>
-                                    ))}
-                                    <div className="service-toggle" key="free_student">
-                                        <label className="toggle-label">
-                                            <span className="toggle-text">طالب مجاني</span>
-                                            <div className="toggle-wrapper">
-                                                <select
-                                                    value={formData.free_student ? 'true' : 'false'}
-                                                    onChange={(e) => setFormData(prev => ({
-                                                        ...prev,
-                                                        free_student: e.target.value === 'true'
-                                                    }))}
-                                                    className={`service-select ${formData.free_student ? 'active' : ''}`}
-                                                >
-                                                    <option value="false">لا</option>
-                                                    <option value="true">نعم</option>
-                                                </select>
-                                            </div>
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Notes Section */}
-                            <div className="form-group" style={{ marginTop: '1rem' }}>
-                                <label>ملاحظات</label>
-                                <textarea
-                                    value={formData.notes}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                                    placeholder="أدخل ملاحظات (اختياري)"
-                                    rows={3}
-                                    style={{ width: '100%', resize: 'vertical' }}
-                                />
-                            </div>
-
-                            <div className="modal-actions">
-                                <button
-                                    type="submit"
-                                    className="btn btn-primary"
-                                    disabled={submitting}
-                                >
-                                    {submitting ? 'جاري الحفظ...' : editingId ? 'تحديث' : 'إضافة'}
-                                </button>
-                                <button
-                                    type="button"
-                                    className="btn btn-secondary"
-                                    onClick={() => setShowModal(false)}
-                                >
-                                    إلغاء
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* Delete Confirmation Modal */}
-            {deleteConfirm.show && (
-                <div className="modal-overlay" onClick={() => setDeleteConfirm({ show: false, id: null, name: '' })}>
-                    <div className="modal-content confirm-modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>تأكيد الحذف</h2>
-                        </div>
-                        <div className="confirm-body">
-                            <p>هل أنت متأكد من حذف المستفيد:</p>
-                            <strong>{deleteConfirm.name}</strong>
-                        </div>
-                        <div className="modal-actions">
-                            <button className="btn btn-danger" onClick={handleDelete}>
-                                حذف
-                            </button>
-                            <button
-                                className="btn btn-secondary"
-                                onClick={() => setDeleteConfirm({ show: false, id: null, name: '' })}
-                            >
-                                إلغاء
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Non-continuation reason — required, and archives the record on save */}
-            {reasonModal.show && (
-                <div className="modal-overlay" onClick={() => setReasonModal({ show: false, candidate: null, reason: '' })}>
-                    <div className="modal-content confirm-modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>عدم استمرار المستفيد</h2>
-                        </div>
-                        <div className="confirm-body">
-                            <p>سيتم نقل بيانات المستفيد إلى الأرشيف:</p>
-                            <strong>{reasonModal.candidate?.beneficiary_name}</strong>
-                            <label className="rollover-reason-label">سبب عدم الاستمرار <span className="required">*</span></label>
-                            <textarea
-                                className="rollover-reason-input"
-                                rows={3}
-                                value={reasonModal.reason}
-                                onChange={(e) => setReasonModal(prev => ({ ...prev, reason: e.target.value }))}
-                                placeholder="مثال: انتقل إلى مركز آخر"
-                                autoFocus
-                            />
-                        </div>
-                        <div className="modal-actions">
-                            <button
-                                className="btn btn-danger"
-                                disabled={reasonModal.reason.trim().length < 3 || decidingId === reasonModal.candidate?.id}
-                                onClick={handleSubmitNonContinuation}
-                            >
-                                تأكيد ونقل للأرشيف
-                            </button>
-                            <button
-                                className="btn btn-secondary"
-                                onClick={() => setReasonModal({ show: false, candidate: null, reason: '' })}
-                            >
-                                إلغاء
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Non-continuation reason: required, and archives the record on save */}
+            <Modal
+                open={reasonModal.show}
+                onClose={() => setReasonModal({ show: false, candidate: null, reason: '' })}
+                title="عدم استمرار المستفيد"
+                description={`سيتم نقل بيانات «${reasonModal.candidate?.beneficiary_name || ''}» إلى الأرشيف.`}
+                size="sm"
+                footer={(
+                    <>
+                        <Button variant="secondary" onClick={() => setReasonModal({ show: false, candidate: null, reason: '' })}>إلغاء</Button>
+                        <Button
+                            variant="danger"
+                            disabled={reasonModal.reason.trim().length < 3 || decidingId === reasonModal.candidate?.id}
+                            onClick={handleSubmitNonContinuation}
+                        >
+                            تأكيد ونقل للأرشيف
+                        </Button>
+                    </>
+                )}
+            >
+                <FormField label="سبب عدم الاستمرار" required>
+                    <Textarea
+                        rows={3}
+                        value={reasonModal.reason}
+                        onChange={(e) => setReasonModal((prev) => ({ ...prev, reason: e.target.value }))}
+                        placeholder="مثال: انتقل إلى مركز آخر"
+                    />
+                </FormField>
+            </Modal>
 
             {/* Confirm 100% complete */}
-            {confirmModal.show && (
-                <div className="modal-overlay" onClick={() => setConfirmModal({ show: false, note: '' })}>
-                    <div className="modal-content confirm-modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>تأكيد اكتمال المراجعة</h2>
-                        </div>
-                        <div className="confirm-body">
-                            <p>
-                                بالتأكيد أنت تقر بأن بيانات المستفيدين للفصل{' '}
-                                <strong>{rolloverStatus?.target_term?.term_name}</strong> مكتملة بنسبة 100%.
-                            </p>
-                            <p className="muted">يمكنك الاستمرار في التعديل بعد التأكيد.</p>
-                            <label className="rollover-reason-label">ملاحظة (اختياري)</label>
-                            <textarea
-                                className="rollover-reason-input"
-                                rows={2}
-                                value={confirmModal.note}
-                                onChange={(e) => setConfirmModal(prev => ({ ...prev, note: e.target.value }))}
-                            />
-                        </div>
-                        <div className="modal-actions">
-                            <button className="btn btn-primary" onClick={handleConfirmReview}>تأكيد</button>
-                            <button className="btn btn-secondary" onClick={() => setConfirmModal({ show: false, note: '' })}>
-                                إلغاء
-                            </button>
-                        </div>
-                    </div>
+            <Modal
+                open={confirmModal.show}
+                onClose={() => setConfirmModal({ show: false, note: '' })}
+                title="تأكيد اكتمال المراجعة"
+                size="sm"
+                footer={(
+                    <>
+                        <Button variant="secondary" onClick={() => setConfirmModal({ show: false, note: '' })}>إلغاء</Button>
+                        <Button variant="primary" onClick={handleConfirmReview}>تأكيد</Button>
+                    </>
+                )}
+            >
+                <div className="ui-form-stack">
+                    <p className="bn-text">
+                        بالتأكيد أنت تقر بأن بيانات المستفيدين للفصل <strong>{rolloverStatus?.target_term?.term_name}</strong> مكتملة بنسبة 100%.
+                        يمكنك الاستمرار في التعديل بعد التأكيد.
+                    </p>
+                    <FormField label="ملاحظة (اختياري)">
+                        <Textarea rows={2} value={confirmModal.note} onChange={(e) => setConfirmModal((prev) => ({ ...prev, note: e.target.value }))} />
+                    </FormField>
                 </div>
-            )}
+            </Modal>
 
-            {/* Import from Bus Modal */}
-            {showImportModal && (
-                <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600 }}>
-                        <div className="modal-header">
-                            <h2>استيراد من طلاب الباص</h2>
-                            <button className="modal-close" onClick={() => setShowImportModal(false)}>&times;</button>
-                        </div>
-                        <div className="modal-body" style={{ padding: '16px' }}>
-                            {loadingBusStudents ? (
-                                <div style={{ textAlign: 'center', padding: '30px' }}>
-                                    <div className="spinner-large"></div>
-                                    <p>جاري التحميل...</p>
+            {/* Import from the bus students */}
+            <Modal open={showImportModal} onClose={() => setShowImportModal(false)} title="استيراد من طلاب الباص" description="اختر طالباً لاستيراد بياناته كمستفيد جديد. سيتم تعبئة الاسم ورقم التواصل تلقائياً." size="md">
+                {loadingBusStudents ? (
+                    <Spinner block label="جاري التحميل…" />
+                ) : busStudents.length === 0 ? (
+                    <EmptyState compact icon="bus" title="لا يوجد طلاب باص يمكن استيرادهم" description="جميع طلاب الباص مسجلون بالفعل كمستفيدين." />
+                ) : (
+                    <ul className="bn-list">
+                        {busStudents.map((s) => (
+                            <li key={s.id}>
+                                <div className="bn-list-info">
+                                    <strong>{s.student_full_name}</strong>
+                                    <span className="bn-muted">
+                                        {s.contact_mobile_number && <bdi>{s.contact_mobile_number}</bdi>}
+                                        {s.bus_number && ` · باص ${s.bus_number}`}
+                                    </span>
                                 </div>
-                            ) : busStudents.length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '30px', color: '#888' }}>
-                                    <p>لا يوجد طلاب باص يمكن استيرادهم</p>
-                                    <small>جميع طلاب الباص مسجلون بالفعل كمستفيدين</small>
-                                </div>
-                            ) : (
-                                <>
-                                    <p style={{ marginBottom: 12, color: '#555', fontSize: 13 }}>
-                                        اختر طالب لاستيراد بياناته كمستفيد جديد. سيتم تعبئة الاسم ورقم التواصل تلقائياً.
-                                    </p>
-                                    <div className="import-list">
-                                        {busStudents.map(s => (
-                                            <div key={s.id} className="import-item" onClick={() => handleImportStudent(s)}>
-                                                <div className="import-item-info">
-                                                    <strong>{s.student_full_name}</strong>
-                                                    <span className="import-item-details">
-                                                        {s.contact_mobile_number && `📞 ${s.contact_mobile_number}`}
-                                                        {s.bus_number && ` · باص ${s.bus_number}`}
-                                                    </span>
-                                                </div>
-                                                <button className="btn btn-sm btn-primary">استيراد</button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
+                                <Button size="sm" variant="primary" onClick={() => handleImportStudent(s)}>استيراد</Button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </Modal>
 
-            {/* Bus Assignment Modal */}
-            {showBusAssignModal && (
-                <div className="modal-overlay" onClick={skipBusAssignment}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
-                        <div className="modal-header">
-                            <h2>تسجيل في باص</h2>
-                            <button className="modal-close" onClick={skipBusAssignment}>&times;</button>
-                        </div>
-                        <div className="modal-body" style={{ padding: '16px' }}>
-                            <p style={{ marginBottom: 12, color: '#555', fontSize: 13 }}>
-                                المستفيد لديه خدمة نقل مفعلة. هل تريد تسجيله في أحد الباصات؟
-                            </p>
-                            {loadingBuses ? (
-                                <div style={{ textAlign: 'center', padding: '20px' }}>
-                                    <div className="spinner-large"></div>
+            {/* Register in a bus right after saving a transport beneficiary */}
+            <Modal
+                open={showBusAssignModal}
+                onClose={skipBusAssignment}
+                title="تسجيل في باص"
+                description="المستفيد لديه خدمة نقل مفعلة. هل تريد تسجيله في أحد الباصات؟"
+                size="md"
+                footer={<Button variant="secondary" onClick={skipBusAssignment} disabled={assigningBus}>تخطي</Button>}
+            >
+                {loadingBuses ? (
+                    <Spinner block />
+                ) : (
+                    <ul className="bn-list">
+                        {availableBuses.map((bus) => (
+                            <li key={bus.id}>
+                                <div className="bn-list-info">
+                                    <strong>باص {bus.bus_number}</strong>
+                                    <span className="bn-muted">
+                                        {bus.driver_full_name && `السائق: ${bus.driver_full_name}`}
+                                        {bus.number_of_seats ? ` · المقاعد: ${bus.student_count}/${bus.number_of_seats}` : ` · الطلاب: ${bus.student_count}`}
+                                    </span>
                                 </div>
-                            ) : (
-                                <div className="bus-assign-list">
-                                    {availableBuses.map(bus => (
-                                        <div key={bus.id} className="bus-assign-item">
-                                            <div className="bus-assign-info">
-                                                <strong>باص {bus.bus_number}</strong>
-                                                <span className="bus-assign-details">
-                                                    {bus.driver_full_name && `السائق: ${bus.driver_full_name}`}
-                                                    {bus.number_of_seats && ` · المقاعد: ${bus.student_count}/${bus.number_of_seats}`}
-                                                    {!bus.number_of_seats && ` · الطلاب: ${bus.student_count}`}
-                                                </span>
-                                            </div>
-                                            <button
-                                                className="btn btn-sm btn-primary"
-                                                onClick={() => handleAssignBus(bus.id)}
-                                                disabled={assigningBus}
-                                            >
-                                                {assigningBus ? '...' : 'تسجيل'}
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                        <div className="modal-actions">
-                            <button className="btn btn-secondary" onClick={skipBusAssignment} disabled={assigningBus}>
-                                تخطي
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+                                <Button size="sm" variant="primary" loading={assigningBus} onClick={() => handleAssignBus(bus.id)}>تسجيل</Button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </Modal>
 
-            {/* Copy from previous term modal */}
-            {showCopyModal && (
-                <div className="modal-overlay" onClick={() => !copying && setShowCopyModal(false)}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
-                        <div className="modal-header">
-                            <h2>نسخ المستفيدين من فصل سابق</h2>
-                            <button className="modal-close" onClick={() => !copying && setShowCopyModal(false)}>&times;</button>
-                        </div>
-                        <div className="modal-body" style={{ padding: '20px' }}>
-                            <p style={{ marginBottom: 16, color: '#555', fontSize: 14 }}>
-                                سيتم نسخ جميع المستفيدين من الفصل المختار إلى الفصل الحالي.
-                                سيتم تخطي المستفيدين المسجلين مسبقاً (بناءً على رقم الهوية).
-                            </p>
-                            <div className="form-group" style={{ marginBottom: 16 }}>
-                                <label style={{ fontWeight: 600, marginBottom: 8, display: 'block' }}>اختر الفصل المصدر</label>
-                                <SearchableSelect
-                                    value={copySourceTerm}
-                                    onChange={(val) => setCopySourceTerm(val)}
-                                    placeholder="-- اختر الفصل --"
-                                    options={[
-                                        { value: '', label: '-- اختر الفصل --' },
-                                        ...availableCopyTerms.map(t => ({ value: t.id.toString(), label: `${t.term_name} (${t.beneficiary_count} مستفيد)` }))
-                                    ]}
-                                />
-                            </div>
-                        </div>
-                        <div className="modal-actions">
-                            <button className="btn btn-primary" onClick={handleCopyFromTerm} disabled={copying || !copySourceTerm}>
-                                {copying ? 'جاري النسخ...' : 'نسخ المستفيدين'}
-                            </button>
-                            <button className="btn btn-secondary" onClick={() => setShowCopyModal(false)} disabled={copying}>
-                                إلغاء
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+            {/* Copy from a previous term */}
+            <Modal
+                open={showCopyModal}
+                onClose={() => !copying && setShowCopyModal(false)}
+                title="نسخ المستفيدين من فصل سابق"
+                description="سيتم نسخ جميع المستفيدين من الفصل المختار إلى الفصل الحالي، وتخطي المسجلين مسبقاً (بناءً على رقم الهوية)."
+                size="sm"
+                footer={(
+                    <>
+                        <Button variant="secondary" onClick={() => setShowCopyModal(false)} disabled={copying}>إلغاء</Button>
+                        <Button variant="primary" loading={copying} disabled={!copySourceTerm} onClick={handleCopyFromTerm}>نسخ المستفيدين</Button>
+                    </>
+                )}
+            >
+                <FormField label="الفصل المصدر">
+                    <Select
+                        value={copySourceTerm}
+                        onChange={(e) => setCopySourceTerm(e.target.value)}
+                        options={availableCopyTerms.map((t) => ({ value: t.id.toString(), label: `${t.term_name} (${t.beneficiary_count} مستفيد)` }))}
+                        placeholder="— اختر الفصل —"
+                    />
+                </FormField>
+            </Modal>
+        </Page>
     );
 };
 
