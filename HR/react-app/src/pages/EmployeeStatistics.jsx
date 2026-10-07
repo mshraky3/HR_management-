@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
 import { employeesAPI } from "../utils/api";
+import { Page, PageHeader, StatCard, Card, Checkbox, Alert, Skeleton } from "../ui";
 
 
 import "./EmployeeStatistics.css";
@@ -17,32 +18,11 @@ const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0];
     return (
-      <div
-        style={{
-          background: "white",
-          border: "1px solid #e2e8f0",
-          borderRadius: "8px",
-          padding: "12px",
-          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-        }}
-      >
-        <p
-          style={{
-            margin: 0,
-            fontWeight: 600,
-            color: "#1e293b",
-            marginBottom: "4px",
-          }}
-        >
+      <div className="es-tip">
+        <p className="es-tip-title">
           {data.name}
         </p>
-        <p
-          style={{
-            margin: 0,
-            color: "#64748b",
-            fontSize: "14px",
-          }}
-        >
+        <p className="es-tip-text">
           العدد: {formatNumber(data.value)}
         </p>
       </div>
@@ -55,33 +35,11 @@ const CustomCurrencyTooltip = ({ active, payload, labelPrefix = "" }) => {
   if (active && payload && payload.length) {
     const data = payload[0];
     return (
-      <div
-        style={{
-          background: "white",
-          border: "1px solid #e2e8f0",
-          borderRadius: "8px",
-          padding: "12px",
-          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-        }}
-      >
-        <p
-          style={{
-            margin: 0,
-            fontWeight: 600,
-            color: "#1e293b",
-            marginBottom: "4px",
-          }}
-        >
+      <div className="es-tip">
+        <p className="es-tip-title">
           {data.name}
         </p>
-        <p
-          style={{
-            margin: 0,
-            color: "#64748b",
-            fontSize: "14px",
-            direction: "ltr",
-          }}
-        >
+        <p className="es-tip-text">
           {labelPrefix}{formatCurrency(data.value)} ريال
         </p>
       </div>
@@ -140,7 +98,7 @@ const renderCustomLabel = ({
       style={{
         fontSize: "16px",
         fontWeight: "bold",
-        textShadow: "0 2px 4px rgba(0,0,0,0.6)",
+        textShadow: "0 1px 3px rgba(0,0,0,0.5)",
         pointerEvents: "none",
       }}
     >
@@ -179,17 +137,19 @@ const EmployeeStatistics = () => {
 
   if (loading) {
     return (
-      <div className="employee-statistics-page">
-        <div className="loading">جاري التحميل...</div>
-      </div>
+      <Page>
+        <PageHeader title="إحصائيات الموظفين" />
+        <Card><Skeleton lines={6} height={18} /></Card>
+      </Page>
     );
   }
 
   if (!statistics) {
     return (
-      <div className="employee-statistics-page">
-        <div className="error-message">لا توجد بيانات متاحة</div>
-      </div>
+      <Page>
+        <PageHeader title="إحصائيات الموظفين" />
+        <Alert tone="warning">لا توجد بيانات متاحة</Alert>
+      </Page>
     );
   }
 
@@ -231,169 +191,36 @@ const EmployeeStatistics = () => {
 
   // Chart colors - vibrant gradients
   const chartColors = [
-    "#667eea",
-    "#f093fb",
-    "#4facfe",
-    "#fa709a",
-    "#30cfd0",
-    "#a8edea",
-    "#ff9a9e",
-    "#ffecd2",
-    "#43e97b",
-    "#38f9d7",
-    "#667eea",
-    "#764ba2",
-    "#f5576c",
-    "#00f2fe",
-    "#fee140",
-    "#330867",
+    "#215f9a", "#2b9a8f", "#d97706", "#7c5cbf", "#c2410c", "#3b82a6", "#15803d", "#b91c1c",
+    "#64748b", "#0e7490", "#a16207", "#6d28d9", "#be185d", "#4d7c0f", "#334155", "#0369a1",
   ];
 
   const genderColors = {
-    male: "#4facfe",
-    female: "#fa709a",
+    male: "#215f9a",
+    female: "#be185d",
   };
 
   const total = overview?.total || 0;
 
   return (
-    <div className="employee-statistics-page">
-      <div className="page-header">
-        <h1>إحصائيات الموظفين</h1>
-        <div className="header-controls">
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={showPercentages}
-              onChange={(e) => setShowPercentages(e.target.checked)}
-            />
-            <span className="toggle-slider"></span>
-            <span className="toggle-label">عرض النسب المئوية</span>
-          </label>
-        </div>
-      </div>
+    <Page>
+      <PageHeader
+        title="إحصائيات الموظفين"
+        subtitle="نظرة شاملة على الموظفين والرواتب والعقود"
+        actions={<Checkbox checked={showPercentages} onChange={(e) => setShowPercentages(e.target.checked)} label="عرض النسب المئوية" />}
+      />
 
-      {/* Statistics Cards */}
-      <div className="stats-cards-grid">
-        <div className="stat-card stat-card-primary">
-          <div className="stat-card-icon">👥</div>
-          <div className="stat-card-content">
-            <div className="stat-card-label">إجمالي الموظفين</div>
-            <div className="stat-card-value">
-              {formatNumber(overview?.total || 0)}
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card stat-card-male">
-          <div className="stat-card-icon">👨</div>
-          <div className="stat-card-content">
-            <div className="stat-card-label">ذكور</div>
-            <div className="stat-card-value">
-              {formatNumber(overview?.male || 0)}
-            </div>
-            <div className="stat-card-sub">
-              {formatPercentage(overview?.male || 0, total)}%
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card stat-card-female">
-          <div className="stat-card-icon">👩</div>
-          <div className="stat-card-content">
-            <div className="stat-card-label">إناث</div>
-            <div className="stat-card-value">
-              {formatNumber(overview?.female || 0)}
-            </div>
-            <div className="stat-card-sub">
-              {formatPercentage(overview?.female || 0, total)}%
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card stat-card-salary">
-          <div className="stat-card-icon">💰</div>
-          <div className="stat-card-content">
-            <div className="stat-card-label">متوسط الراتب</div>
-            <div className="stat-card-value">
-              {formatCurrency(overview?.avgSalary || 0)}
-            </div>
-            <div className="stat-card-sub">ريال</div>
-          </div>
-        </div>
-
-        <div className="stat-card stat-card-budget">
-          <div className="stat-card-icon">📊</div>
-          <div className="stat-card-content">
-            <div className="stat-card-label">إجمالي الرواتب</div>
-            <div className="stat-card-value">
-              {formatCurrency(overview?.totalSalaryBudget || 0)}
-            </div>
-            <div className="stat-card-sub">ريال</div>
-          </div>
-        </div>
-
-        <div className="stat-card stat-card-completion">
-          <div className="stat-card-icon">✅</div>
-          <div className="stat-card-content">
-            <div className="stat-card-label">نسبة الإكمال</div>
-            <div className="stat-card-value">
-              {formatNumber(overview?.completionRate || 0)}%
-            </div>
-          </div>
-        </div>
-
-        {salary && (
-          <>
-            <div className="stat-card stat-card-min">
-              <div className="stat-card-icon">📉</div>
-              <div className="stat-card-content">
-                <div className="stat-card-label">أقل راتب</div>
-                <div className="stat-card-value">
-                  {formatCurrency(salary.min || 0)}
-                </div>
-                <div className="stat-card-sub">ريال</div>
-              </div>
-            </div>
-
-            <div className="stat-card stat-card-max">
-              <div className="stat-card-icon">📈</div>
-              <div className="stat-card-content">
-                <div className="stat-card-label">أعلى راتب</div>
-                <div className="stat-card-value">
-                  {formatCurrency(salary.max || 0)}
-                </div>
-                <div className="stat-card-sub">ريال</div>
-              </div>
-            </div>
-          </>
-        )}
-
-        <div className="stat-card stat-card-active">
-          <div className="stat-card-icon">✓</div>
-          <div className="stat-card-content">
-            <div className="stat-card-label">نشط</div>
-            <div className="stat-card-value">
-              {formatNumber(overview?.active || 0)}
-            </div>
-            <div className="stat-card-sub">
-              {formatPercentage(overview?.active || 0, total)}%
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card stat-card-pending">
-          <div className="stat-card-icon">⏳</div>
-          <div className="stat-card-content">
-            <div className="stat-card-label">قيد الانتظار</div>
-            <div className="stat-card-value">
-              {formatNumber(overview?.pending || 0)}
-            </div>
-            <div className="stat-card-sub">
-              {formatPercentage(overview?.pending || 0, total)}%
-            </div>
-          </div>
-        </div>
+      <div className="ui-grid-stats">
+        <StatCard label="إجمالي الموظفين" value={formatNumber(overview?.total || 0)} icon="users" tone="primary" />
+        <StatCard label={`ذكور · ${formatPercentage(overview?.male || 0, total)}%`} value={formatNumber(overview?.male || 0)} icon="user" tone="primary" />
+        <StatCard label={`إناث · ${formatPercentage(overview?.female || 0, total)}%`} value={formatNumber(overview?.female || 0)} icon="user" tone="danger" />
+        <StatCard label="متوسط الراتب (ريال)" value={formatCurrency(overview?.avgSalary || 0)} icon="wallet" tone="success" />
+        <StatCard label="إجمالي الرواتب (ريال)" value={formatCurrency(overview?.totalSalaryBudget || 0)} icon="chart" tone="warning" />
+        <StatCard label="نسبة الإكمال" value={`${formatNumber(overview?.completionRate || 0)}%`} icon="check-circle" tone="success" />
+        {salary && <StatCard label="أقل راتب (ريال)" value={formatCurrency(salary.min || 0)} icon="wallet" tone="neutral" />}
+        {salary && <StatCard label="أعلى راتب (ريال)" value={formatCurrency(salary.max || 0)} icon="wallet" tone="neutral" />}
+        <StatCard label={`نشط · ${formatPercentage(overview?.active || 0, total)}%`} value={formatNumber(overview?.active || 0)} icon="user-check" tone="success" />
+        <StatCard label={`قيد الانتظار · ${formatPercentage(overview?.pending || 0, total)}%`} value={formatNumber(overview?.pending || 0)} icon="clock" tone="warning" />
       </div>
 
       {/* Charts Grid */}
@@ -671,7 +498,7 @@ const EmployeeStatistics = () => {
           <div className="chart-section">
             <h3 className="chart-title">توزيع الجنس حسب الجنسية (أعلى 10)</h3>
             <div className="chart-table">
-              <table className="stats-table">
+              <table className="es-table">
                 <thead>
                   <tr>
                     <th>الجنسية</th>
@@ -1160,15 +987,15 @@ const EmployeeStatistics = () => {
           <div className="chart-section chart-section-large">
             <h3 className="chart-title">توزيع الجنس حسب الفروع</h3>
             <div className="chart-container">
-              <div className="table-wrapper" style={{ maxHeight: "500px", overflowY: "auto" }}>
-                <table className="stats-table" style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead style={{ position: "sticky", top: 0, background: "white", zIndex: 1 }}>
+              <div className="es-table-wrap">
+                <table className="es-table">
+                  <thead>
                     <tr>
-                      <th style={{ padding: "12px", textAlign: "right", borderBottom: "2px solid #e2e8f0" }}>الفرع</th>
-                      <th style={{ padding: "12px", textAlign: "center", borderBottom: "2px solid #e2e8f0" }}>ذكور</th>
-                      <th style={{ padding: "12px", textAlign: "center", borderBottom: "2px solid #e2e8f0" }}>إناث</th>
-                      <th style={{ padding: "12px", textAlign: "center", borderBottom: "2px solid #e2e8f0" }}>الإجمالي</th>
-                      <th style={{ padding: "12px", textAlign: "center", borderBottom: "2px solid #e2e8f0" }}>نسبة الذكور</th>
+                      <th>الفرع</th>
+                      <th>ذكور</th>
+                      <th>إناث</th>
+                      <th>الإجمالي</th>
+                      <th>نسبة الذكور</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1178,18 +1005,18 @@ const EmployeeStatistics = () => {
                       const totalCount = maleCount + femaleCount;
                       const malePercentage = totalCount > 0 ? ((maleCount / totalCount) * 100).toFixed(1) : 0;
                       return (
-                        <tr key={item.branch_name} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                          <td style={{ padding: "10px", textAlign: "right" }}>{item.branch_name}</td>
-                          <td style={{ padding: "10px", textAlign: "center", color: genderColors.male, fontWeight: "600" }}>
+                        <tr key={item.branch_name}>
+                          <td>{item.branch_name}</td>
+                          <td className="es-male">
                             {formatNumber(maleCount)}
                           </td>
-                          <td style={{ padding: "10px", textAlign: "center", color: genderColors.female, fontWeight: "600" }}>
+                          <td className="es-female">
                             {formatNumber(femaleCount)}
                           </td>
-                          <td style={{ padding: "10px", textAlign: "center", fontWeight: "600" }}>
+                          <td>
                             {formatNumber(totalCount)}
                           </td>
-                          <td style={{ padding: "10px", textAlign: "center" }}>
+                          <td>
                             {malePercentage}%
                           </td>
                         </tr>
@@ -1207,25 +1034,25 @@ const EmployeeStatistics = () => {
           <div className="chart-section chart-section-large">
             <h3 className="chart-title">أعلى 10 رواتب</h3>
             <div className="chart-container">
-              <div className="table-wrapper" style={{ maxHeight: "500px", overflowY: "auto" }}>
-                <table className="stats-table" style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead style={{ position: "sticky", top: 0, background: "white", zIndex: 1 }}>
+              <div className="es-table-wrap">
+                <table className="es-table">
+                  <thead>
                     <tr>
-                      <th style={{ padding: "12px", textAlign: "right", borderBottom: "2px solid #e2e8f0" }}>#</th>
-                      <th style={{ padding: "12px", textAlign: "right", borderBottom: "2px solid #e2e8f0" }}>الاسم</th>
-                      <th style={{ padding: "12px", textAlign: "center", borderBottom: "2px solid #e2e8f0" }}>المسمى الوظيفي</th>
-                      <th style={{ padding: "12px", textAlign: "center", borderBottom: "2px solid #e2e8f0" }}>الفرع</th>
-                      <th style={{ padding: "12px", textAlign: "center", borderBottom: "2px solid #e2e8f0" }}>الراتب</th>
+                      <th>#</th>
+                      <th>الاسم</th>
+                      <th>المسمى الوظيفي</th>
+                      <th>الفرع</th>
+                      <th>الراتب</th>
                     </tr>
                   </thead>
                   <tbody>
                     {topPaidEmployees.map((item, index) => (
-                      <tr key={item.name} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                        <td style={{ padding: "10px", textAlign: "right", fontWeight: "600" }}>{index + 1}</td>
-                        <td style={{ padding: "10px", textAlign: "right" }}>{item.name}</td>
-                        <td style={{ padding: "10px", textAlign: "center" }}>{item.job_title || "غير محدد"}</td>
-                        <td style={{ padding: "10px", textAlign: "center" }}>{item.branch_name}</td>
-                        <td style={{ padding: "10px", textAlign: "center", fontWeight: "600", color: "#10b981", direction: "ltr" }}>
+                      <tr key={item.name}>
+                        <td>{index + 1}</td>
+                        <td>{item.name}</td>
+                        <td>{item.job_title || "غير محدد"}</td>
+                        <td>{item.branch_name}</td>
+                        <td>
                           {formatCurrency(item.salary)} ريال
                         </td>
                       </tr>
@@ -1584,7 +1411,7 @@ const EmployeeStatistics = () => {
                     </div>
                   </div>
                 </div>
-                <p style={{ marginTop: "20px", color: "#64748b", fontSize: "14px" }}>
+                <p style={{ marginTop: "20px", color: "var(--text-muted)", fontSize: "14px" }}>
                   25% من الموظفين يتقاضون أقل من {formatCurrency(salaryPercentiles.p25)} ريال،
                   50% أقل من {formatCurrency(salaryPercentiles.p50)} ريال،
                   و 75% أقل من {formatCurrency(salaryPercentiles.p75)} ريال
@@ -1599,15 +1426,15 @@ const EmployeeStatistics = () => {
           <div className="chart-section chart-section-large">
             <h3 className="chart-title">توزيع الجنس في أعلى 5 وظائف</h3>
             <div className="chart-container">
-              <div className="table-wrapper" style={{ maxHeight: "500px", overflowY: "auto" }}>
-                <table className="stats-table" style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead style={{ position: "sticky", top: 0, background: "white", zIndex: 1 }}>
+              <div className="es-table-wrap">
+                <table className="es-table">
+                  <thead>
                     <tr>
-                      <th style={{ padding: "12px", textAlign: "right", borderBottom: "2px solid #e2e8f0" }}>المسمى الوظيفي</th>
-                      <th style={{ padding: "12px", textAlign: "center", borderBottom: "2px solid #e2e8f0" }}>ذكور</th>
-                      <th style={{ padding: "12px", textAlign: "center", borderBottom: "2px solid #e2e8f0" }}>إناث</th>
-                      <th style={{ padding: "12px", textAlign: "center", borderBottom: "2px solid #e2e8f0" }}>الإجمالي</th>
-                      <th style={{ padding: "12px", textAlign: "center", borderBottom: "2px solid #e2e8f0" }}>نسبة الذكور</th>
+                      <th>المسمى الوظيفي</th>
+                      <th>ذكور</th>
+                      <th>إناث</th>
+                      <th>الإجمالي</th>
+                      <th>نسبة الذكور</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1617,17 +1444,17 @@ const EmployeeStatistics = () => {
                       const totalCount = maleCount + femaleCount;
                       const malePercentage = totalCount > 0 ? ((maleCount / totalCount) * 100).toFixed(1) : 0;
                       return (
-                        <tr key={item.job_title} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                          <td style={{ padding: "10px", textAlign: "center", color: genderColors.male, fontWeight: "600" }}>
+                        <tr key={item.job_title}>
+                          <td className="es-male">
                             {formatNumber(maleCount)}
                           </td>
-                          <td style={{ padding: "10px", textAlign: "center", color: genderColors.female, fontWeight: "600" }}>
+                          <td className="es-female">
                             {formatNumber(femaleCount)}
                           </td>
-                          <td style={{ padding: "10px", textAlign: "center", fontWeight: "600" }}>
+                          <td>
                             {formatNumber(totalCount)}
                           </td>
-                          <td style={{ padding: "10px", textAlign: "center" }}>
+                          <td>
                             {malePercentage}%
                           </td>
                         </tr>
@@ -1640,7 +1467,7 @@ const EmployeeStatistics = () => {
           </div>
         )}
       </div>
-    </div>
+    </Page>
   );
 };
 
