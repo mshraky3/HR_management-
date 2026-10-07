@@ -131,6 +131,18 @@ async function ensureSchemaCurrent() {
     if (codeUnchanged) {
       log.info('Weekly schema re-check due - running in the background');
       releaseSchemaGate();
+    } else if (typeof row?.fingerprint === 'string') {
+      // The code changed on an existing database: apply the (small, additive) migrations FIRST. The
+      // 2,000-line DDL below can outlast the 8 s request gate, and requests that got through before a
+      // new column existed failed with 500s (2026-10-07: employee edits after the work-start-date release).
+      try {
+        const { runMigrations } = await import('./database/migrationRunner.js');
+        await runMigrations();
+        log.info('Pending migrations applied before the full schema check');
+      } catch (error) {
+        log.warn('Early migration run failed, falling back to the full init', { error: error.message });
+      }
+      releaseSchemaGate();
     }
   } catch (error) {
     // Fail open: if the check itself breaks, do exactly what this used to do.
