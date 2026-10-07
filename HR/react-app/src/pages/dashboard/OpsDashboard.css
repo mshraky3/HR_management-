@@ -1,0 +1,4 @@
+/* Operations manager dashboard: only what the kit does not provide. Tokens only. */
+
+.od-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); gap: 1rem; }
+.od-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-block-end: 1rem; }
