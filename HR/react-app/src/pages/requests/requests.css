@@ -1,0 +1,33 @@
+/* Requests (branch + head office): only what the kit does not provide. Tokens only, logical properties (RTL). */
+
+.rq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(24rem, 1fr)); gap: 1rem; align-items: start; }
+.rq-card { display: flex; flex-direction: column; gap: 0.875rem; padding: 1.125rem; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+.rq-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+.rq-head h3 { margin: 0; font-size: var(--font-size-base); line-height: var(--leading-tight); overflow-wrap: anywhere; }
+.rq-text { margin: 0; line-height: var(--leading-body); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.rq-facts { margin: 0; display: flex; flex-direction: column; gap: 0.375rem; }
+.rq-fact { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.25rem 1rem; font-size: var(--font-size-sm); }
+.rq-fact dt { color: var(--text-light); }
+.rq-fact dd { margin: 0; display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; text-align: end; }
+.rq-attachment { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--primary); }
+.rq-attachment:hover { text-decoration: underline; }
+
+.rq-reply { padding: 0.75rem 1rem; border-inline-start: 3px solid var(--primary); background: var(--primary-soft); border-radius: var(--radius-md); font-size: var(--font-size-sm); display: flex; flex-direction: column; gap: 0.375rem; }
+.rq-reply strong { color: var(--primary-dark); }
+.rq-reply p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: var(--leading-body); }
+
+.rq-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; padding-block-start: 0.75rem; border-block-start: 1px solid var(--border-light); }
+
+.rq-quote { margin: 0; padding: 0.75rem 1rem; background: var(--gray-50); border: 1px solid var(--border); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 0.375rem; font-size: var(--font-size-sm); }
+.rq-quote strong { font-size: var(--font-size-base); }
+.rq-quote p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 9rem; overflow: auto; }
+.rq-file { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; font-size: var(--font-size-sm); }
+
+@media (max-width: 640px) {
+  .rq-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.rq-muted { color: var(--text-muted); font-size: var(--font-size-sm); }
+.rq-danger { color: var(--danger); }
+.rq-danger:hover { background: var(--danger-soft); }

@@ -1,37 +1,38 @@
 /**
- * Branch Requests Page
- * Branch managers can submit requests to main managers
+ * Requests (branch managers): send a request to head office, optionally about one employee and with a
+ * file, and follow the answers.
  */
-
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  Page, PageHeader, Card, Tabs, Button, Alert, Modal, FormField, Input, Select, Textarea, SearchInput, EmptyState,
+  Skeleton, useConfirm,
+} from '../ui';
 import { requestsAPI, employeesAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { useConfirm } from '../ui';
-import { formatDate } from '../utils/dateConverters';
 import { getLastSeen, setLastSeen } from '../utils/notificationTracker';
-import './BranchRequests.css';
+import RequestCard from './requests/RequestCard';
+import './requests/requests.css';
 
-const BranchRequests = () => {
+const EMPTY_FORM = { main_manager_id: '', employee_id: '', request_name: '', request_text: '' };
+const fullName = (e) => [e.first_name, e.second_name, e.third_name, e.fourth_name].filter(Boolean).join(' ');
+
+export default function BranchRequests() {
   const { user } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const { confirm } = useConfirm();
+
   const [requests, setRequests] = useState([]);
   const [mainManagers, setMainManagers] = useState([]);
   const [employees, setEmployees] = useState([]);
-  const [employeeSearchTerm, setEmployeeSearchTerm] = useState('');
+  const [employeeSearch, setEmployeeSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newResponsesCount, setNewResponsesCount] = useState(0);
-
-  const [formData, setFormData] = useState({
-    main_manager_id: '',
-    employee_id: '',
-    request_name: '',
-    request_text: '',
-  });
-  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [tab, setTab] = useState('all');
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [attachment, setAttachment] = useState(null);
 
   const branchId = user?.branch_id || null;
   const isMainManagerUser = user?.role === 'main_manager';
@@ -41,32 +42,18 @@ const BranchRequests = () => {
       setLoading(false);
       return;
     }
-
     setLoading(true);
-
     try {
       const employeeFilters = { is_active: true };
-      if (branchId) {
-        employeeFilters.branch_id = branchId;
-      }
-
+      if (branchId) employeeFilters.branch_id = branchId;
       const [requestsRes, managersRes, employeesRes] = await Promise.all([
         requestsAPI.getAll(),
         requestsAPI.getMainManagers(),
         employeesAPI.getAll(employeeFilters),
       ]);
-
-      if (requestsRes.data.success) {
-        setRequests(requestsRes.data.data || []);
-      }
-
-      if (managersRes.data.success) {
-        setMainManagers(managersRes.data.data || []);
-      }
-
-      if (employeesRes.data.success) {
-        setEmployees(employeesRes.data.data || []);
-      }
+      if (requestsRes.data.success) setRequests(requestsRes.data.data || []);
+      if (managersRes.data.success) setMainManagers(managersRes.data.data || []);
+      if (employeesRes.data.success) setEmployees(employeesRes.data.data || []);
     } catch (error) {
       console.error('Error loading data:', error);
       showError('فشل تحميل البيانات');
@@ -75,57 +62,62 @@ const BranchRequests = () => {
     }
   }, [user, isMainManagerUser, branchId, showError]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
   useEffect(() => {
     if (!branchId || isMainManagerUser) return;
-    const key = `branch_requests_last_seen_${branchId}`;
-    const lastSeen = getLastSeen(key);
-    const count = requests.filter((r) => {
+    const lastSeen = getLastSeen(`branch_requests_last_seen_${branchId}`);
+    setNewResponsesCount(requests.filter((r) => {
       if (!r.responded_at) return false;
       const date = new Date(r.responded_at);
-      return !isNaN(date.getTime()) && (!lastSeen || date > lastSeen);
-    }).length;
-    setNewResponsesCount(count);
+      return !Number.isNaN(date.getTime()) && (!lastSeen || date > lastSeen);
+    }).length);
   }, [requests, branchId, isMainManagerUser]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const employeeOptions = useMemo(() => {
+    const q = employeeSearch.trim().toLowerCase();
+    return employees
+      .filter((e) => !q || fullName(e).toLowerCase().includes(q))
+      .map((e) => ({ value: String(e.id), label: fullName(e) }));
+  }, [employees, employeeSearch]);
 
-    if (!formData.main_manager_id || !formData.request_name.trim() || !formData.request_text.trim()) {
+  const counts = useMemo(() => ({
+    all: requests.length,
+    pending: requests.filter((r) => r.status === 'pending').length,
+    answered: requests.filter((r) => r.status !== 'pending').length,
+  }), [requests]);
+
+  const visible = requests.filter((r) => (tab === 'pending' ? r.status === 'pending' : tab === 'answered' ? r.status !== 'pending' : true));
+
+  const closeForm = () => {
+    if (saving) return;
+    setFormOpen(false);
+    setForm(EMPTY_FORM);
+    setAttachment(null);
+    setEmployeeSearch('');
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.main_manager_id || !form.request_name.trim() || !form.request_text.trim()) {
       showWarning('يرجى ملء جميع الحقول المطلوبة');
       return;
     }
-
     try {
       setSaving(true);
-
-      const formDataToSend = new FormData();
-      formDataToSend.append('main_manager_id', formData.main_manager_id);
-      if (formData.employee_id) {
-        formDataToSend.append('employee_id', formData.employee_id);
-      }
-      formDataToSend.append('request_name', formData.request_name.trim());
-      formDataToSend.append('request_text', formData.request_text.trim());
-
-      if (attachmentFile) {
-        formDataToSend.append('file', attachmentFile);
-      }
-
-      const response = await requestsAPI.create(formDataToSend);
-
+      const data = new FormData();
+      data.append('main_manager_id', form.main_manager_id);
+      if (form.employee_id) data.append('employee_id', form.employee_id);
+      data.append('request_name', form.request_name.trim());
+      data.append('request_text', form.request_text.trim());
+      if (attachment) data.append('file', attachment);
+      const response = await requestsAPI.create(data);
       if (response.data.success) {
         showSuccess('تم إرسال الطلب بنجاح');
-        setFormData({
-          main_manager_id: '',
-          employee_id: '',
-          request_name: '',
-          request_text: '',
-        });
-        setAttachmentFile(null);
-        setShowCreateForm(false);
+        setFormOpen(false);
+        setForm(EMPTY_FORM);
+        setAttachment(null);
+        setEmployeeSearch('');
         await loadData();
       }
     } catch (error) {
@@ -136,13 +128,11 @@ const BranchRequests = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!await confirm({ message: 'هل أنت متأكد من حذف هذا الطلب؟', tone: 'danger' })) {
-      return;
-    }
-
+  const remove = async (request) => {
+    const ok = await confirm({ title: 'حذف الطلب', message: `هل أنت متأكد من حذف الطلب «${request.request_name}»؟`, tone: 'danger', confirmText: 'حذف' });
+    if (!ok) return;
     try {
-      const response = await requestsAPI.delete(id);
+      const response = await requestsAPI.delete(request.id);
       if (response.data.success) {
         showSuccess('تم حذف الطلب بنجاح');
         await loadData();
@@ -153,297 +143,119 @@ const BranchRequests = () => {
     }
   };
 
-  const getStatusLabel = (status) => {
-    const labels = {
-      pending: { text: 'قيد الانتظار', color: '#FF9800' },
-      approved: { text: 'موافق عليه', color: '#4CAF50' },
-      rejected: { text: 'مرفوض', color: '#F44336' },
-      in_progress: { text: 'قيد المعالجة', color: '#2196F3' },
-      completed: { text: 'مكتمل', color: '#9C27B0' },
-    };
-    return labels[status] || { text: status, color: '#757575' };
-  };
-
-
   if (isMainManagerUser) {
     return (
-      <div className="branch-requests-container">
-        <div className="empty-state">
-          <p>هذه الصفحة متاحة فقط لمديري الفروع</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="branch-requests-container">
-        <div className="loading-container">
-          <p>جاري التحميل...</p>
-        </div>
-      </div>
+      <Page>
+        <PageHeader title="الطلبات" />
+        <Card><EmptyState icon="inbox" title="هذه الصفحة متاحة فقط لمديري الفروع" description="يمكنك الرد على طلبات الفروع من «إدارة الطلبات»." action={<Button variant="primary" to="/manage-requests">إدارة الطلبات</Button>} /></Card>
+      </Page>
     );
   }
 
   return (
-    <div className="branch-requests-container">
-      <div className="branch-requests-header">
-        <h1>طلبات</h1>
-        <button
-          className="btn btn-primary"
-          onClick={() => setShowCreateForm(!showCreateForm)}
-        >
-          {showCreateForm ? 'إلغاء' : 'إرسال طلب جديد'}
-        </button>
-      </div>
+    <Page>
+      <PageHeader
+        title="الطلبات"
+        subtitle="أرسل طلباً للإدارة وتابع الردود عليه"
+        actions={<Button variant="primary" icon="plus" onClick={() => setFormOpen(true)}>إرسال طلب جديد</Button>}
+      />
 
       {newResponsesCount > 0 && (
-        <div className="notification-banner">
-          <span>لديك {newResponsesCount} رد جديد على طلباتك</span>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => {
-              const key = `branch_requests_last_seen_${branchId}`;
-              setLastSeen(key, new Date());
-              setNewResponsesCount(0);
-            }}
-          >
-            تم الاطلاع
-          </button>
+        <Alert
+          tone="info"
+          action={<Button size="sm" variant="secondary" onClick={() => { setLastSeen(`branch_requests_last_seen_${branchId}`, new Date()); setNewResponsesCount(0); }}>تم الاطلاع</Button>}
+        >
+          لديك {newResponsesCount} رد جديد على طلباتك
+        </Alert>
+      )}
+
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        ariaLabel="تصفية الطلبات"
+        items={[
+          { id: 'all', label: 'كل الطلبات', count: counts.all },
+          { id: 'pending', label: 'قيد الانتظار', count: counts.pending },
+          { id: 'answered', label: 'تم الرد', count: counts.answered },
+        ]}
+      />
+
+      {loading ? (
+        <div className="rq-grid">{[0, 1, 2].map((i) => <Card key={i}><Skeleton lines={4} height={14} /></Card>)}</div>
+      ) : visible.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon="inbox"
+            title={requests.length === 0 ? 'لا توجد طلبات مرسلة' : 'لا توجد طلبات في هذا التصنيف'}
+            description={requests.length === 0 ? 'أرسل أول طلب إلى الإدارة وسيظهر هنا مع الرد عليه.' : undefined}
+            action={requests.length === 0 ? <Button variant="primary" icon="plus" onClick={() => setFormOpen(true)}>إرسال طلب جديد</Button> : null}
+          />
+        </Card>
+      ) : (
+        <div className="rq-grid">
+          {visible.map((request) => (
+            <RequestCard
+              key={request.id}
+              request={request}
+              whoLabel="المدير الرئيسي"
+              who={request.main_manager_name}
+              actions={request.status === 'pending' ? (
+                <Button size="sm" variant="ghost" icon="trash" className="rq-danger" onClick={() => remove(request)}>حذف</Button>
+              ) : null}
+            />
+          ))}
         </div>
       )}
 
-      {showCreateForm && (
-        <div className="create-request-form">
-          <h2>إرسال طلب جديد</h2>
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label htmlFor="main_manager_id">المدير الرئيسي *</label>
-              <select
-                id="main_manager_id"
-                value={formData.main_manager_id}
-                onChange={(e) => setFormData({ ...formData, main_manager_id: e.target.value })}
-                required
-              >
-                <option value="">اختر المدير الرئيسي</option>
-                {mainManagers.map((manager) => (
-                  <option key={manager.id} value={manager.id}>
-                    {manager.full_name || manager.username}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="employee_id">الموظف المعني (اختياري)</label>
-              <input
-                type="text"
-                placeholder="ابحث عن الموظف بالاسم..."
-                value={employeeSearchTerm}
-                onChange={(e) => setEmployeeSearchTerm(e.target.value)}
-                style={{ marginBottom: '8px', padding: '8px', width: '100%' }}
-              />
-              <select
-                id="employee_id"
-                value={formData.employee_id}
-                onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
-              >
-                <option value="">لا يوجد</option>
-                {employees
-                  .filter((employee) => {
-                    if (!employeeSearchTerm.trim()) return true;
-                    const searchLower = employeeSearchTerm.toLowerCase();
-                    const fullName = `${employee.first_name || ''} ${employee.second_name || ''} ${employee.third_name || ''} ${employee.fourth_name || ''}`.toLowerCase();
-                    return (
-                      (employee.first_name && employee.first_name.toLowerCase().includes(searchLower)) ||
-                      (employee.second_name && employee.second_name.toLowerCase().includes(searchLower)) ||
-                      (employee.third_name && employee.third_name.toLowerCase().includes(searchLower)) ||
-                      (employee.fourth_name && employee.fourth_name.toLowerCase().includes(searchLower)) ||
-                      fullName.includes(searchLower)
-                    );
-                  })
-                  .map((employee) => (
-                    <option key={employee.id} value={employee.id}>
-                      {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="request_name">اسم الطلب *</label>
-              <input
-                type="text"
-                id="request_name"
-                value={formData.request_name}
-                onChange={(e) => setFormData({ ...formData, request_name: e.target.value })}
-                placeholder="أدخل اسم الطلب"
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="request_text">نص الطلب *</label>
-              <textarea
-                id="request_text"
-                value={formData.request_text}
-                onChange={(e) => setFormData({ ...formData, request_text: e.target.value })}
-                placeholder="أدخل نص الطلب"
-                rows="5"
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="attachment">إرفاق ملف (اختياري)</label>
-              <input
-                type="file"
-                id="attachment"
-                accept=".pdf,.jpg,.jpeg,.png,.gif"
-                onChange={(e) => setAttachmentFile(e.target.files[0])}
-              />
-              {attachmentFile && (
-                <div className="file-info">
-                  <span>الملف المحدد: {attachmentFile.name}</span>
-                  <button
-                    type="button"
-                    className="btn-remove-file"
-                    onClick={() => setAttachmentFile(null)}
-                  >
-                    إزالة
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="form-actions">
-              <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? 'جاري الإرسال...' : 'إرسال الطلب'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => {
-                  setShowCreateForm(false);
-                  setFormData({
-                    main_manager_id: '',
-                    employee_id: '',
-                    request_name: '',
-                    request_text: '',
-                  });
-                  setAttachmentFile(null);
-                }}
-              >
-                إلغاء
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      <div className="requests-list">
-        <h2>الطلبات المرسلة</h2>
-        {requests.length === 0 ? (
-          <div className="empty-state">
-            <p>لا توجد طلبات مرسلة</p>
-          </div>
-        ) : (
-          <div className="requests-grid">
-            {requests.map((request) => {
-              const statusInfo = getStatusLabel(request.status);
-              return (
-                <div key={request.id} className="request-card">
-                  <div className="request-header">
-                    <h3>{request.request_name}</h3>
-                    <span
-                      className="status-badge"
-                      style={{ backgroundColor: statusInfo.color }}
-                    >
-                      {statusInfo.text}
-                    </span>
-                  </div>
-
-                  <div className="request-body">
-                    <p className="request-text">{request.request_text}</p>
-
-                    <div className="request-details">
-                      <div className="detail-item">
-                        <span className="detail-label">المدير الرئيسي:</span>
-                        <span className="detail-value">{request.main_manager_name}</span>
-                      </div>
-
-                      {request.employee_name && (
-                        <div className="detail-item">
-                          <span className="detail-label">الموظف المعني:</span>
-                          <span className="detail-value">{request.employee_name}</span>
-                        </div>
-                      )}
-
-                      <div className="detail-item">
-                        <span className="detail-label">تاريخ الإرسال:</span>
-                        <span className="detail-value">{formatDate(request.created_at)}</span>
-                      </div>
-
-                      {request.attachment_name && (
-                        <div className="detail-item">
-                          <span className="detail-label">المرفق:</span>
-                          <a
-                            href={request.attachment_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="attachment-link"
-                          >
-                            {request.attachment_name}
-                          </a>
-                        </div>
-                      )}
-
-                      {request.response_text && (
-                        <div className="response-section">
-                          <span className="detail-label">الرد:</span>
-                          <p className="response-text">{request.response_text}</p>
-                          {request.response_attachment_name && (
-                            <div className="detail-item">
-                              <span className="detail-label">المرفق مع الرد:</span>
-                              <a
-                                href={request.response_attachment_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="attachment-link"
-                              >
-                                {request.response_attachment_name}
-                              </a>
-                            </div>
-                          )}
-                          {request.responded_at && (
-                            <span className="response-date">
-                              بتاريخ: {formatDate(request.responded_at)}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {request.status === 'pending' && (
-                    <div className="request-actions">
-                      <button
-                        className="btn btn-danger btn-sm"
-                        onClick={() => handleDelete(request.id)}
-                      >
-                        حذف
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+      <Modal
+        open={formOpen}
+        onClose={closeForm}
+        title="إرسال طلب جديد"
+        size="lg"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={closeForm} disabled={saving}>إلغاء</Button>
+            <Button variant="primary" type="submit" form="rq-form" icon="mail" loading={saving}>إرسال الطلب</Button>
+          </>
         )}
-      </div>
-    </div>
-  );
-};
+      >
+        <form id="rq-form" onSubmit={submit} className="ui-form-stack" noValidate>
+          <FormField label="المدير الرئيسي" required>
+            <Select
+              value={form.main_manager_id}
+              onChange={(e) => setForm({ ...form, main_manager_id: e.target.value })}
+              options={mainManagers.map((m) => ({ value: String(m.id), label: m.full_name || m.username }))}
+              placeholder="اختر المدير الرئيسي"
+            />
+          </FormField>
 
-export default BranchRequests;
+          <FormField label="الموظف المعني (اختياري)">
+            <Select
+              value={form.employee_id}
+              onChange={(e) => setForm({ ...form, employee_id: e.target.value })}
+              options={employeeOptions}
+              placeholder="لا يوجد"
+            />
+          </FormField>
+          <SearchInput value={employeeSearch} onChange={(e) => setEmployeeSearch(e.target.value)} onClear={() => setEmployeeSearch('')} placeholder="ابحث عن الموظف بالاسم لتقصير القائمة…" aria-label="بحث عن موظف" />
+
+          <FormField label="اسم الطلب" required>
+            <Input value={form.request_name} onChange={(e) => setForm({ ...form, request_name: e.target.value })} placeholder="أدخل اسم الطلب" />
+          </FormField>
+          <FormField label="نص الطلب" required>
+            <Textarea rows={5} value={form.request_text} onChange={(e) => setForm({ ...form, request_text: e.target.value })} placeholder="أدخل نص الطلب" />
+          </FormField>
+          <FormField label="إرفاق ملف (اختياري)" hint="PDF أو صورة">
+            <input type="file" className="ui-file" accept=".pdf,.jpg,.jpeg,.png,.gif" onChange={(e) => setAttachment(e.target.files[0] || null)} />
+          </FormField>
+          {attachment && (
+            <div className="rq-file">
+              <span>الملف المحدد: <bdi>{attachment.name}</bdi></span>
+              <Button size="sm" variant="ghost" icon="x" onClick={() => setAttachment(null)}>إزالة</Button>
+            </div>
+          )}
+        </form>
+      </Modal>
+    </Page>
+  );
+}
