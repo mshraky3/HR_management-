@@ -202,8 +202,8 @@ router.get('/', requireManager, async (req, res) => {
       // Branch managers see only their branch's requests
       filters.branch_id = req.user.branch_id;
     } else if (req.user.role === 'main_manager') {
-      // Main managers see requests assigned to them
-      filters.main_manager_id = req.user.id;
+      // Head office sees every request, whichever main-manager account the branch addressed it to
+      // (the dashboard counts them all; filtering by account hid requests sent to another account).
     } else {
       return res.status(403).json({
         success: false,
@@ -255,12 +255,7 @@ router.get('/:id', requireManager, async (req, res) => {
         });
       }
     } else if (req.user.role === 'main_manager') {
-      if (request.main_manager_id !== req.user.id) {
-        return res.status(403).json({
-          success: false,
-          message: 'تم رفض الوصول'
-        });
-      }
+      // any main manager may open any request
     } else {
       return res.status(403).json({
         success: false,
@@ -308,14 +303,6 @@ router.put('/:id/respond', requireMainManager, uploadSingle, async (req, res) =>
       return res.status(404).json({
         success: false,
         message: 'الطلب غير موجود'
-      });
-    }
-
-    // Check if request is assigned to this main manager
-    if (request.main_manager_id !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'يمكنك فقط الرد على الطلبات المخصصة لك'
       });
     }
 
