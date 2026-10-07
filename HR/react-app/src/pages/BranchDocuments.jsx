@@ -1,259 +1,237 @@
 /**
- * Branch Documents Page
- * Manage branch-level documents
- * Completely separate from employee documents
+ * Branch documents: the licences and certificates a branch must keep on file.
+ * One card per required document type (missing / present / expiring / expired) with upload,
+ * replace, preview, download and delete. Separate from employee documents.
  */
-
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import {
+  Page, PageHeader, Card, StatCard, Button, Badge, Icon, Modal, FormField, Input, Select, Textarea, Alert, EmptyState,
+  Skeleton, RowActions, useConfirm,
+} from '../ui';
 import { branchDocumentsAPI, branchesAPI, setDocumentBranchMapping } from '../utils/api';
 import { downloadFile } from '../utils/downloadFile';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { useConfirm } from '../ui';
 import { formatDate } from '../utils/dateConverters';
 import { RESTRICTED_DOCUMENT_TYPES } from '../utils/documentRestrictions';
-import './BranchDocuments.css';
-import UnifiedDatePicker from "../components/UnifiedDatePicker.jsx";
-import BankSelect from "../components/BankSelect.jsx";
+import UnifiedDatePicker from '../components/UnifiedDatePicker.jsx';
+import BankSelect from '../components/BankSelect.jsx';
 import { MAX_UPLOAD_MB, MAX_UPLOAD_BYTES, fileTooLargeMessage } from '../utils/uploadLimits';
-// TablePage.css is now loaded in App.jsx to prevent FOUC
+import './BranchDocuments.css';
 
-const BranchDocuments = () => {
+const ALL_DOCUMENT_TYPES = [
+  { value: 'license', label: 'الترخيص', requiresDefaultFields: true, branchType: null },
+  { value: 'registration', label: 'السجل التجاري', requiresDefaultFields: true, branchType: null },
+  { value: 'iban_file', label: 'ملف الآيبان', requiresDefaultFields: false, branchType: null },
+  { value: 'civil_defense_certificate', label: 'شهادة الدفاع المدني', requiresDefaultFields: true, branchType: null },
+  { value: 'municipality_certificate', label: 'شهادة بلدي', requiresDefaultFields: true, branchType: null },
+  { value: 'insurance_statement', label: 'كشف التأمينات', requiresDefaultFields: true, branchType: null },
+  { value: 'rental_contract', label: 'عقد الايجار', requiresDefaultFields: true, branchType: null },
+  { value: 'operational_plan', label: 'الخطة التشغلية للمركز', requiresDefaultFields: true, branchType: 'healthcare_center' },
+  { value: 'owner_civil_id_copy', label: 'نسخه من هوية الاحوال الشخصية لمالك المركز', requiresDefaultFields: true, branchType: 'healthcare_center' },
+  { value: 'student_cadre_file', label: 'بيانات الطلاب', requiresDefaultFields: false, branchType: 'healthcare_center' },
+];
+
+// Shown above the form when one of these types is chosen
+const TYPE_NOTES = {
+  student_cadre_file: 'يجب أن يحتوي المستند على:\n- أرقام جوالات أولياء الأمور\n- المواصلات\n- الخدمات المقدمة لهم',
+};
+
+// Bank code = characters 5-6 of a Saudi IBAN (SA + 2 check digits + 2-digit bank code + 18 digits)
+const IBAN_BANKS = [
+  { code: '10', nameAr: 'البنك الأهلي السعودي (SNB)', alternativeCodes: [] },
+  { code: '80', nameAr: 'مصرف الراجحي', alternativeCodes: ['82'] },
+  { code: '05', nameAr: 'مصرف الإنماء', alternativeCodes: [] },
+  { code: '20', nameAr: 'بنك الرياض', alternativeCodes: [] },
+  { code: '50', nameAr: 'البنك السعودي الأول (ساب)', alternativeCodes: [] },
+  { code: '15', nameAr: 'بنك البلاد', alternativeCodes: [] },
+  { code: '30', nameAr: 'البنك العربي الوطني', alternativeCodes: [] },
+  { code: '45', nameAr: 'البنك السعودي الفرنسي', alternativeCodes: [] },
+  { code: '60', nameAr: 'بنك الجزيرة', alternativeCodes: [] },
+  { code: '55', nameAr: 'البنك السعودي للاستثمار', alternativeCodes: [] },
+  { code: '90', nameAr: 'بنك الخليج الدولي (ميم)', alternativeCodes: [] },
+  { code: '95', nameAr: 'بنك الإمارات دبي الوطني', alternativeCodes: [] },
+  { code: '76', nameAr: 'بنك مسقط', alternativeCodes: [] },
+  { code: '31', nameAr: 'بنك الكويت الوطني', alternativeCodes: [] },
+];
+
+/** Returns an Arabic error message, or null when the IBAN is well formed and belongs to the chosen bank. */
+function ibanProblem(ibanNumber, bankName) {
+  if (!ibanNumber || !bankName) return 'رقم الآيبان واسم البنك مطلوبان لمستندات الآيبان';
+  const clean = ibanNumber.replace(/\s/g, '').toUpperCase();
+  if (clean.length !== 24 || !clean.startsWith('SA')) return 'صيغة IBAN غير صحيحة. يجب أن يكون بالشكل: SAXX XXXX XXXX XXXX XXXX XXXX';
+  const code = clean.substring(4, 6);
+  const bank = IBAN_BANKS.find((b) => b.code === code || b.alternativeCodes.includes(code));
+  if (!bank) return 'كود البنك في IBAN غير معروف';
+  if (bank.nameAr !== bankName) return `IBAN لا يطابق البنك المختار. IBAN يخص: ${bank.nameAr}`;
+  return null;
+}
+
+const EMPTY_FORM = {
+  branch_id: '', document_type: '', description: '', document_number: '', issue_date: '', issue_date_hijri: '',
+  expiry_date: '', expiry_date_hijri: '', iban_number: '', bank_name: '', file: null,
+};
+
+const requiresDates = (type) => {
+  const def = ALL_DOCUMENT_TYPES.find((t) => t.value === type);
+  return def?.requiresDefaultFields !== false && type !== 'iban_file';
+};
+
+const daysUntil = (value) => {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
+  return Math.round((d - today) / 86400000);
+};
+
+/** missing | expired | soon (<= 30 days) | ok */
+function documentState(doc) {
+  if (!doc) return 'missing';
+  const days = daysUntil(doc.expiry_date);
+  if (days !== null && days < 0) return 'expired';
+  if (days !== null && days <= 30) return 'soon';
+  return 'ok';
+}
+
+const STATE_META = {
+  missing: { label: 'غير مرفوع', tone: 'danger', icon: 'alert' },
+  expired: { label: 'منتهي', tone: 'danger', icon: 'x-circle' },
+  soon: { label: 'ينتهي قريباً', tone: 'warning', icon: 'clock' },
+  ok: { label: 'مرفوع', tone: 'success', icon: 'check-circle' },
+};
+
+export default function BranchDocuments() {
   const { isMainManager, user } = useAuth();
-  const { showError, showSuccess, showWarning, _showInfo } = useNotification();
+  const { showError, showSuccess, showWarning } = useNotification();
   const { confirm } = useConfirm();
-  const [searchParams, _setSearchParams] = useSearchParams();
-  const [_documents, setDocuments] = useState([]);
-  const [allDocuments, setAllDocuments] = useState([]); // Store all documents for filtering
+  const [searchParams] = useSearchParams();
+  const isMain = isMainManager();
+
+  const [documents, setDocuments] = useState([]);
   const [branches, setBranches] = useState([]);
+  const [branchesLoaded, setBranchesLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(null);
-  const [showUploadForm, setShowUploadForm] = useState(false);
-  const [showEditForm, setShowEditForm] = useState(false);
-  const [editingDocument, setEditingDocument] = useState(null);
-  const [previewDocument, setPreviewDocument] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [documentAlert, setDocumentAlert] = useState(null); // Alert message for document type
-  const [currentBranchId, setCurrentBranchId] = useState(null);
-  const [uploadData, setUploadData] = useState({
-    branch_id: '',
-    document_type: '',
-    description: '',
-    document_number: '',
-    issue_date: '',
-    issue_date_hijri: '',
-    expiry_date: '',
-    expiry_date_hijri: '',
-    iban_number: '',
-    bank_name: '',
-    file: null,
-  });
-  const [editData, setEditData] = useState({
-    description: '',
-    document_number: '',
-    issue_date: '',
-    issue_date_hijri: '',
-    expiry_date: '',
-    expiry_date_hijri: '',
-    iban_number: '',
-    bank_name: '',
-    file: null,
-  });
 
-  const loadBranches = async () => {
-    try {
-      const filters = { is_active: true };
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadData, setUploadData] = useState(EMPTY_FORM);
+  const [editing, setEditing] = useState(null);
+  const [editData, setEditData] = useState(EMPTY_FORM);
+  const [preview, setPreview] = useState(null); // { document, url }
 
-      // Branch managers only see their branch
-      if (!isMainManager() && user?.branch_id) {
-        filters.id = user.branch_id;
-      }
+  const branchId = useMemo(() => {
+    const fromUrl = parseInt(searchParams.get('branch_id') || '0', 10) || null;
+    if (isMain) return fromUrl;
+    return user?.branch_id || null;
+  }, [searchParams, isMain, user]);
 
-      const response = await branchesAPI.getAll(filters);
-      if (response.data.success) {
-        setBranches(response.data.data || []);
-        // Auto-set branch_id for branch managers
-        if (!isMainManager() && user?.branch_id) {
-          setUploadData(prev => ({ ...prev, branch_id: user.branch_id }));
-          setCurrentBranchId(user.branch_id);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading branches:', error);
-      // Don't show alert for branch loading errors
-    }
-  };
+  const currentBranch = useMemo(() => branches.find((b) => b.id === branchId) || null, [branches, branchId]);
+  const currentBranchType = currentBranch?.branch_type || null;
 
-  // Set current branch when URL changes (for main manager)
+  // ---- loading ---------------------------------------------------------------------------------------------------------
   useEffect(() => {
-    if (isMainManager() && branches.length > 0) {
-      const branchIdFromUrl = searchParams.get('branch_id');
-      if (branchIdFromUrl) {
-        const branchId = parseInt(branchIdFromUrl);
-        setCurrentBranchId(branchId);
-      } else {
-        setCurrentBranchId(null);
+    if (!user) return;
+    (async () => {
+      try {
+        const query = { is_active: true };
+        if (!isMain && user.branch_id) query.id = user.branch_id;
+        const response = await branchesAPI.getAll(query);
+        if (response.data.success) setBranches(response.data.data || []);
+      } catch (error) {
+        console.error('Error loading branches:', error);
+      } finally {
+        setBranchesLoaded(true);
       }
-    }
-  }, [searchParams, isMainManager, branches]);
-
-  // Get current branch ID helper
-  const getCurrentBranchId = useCallback(() => {
-    return currentBranchId ||
-      (!isMainManager() && user?.branch_id ? user.branch_id : null) ||
-      (isMainManager() ? parseInt(searchParams.get('branch_id') || '0') || null : null);
-  }, [currentBranchId, isMainManager, user, searchParams]);
+    })();
+  }, [user, isMain]);
 
   const loadDocuments = useCallback(async () => {
-    // Safety check: Need a branch ID
-    const branchIdForLoad = getCurrentBranchId();
-    if (!branchIdForLoad) {
-      return;
-    }
-
+    if (!branchId) return;
     try {
       setLoading(true);
-      const filters = {};
-
-      // Handle branch filter from URL or user role
-      filters.branch_id = branchIdForLoad;
-
-      const response = await branchDocumentsAPI.getAll(filters);
+      const response = await branchDocumentsAPI.getAll({ branch_id: branchId });
       if (response.data.success) {
         const docs = response.data.data || [];
-        setAllDocuments(docs);
-        // Store document-to-branch mapping for API interceptor (metadata only)
-        docs.forEach(doc => {
-          if (doc.id && doc.branch_id) {
-            setDocumentBranchMapping(doc.id, doc.branch_id);
-          }
-        });
+        setDocuments(docs);
+        // The API interceptor needs a document -> branch mapping for downloads
+        docs.forEach((doc) => { if (doc.id && doc.branch_id) setDocumentBranchMapping(doc.id, doc.branch_id); });
       } else {
-        // If API returns success: false, just set empty array, don't show alert
-        setAllDocuments([]);
+        setDocuments([]);
       }
     } catch (error) {
       console.error('Error loading branch documents:', error);
-      // Only show alert if it's a real error (not just empty results)
-      // Check if it's a network error or server error (status >= 400)
       if (error.response && error.response.status >= 400) {
-        showError('فشل تحميل مستندات الفرع: ' + (error.response?.data?.message || error.message));
+        showError(`فشل تحميل مستندات الفرع: ${error.response?.data?.message || error.message}`);
       }
-      // Otherwise, just set empty array (might be no documents yet)
-      setAllDocuments([]);
+      setDocuments([]);
     } finally {
       setLoading(false);
     }
-  }, [searchParams, isMainManager, user, getCurrentBranchId]);
-
-  useEffect(() => {
-    if (user) {
-      loadBranches();
-    }
-  }, [user]);
-
-  // Handle URL parameters for filtering (from Dashboard links)
-  useEffect(() => {
-    const branchId = searchParams.get('branch_id');
-
-    if (branchId) {
-      setUploadData(prev => ({ ...prev, branch_id: branchId }));
-    }
-  }, [searchParams]);
-
-  // Load documents when we have a branch ID
-  useEffect(() => {
-    const branchIdForLoad = getCurrentBranchId();
-    if (user && branchIdForLoad) {
-      loadDocuments();
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, getCurrentBranchId]);
+  }, [branchId]);
 
-  // Set all documents (no filtering needed since monthly documents are in separate page)
-  useEffect(() => {
-    setDocuments(allDocuments);
-  }, [allDocuments]);
+  useEffect(() => { loadDocuments(); }, [loadDocuments]);
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > MAX_UPLOAD_BYTES) {
-        showWarning(fileTooLargeMessage(file.name));
-        e.target.value = ''; // Clear the file input
-        return;
-      }
-    }
-    setUploadData({ ...uploadData, file });
+  // ---- derived ---------------------------------------------------------------------------------------------------------
+  const documentTypes = useMemo(() => ALL_DOCUMENT_TYPES.filter((t) => {
+    if (t.branchType && currentBranchType !== t.branchType) return false;
+    if (!isMain && RESTRICTED_DOCUMENT_TYPES.includes(t.value)) return false; // hidden from branch managers
+    return true;
+  }), [currentBranchType, isMain]);
+
+  const cards = useMemo(() => {
+    if (!currentBranchType) return [];
+    const list = documentTypes.map((type) => {
+      const accepted = type.value === 'insurance_statement' ? ['insurance_statement', 'insurance_print'] : [type.value];
+      const document = documents.find((d) => accepted.includes(d.document_type) && d.is_active !== false && (!isMain || d.branch_id === branchId)) || null;
+      return { ...type, document, state: documentState(document) };
+    });
+    // student data first, everything else in the listed order
+    return [...list].sort((a, b) => (b.value === 'student_cadre_file') - (a.value === 'student_cadre_file'));
+  }, [documentTypes, documents, currentBranchType, isMain, branchId]);
+
+  const counts = useMemo(() => ({
+    total: cards.length,
+    ok: cards.filter((c) => c.state === 'ok').length,
+    missing: cards.filter((c) => c.state === 'missing').length,
+    attention: cards.filter((c) => c.state === 'expired' || c.state === 'soon').length,
+  }), [cards]);
+
+  // ---- upload ----------------------------------------------------------------------------------------------------------
+  const openUpload = (documentType = '') => {
+    if (isMain && !branchId) { showError('اختر الفرع أولاً قبل رفع المستند'); return; }
+    if (!currentBranchType) { showError('نوع الفرع غير معروف. يرجى اختيار فرع صالح ثم إعادة المحاولة'); return; }
+    setUploadData({ ...EMPTY_FORM, branch_id: branchId, document_type: documentType || searchParams.get('document_type') || '' });
+    setUploadOpen(true);
   };
 
-  const handleUpload = async (e) => {
+  const closeUpload = () => { setUploadOpen(false); setUploadData(EMPTY_FORM); };
+
+  const pickFile = (setter) => (e) => {
+    const file = e.target.files[0] || null;
+    if (file && file.size > MAX_UPLOAD_BYTES) {
+      showWarning(fileTooLargeMessage(file.name));
+      e.target.value = '';
+      return;
+    }
+    setter((prev) => ({ ...prev, file }));
+  };
+
+  const submitUpload = async (e) => {
     e.preventDefault();
-    if (!uploadData.file) {
-      showWarning('الرجاء اختيار ملف');
-      return;
-    }
-
-    // Re-validate file size before upload
-    if (uploadData.file.size > MAX_UPLOAD_BYTES) {
-      showWarning(fileTooLargeMessage(uploadData.file.name));
-      return;
-    }
-
-    // Validate IBAN for IBAN file documents
+    if (!uploadData.document_type) { showWarning('الرجاء اختيار نوع المستند'); return; }
+    if (!uploadData.file) { showWarning('الرجاء اختيار ملف'); return; }
+    if (uploadData.file.size > MAX_UPLOAD_BYTES) { showWarning(fileTooLargeMessage(uploadData.file.name)); return; }
     if (uploadData.document_type === 'iban_file') {
-      if (!uploadData.iban_number || !uploadData.bank_name) {
-        showWarning('رقم الآيبان واسم البنك مطلوبان لمستندات الآيبان');
-        return;
-      }
-
-      // Validate IBAN format and bank match
-      const cleanIban = uploadData.iban_number.replace(/\s/g, '').toUpperCase();
-      if (cleanIban.length !== 24 || !cleanIban.startsWith('SA')) {
-        showWarning('صيغة IBAN غير صحيحة. يجب أن يكون بالشكل: SAXX XXXX XXXX XXXX XXXX XXXX');
-        return;
-      }
-
-      // Extract bank code from correct position (indices 4-5)
-      // Structure: SA(0-1) Check(2-3) BankCode(4-5) Account(6-23)
-      const bankCode = cleanIban.substring(4, 6);
-      const banks = [
-        { code: '10', nameAr: 'البنك الأهلي السعودي (SNB)', alternativeCodes: [] },
-        { code: '80', nameAr: 'مصرف الراجحي', alternativeCodes: ['82'] },
-        { code: '05', nameAr: 'مصرف الإنماء', alternativeCodes: [] },
-        { code: '20', nameAr: 'بنك الرياض', alternativeCodes: [] },
-        { code: '50', nameAr: 'البنك السعودي الأول (ساب)', alternativeCodes: [] },
-        { code: '15', nameAr: 'بنك البلاد', alternativeCodes: [] },
-        { code: '30', nameAr: 'البنك العربي الوطني', alternativeCodes: [] },
-        { code: '45', nameAr: 'البنك السعودي الفرنسي', alternativeCodes: [] },
-        { code: '60', nameAr: 'بنك الجزيرة', alternativeCodes: [] },
-        { code: '55', nameAr: 'البنك السعودي للاستثمار', alternativeCodes: [] },
-        { code: '90', nameAr: 'بنك الخليج الدولي (ميم)', alternativeCodes: [] },
-        { code: '95', nameAr: 'بنك الإمارات دبي الوطني', alternativeCodes: [] },
-        { code: '76', nameAr: 'بنك مسقط', alternativeCodes: [] },
-        { code: '31', nameAr: 'بنك الكويت الوطني', alternativeCodes: [] },
-      ];
-
-      // Helper function to check if bank code matches (including alternative codes)
-      const bankCodeMatches = (bank, code) => {
-        if (bank.code === code) return true;
-        if (bank.alternativeCodes && bank.alternativeCodes.includes(code)) return true;
-        return false;
-      };
-
-      const ibanBank = banks.find(b => bankCodeMatches(b, bankCode));
-      if (!ibanBank) {
-        showWarning('كود البنك في IBAN غير معروف');
-        return;
-      }
-
-      if (ibanBank.nameAr !== uploadData.bank_name) {
-        showWarning(`IBAN لا يطابق البنك المختار. IBAN يخص: ${ibanBank.nameAr}`);
-        return;
-      }
+      const problem = ibanProblem(uploadData.iban_number, uploadData.bank_name);
+      if (problem) { showWarning(problem); return; }
     }
 
     try {
@@ -263,42 +241,18 @@ const BranchDocuments = () => {
       formData.append('branch_id', uploadData.branch_id);
       formData.append('document_type', uploadData.document_type);
       if (uploadData.description) formData.append('description', uploadData.description);
-
-      // Check if document type requires default fields
-      const selectedDocType = allBranchDocumentTypes.find(t => t.value === uploadData.document_type);
-      const requiresDefaultFields = selectedDocType?.requiresDefaultFields !== false && uploadData.document_type !== 'iban_file';
-
-      // Date fields only for documents that require default fields
-      if (requiresDefaultFields) {
-        if (uploadData.document_number) formData.append('document_number', uploadData.document_number);
-        if (uploadData.issue_date) formData.append('issue_date', uploadData.issue_date);
-        if (uploadData.issue_date_hijri) formData.append('issue_date_hijri', uploadData.issue_date_hijri);
-        if (uploadData.expiry_date) formData.append('expiry_date', uploadData.expiry_date);
-        if (uploadData.expiry_date_hijri) formData.append('expiry_date_hijri', uploadData.expiry_date_hijri);
+      if (requiresDates(uploadData.document_type)) {
+        ['document_number', 'issue_date', 'issue_date_hijri', 'expiry_date', 'expiry_date_hijri'].forEach((k) => {
+          if (uploadData[k]) formData.append(k, uploadData[k]);
+        });
       }
-
-      // IBAN fields only for IBAN documents
       if (uploadData.document_type === 'iban_file') {
         if (uploadData.iban_number) formData.append('iban_number', uploadData.iban_number);
         if (uploadData.bank_name) formData.append('bank_name', uploadData.bank_name);
       }
-
       await branchDocumentsAPI.upload(formData);
-      setShowUploadForm(false);
-      setDocumentAlert(null);
-      setUploadData({
-        branch_id: !isMainManager() && user?.branch_id ? user.branch_id : '',
-        document_type: '',
-        description: '',
-        document_number: '',
-        issue_date: '',
-        issue_date_hijri: '',
-        expiry_date: '',
-        expiry_date_hijri: '',
-        iban_number: '',
-        bank_name: '',
-        file: null,
-      });
+      showSuccess('تم رفع المستند بنجاح');
+      closeUpload();
       loadDocuments();
     } catch (error) {
       showError(error.response?.data?.message || 'فشل رفع المستند');
@@ -307,1101 +261,396 @@ const BranchDocuments = () => {
     }
   };
 
-  const handlePreview = async (document) => {
+  // ---- edit ------------------------------------------------------------------------------------------------------------
+  const openEdit = (doc) => {
+    setEditing(doc);
+    setEditData({
+      ...EMPTY_FORM,
+      description: doc.description || '',
+      document_number: doc.document_number || '',
+      issue_date: doc.issue_date ? doc.issue_date.split('T')[0] : '',
+      issue_date_hijri: doc.issue_date_hijri || '',
+      expiry_date: doc.expiry_date ? doc.expiry_date.split('T')[0] : '',
+      expiry_date_hijri: doc.expiry_date_hijri || '',
+      iban_number: doc.iban_number || '',
+      bank_name: doc.bank_name || '',
+    });
+  };
+
+  const closeEdit = () => { setEditing(null); setEditData(EMPTY_FORM); };
+
+  const submitEdit = async (e) => {
+    e.preventDefault();
+    if (editing.document_type === 'iban_file') {
+      const problem = ibanProblem(editData.iban_number, editData.bank_name);
+      if (problem) { showWarning(problem); return; }
+    }
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        showWarning('يرجى تسجيل الدخول مرة أخرى');
-        return;
-      }
-
-      setPreviewLoading(document.id);
-      setPreviewDocument(document);
-      // Check if it's an image
-      if (document.mime_type && document.mime_type.startsWith('image/')) {
-        try {
-          const response = await branchDocumentsAPI.download(document.id);
-          if (response.data instanceof Blob) {
-            const blobUrl = URL.createObjectURL(response.data);
-            setPreviewUrl(blobUrl);
-          } else {
-            throw new Error('Invalid response format');
-          }
-        } catch (error) {
-          console.error('Error loading image:', error);
-          const errorMsg = error.response?.data?.message || error.message || 'فشل تحميل الصورة';
-          showError(`فشل تحميل الصورة للمعاينة: ${errorMsg}`);
-          setPreviewDocument(null);
-          setPreviewLoading(null);
-        } finally {
-          setPreviewLoading(null);
+      setSaving(true);
+      const withDates = requiresDates(editing.document_type);
+      if (editData.file) {
+        const formData = new FormData();
+        formData.append('file', editData.file);
+        if (editData.description) formData.append('description', editData.description);
+        if (withDates) {
+          ['document_number', 'issue_date', 'issue_date_hijri', 'expiry_date', 'expiry_date_hijri'].forEach((k) => {
+            if (editData[k]) formData.append(k, editData[k]);
+          });
         }
-      } else if (document.mime_type === 'application/pdf') {
-        try {
-          const response = await branchDocumentsAPI.download(document.id);
-          if (response.data instanceof Blob) {
-            const blobUrl = URL.createObjectURL(response.data);
-            const newWindow = window.open(blobUrl, '_blank');
-            if (!newWindow) {
-              showWarning('يرجى السماح للنافذة المنبثقة بفتح ملف PDF');
-            }
-          } else {
-            throw new Error('Invalid response format');
-          }
-          setPreviewDocument(null);
-        } catch (error) {
-          console.error('Error opening PDF:', error);
-          const errorMsg = error.response?.data?.message || error.message || 'فشل فتح ملف PDF';
-          showError(`فشل فتح ملف PDF: ${errorMsg}`);
-          setPreviewDocument(null);
-          setPreviewLoading(null);
-        } finally {
-          setPreviewLoading(null);
+        if (editing.document_type === 'iban_file') {
+          if (editData.iban_number) formData.append('iban_number', editData.iban_number);
+          if (editData.bank_name) formData.append('bank_name', editData.bank_name);
         }
+        await branchDocumentsAPI.updateWithFile(editing.id, formData);
       } else {
-        handleDownload(document.id, document.file_name);
-        setPreviewDocument(null);
-        setPreviewLoading(null);
+        const payload = { description: editData.description };
+        if (withDates) {
+          payload.document_number = editData.document_number || null;
+          payload.issue_date = editData.issue_date || null;
+          payload.issue_date_hijri = editData.issue_date_hijri || null;
+          payload.expiry_date = editData.expiry_date || null;
+          payload.expiry_date_hijri = editData.expiry_date_hijri || null;
+        }
+        if (editing.document_type === 'iban_file') {
+          payload.iban_number = editData.iban_number || null;
+          payload.bank_name = editData.bank_name || null;
+        }
+        await branchDocumentsAPI.update(editing.id, payload);
       }
+      closeEdit();
+      loadDocuments();
+      showSuccess('تم تحديث المستند بنجاح');
     } catch (error) {
-      console.error('Error previewing document:', error);
-      showError('فشل عرض المستند');
-      setPreviewDocument(null);
-      setPreviewLoading(null);
+      showError(error.response?.data?.message || 'فشل تحديث المستند');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const closePreview = () => {
-    setPreviewDocument(null);
-    setPreviewLoading(null);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-    }
-  };
-
-  const handleDownload = async (id, fileName) => {
+  // ---- file actions ----------------------------------------------------------------------------------------------------
+  const download = async (id, fileName) => {
     try {
       setDownloading(id);
       const response = await branchDocumentsAPI.download(id);
-
-      // Get filename from response headers
-      const contentDisposition = response.headers['content-disposition'];
       let filename = fileName || `document_${id}`;
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
-        if (filenameMatch) {
-          filename = decodeURIComponent(filenameMatch[1].replace(/"/g, ''));
-        }
+      const disposition = response.headers['content-disposition'];
+      if (disposition) {
+        const match = disposition.match(/filename="?(.+)"?/i);
+        if (match) filename = decodeURIComponent(match[1].replace(/"/g, ''));
       }
-
-      if (response.data instanceof Blob) {
-        downloadFile(response.data, filename);
-      } else {
-        throw new Error('Invalid response format');
-      }
+      if (!(response.data instanceof Blob)) throw new Error('Invalid response format');
+      downloadFile(response.data, filename);
     } catch (error) {
-      console.error('Error downloading document:', error);
-      const errorMsg = error.response?.data?.message || error.message || 'فشل تحميل المستند';
-      showError(`فشل تحميل المستند: ${errorMsg}`);
+      showError(`فشل تحميل المستند: ${error.response?.data?.message || error.message || 'فشل تحميل المستند'}`);
     } finally {
       setDownloading(null);
     }
   };
 
-  const handleEdit = (document) => {
-    setEditingDocument(document);
-    // Determine date type based on which date exists
-    const _issueDateType = document.issue_date_hijri ? 'hijri' : 'gregorian';
-    const _expiryDateType = document.expiry_date_hijri ? 'hijri' : 'gregorian';
-
-    setEditData({
-      description: document.description || '',
-      document_number: document.document_number || '',
-      issue_date: document.issue_date ? document.issue_date.split('T')[0] : '',
-      issue_date_hijri: document.issue_date_hijri || '',
-      expiry_date: document.expiry_date ? document.expiry_date.split('T')[0] : '',
-      expiry_date_hijri: document.expiry_date_hijri || '',
-      iban_number: document.iban_number || '',
-      bank_name: document.bank_name || '',
-      file: null,
-    });
-    setShowEditForm(true);
-  };
-
-  const handleUpdate = async (e) => {
-    e.preventDefault();
-
-    // Validate IBAN for IBAN file documents
-    if (editingDocument && editingDocument.document_type === 'iban_file') {
-      if (!editData.iban_number || !editData.bank_name) {
-        showWarning('رقم الآيبان واسم البنك مطلوبان لمستندات الآيبان');
-        return;
-      }
-
-      // Validate IBAN format and bank match
-      const cleanIban = editData.iban_number.replace(/\s/g, '').toUpperCase();
-      if (cleanIban.length !== 24 || !cleanIban.startsWith('SA')) {
-        showWarning('صيغة IBAN غير صحيحة. يجب أن يكون بالشكل: SAXX XXXX XXXX XXXX XXXX XXXX');
-        return;
-      }
-
-      // Extract bank code from correct position (indices 4-5)
-      // Structure: SA(0-1) Check(2-3) BankCode(4-5) Account(6-23)
-      const bankCode = cleanIban.substring(4, 6);
-      const banks = [
-        { code: '10', nameAr: 'البنك الأهلي السعودي (SNB)', alternativeCodes: [] },
-        { code: '80', nameAr: 'مصرف الراجحي', alternativeCodes: ['82'] },
-        { code: '05', nameAr: 'مصرف الإنماء', alternativeCodes: [] },
-        { code: '20', nameAr: 'بنك الرياض', alternativeCodes: [] },
-        { code: '50', nameAr: 'البنك السعودي الأول (ساب)', alternativeCodes: [] },
-        { code: '15', nameAr: 'بنك البلاد', alternativeCodes: [] },
-        { code: '30', nameAr: 'البنك العربي الوطني', alternativeCodes: [] },
-        { code: '45', nameAr: 'البنك السعودي الفرنسي', alternativeCodes: [] },
-        { code: '60', nameAr: 'بنك الجزيرة', alternativeCodes: [] },
-        { code: '55', nameAr: 'البنك السعودي للاستثمار', alternativeCodes: [] },
-        { code: '90', nameAr: 'بنك الخليج الدولي (ميم)', alternativeCodes: [] },
-        { code: '95', nameAr: 'بنك الإمارات دبي الوطني', alternativeCodes: [] },
-        { code: '76', nameAr: 'بنك مسقط', alternativeCodes: [] },
-        { code: '31', nameAr: 'بنك الكويت الوطني', alternativeCodes: [] },
-      ];
-
-      // Helper function to check if bank code matches (including alternative codes)
-      const bankCodeMatches = (bank, code) => {
-        if (bank.code === code) return true;
-        if (bank.alternativeCodes && bank.alternativeCodes.includes(code)) return true;
-        return false;
-      };
-
-      const ibanBank = banks.find(b => bankCodeMatches(b, bankCode));
-      if (!ibanBank) {
-        showWarning('كود البنك في IBAN غير معروف');
-        return;
-      }
-
-      if (ibanBank.nameAr !== editData.bank_name) {
-        showWarning(`IBAN لا يطابق البنك المختار. IBAN يخص: ${ibanBank.nameAr}`);
-        return;
-      }
-    }
-
+  const openPreview = async (doc) => {
+    if (!localStorage.getItem('token')) { showWarning('يرجى تسجيل الدخول مرة أخرى'); return; }
     try {
-      if (editData.file) {
-        // If file is provided, upload new file
-        const formData = new FormData();
-        formData.append('file', editData.file);
-        if (editData.description) formData.append('description', editData.description);
-
-        // Check if document type requires default fields
-        const selectedDocType = allBranchDocumentTypes.find(t => t.value === editingDocument.document_type);
-        const requiresDefaultFields = selectedDocType?.requiresDefaultFields !== false && editingDocument.document_type !== 'iban_file';
-
-        // Date fields only for documents that require default fields
-        if (requiresDefaultFields) {
-          if (editData.document_number) formData.append('document_number', editData.document_number);
-          if (editData.issue_date) formData.append('issue_date', editData.issue_date);
-          if (editData.issue_date_hijri) formData.append('issue_date_hijri', editData.issue_date_hijri);
-          if (editData.expiry_date) formData.append('expiry_date', editData.expiry_date);
-          if (editData.expiry_date_hijri) formData.append('expiry_date_hijri', editData.expiry_date_hijri);
-        }
-
-        // IBAN fields only for IBAN documents
-        if (editingDocument && editingDocument.document_type === 'iban_file') {
-          if (editData.iban_number) formData.append('iban_number', editData.iban_number);
-          if (editData.bank_name) formData.append('bank_name', editData.bank_name);
-        }
-
-        // Use PUT with FormData to replace the file
-        await branchDocumentsAPI.updateWithFile(editingDocument.id, formData);
+      setPreviewLoading(doc.id);
+      const response = await branchDocumentsAPI.download(doc.id);
+      if (!(response.data instanceof Blob)) throw new Error('Invalid response format');
+      const url = URL.createObjectURL(response.data);
+      if (doc.mime_type?.startsWith('image/')) {
+        setPreview({ document: doc, url });
       } else {
-        // Just update metadata
-        const updatePayload = {
-          description: editData.description
-        };
-
-        // Check if document type requires default fields
-        const selectedDocType = allBranchDocumentTypes.find(t => t.value === editingDocument.document_type);
-        const requiresDefaultFields = selectedDocType?.requiresDefaultFields !== false && editingDocument.document_type !== 'iban_file';
-
-        // Date fields only for documents that require default fields
-        if (requiresDefaultFields) {
-          updatePayload.document_number = editData.document_number || null;
-          updatePayload.issue_date = editData.issue_date || null;
-          updatePayload.issue_date_hijri = editData.issue_date_hijri || null;
-          updatePayload.expiry_date = editData.expiry_date || null;
-          updatePayload.expiry_date_hijri = editData.expiry_date_hijri || null;
-        }
-
-        // IBAN fields only for IBAN documents
-        if (editingDocument.document_type === 'iban_file') {
-          updatePayload.iban_number = editData.iban_number || null;
-          updatePayload.bank_name = editData.bank_name || null;
-        }
-
-        await branchDocumentsAPI.update(editingDocument.id, updatePayload);
+        const win = window.open(url, '_blank');
+        if (!win) showWarning('يرجى السماح للنافذة المنبثقة بفتح ملف PDF');
       }
-
-      setShowEditForm(false);
-      setEditingDocument(null);
-      setEditData({ description: '', document_number: '', issue_date: '', issue_date_hijri: '', expiry_date: '', expiry_date_hijri: '', iban_number: '', bank_name: '', file: null });
-      loadDocuments();
-      showSuccess('تم تحديث المستند بنجاح');
     } catch (error) {
-      showError(error.response?.data?.message || 'فشل تحديث المستند');
+      showError(`فشل عرض المستند: ${error.response?.data?.message || error.message || ''}`.trim());
+    } finally {
+      setPreviewLoading(null);
     }
   };
 
-  const handleFileChangeEdit = (e) => {
-    const file = e.target.files[0] || null;
-    if (file) {
-      if (file.size > MAX_UPLOAD_BYTES) {
-        showWarning(fileTooLargeMessage(file.name));
-        e.target.value = ''; // Clear the file input
-        return;
-      }
-    }
-    setEditData({ ...editData, file });
+  const closePreview = () => {
+    if (preview?.url) URL.revokeObjectURL(preview.url);
+    setPreview(null);
   };
 
-  const handleVerify = async (id) => {
+  const verify = async (id) => {
     try {
       await branchDocumentsAPI.verify(id);
+      showSuccess('تم التحقق من المستند');
       loadDocuments();
-    } catch (error) {
+    } catch {
       showError('فشل التحقق من المستند');
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!await confirm({ message: 'هل أنت متأكد من رغبتك في حذف هذا المستند؟', tone: 'danger' })) return;
+  const remove = async (doc, label) => {
+    const ok = await confirm({
+      title: 'حذف المستند',
+      message: `هل أنت متأكد من حذف «${label}»؟ سيصبح المستند غير مرفوع.`,
+      tone: 'danger',
+      confirmText: 'حذف',
+    });
+    if (!ok) return;
     try {
-      await branchDocumentsAPI.delete(id);
+      await branchDocumentsAPI.delete(doc.id);
+      showSuccess('تم حذف المستند');
       loadDocuments();
-    } catch (error) {
+    } catch {
       showError('فشل حذف المستند');
     }
   };
 
-  // All document types (monthly documents are in separate page)
-  const allBranchDocumentTypes = [
-    // Required for all branches (per rules)
-    { value: 'license', label: 'الترخيص', requiresDefaultFields: true, branchType: null },
-    // Common documents (all branches)
-    { value: 'registration', label: 'السجل التجاري', requiresDefaultFields: true, branchType: null },
-    { value: 'iban_file', label: 'ملف الآيبان', requiresDefaultFields: false, branchType: null },
-    // Common documents with default fields (all branches)
-    { value: 'civil_defense_certificate', label: 'شهادة الدفاع المدني', requiresDefaultFields: true, branchType: null },
-    { value: 'municipality_certificate', label: 'شهادة بلدي', requiresDefaultFields: true, branchType: null },
-    // School and healthcare (same document)
-    { value: 'insurance_statement', label: 'كشف التأمينات', requiresDefaultFields: true, branchType: null },
-    // School/healthcare specific documents
-    { value: 'rental_contract', label: 'عقد الايجار', requiresDefaultFields: true, branchType: null },
-    { value: 'operational_plan', label: 'الخطة التشغلية للمركز', requiresDefaultFields: true, branchType: 'healthcare_center' },
-    { value: 'owner_civil_id_copy', label: 'نسخه من هوية الاحوال الشخصية لمالك المركز', requiresDefaultFields: true, branchType: 'healthcare_center' },
-    // Student-related documents for healthcare centers only (should appear in alerts)
-    { value: 'student_cadre_file', label: 'بيانات الطلاب', requiresDefaultFields: false, branchType: 'healthcare_center' },
-  ];
-
-  // Get current branch type (memoized)
-  // Use URL branch_id first, then currentBranchId, then user branch_id
-  const currentBranchType = useMemo(() => {
-    let branchId = null;
-
-    // Priority: URL > currentBranchId (from password) > user branch_id
-    const branchIdFromUrl = searchParams.get('branch_id');
-    if (branchIdFromUrl) {
-      branchId = parseInt(branchIdFromUrl);
-    } else if (currentBranchId) {
-      branchId = currentBranchId;
-    } else if (!isMainManager() && user?.branch_id) {
-      branchId = user.branch_id;
-    }
-
-    if (!branchId) return null;
-    const branch = branches.find(b => b.id === branchId);
-    return branch?.branch_type || null;
-  }, [branches, currentBranchId, isMainManager, user, searchParams]);
-
-  // Filter document types based on branch type (memoized)
-  const branchDocumentTypes = useMemo(() => {
-    let filtered = allBranchDocumentTypes.filter(type => {
-      if (type.branchType) {
-        return currentBranchType === type.branchType;
-      }
-      return true;
-    });
-
-    // Hide restricted types from branch managers
-    if (!isMainManager()) {
-      filtered = filtered.filter(type => !RESTRICTED_DOCUMENT_TYPES.includes(type.value));
-    }
-
-    return filtered;
-  }, [currentBranchType, isMainManager]);
-
-  // Get current branch (must be before early returns)
-  const currentBranch = useMemo(() => {
-    const branchId = getCurrentBranchId();
-    if (!branchId) return null;
-    return branches.find(b => b.id === branchId);
-  }, [branches, currentBranchId, isMainManager, user, searchParams]);
-
-  // Get document status for each document type (must be before early returns)
-  const getDocumentStatus = useCallback((docType) => {
-    if (!allDocuments || allDocuments.length === 0) {
-      return { exists: false, document: null };
-    }
-
-    // Get branch ID from URL first, then currentBranchId, then user branch_id
-    let branchId = null;
-    const branchIdFromUrl = searchParams.get('branch_id');
-    if (branchIdFromUrl) {
-      branchId = parseInt(branchIdFromUrl);
-    } else if (currentBranchId) {
-      branchId = currentBranchId;
-    } else if (!isMainManager() && user?.branch_id) {
-      branchId = user.branch_id;
-    }
-
-    const normalizedType = docType === 'insurance_statement' ? ['insurance_statement', 'insurance_print'] : [docType];
-    const doc = allDocuments.find(d =>
-      normalizedType.includes(d.document_type) &&
-      d.is_active !== false &&
-      (!isMainManager() || d.branch_id === branchId)
-    );
-    return {
-      exists: !!doc,
-      document: doc || null
-    };
-  }, [allDocuments, isMainManager, currentBranchId, user, searchParams]);
-
-  // Sort documents by priority: 1) Student/Cadre, 2) Others
-  // NOTE: payroll_file removed - users enter payroll data in payroll absence system, not as file upload
-  const sortDocumentCardsByPriority = useCallback((cards) => {
-    const monthlyTypes = [];
-    const _studentCadreTypes = ['student_cadre_file'];
-
-    return [...cards].sort((a, b) => {
-      const aType = a.value;
-      const bType = b.value;
-
-      // Monthly documents first (highest priority)
-      const aIsMonthly = monthlyTypes.includes(aType);
-      const bIsMonthly = monthlyTypes.includes(bType);
-      if (aIsMonthly && !bIsMonthly) return -1;
-      if (!aIsMonthly && bIsMonthly) return 1;
-
-      // Student/Cadre documents second (only student_cadre_file remains)
-      const studentCadreTypes = ['student_cadre_file'];
-      const aIsStudentCadre = studentCadreTypes.includes(aType);
-      const bIsStudentCadre = studentCadreTypes.includes(bType);
-      if (aIsStudentCadre && !bIsStudentCadre) return -1;
-      if (!aIsStudentCadre && bIsStudentCadre) return 1;
-
-      // Others last
-      return 0;
-    });
-  }, []);
-
-  // Prepare document cards data (must be before early returns)
-  const documentCards = useMemo(() => {
-    if (!currentBranchType) return [];
-
-    const cards = branchDocumentTypes.map(docType => {
-      const status = getDocumentStatus(docType.value);
-      return {
-        ...docType,
-        exists: status.exists,
-        document: status.document
-      };
-    });
-
-    // Sort by priority
-    return sortDocumentCardsByPriority(cards);
-  }, [branchDocumentTypes, currentBranchType, getDocumentStatus, sortDocumentCardsByPriority]);
-
-  // For main managers: show message if no branch selected
-  if (isMainManager() && !searchParams.get('branch_id') && branches.length > 0) {
+  // ---- render ----------------------------------------------------------------------------------------------------------
+  if (isMain && !branchId) {
     return (
-      <div className="table-page">
-        <div className="page-header">
-          <h1>مستندات الفروع</h1>
-        </div>
-        <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
-          الرجاء اختيار فرع لعرض مستنداته
-        </div>
-      </div>
+      <Page>
+        <PageHeader title="مستندات الفروع" back="/branches-monitoring" />
+        <Card>
+          <EmptyState
+            icon="folder"
+            title="اختر فرعاً لعرض مستنداته"
+            description="افتح صفحة متابعة مستندات الفروع واختر الفرع الذي تريد مراجعته."
+            action={<Button variant="primary" to="/branches-monitoring">متابعة مستندات الفروع</Button>}
+          />
+        </Card>
+      </Page>
     );
   }
 
-  // Show loading states
-  if (loading || (branches.length === 0 && user)) {
-    return <div className="loading">جاري التحميل...</div>;
-  }
-
-  const handleOpenUploadForm = (documentType = '') => {
-    // Auto-select document type based on URL parameter
-    const documentTypeFromUrl = searchParams.get('document_type');
-    let selectedDocumentType = documentType || documentTypeFromUrl || '';
-
-    // Get branch_id from URL or user's branch
-    const branchIdFromUrl = searchParams.get('branch_id');
-    let branchId = '';
-    if (branchIdFromUrl) {
-      branchId = branchIdFromUrl;
-    } else if (!isMainManager() && user?.branch_id) {
-      branchId = user.branch_id;
-    }
-
-    if (isMainManager() && !branchId) {
-      showError('اختر الفرع أولاً قبل رفع المستند');
-      return;
-    }
-
-    if (!currentBranchType) {
-      showError('نوع الفرع غير معروف. يرجى اختيار فرع صالح ثم إعادة المحاولة');
-      return;
-    }
-
-    // Show alerts for specific document types
-    setDocumentAlert(null);
-    if (selectedDocumentType) {
-      const selectedDocType = allBranchDocumentTypes.find(t => t.value === selectedDocumentType);
-      if (selectedDocType?.hasAlert) {
-        if (selectedDocumentType === 'student_cadre_file' || selectedDocumentType === 'dropped_students') {
-          setDocumentAlert({
-            type: 'info',
-            message: 'تنبيه: يجب أن يحتوي المستند على:\n- أرقام جوالات أولياء الأمور\n- المواصلات\n- الخدمات المقدمة لهم'
-          });
-        } else if (selectedDocumentType === 'free_seats') {
-          setDocumentAlert({
-            type: 'info',
-            message: 'تنبيه: يجب أن يحتوي المستند على:\n- عدد المقاعد\n- الفصل الدراسي\n- السنة الدراسية'
-          });
-        } else if (selectedDocumentType === 'acceptance_notifications') {
-          setDocumentAlert({
-            type: 'info',
-            message: 'تنبيه: يجب أن يكون ترتيب أسماء الطلاب في هذا الملف نفس ترتيب أسماء الطلاب في مستند بيانات الطلاب'
-          });
-        }
-      }
-    }
-
-    setUploadData({
-      branch_id: branchId,
-      document_type: selectedDocumentType,
-      description: '',
-      document_number: '',
-      issue_date: '',
-      expiry_date: '',
-      iban_number: '',
-      bank_name: '',
-      file: null,
-    });
-    setShowUploadForm(true);
-
-    // Smooth scroll to upload form section after a brief delay to ensure DOM update
-    setTimeout(() => {
-      const uploadSection = document.getElementById('upload-form-section');
-      if (uploadSection) {
-        // Calculate offset to account for any fixed headers
-        const headerOffset = 80;
-        const elementPosition = uploadSection.getBoundingClientRect().top;
-        const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-
-        window.scrollTo({
-          top: offsetPosition,
-          behavior: 'smooth'
-        });
-      }
-    }, 150);
-  };
+  const initialLoading = !branchesLoaded || (loading && documents.length === 0);
+  const typeNote = TYPE_NOTES[uploadData.document_type];
 
   return (
-    <div className="table-page">
-      <div className="page-header">
-        <h1>{isMainManager() ? 'مستندات الفروع' : 'مستندات الفرع'}</h1>
+    <Page>
+      <PageHeader
+        title="مستندات الفرع"
+        subtitle={currentBranch ? `${currentBranch.branch_name} · ${currentBranch.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية'}` : undefined}
+        back={isMain ? '/branches-monitoring' : undefined}
+        actions={<Button variant="primary" icon="upload" onClick={() => openUpload()}>رفع مستند</Button>}
+      />
+
+      <div className="ui-grid-stats">
+        <StatCard label="المستندات المطلوبة" value={counts.total} icon="folder" tone="primary" loading={initialLoading} />
+        <StatCard label="مرفوعة" value={counts.ok} icon="check-circle" tone="success" loading={initialLoading} />
+        <StatCard label="غير مرفوعة" value={counts.missing} icon="alert" tone="danger" loading={initialLoading} />
+        <StatCard label="منتهية أو تنتهي قريباً" value={counts.attention} icon="clock" tone="warning" loading={initialLoading} />
       </div>
 
-      {/* Branch Info */}
-      {currentBranch && (
-        <div className="branch-info-card" style={{
-          background: 'var(--bg)',
-          padding: '1rem 1.5rem',
-          borderRadius: 'var(--radius-xl)',
-          marginBottom: '1.5rem',
-          boxShadow: 'var(--shadow-sm)',
-          border: '1px solid var(--border-light)'
-        }}>
-          <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text)' }}>
-            {currentBranch.branch_name}
-          </h2>
-          <p style={{ margin: '0.5rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            نوع الفرع: {currentBranch.branch_type === 'school' ? 'مدرسة' : 'مركز رعاية نهارية'}
-          </p>
+      {initialLoading ? (
+        <div className="bd-grid">
+          {[0, 1, 2, 3].map((i) => <Card key={i}><Skeleton lines={3} height={16} /></Card>)}
         </div>
-      )}
-
-      {/* Document Cards Grid */}
-      <div className="document-cards-container">
-        <h2 style={{
-          marginBottom: '1.5rem',
-          fontSize: '1.5rem',
-          color: 'var(--text)',
-          fontWeight: 600
-        }}>
-          مستندات الفرع
-        </h2>
-        {documentCards.length === 0 ? (
-          <div className="no-data" style={{
-            textAlign: 'center',
-            padding: '3rem',
-            color: 'var(--text-secondary)'
-          }}>
-            لا توجد مستندات مطلوبة لهذا النوع من الفروع
-          </div>
-        ) : (
-          <div className="document-cards-grid">
-            {documentCards.map((card) => {
-              const _docType = allBranchDocumentTypes.find(dt => dt.value === card.value);
-
-              // Check if document is expired
-              const isExpired = card.exists && card.document?.expiry_date ? (() => {
-                try {
-                  const expiryDate = new Date(card.document.expiry_date);
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  expiryDate.setHours(0, 0, 0, 0);
-                  return expiryDate < today;
-                } catch (e) {
-                  return false;
-                }
-              })() : false;
-
-              return (
-                <div
-                  key={card.value}
-                  className={`document-card ${card.exists ? 'document-exists' : 'document-missing'} ${isExpired ? 'document-expired' : ''}`}
-                >
-                  <div className="document-card-header">
-                    <div className="document-card-icon">
-                      {card.exists ? (
-                        <span className="status-icon exists">✓</span>
-                      ) : (
-                        <span className="status-icon missing">✗</span>
-                      )}
-                    </div>
-                    <h3 className="document-card-title">{card.label}</h3>
+      ) : cards.length === 0 ? (
+        <Card><EmptyState icon="folder" title="لا توجد مستندات مطلوبة لهذا النوع من الفروع" /></Card>
+      ) : (
+        <ul className="bd-grid">
+          {cards.map((card) => {
+            const doc = card.document;
+            const meta = STATE_META[card.state];
+            const canPreview = doc?.mime_type && (doc.mime_type.startsWith('image/') || doc.mime_type === 'application/pdf');
+            const canDelete = doc && (isMain || user?.branch_id === doc.branch_id);
+            return (
+              <li key={card.value} className={`bd-card bd-${card.state}`}>
+                <div className="bd-head">
+                  <span className={`bd-icon ui-tone-${meta.tone}`}><Icon name={meta.icon} size={22} /></span>
+                  <div className="bd-title">
+                    <h3>{card.label}</h3>
+                    <Badge tone={meta.tone}>{meta.label}</Badge>
                   </div>
+                </div>
 
-                  <div className="document-card-body">
-                    {card.exists && card.document ? (
-                      <div className="document-info">
-                        <div className="document-info-item">
-                          <span className="info-label">اسم الملف:</span>
-                          <span className="info-value">{card.document.file_name}</span>
-                        </div>
-                        <div className="document-info-item">
-                          <span className="info-label">تاريخ الرفع:</span>
-                          <span className="info-value">
-                            {formatDate(card.document.uploaded_at)}
-                          </span>
-                        </div>
-                        {/* Expiry date display */}
-                        {(card.document.expiry_date || card.document.expiry_date_hijri) && (
-                          <div className="document-info-item">
-                            <span className="info-label">تاريخ الانتهاء:</span>
-                            <span className="info-value">
-                              {card.document.expiry_date && formatDate(card.document.expiry_date)}
-                              {card.document.expiry_date && card.document.expiry_date_hijri && ' / '}
-                              {card.document.expiry_date_hijri && (
-                                <span>
-                                  {card.document.expiry_date_hijri} هجري
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="document-missing-message">
-                        <p>المستند غير موجود</p>
+                {doc ? (
+                  <dl className="bd-facts">
+                    <div><dt>الملف</dt><dd title={doc.file_name}>{doc.file_name}</dd></div>
+                    <div><dt>تاريخ الرفع</dt><dd>{formatDate(doc.uploaded_at)}</dd></div>
+                    {(doc.expiry_date || doc.expiry_date_hijri) && (
+                      <div>
+                        <dt>تاريخ الانتهاء</dt>
+                        <dd>
+                          {doc.expiry_date && formatDate(doc.expiry_date)}
+                          {doc.expiry_date && doc.expiry_date_hijri && ' · '}
+                          {doc.expiry_date_hijri && <span>{doc.expiry_date_hijri} هـ</span>}
+                        </dd>
                       </div>
                     )}
-                  </div>
-
-                  <div className="document-card-actions">
-                    {card.exists && card.document ? (
-                      <>
-                        <button
-                          onClick={() => handleEdit(card.document)}
-                          className="btn-card btn-update"
-                        >
-                          <img src="https://img.icons8.com/material-rounded/24/edit.png" alt="تحديث" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
-                          تحديث
-                        </button>
-                        {card.document.mime_type && (card.document.mime_type.startsWith('image/') || card.document.mime_type === 'application/pdf') && (
-                          <button
-                            onClick={() => handlePreview(card.document)}
-                            className="btn-card btn-preview"
-                            disabled={previewLoading === card.document.id}
-                          >
-                            {previewLoading === card.document.id ? (
-                              <span className="spinner" style={{ display: 'inline-block', width: '12px', height: '12px', marginLeft: '5px' }}></span>
-                            ) : (
-                              <img src="https://img.icons8.com/?size=24&id=85028&format=png&color=000000" alt="معاينة" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
-                            )}
-                            معاينة
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDownload(card.document.id, card.document.file_name)}
-                          className="btn-card btn-download"
-                          disabled={downloading === card.document.id}
-                        >
-                          {downloading === card.document.id ? (
-                            <span className="spinner" style={{ display: 'inline-block', width: '12px', height: '12px', marginLeft: '5px' }}></span>
-                          ) : (
-                            <img src="https://img.icons8.com/material-rounded/24/download--v1.png" alt="تحميل" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
-                          )}
-                          تحميل
-                        </button>
-                        {(isMainManager() || (user?.branch_id === card.document.branch_id)) && (
-                          <button
-                            onClick={() => handleDelete(card.document.id)}
-                            className="btn-card btn-delete"
-                          >
-                            <img src="https://img.icons8.com/material-rounded/24/trash.png" alt="حذف" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
-                            حذف
-                          </button>
-                        )}
-                        {isMainManager() && !card.document.is_verified && (
-                          <button
-                            onClick={() => handleVerify(card.document.id)}
-                            className="btn-card btn-verify"
-                          >
-                            ✓ التحقق
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => handleOpenUploadForm(card.value)}
-                        className="btn-card btn-upload"
-                      >
-                        <img src="https://img.icons8.com/material-rounded/24/upload.png" alt="رفع" style={{ width: '16px', height: '16px', marginLeft: '5px' }} />
-                        رفع المستند
-                      </button>
+                    {isMain && (
+                      <div><dt>التحقق</dt><dd>{doc.is_verified ? <Badge tone="success">تم التحقق</Badge> : <Badge tone="neutral">بانتظار التحقق</Badge>}</dd></div>
                     )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Upload Form - Expandable Section */}
-      {showUploadForm && (
-        <div id="upload-form-section" className="upload-form-expanding-section">
-          <div className="upload-form-section-header">
-            <h2>رفع مستند فرع</h2>
-            <button
-              type="button"
-              className="section-close"
-              onClick={() => {
-                setShowUploadForm(false);
-                setUploadData({
-                  branch_id: !isMainManager() && user?.branch_id ? user.branch_id : '',
-                  document_type: '',
-                  description: '',
-                  document_number: '',
-                  issue_date: '',
-                  issue_date_hijri: '',
-                  expiry_date: '',
-                  expiry_date_hijri: '',
-                  iban_number: '',
-                  bank_name: '',
-                  file: null,
-                });
-                setDocumentAlert(null);
-              }}
-            >
-              ×
-            </button>
-          </div>
-          <div className="upload-form-section-content">
-            <form onSubmit={handleUpload}>
-              {isMainManager() && (
-                <div className="form-group">
-                  <label>الفرع *</label>
-                  <select
-                    value={uploadData.branch_id}
-                    onChange={(e) => setUploadData({ ...uploadData, branch_id: e.target.value })}
-                    required
-                  >
-                    <option value="">اختر الفرع</option>
-                    {branches.map(branch => (
-                      <option key={branch.id} value={branch.id}>
-                        {branch.branch_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {!isMainManager() && user?.branch_id && (
-                <div className="form-group">
-                  <label>الفرع</label>
-                  <input
-                    type="text"
-                    value={branches.find(b => b.id === user.branch_id)?.branch_name || 'فرعك'}
-                    disabled
-                    style={{ background: '#f0f0f0', cursor: 'not-allowed' }}
-                  />
-                </div>
-              )}
-              <div className="form-group">
-                <label>نوع المستند *</label>
-                <select
-                  value={uploadData.document_type}
-                  onChange={(e) => {
-                    const selectedType = e.target.value;
-                    setUploadData({ ...uploadData, document_type: selectedType });
-
-                    // Show alerts for specific document types
-                    const selectedDocType = allBranchDocumentTypes.find(t => t.value === selectedType);
-                    if (selectedDocType?.hasAlert) {
-                      if (selectedType === 'student_cadre_file' || selectedType === 'dropped_students') {
-                        setDocumentAlert({
-                          type: 'info',
-                          message: 'تنبيه: يجب أن يحتوي المستند على:\n- أرقام جوالات أولياء الأمور\n- المواصلات\n- الخدمات المقدمة لهم'
-                        });
-                      } else if (selectedType === 'free_seats') {
-                        setDocumentAlert({
-                          type: 'info',
-                          message: 'تنبيه: يجب أن يحتوي المستند على:\n- عدد المقاعد\n- الفصل الدراسي\n- السنة الدراسية'
-                        });
-                      } else if (selectedType === 'acceptance_notifications') {
-                        setDocumentAlert({
-                          type: 'info',
-                          message: 'تنبيه: يجب أن يكون ترتيب أسماء الطلاب في هذا الملف نفس ترتيب أسماء الطلاب في مستند بيانات الطلاب'
-                        });
-                      }
-                    } else {
-                      setDocumentAlert(null);
-                    }
-                  }}
-                  required
-                >
-                  <option value="">اختر النوع</option>
-                  {branchDocumentTypes.map(type => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-                {/* Document type alert */}
-                {documentAlert && (
-                  <div className="document-alert" style={{
-                    marginTop: '10px',
-                    padding: '12px',
-                    backgroundColor: '#e3f2fd',
-                    border: '1px solid var(--primary)',
-                    borderRadius: '4px',
-                    color: '#1565c0',
-                    fontSize: '14px',
-                    whiteSpace: 'pre-line',
-                    lineHeight: '1.6'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <span>{documentAlert.message}</span>
-                      <button
-                        onClick={() => setDocumentAlert(null)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#1565c0',
-                          cursor: 'pointer',
-                          fontSize: '18px',
-                          padding: '0 5px',
-                          marginLeft: '10px'
-                        }}
-                        type="button"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
+                  </dl>
+                ) : (
+                  <p className="bd-empty">لم يتم رفع هذا المستند بعد.</p>
                 )}
-              </div>
-              <div className="form-group">
-                <label>الملف * (PDF, JPG, PNG - الحد الأقصى {MAX_UPLOAD_MB} ميجابايت)</label>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={handleFileChange}
-                  required
-                />
-              </div>
-              {/* Date fields - shown for documents that require default fields, hidden for IBAN and file-only documents */}
-              {(() => {
-                const selectedDocType = allBranchDocumentTypes.find(t => t.value === uploadData.document_type);
-                const requiresDefaultFields = selectedDocType?.requiresDefaultFields !== false && uploadData.document_type !== 'iban_file';
-                return requiresDefaultFields ? (
-                  <>
-                    <div className="form-group">
-                      <label>رقم المستند</label>
-                      <input
-                        type="text"
-                        value={uploadData.document_number}
-                        onChange={(e) => setUploadData({ ...uploadData, document_number: e.target.value })}
-                        placeholder="رقم المستند"
-                      />
-                    </div>
-                    <div className="form-group">
-                      <UnifiedDatePicker
-                        label="تاريخ الإصدار"
-                        hijriValue={uploadData.issue_date_hijri}
-                        gregorianValue={uploadData.issue_date}
-                        onChange={(hijri, gregorian) => {
-                          setUploadData({ ...uploadData, issue_date_hijri: hijri, issue_date: gregorian });
-                        }}
-                        dateType="general"
-                      />
-                    </div>
-                    <div className="form-group">
-                      <UnifiedDatePicker
-                        label="تاريخ الانتهاء"
-                        hijriValue={uploadData.expiry_date_hijri}
-                        gregorianValue={uploadData.expiry_date}
-                        onChange={(hijri, gregorian) => {
-                          setUploadData({ ...uploadData, expiry_date_hijri: hijri, expiry_date: gregorian });
-                        }}
-                        dateType="expiry_date"
-                      />
-                    </div>
-                  </>
-                ) : null;
-              })()}
-              {/* IBAN fields - only for IBAN file document type */}
-              {uploadData.document_type === 'iban_file' && (
-                <div className="form-group">
-                  <BankSelect
-                    label="البنك"
-                    value={uploadData.bank_name}
-                    onChange={(value) => setUploadData({ ...uploadData, bank_name: value })}
-                    ibanValue={uploadData.iban_number}
-                    onIbanChange={(value) => setUploadData({ ...uploadData, iban_number: value })}
-                    required={true}
-                  />
-                </div>
-              )}
-              <div className="form-group">
-                <label>الوصف</label>
-                <textarea
-                  value={uploadData.description}
-                  onChange={(e) => setUploadData({ ...uploadData, description: e.target.value })}
-                  rows="3"
-                />
-              </div>
-              <div className="upload-form-actions">
-                <button
-                  type="submit"
-                  className="btn-primary"
-                  disabled={uploading}
-                >
-                  {uploading ? (
+
+                <div className="bd-actions">
+                  {doc ? (
                     <>
-                      <span className="spinner" style={{ display: 'inline-block', marginLeft: '8px' }}></span>
-                      جاري الرفع...
+                      <Button size="sm" variant="soft" icon="edit" onClick={() => openEdit(doc)}>تحديث</Button>
+                      {canPreview && (
+                        <Button size="sm" variant="secondary" icon="eye" loading={previewLoading === doc.id} onClick={() => openPreview(doc)}>معاينة</Button>
+                      )}
+                      <Button size="sm" variant="secondary" icon="download" loading={downloading === doc.id} onClick={() => download(doc.id, doc.file_name)}>تحميل</Button>
+                      <RowActions actions={[
+                        { label: 'التحقق من المستند', icon: 'check-circle', hidden: !(isMain && !doc.is_verified), onClick: () => verify(doc.id) },
+                        { label: 'حذف', icon: 'trash', danger: true, hidden: !canDelete, onClick: () => remove(doc, card.label) },
+                      ]} />
                     </>
-                  ) : 'رفع'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowUploadForm(false);
-                    setUploadData({
-                      branch_id: !isMainManager() && user?.branch_id ? user.branch_id : '',
-                      document_type: '',
-                      description: '',
-                      document_number: '',
-                      issue_date: '',
-                      issue_date_hijri: '',
-                      expiry_date: '',
-                      expiry_date_hijri: '',
-                      iban_number: '',
-                      bank_name: '',
-                      file: null,
-                    });
-                    setDocumentAlert(null);
-                  }}
-                  className="btn-secondary"
-                  disabled={uploading}
-                >
-                  إلغاء
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-
-      {/* Edit Document Modal */}
-      {showEditForm && editingDocument && (
-        <div className="modal">
-          <div className="modal-content">
-            <h2>تعديل المستند</h2>
-            <form onSubmit={handleUpdate}>
-              <div className="form-group">
-                <label>الملف الحالي</label>
-                <input
-                  type="text"
-                  value={editingDocument.file_name}
-                  disabled
-                  style={{ background: '#f0f0f0', cursor: 'not-allowed' }}
-                />
-              </div>
-              <div className="form-group">
-                <label>رفع ملف جديد (اختياري)</label>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={handleFileChangeEdit}
-                />
-                {editData.file && (
-                  <span className="file-name" style={{ fontSize: '12px', color: '#4CAF50', display: 'block', marginTop: '5px' }}>
-                    ✓ {editData.file.name}
-                  </span>
-                )}
-              </div>
-              {/* Date fields - hidden for IBAN file documents */}
-              {editingDocument && editingDocument.document_type !== 'iban_file' && (
-                <>
-                  <div className="form-group">
-                    <label>رقم المستند</label>
-                    <input
-                      type="text"
-                      value={editData.document_number}
-                      onChange={(e) => setEditData({ ...editData, document_number: e.target.value })}
-                      placeholder="رقم المستند"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <UnifiedDatePicker
-                      label="تاريخ الإصدار"
-                      hijriValue={editData.issue_date_hijri}
-                      gregorianValue={editData.issue_date}
-                      onChange={(hijri, gregorian) => {
-                        setEditData({ ...editData, issue_date_hijri: hijri, issue_date: gregorian });
-                      }}
-                      dateType="general"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <UnifiedDatePicker
-                      label="تاريخ الانتهاء"
-                      hijriValue={editData.expiry_date_hijri}
-                      gregorianValue={editData.expiry_date}
-                      onChange={(hijri, gregorian) => {
-                        setEditData({ ...editData, expiry_date_hijri: hijri, expiry_date: gregorian });
-                      }}
-                      dateType="expiry_date"
-                    />
-                  </div>
-                </>
-              )}
-              {/* IBAN fields - only for IBAN file document type */}
-              {editingDocument && editingDocument.document_type === 'iban_file' && (
-                <div className="form-group">
-                  <BankSelect
-                    label="البنك"
-                    value={editData.bank_name}
-                    onChange={(value) => setEditData({ ...editData, bank_name: value })}
-                    ibanValue={editData.iban_number}
-                    onIbanChange={(value) => setEditData({ ...editData, iban_number: value })}
-                    required={true}
-                  />
+                  ) : (
+                    <Button size="sm" variant="primary" icon="upload" onClick={() => openUpload(card.value)}>رفع المستند</Button>
+                  )}
                 </div>
-              )}
-              <div className="form-group">
-                <label>الوصف</label>
-                <textarea
-                  value={editData.description}
-                  onChange={(e) => setEditData({ ...editData, description: e.target.value })}
-                  rows="3"
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* Upload */}
+      <Modal
+        open={uploadOpen}
+        onClose={uploading ? () => {} : closeUpload}
+        title="رفع مستند فرع"
+        size="lg"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={closeUpload} disabled={uploading}>إلغاء</Button>
+            <Button variant="primary" type="submit" form="bd-upload-form" icon="upload" loading={uploading}>رفع</Button>
+          </>
+        )}
+      >
+        <form id="bd-upload-form" onSubmit={submitUpload} className="ui-form-stack" noValidate>
+          {isMain ? (
+            <FormField label="الفرع" required>
+              <Select
+                value={uploadData.branch_id}
+                onChange={(e) => setUploadData({ ...uploadData, branch_id: e.target.value })}
+                options={branches.map((b) => ({ value: b.id, label: b.branch_name }))}
+                placeholder="اختر الفرع"
+              />
+            </FormField>
+          ) : (
+            <FormField label="الفرع">
+              <Input value={currentBranch?.branch_name || 'فرعك'} disabled readOnly />
+            </FormField>
+          )}
+
+          <FormField label="نوع المستند" required>
+            <Select
+              value={uploadData.document_type}
+              onChange={(e) => setUploadData({ ...uploadData, document_type: e.target.value })}
+              options={documentTypes.map((t) => ({ value: t.value, label: t.label }))}
+              placeholder="اختر النوع"
+            />
+          </FormField>
+          {typeNote && <Alert tone="info" title="تنبيه"><span className="bd-note">{typeNote}</span></Alert>}
+
+          <FormField label="الملف" required hint={`PDF أو JPG أو PNG · الحد الأقصى ${MAX_UPLOAD_MB} ميجابايت`}>
+            <input type="file" className="ui-file" accept=".pdf,.jpg,.jpeg,.png" onChange={pickFile(setUploadData)} />
+          </FormField>
+
+          {requiresDates(uploadData.document_type) && uploadData.document_type && (
+            <div className="bd-form-grid">
+              <FormField label="رقم المستند">
+                <Input value={uploadData.document_number} onChange={(e) => setUploadData({ ...uploadData, document_number: e.target.value })} placeholder="رقم المستند" />
+              </FormField>
+              <UnifiedDatePicker
+                label="تاريخ الإصدار"
+                hijriValue={uploadData.issue_date_hijri}
+                gregorianValue={uploadData.issue_date}
+                onChange={(hijri, gregorian) => setUploadData((prev) => ({ ...prev, issue_date_hijri: hijri, issue_date: gregorian }))}
+                dateType="general"
+              />
+              <UnifiedDatePicker
+                label="تاريخ الانتهاء"
+                hijriValue={uploadData.expiry_date_hijri}
+                gregorianValue={uploadData.expiry_date}
+                onChange={(hijri, gregorian) => setUploadData((prev) => ({ ...prev, expiry_date_hijri: hijri, expiry_date: gregorian }))}
+                dateType="expiry_date"
+              />
+            </div>
+          )}
+
+          {uploadData.document_type === 'iban_file' && (
+            <BankSelect
+              label="البنك"
+              value={uploadData.bank_name}
+              onChange={(value) => setUploadData((prev) => ({ ...prev, bank_name: value }))}
+              ibanValue={uploadData.iban_number}
+              onIbanChange={(value) => setUploadData((prev) => ({ ...prev, iban_number: value }))}
+              required
+            />
+          )}
+
+          <FormField label="الوصف">
+            <Textarea rows={3} value={uploadData.description} onChange={(e) => setUploadData({ ...uploadData, description: e.target.value })} />
+          </FormField>
+        </form>
+      </Modal>
+
+      {/* Edit / replace */}
+      <Modal
+        open={Boolean(editing)}
+        onClose={saving ? () => {} : closeEdit}
+        title="تعديل المستند"
+        size="lg"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={closeEdit} disabled={saving}>إلغاء</Button>
+            <Button variant="primary" type="submit" form="bd-edit-form" loading={saving}>حفظ</Button>
+          </>
+        )}
+      >
+        {editing && (
+          <form id="bd-edit-form" onSubmit={submitEdit} className="ui-form-stack" noValidate>
+            <FormField label="الملف الحالي">
+              <Input value={editing.file_name} disabled readOnly />
+            </FormField>
+            <FormField label="رفع ملف جديد (اختياري)" hint="اترك الحقل فارغاً للإبقاء على الملف الحالي">
+              <input type="file" className="ui-file" accept=".pdf,.jpg,.jpeg,.png" onChange={pickFile(setEditData)} />
+            </FormField>
+
+            {requiresDates(editing.document_type) && (
+              <div className="bd-form-grid">
+                <FormField label="رقم المستند">
+                  <Input value={editData.document_number} onChange={(e) => setEditData({ ...editData, document_number: e.target.value })} placeholder="رقم المستند" />
+                </FormField>
+                <UnifiedDatePicker
+                  label="تاريخ الإصدار"
+                  hijriValue={editData.issue_date_hijri}
+                  gregorianValue={editData.issue_date}
+                  onChange={(hijri, gregorian) => setEditData((prev) => ({ ...prev, issue_date_hijri: hijri, issue_date: gregorian }))}
+                  dateType="general"
+                />
+                <UnifiedDatePicker
+                  label="تاريخ الانتهاء"
+                  hijriValue={editData.expiry_date_hijri}
+                  gregorianValue={editData.expiry_date}
+                  onChange={(hijri, gregorian) => setEditData((prev) => ({ ...prev, expiry_date_hijri: hijri, expiry_date: gregorian }))}
+                  dateType="expiry_date"
                 />
               </div>
-              <div className="form-actions">
-                <button type="submit" className="btn-primary">حفظ</button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEditForm(false);
-                    setEditingDocument(null);
-                    setEditData({ description: '', document_number: '', issue_date: '', expiry_date: '', file: null });
-                  }}
-                  className="btn-secondary"
-                >
-                  إلغاء
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            )}
 
-      {/* Image Preview Modal */}
-      {previewDocument && previewUrl && previewDocument.mime_type && previewDocument.mime_type.startsWith('image/') && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.9)',
-          zIndex: 2000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px'
-        }}
-          onClick={closePreview}
-        >
-          <div style={{ position: 'relative', maxWidth: '90%', maxHeight: '90%' }}>
-            <button
-              onClick={closePreview}
-              style={{
-                position: 'absolute',
-                top: '-40px',
-                right: '0',
-                background: 'none',
-                border: 'none',
-                color: 'white',
-                fontSize: '32px',
-                cursor: 'pointer',
-                zIndex: 2001
-              }}
-            >
-              ×
-            </button>
-            <img
-              src={previewUrl}
-              alt={previewDocument.file_name}
-              style={{
-                maxWidth: '100%',
-                maxHeight: '90vh',
-                objectFit: 'contain'
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-        </div>
-      )}
-    </div>
+            {editing.document_type === 'iban_file' && (
+              <BankSelect
+                label="البنك"
+                value={editData.bank_name}
+                onChange={(value) => setEditData((prev) => ({ ...prev, bank_name: value }))}
+                ibanValue={editData.iban_number}
+                onIbanChange={(value) => setEditData((prev) => ({ ...prev, iban_number: value }))}
+                required
+              />
+            )}
+
+            <FormField label="الوصف">
+              <Textarea rows={3} value={editData.description} onChange={(e) => setEditData({ ...editData, description: e.target.value })} />
+            </FormField>
+          </form>
+        )}
+      </Modal>
+
+      {/* Image preview */}
+      <Modal open={Boolean(preview)} onClose={closePreview} title={preview?.document.file_name} size="xl">
+        {preview && <img className="bd-preview" src={preview.url} alt={preview.document.file_name} />}
+      </Modal>
+    </Page>
   );
-};
-
-export default BranchDocuments;
-
+}
