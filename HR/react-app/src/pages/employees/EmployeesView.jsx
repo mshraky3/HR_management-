@@ -69,7 +69,7 @@ export default function EmployeesView({
       if (completion === 'incomplete' && isDataComplete(e)) return false;
       if (completion === 'complete' && !isDataComplete(e)) return false;
       if (!q) return true;
-      const hay = normalizeSearch([fullName(e), e.id_or_residency_number, e.phone_number, e.job_title, e.occupation, e.employee_id_number].join(' '));
+      const hay = normalizeSearch([fullName(e), e.id_or_residency_number, e.phone_number, e.job_title, e.occupation, e.employee_id_number, e.email, branchesMap.get(e.branch_id)?.branch_name].join(' '));
       return q.split(/\s+/).every((part) => hay.includes(part));
     });
     const dir = sort.dir === 'asc' ? 1 : -1;
@@ -218,7 +218,7 @@ export default function EmployeesView({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onClear={() => setSearch('')}
-                placeholder="ابحث بالاسم أو رقم الهوية أو الجوال أو المهنة…"
+                placeholder="ابحث بالاسم أو رقم الهوية أو الجوال أو البريد أو المهنة أو الفرع…"
               />
               {isMain && (
                 <Select
