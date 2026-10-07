@@ -5,6 +5,7 @@
 
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
+import { completeCalendarPairs } from '../utils/calendarPairs.js';
 
 /**
  * Universal employee search: one term matched against the name (full or any part), ID / residency number,
@@ -431,6 +432,7 @@ export const Employee = {
    */
   async create(employeeData, db = sql) {
     try {
+      completeCalendarPairs(employeeData);
       const {
         employee_id_number, branch_id, first_name, second_name, third_name, fourth_name,
         occupation, nationality, date_of_birth_hijri, date_of_birth_gregorian,
@@ -539,6 +541,7 @@ export const Employee = {
   async update(id, updates, updatedBy, options = {}) {
 
     try {
+      completeCalendarPairs(updates);
       const allowedFields = [
         'first_name', 'second_name', 'third_name', 'fourth_name',
         'occupation', 'nationality', 'date_of_birth_hijri', 'date_of_birth_gregorian',

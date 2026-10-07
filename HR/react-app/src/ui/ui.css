@@ -513,3 +513,18 @@ textarea.ui-input { min-height: 5rem; resize: vertical; }
   .ui-meter { grid-template-columns: minmax(0, 1fr) 3rem; }
   .ui-meter-track { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* CopyText: click a value to copy it */
+.ui-copy {
+  display: inline-flex; align-items: center; gap: 0.4rem; max-width: 100%;
+  padding: 0.1rem 0.4rem; margin: -0.1rem -0.4rem; border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: inherit; font: inherit; text-align: start; cursor: copy;
+  transition: background-color 0.15s ease;
+}
+.ui-copy:hover, .ui-copy:focus-visible { background: var(--primary-light); }
+.ui-copy:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.ui-copy-text { min-width: 0; overflow-wrap: anywhere; }
+.ui-copy-hint { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--text-muted); font-size: var(--font-size-sm); opacity: 0; transition: opacity 0.15s ease; flex: none; }
+.ui-copy:hover .ui-copy-hint, .ui-copy:focus-visible .ui-copy-hint, .ui-copy.is-copied .ui-copy-hint { opacity: 1; }
+.ui-copy.is-copied .ui-copy-hint { color: var(--success); }
+@media (hover: none) { .ui-copy-hint { opacity: 0.6; } }

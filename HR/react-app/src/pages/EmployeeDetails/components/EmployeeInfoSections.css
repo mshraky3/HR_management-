@@ -1,0 +1,18 @@
+/* Employee data sections: only what the kit does not provide. Tokens only, logical properties (RTL). */
+
+.ei-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 1rem 1.5rem; margin: 0; }
+.ei-field { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.ei-field dt { color: var(--text-muted); font-size: var(--font-size-sm); }
+.ei-field dd { margin: 0; font-weight: 600; min-width: 0; }
+.ei-wide { grid-column: span 2; }
+
+.ei-dates { display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; }
+.ei-date { display: inline-flex; align-items: baseline; gap: 0.5rem; }
+.ei-date small { color: var(--text-muted); font-weight: 400; }
+
+.ei-total dd { color: var(--primary); font-size: 1.1em; }
+
+@media (max-width: 640px) {
+  .ei-grid { grid-template-columns: minmax(0, 1fr); }
+  .ei-wide { grid-column: auto; }
+}

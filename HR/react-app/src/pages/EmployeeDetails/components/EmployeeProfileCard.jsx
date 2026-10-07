@@ -1,4 +1,5 @@
 import { DATA_COMPLETION_STATUS } from '../../../utils/employeeConstants';
+import { CopyText } from '../../../ui';
 
 const getInitials = (firstName, secondName) => {
   const first = firstName?.charAt(0) || '';
@@ -52,9 +53,11 @@ const EmployeeProfileCard = ({
         </div>
         <div className="employee-name-section">
           <h2>
-            {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
+            <CopyText value={[employee.first_name, employee.second_name, employee.third_name, employee.fourth_name].filter(Boolean).join(' ')}>
+              {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
+            </CopyText>
           </h2>
-          <div className="employee-id">رقم الموظف: {employee.employee_id_number}</div>
+          <div className="employee-id">رقم الموظف: <CopyText value={employee.employee_id_number}>{employee.employee_id_number}</CopyText></div>
           <span className={`employee-status-badge ${getStatusBadgeClass(employee.status || 'active')}`}>
             {getStatusLabel(employee.status || 'active')}
           </span>

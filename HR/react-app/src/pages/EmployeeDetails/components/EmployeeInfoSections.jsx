@@ -1,392 +1,130 @@
-import { isSaudi } from "../../../utils/employeeHelpers";
-import { formatDate } from "../../../utils/dateConverters";
+/**
+ * Employee data sections. Every value is click-to-copy (CopyText). Dates that exist in both calendars show
+ * the Hijri and Gregorian values side by side (the missing one is calculated by the server).
+ */
+import { Card, CopyText } from '../../../ui';
+import { formatDate } from '../../../utils/dateConverters';
+import './EmployeeInfoSections.css';
 
-// Religion translation mapping
-const getReligionLabel = (religion) => {
-  const religionMap = {
-    Islam: "الإسلام",
-    Christianity: "المسيحية",
-    Judaism: "اليهودية",
-    Others: "أخرى",
-  };
-  return religionMap[religion] || religion || "-";
-};
+const RELIGIONS = { Islam: 'الإسلام', Christianity: 'المسيحية', Judaism: 'اليهودية', Others: 'أخرى' };
+const MARITAL = { Single: 'أعزب', Married: 'متزوج', Divorced: 'مطلق', Widowed: 'أرمل' };
+const GENDERS = { male: 'ذكر', female: 'أنثى' };
+const ID_TYPES = { citizen: 'مواطن', resident: 'مقيم' };
 
-// Marital status translation mapping
-const getMaritalStatusLabel = (maritalStatus) => {
-  const maritalStatusMap = {
-    Single: "أعزب",
-    Married: "متزوج",
-    Divorced: "مطلق",
-    Widowed: "أرمل",
-  };
-  return maritalStatusMap[maritalStatus] || maritalStatus || "-";
-};
+const money = (v) => `${(parseFloat(v) || 0).toLocaleString('en-US')} ريال`;
+const filled = (v) => v !== undefined && v !== null && String(v).trim() !== '' && v !== 0 && v !== '0' && v !== '0.00';
 
-const EmployeeInfoSections = ({ employee, branches }) => (
-  <>
-    <div className="employee-info-section">
-      <h2 className="section-title">القسم الأول: المعلومات الأساسية</h2>
-      <table className="employee-info-table">
-        <tbody>
-          <tr>
-            <th>المهنة</th>
-            <td>{employee.occupation || "-"}</td>
-            <th>الجنسية</th>
-            <td>{employee.nationality || "-"}</td>
-          </tr>
-          <tr>
-            <th>الفرع</th>
-            <td>
-              {branches.find((b) => b.id === employee.branch_id)?.branch_name ||
-                employee.branch_id ||
-                "-"}
-            </td>
-            <th>الجنس</th>
-            <td>
-              {employee.gender === "male"
-                ? "ذكر"
-                : employee.gender === "female"
-                  ? "أنثى"
-                  : "-"}
-            </td>
-          </tr>
-          <tr>
-            <th>نوع الهوية</th>
-            <td>
-              {employee.id_type === "citizen"
-                ? "مواطن"
-                : employee.id_type === "resident"
-                  ? "مقيم"
-                  : "-"}
-            </td>
-            <th>رقم الهوية/الإقامة</th>
-            <td>{employee.id_or_residency_number || "-"}</td>
-          </tr>
-          {employee.date_of_birth_hijri && isSaudi(employee.nationality) && (
-            <tr>
-              <th>تاريخ الميلاد</th>
-              <td colSpan="3">{employee.date_of_birth_hijri}</td>
-            </tr>
-          )}
-          {!employee.date_of_birth_hijri &&
-            employee.date_of_birth_gregorian &&
-            isSaudi(employee.nationality) && (
-              <tr>
-                <th>تاريخ الميلاد</th>
-                <td colSpan="3">-</td>
-              </tr>
-            )}
-          {employee.date_of_birth_gregorian &&
-            !isSaudi(employee.nationality) && (
-              <tr>
-                <th>تاريخ الميلاد</th>
-                <td colSpan="3">
-                  {formatDate(employee.date_of_birth_gregorian)}
-                </td>
-              </tr>
-            )}
-          {(employee.id_expiry_date_hijri ||
-            employee.id_expiry_date_gregorian) && (
-              <tr>
-                {employee.id_expiry_date_hijri && (
-                  <>
-                    <th>انتهاء الهوية (هجري)</th>
-                    <td>{employee.id_expiry_date_hijri}</td>
-                  </>
-                )}
-                {employee.id_expiry_date_gregorian && (
-                  <>
-                    <th>انتهاء الهوية (ميلادي)</th>
-                    <td>{formatDate(employee.id_expiry_date_gregorian)}</td>
-                  </>
-                )}
-              </tr>
-            )}
-          {(employee.religion || employee.marital_status) && (
-            <tr>
-              {employee.religion && (
-                <>
-                  <th>الديانة</th>
-                  <td>{getReligionLabel(employee.religion)}</td>
-                </>
-              )}
-              {employee.marital_status && (
-                <>
-                  <th>الحالة الاجتماعية</th>
-                  <td>{getMaritalStatusLabel(employee.marital_status)}</td>
-                </>
-              )}
-            </tr>
-          )}
-          {(employee.educational_qualification || employee.specialization) && (
-            <tr>
-              {employee.educational_qualification && (
-                <>
-                  <th>المؤهل التعليمي</th>
-                  <td>{employee.educational_qualification}</td>
-                </>
-              )}
-              {employee.specialization && (
-                <>
-                  <th>التخصص</th>
-                  <td>{employee.specialization}</td>
-                </>
-              )}
-            </tr>
-          )}
-          {employee.national_address && (
-            <tr>
-              <th>العنوان الوطني</th>
-              <td colSpan="3">{employee.national_address}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+/** One label + copyable value. Renders nothing for an empty value unless `always`. */
+function Field({ label, value, children, always = false, wide = false }) {
+  const shown = children ?? value;
+  if (!always && !filled(value)) return null;
+  return (
+    <div className={`ei-field${wide ? ' ei-wide' : ''}`}>
+      <dt>{label}</dt>
+      <dd><CopyText value={value}>{shown || '—'}</CopyText></dd>
     </div>
+  );
+}
 
-    {(employee.email || employee.phone_number) && (
-      <div className="employee-info-section">
-        <h2 className="section-title">القسم الثاني: معلومات الاتصال</h2>
-        <table className="employee-info-table">
-          <tbody>
-            {employee.email && (
-              <tr>
-                <th>البريد الإلكتروني</th>
-                <td colSpan="3">{employee.email}</td>
-              </tr>
-            )}
-            {employee.phone_number && (
-              <tr>
-                <th>رقم الهاتف</th>
-                <td colSpan="3">{employee.phone_number}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    )}
+/** A date stored in both calendars: two copyable values in one row. */
+function DateField({ label, hijri, gregorian }) {
+  if (!filled(hijri) && !filled(gregorian)) return null;
+  const g = gregorian ? formatDate(gregorian) : '';
+  return (
+    <div className="ei-field ei-wide">
+      <dt>{label}</dt>
+      <dd className="ei-dates">
+        <span className="ei-date"><small>هجري</small><CopyText value={hijri}>{hijri || '—'}</CopyText></span>
+        <span className="ei-date"><small>ميلادي</small><CopyText value={g}>{g || '—'}</CopyText></span>
+      </dd>
+    </div>
+  );
+}
 
-    {(employee.contract_type ||
-      (employee.years_of_experience_in_same_institution !== undefined &&
-        employee.years_of_experience_in_same_institution !== null) ||
-      employee.job_title) && (
-        <div className="employee-info-section">
-          <h2 className="section-title">القسم الثالث: معلومات العمل</h2>
-          <table className="employee-info-table">
-            <tbody>
-              {employee.job_title && (
-                <tr>
-                  <th>المسمى الوظيفي</th>
-                  <td colSpan="3">{employee.job_title}</td>
-                </tr>
-              )}
-              {employee.contract_type && (
-                <tr>
-                  <th>نوع العقد</th>
-                  <td colSpan="3">{employee.contract_type}</td>
-                </tr>
-              )}
-              {(employee.contract_start_date_gregorian ||
-                employee.contract_end_date_gregorian) && (
-                  <tr>
-                    {employee.contract_start_date_gregorian && (
-                      <>
-                        <th>تاريخ بداية العقد</th>
-                        <td>
-                          {formatDate(employee.contract_start_date_gregorian)}
-                        </td>
-                      </>
-                    )}
-                    {employee.contract_end_date_gregorian && (
-                      <>
-                        <th>تاريخ نهاية العقد</th>
-                        <td>{formatDate(employee.contract_end_date_gregorian)}</td>
-                      </>
-                    )}
-                  </tr>
-                )}
-              {employee.work_start_date_gregorian && (
-                <tr>
-                  <th>تاريخ مباشرة العمل</th>
-                  <td colSpan="3">{formatDate(employee.work_start_date_gregorian)}</td>
-                </tr>
-              )}
-              {employee.years_of_experience_in_same_institution !== undefined &&
-                employee.years_of_experience_in_same_institution !== null && (
-                  <tr>
-                    <th>سنوات الخبرة في نفس المؤسسة</th>
-                    <td>
-                      {employee.years_of_experience_in_same_institution} سنة
-                    </td>
-                    {employee.years_of_experience_in_company !== undefined &&
-                      employee.years_of_experience_in_company !== null && (
-                        <>
-                          <th>سنوات الخبرة في الشركة</th>
-                          <td>{employee.years_of_experience_in_company} سنة</td>
-                        </>
-                      )}
-                  </tr>
-                )}
-              {!(
-                employee.years_of_experience_in_same_institution !== undefined &&
-                employee.years_of_experience_in_same_institution !== null
-              ) &&
-                employee.years_of_experience_in_company !== undefined &&
-                employee.years_of_experience_in_company !== null && (
-                  <tr>
-                    <th>سنوات الخبرة في الشركة</th>
-                    <td colSpan="3">
-                      {employee.years_of_experience_in_company} سنة
-                    </td>
-                  </tr>
-                )}
-            </tbody>
-          </table>
-        </div>
+function Section({ title, children }) {
+  return (
+    <Card title={title}>
+      <dl className="ei-grid">{children}</dl>
+    </Card>
+  );
+}
+
+const EmployeeInfoSections = ({ employee, branches }) => {
+  const e = employee;
+  const branchName = branches.find((b) => b.id === e.branch_id)?.branch_name || e.branch_id;
+  const salaryParts = [
+    ['الراتب الأساسي', e.base_salary], ['بدل السكن', e.housing_allowance], ['بدل النقل', e.transportation_allowance],
+    ['بدل نهاية الخدمة', e.end_of_service_allowance], ['بدل الإجازة السنوية', e.annual_leave_allowance], ['بدلات أخرى', e.other_allowances],
+  ];
+  const hasSalary = salaryParts.some(([, v]) => (parseFloat(v) || 0) !== 0);
+  const total = salaryParts.reduce((sum, [, v]) => sum + (parseFloat(v) || 0), 0);
+  const hasWork = e.contract_type || e.job_title || e.contract_start_date_gregorian || e.contract_start_date_hijri
+    || e.contract_end_date_gregorian || e.contract_end_date_hijri || e.work_start_date_gregorian || e.work_start_date_hijri
+    || filled(e.years_of_experience_in_same_institution) || filled(e.years_of_experience_in_company);
+
+  return (
+    <>
+      <Section title="القسم الأول: المعلومات الأساسية">
+        <Field label="المهنة" value={e.occupation} always />
+        <Field label="الجنسية" value={e.nationality} always />
+        <Field label="الفرع" value={branchName} always />
+        <Field label="الجنس" value={GENDERS[e.gender]} always />
+        <Field label="نوع الهوية" value={ID_TYPES[e.id_type]} always />
+        <Field label="رقم الهوية/الإقامة" value={e.id_or_residency_number} always />
+        <DateField label="تاريخ الميلاد" hijri={e.date_of_birth_hijri} gregorian={e.date_of_birth_gregorian} />
+        <DateField label="انتهاء الهوية" hijri={e.id_expiry_date_hijri} gregorian={e.id_expiry_date_gregorian} />
+        <Field label="الديانة" value={e.religion && (RELIGIONS[e.religion] || e.religion)} />
+        <Field label="الحالة الاجتماعية" value={e.marital_status && (MARITAL[e.marital_status] || e.marital_status)} />
+        <Field label="المؤهل التعليمي" value={e.educational_qualification} />
+        <Field label="التخصص" value={e.specialization} />
+        <Field label="العنوان الوطني" value={e.national_address} wide />
+      </Section>
+
+      {(e.email || e.phone_number) && (
+        <Section title="القسم الثاني: معلومات الاتصال">
+          <Field label="البريد الإلكتروني" value={e.email} />
+          <Field label="رقم الهاتف" value={e.phone_number} />
+        </Section>
       )}
 
-    {(employee.bank_name || employee.bank_iban) && (
-      <div className="employee-info-section">
-        <h2 className="section-title">القسم الرابع: المعلومات المالية</h2>
-        <table className="employee-info-table">
-          <tbody>
-            {employee.bank_name && (
-              <tr>
-                <th>البنك</th>
-                <td>{employee.bank_name}</td>
-                {employee.bank_iban && (
-                  <>
-                    <th>رقم الآيبان</th>
-                    <td>{employee.bank_iban}</td>
-                  </>
-                )}
-              </tr>
-            )}
-            {!employee.bank_name && employee.bank_iban && (
-              <tr>
-                <th>رقم الآيبان</th>
-                <td colSpan="3">{employee.bank_iban}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    )}
-
-    {((employee.base_salary || 0) !== 0 ||
-      (employee.housing_allowance || 0) !== 0 ||
-      (employee.transportation_allowance || 0) !== 0 ||
-      (employee.end_of_service_allowance || 0) !== 0 ||
-      (employee.annual_leave_allowance || 0) !== 0 ||
-      (employee.other_allowances || 0) !== 0) && (
-        <div className="employee-info-section">
-          <h2 className="section-title">القسم الخامس: الراتب والبدلات</h2>
-          <table className="employee-info-table">
-            <tbody>
-              {(employee.base_salary || 0) !== 0 && (
-                <tr>
-                  <th>الراتب الأساسي</th>
-                  <td>
-                    {(employee.base_salary || 0).toLocaleString("en-US")} ريال
-                  </td>
-                  {(employee.housing_allowance || 0) !== 0 && (
-                    <>
-                      <th>بدل السكن</th>
-                      <td>
-                        {(employee.housing_allowance || 0).toLocaleString(
-                          "en-US",
-                        )}{" "}
-                        ريال
-                      </td>
-                    </>
-                  )}
-                </tr>
-              )}
-              {(employee.base_salary || 0) === 0 &&
-                (employee.housing_allowance || 0) !== 0 && (
-                  <tr>
-                    <th>بدل السكن</th>
-                    <td colSpan="3">
-                      {(employee.housing_allowance || 0).toLocaleString("en-US")}{" "}
-                      ريال
-                    </td>
-                  </tr>
-                )}
-              {((employee.transportation_allowance || 0) !== 0 ||
-                (employee.end_of_service_allowance || 0) !== 0) && (
-                  <tr>
-                    {(employee.transportation_allowance || 0) !== 0 && (
-                      <>
-                        <th>بدل النقل</th>
-                        <td>
-                          {(employee.transportation_allowance || 0).toLocaleString(
-                            "en-US",
-                          )}{" "}
-                          ريال
-                        </td>
-                      </>
-                    )}
-                    {(employee.end_of_service_allowance || 0) !== 0 && (
-                      <>
-                        <th>بدل نهاية الخدمة</th>
-                        <td>
-                          {(employee.end_of_service_allowance || 0).toLocaleString(
-                            "en-US",
-                          )}{" "}
-                          ريال
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                )}
-              {((employee.annual_leave_allowance || 0) !== 0 ||
-                (employee.other_allowances || 0) !== 0) && (
-                  <tr>
-                    {(employee.annual_leave_allowance || 0) !== 0 && (
-                      <>
-                        <th>بدل الإجازة السنوية</th>
-                        <td>
-                          {(employee.annual_leave_allowance || 0).toLocaleString(
-                            "en-US",
-                          )}{" "}
-                          ريال
-                        </td>
-                      </>
-                    )}
-                    {(employee.other_allowances || 0) !== 0 && (
-                      <>
-                        <th>بدلات أخرى</th>
-                        <td>
-                          {(employee.other_allowances || 0).toLocaleString("en-US")}{" "}
-                          ريال
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                )}
-              <tr className="salary-total-row">
-                <th>إجمالي الراتب والبدلات</th>
-                <td
-                  colSpan="3"
-                  style={{ fontWeight: "bold", color: "var(--primary)" }}
-                >
-                  {(
-                    parseFloat(employee.base_salary || 0) +
-                    parseFloat(employee.housing_allowance || 0) +
-                    parseFloat(employee.transportation_allowance || 0) +
-                    parseFloat(employee.end_of_service_allowance || 0) +
-                    parseFloat(employee.annual_leave_allowance || 0) +
-                    parseFloat(employee.other_allowances || 0)
-                  ).toLocaleString("en-US")}{" "}
-                  ريال
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      {hasWork && (
+        <Section title="القسم الثالث: معلومات العمل">
+          <Field label="المسمى الوظيفي" value={e.job_title} />
+          <Field label="نوع العقد" value={e.contract_type} />
+          <DateField label="بداية العقد" hijri={e.contract_start_date_hijri} gregorian={e.contract_start_date_gregorian} />
+          <DateField label="نهاية العقد" hijri={e.contract_end_date_hijri} gregorian={e.contract_end_date_gregorian} />
+          <DateField label="مباشرة العمل" hijri={e.work_start_date_hijri} gregorian={e.work_start_date_gregorian} />
+          {filled(e.years_of_experience_in_same_institution) && (
+            <Field label="سنوات الخبرة في نفس المؤسسة" value={`${e.years_of_experience_in_same_institution} سنة`} />
+          )}
+          {filled(e.years_of_experience_in_company) && (
+            <Field label="سنوات الخبرة في الشركة" value={`${e.years_of_experience_in_company} سنة`} />
+          )}
+        </Section>
       )}
-  </>
-);
+
+      {(e.bank_name || e.bank_iban) && (
+        <Section title="القسم الرابع: المعلومات المالية">
+          <Field label="البنك" value={e.bank_name} />
+          <Field label="رقم الآيبان" value={e.bank_iban}>
+            <bdi dir="ltr">{e.bank_iban}</bdi>
+          </Field>
+        </Section>
+      )}
+
+      {hasSalary && (
+        <Section title="القسم الخامس: الراتب والبدلات">
+          {salaryParts.map(([label, v]) => (parseFloat(v) || 0) !== 0 && (
+            <Field key={label} label={label} value={String(parseFloat(v) || 0)}>{money(v)}</Field>
+          ))}
+          <div className="ei-field ei-wide ei-total">
+            <dt>إجمالي الراتب والبدلات</dt>
+            <dd><CopyText value={String(total)}>{money(total)}</CopyText></dd>
+          </div>
+        </Section>
+      )}
+    </>
+  );
+};
 
 export default EmployeeInfoSections;
