@@ -8,21 +8,22 @@ import { useNavigate } from 'react-router-dom';
 import api, { adminAPI, employeesAPI, branchesAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+import {
+  Page, PageHeader, Card, StatCard, Button, Badge, Alert, FormField, Input, DataTable, Pagination, EmptyState, useConfirm,
+} from '../ui';
 import './FixMissingDates.css';
 
 const FixMissingDates = () => {
   const { isMainManager } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const navigate = useNavigate();
+  const { confirm } = useConfirm();
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize] = useState(50);
   const [processing, setProcessing] = useState({});
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [actionType, setActionType] = useState(''); // 'notify' or 'delete'
   const [duplicates, setDuplicates] = useState([]);
   const [loadingDuplicates, setLoadingDuplicates] = useState(true);
   const [mergeProcessing, setMergeProcessing] = useState({});
@@ -306,24 +307,35 @@ const FixMissingDates = () => {
     }
   };
 
-  const openConfirmModal = (employee, action) => {
-    setSelectedEmployee(employee);
-    setActionType(action);
-    setShowConfirmModal(true);
+  const askNotify = async (employee) => {
+    const ok = await confirm({
+      title: 'إشعار الفرع',
+      message: `هل أنت متأكد من إرسال إشعار للفرع (${employee.branch_name || '—'}) بخصوص الموظف ${[employee.first_name, employee.second_name, employee.third_name, employee.fourth_name].filter(Boolean).join(' ')}؟${employee.invalid_fields?.length ? `\n\nالمجالات غير الصحيحة: ${employee.invalid_fields.join('، ')}` : ''}`,
+      confirmText: 'إرسال',
+    });
+    if (ok) await handleNotify(employee);
   };
 
-  const confirmAction = async () => {
-    if (!selectedEmployee) return;
-
-    setShowConfirmModal(false);
-    if (actionType === 'notify') {
-      await handleNotify(selectedEmployee);
-    } else if (actionType === 'delete') {
-      await handleDelete(selectedEmployee);
-    }
-    setSelectedEmployee(null);
-    setActionType('');
+  const askDelete = async (employee) => {
+    const ok = await confirm({
+      title: 'حذف الموظف',
+      message: `هل أنت متأكد من حذف الموظف ${[employee.first_name, employee.second_name, employee.third_name, employee.fourth_name].filter(Boolean).join(' ')}؟\nهذا الإجراء لا يمكن التراجع عنه.`,
+      tone: 'danger',
+      confirmText: 'حذف',
+    });
+    if (ok) await handleDelete(employee);
   };
+
+  const askDeletePaperDocs = async () => {
+    const ok = await confirm({
+      title: 'حذف التأمين الطبي',
+      message: `سيتم حذف مستندات التأمين الطبي لـ ${selectedPaperEmployees.size} موظف. لا يمكن التراجع عن هذا الإجراء.`,
+      tone: 'danger',
+      confirmText: 'حذف',
+    });
+    if (ok) await handleDeletePaperDocs();
+  };
+
 
   const handleMergeDuplicates = async (cluster, clusterIndex) => {
     const canonicalId = selectedCanonicals[clusterIndex] || cluster.ids[0];
@@ -407,11 +419,6 @@ const FixMissingDates = () => {
     }
   };
 
-  const navigateToEmployee = (employeeId) => {
-    if (!employeeId) return;
-    navigate(`/employees/${employeeId}`);
-  };
-
   const loadBranchDocuments = async () => {
     try {
       setLoadingBranchDocuments(true);
@@ -425,18 +432,6 @@ const FixMissingDates = () => {
     } finally {
       setLoadingBranchDocuments(false);
     }
-  };
-
-  const toggleBranchDoc = (docId) => {
-    setSelectedBranchDocs((prev) => {
-      const next = new Set(prev);
-      if (next.has(docId)) {
-        next.delete(docId);
-      } else {
-        next.add(docId);
-      }
-      return next;
-    });
   };
 
   const handleConvertDates = async (docId) => {
@@ -500,17 +495,6 @@ const FixMissingDates = () => {
     }
 
     setSelectedBranchDocs(new Set());
-  };
-
-  const formatDateDisplay = (date) => {
-    if (!date) return '-';
-    if (typeof date === 'string') {
-      if (date.includes('T')) {
-        return date.split('T')[0];
-      }
-      return date;
-    }
-    return date;
   };
 
   const loadAbnormalDates = async () => {
@@ -592,868 +576,284 @@ const FixMissingDates = () => {
     }
   };
 
+  const fullName = (e) => [e.first_name, e.second_name, e.third_name, e.fourth_name].filter(Boolean).join(' ');
+  const dateOnly = (v) => (v ? String(v).split('T')[0] : '—');
+  const money = (v) => (parseFloat(v) || 0).toFixed(2);
+  const groupBy = (rows, idKey, nameKey) => Object.values(rows.reduce((acc, row) => {
+    const id = row[idKey] || 'unknown';
+    if (!acc[id]) acc[id] = { id, name: row[nameKey] || 'غير محدد', rows: [] };
+    acc[id].rows.push(row);
+    return acc;
+  }, {}));
+
   if (!isMainManager()) {
     return (
-      <div className="fix-missing-dates-container">
-        <div className="empty-state">
-          <p>هذه الصفحة متاحة فقط للمدير الرئيسي</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="fix-missing-dates-container">
-        <div className="loading-container">
-          <p>جاري التحميل...</p>
-        </div>
-      </div>
+      <Page>
+        <PageHeader title="البيانات غير الدقيقة" />
+        <Alert tone="warning">هذه الصفحة متاحة فقط للمدير الرئيسي</Alert>
+      </Page>
     );
   }
 
   const totalPages = Math.ceil(totalCount / pageSize);
+  const salaryTotal = (e) => (e.total_salary != null
+    ? parseFloat(e.total_salary)
+    : ['base_salary', 'housing_allowance', 'transportation_allowance', 'end_of_service_allowance', 'annual_leave_allowance', 'other_allowances']
+      .reduce((sum, k) => sum + (parseFloat(e[k]) || 0), 0));
+  const allowancesTotal = (e) => salaryTotal(e) - (parseFloat(e.base_salary) || 0);
+  const totalProblems = duplicates.length + duplicateDocs.length + abnormalDates.length + branchDocuments.length
+    + paperContractDocs.length + invalidSalaryEmployees.length + zeroSalaryEmployees.length + employees.length;
+  const nothingFound = !loading && totalProblems === 0 && !loadingDuplicates && !loadingDuplicateDocs && !loadingAbnormalDates;
+
+  const employeeLink = (e) => <Button variant="link" onClick={() => navigate(`/employees/${e.id}`)}>{fullName(e)}</Button>;
+  const missingBadge = <Badge tone="danger">مفقود</Badge>;
+  const dateCell = (g, h) => (
+    <div className="fm-dates">
+      <span><small>ميلادي</small> {g ? <Badge tone="success">{dateOnly(g)}</Badge> : missingBadge}</span>
+      <span><small>هجري</small> {h ? <Badge tone="success">{h}</Badge> : missingBadge}</span>
+    </div>
+  );
+
+  const employeeColumns = [
+    { key: 'id', header: 'ID', width: '4rem', mobileHidden: true },
+    { key: 'name', header: 'الموظف', mobilePrimary: true, render: employeeLink },
+    { key: 'num', header: 'الرقم الوظيفي', mobileHidden: true, render: (e) => e.employee_id_number || '—' },
+    { key: 'branch', header: 'الفرع', render: (e) => e.branch_name || '—' },
+    { key: 'nat', header: 'الجنسية', mobileHidden: true, render: (e) => e.nationality || '—' },
+    { key: 'dob', header: 'تاريخ الميلاد', render: (e) => dateCell(e.date_of_birth_gregorian, e.date_of_birth_hijri) },
+    {
+      key: 'age', header: 'العمر', align: 'center',
+      render: (e) => (e.age !== null && e.age !== undefined
+        ? <Badge tone={e.is_invalid_age ? 'danger' : 'neutral'}>{e.age} سنة</Badge> : '—'),
+    },
+    {
+      key: 'fields', header: 'المجالات الناقصة',
+      render: (e) => (e.invalid_fields?.length > 0 ? (
+        <div className="fm-chips">
+          {e.invalid_fields.slice(0, 3).map((f) => <Badge key={f} tone="warning">{f}</Badge>)}
+          {e.invalid_fields.length > 3 && <Badge tone="neutral">+{e.invalid_fields.length - 3}</Badge>}
+        </div>
+      ) : <Badge tone="success">لا توجد</Badge>),
+    },
+    {
+      key: 'actions', header: '', align: 'end',
+      render: (e) => (
+        <div className="fm-actions">
+          <Button size="sm" variant="primary" icon="edit" disabled={processing[e.id]} onClick={() => handleEdit(e)}>تعديل</Button>
+          <Button size="sm" variant="warning" icon="bell" disabled={processing[e.id]} onClick={() => askNotify(e)}>إشعار الفرع</Button>
+          <Button size="sm" variant="danger" icon="trash" disabled={processing[e.id]} onClick={() => askDelete(e)}>حذف</Button>
+        </div>
+      ),
+    },
+  ];
+
+  const salaryColumns = (withBranch) => [
+    { key: 'id', header: 'ID', width: '4rem', mobileHidden: true },
+    { key: 'name', header: 'الموظف', mobilePrimary: true, render: employeeLink },
+    ...(withBranch ? [{ key: 'branch', header: 'الفرع', render: (e) => e.branch_name || '—' }] : []),
+    { key: 'base', header: 'الراتب الأساسي', align: 'center', render: (e) => money(e.base_salary) },
+    { key: 'allow', header: 'البدلات', align: 'center', render: (e) => money(allowancesTotal(e)) },
+    ...(withBranch ? [
+      { key: 'total', header: 'الإجمالي', align: 'center', render: (e) => <strong>{money(salaryTotal(e))}</strong> },
+      { key: 'status', header: 'الحالة', render: (e) => (salaryTotal(e) < 500 ? <Badge tone="danger">منخفض جداً (&lt; 500)</Badge> : <Badge tone="info">مرتفع جداً (&gt; 15000)</Badge>) },
+    ] : []),
+    { key: 'edit', header: '', align: 'end', render: (e) => <Button size="sm" variant="primary" icon="edit" onClick={() => navigate(`/employees/${e.id}`)}>تعديل</Button> },
+  ];
+
+  const branchDocColumns = [
+    { key: 'branch', header: 'الفرع', mobilePrimary: true, render: (d) => d.branch_name },
+    { key: 'type', header: 'نوع المستند', render: (d) => d.document_type },
+    { key: 'file', header: 'اسم الملف', mobileHidden: true, render: (d) => <bdi>{d.file_name}</bdi> },
+    { key: 'issue', header: 'تاريخ الإصدار', render: (d) => dateCell(d.issue_date, d.issue_date_hijri) },
+    { key: 'expiry', header: 'تاريخ الانتهاء', render: (d) => dateCell(d.expiry_date, d.expiry_date_hijri) },
+    {
+      key: 'convert', header: '', align: 'end',
+      render: (d) => {
+        const needs = (d.has_issue_gregorian !== d.has_issue_hijri) || (d.has_expiry_gregorian !== d.has_expiry_hijri);
+        return <Button size="sm" variant="primary" icon="refresh" loading={convertingDocs[d.id]} disabled={!needs} onClick={() => handleConvertDates(d.id)}>تحويل</Button>;
+      },
+    },
+  ];
+
+  /** Editable Gregorian + Hijri pair for one document date, flagging implausible years. */
+  const dateEditor = (doc, gKey, hKey) => {
+    const edited = editingDates[doc.id] || {};
+    const gValue = edited[gKey] !== undefined ? (edited[gKey] || '') : dateOnly(doc[gKey]).replace('—', '');
+    const hValue = edited[hKey] !== undefined ? (edited[hKey] || '') : (doc[hKey] || '');
+    const gYear = getYearFromGregorian(doc[gKey]);
+    const hYear = getYearFromHijri(doc[hKey]);
+    return (
+      <div className="fm-editor">
+        <FormField label="ميلادي" error={gYear && gYear < 2000 ? `سنة ${gYear}` : undefined}>
+          <Input type="date" value={gValue} onChange={(e) => handleDateEdit(doc.id, gKey, e.target.value)} />
+        </FormField>
+        <FormField label="هجري (DD/MM/YYYY)" error={hYear && hYear < 1400 ? `سنة ${hYear}` : undefined}>
+          <Input placeholder="DD/MM/YYYY" dir="ltr" value={hValue} onChange={(e) => handleDateEdit(doc.id, hKey, e.target.value)} />
+        </FormField>
+      </div>
+    );
+  };
+
+  const abnormalColumns = [
+    { key: 'type', header: 'نوع المستند', mobilePrimary: true, render: (d) => d.document_type },
+    { key: 'file', header: 'اسم الملف', mobileHidden: true, render: (d) => <bdi>{d.file_name}</bdi> },
+    { key: 'issue', header: 'تاريخ الإصدار', render: (d) => dateEditor(d, 'issue_date', 'issue_date_hijri') },
+    { key: 'expiry', header: 'تاريخ الانتهاء', render: (d) => dateEditor(d, 'expiry_date', 'expiry_date_hijri') },
+    {
+      key: 'save', header: '', align: 'end',
+      render: (d) => (Object.keys(editingDates[d.id] || {}).length > 0
+        ? <Button size="sm" variant="primary" icon="check" loading={savingDates[d.id]} onClick={() => handleSaveDates(d.id)}>حفظ</Button> : null),
+    },
+  ];
 
   return (
-    <div className="fix-missing-dates-container">
-      <div className="fix-missing-dates-header">
-        <div>
-          <h1>البيانات غير الدقيقة</h1>
-          <p className="total-count">إجمالي المشاكل: {duplicates.length + duplicateDocs.length + abnormalDates.length + branchDocuments.length + paperContractDocs.length + invalidSalaryEmployees.length + zeroSalaryEmployees.length + employees.length}</p>
-        </div>
+    <Page>
+      <PageHeader
+        title="البيانات غير الدقيقة"
+        subtitle="سجلات ومستندات تحتاج مراجعة: مكررات، تواريخ ناقصة أو غير طبيعية، ورواتب غير منطقية"
+      />
+
+      <div className="ui-grid-stats">
+        <StatCard label="إجمالي المشاكل" value={totalProblems} icon="alert" tone={totalProblems ? 'warning' : 'success'} loading={loading} />
+        <StatCard label="سجلات مكررة" value={duplicates.length + duplicateDocs.length} icon="users" tone="primary" loading={loadingDuplicates} />
+        <StatCard label="تواريخ مستندات" value={abnormalDates.length + branchDocuments.length} icon="calendar" tone="danger" loading={loadingAbnormalDates} />
+        <StatCard label="رواتب غير صحيحة" value={invalidSalaryEmployees.length + zeroSalaryEmployees.length} icon="wallet" tone="warning" loading={loadingInvalidSalary} />
       </div>
 
-      {!loadingDuplicates && duplicates.length > 0 && (
-        <div className="duplicates-section">
-          <h2>سجلات مكررة (الاسم + تاريخ الميلاد)</h2>
-          {
-            <div className="duplicates-list">
-              {duplicates.map((cluster, idx) => (
-                <div key={idx} className="duplicate-cluster-card">
-                  <div className="cluster-header">
-                    <strong>مجموعة #{idx + 1}</strong>
-                    <span>({cluster.ids.length} سجلات)</span>
-                  </div>
-                  <div className="cluster-body">
-                    {cluster.employees?.map((emp) => (
-                      <label key={emp.id} className="duplicate-row">
-                        <input
-                          type="radio"
-                          name={`canonical-${idx}`}
-                          checked={selectedCanonicals[idx] === emp.id}
-                          onChange={() => setSelectedCanonicals((prev) => ({ ...prev, [idx]: emp.id }))}
-                        />
-                        <div className="duplicate-info">
-                          <div className="dup-name">
-                            {emp.first_name} {emp.second_name} {emp.third_name} {emp.fourth_name}
-                          </div>
-                          <div className="dup-meta">
-                            <span>معرف: {emp.id}</span>
-                            <span>الهوية: {emp.id_or_residency_number || '—'}</span>
-                            <span>الميلاد: {formatDob(emp.date_of_birth_gregorian)}</span>
-                          </div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                  <div className="cluster-actions">
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => handleMergeDuplicates(cluster, idx)}
-                      disabled={mergeProcessing[selectedCanonicals[idx] || cluster.ids[0]]}
-                    >
-                      {mergeProcessing[selectedCanonicals[idx] || cluster.ids[0]] ? 'جارٍ الدمج...' : 'دمج وحذف المكررات'}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          }
-        </div>
-      )}
+      {nothingFound && <Card><EmptyState icon="check-circle" title="لا توجد بيانات تحتاج إلى مراجعة" /></Card>}
 
-      {!loadingDuplicateDocs && duplicateDocs.length > 0 && (
-        <div className="duplicates-section">
-          <h2>مستندات مكررة حسب النوع (باستثناء الأنواع المسموح بتعددها)</h2>
-          <div className="duplicates-list">
-            {duplicateDocs.map((row, idx) => {
-              const key = `${row.employee_id}:${row.document_type}`;
-              const selectedKeepId = mergeDocProcessing[key] || null;
+      {!loadingDuplicates && duplicates.length > 0 && (
+        <Card title="سجلات مكررة (الاسم + تاريخ الميلاد)" subtitle="اختر السجل الذي يُبقى؛ تُدمج بقية السجلات فيه ثم تُحذف">
+          <div className="fm-clusters">
+            {duplicates.map((cluster, idx) => {
+              const keepId = selectedCanonicals[idx] || cluster.ids[0];
               return (
-                <div key={idx} className="duplicate-cluster-card">
-                  <div className="cluster-header">
-                    <strong>موظف #{row.employee_id}</strong>
-                    <span>نوع المستند: {row.document_type}</span>
-                    <span>(عدد: {row.doc_count})</span>
-                  </div>
-                  <div className="cluster-body">
-                    {row.documents?.map((doc) => (
-                      <label key={doc.id} className="duplicate-row">
-                        <input
-                          type="radio"
-                          name={`doc-${row.employee_id}-${row.document_type}`}
-                          checked={selectedKeepId === doc.id}
-                          onChange={() => {
-                            setMergeDocProcessing((prev) => ({
-                              ...prev,
-                              [key]: doc.id
-                            }));
-                          }}
-                        />
-                        <div className="duplicate-info">
-                          <div className="dup-name">ملف: {doc.file_name || 'غير مسمى'}</div>
-                          <div className="dup-meta">
-                            <span>معرف المستند: {doc.id}</span>
-                            <span>تاريخ الرفع: {doc.uploaded_at?.split('T')[0] || '—'}</span>
-                            <span>نشط: {doc.is_active ? 'نعم' : 'لا'}</span>
-                          </div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                  <div className="cluster-actions">
-                    <button
-                      className="btn btn-primary"
-                      onClick={() =>
-                        handleMergeDocs(
-                          row.employee_id,
-                          row.document_type,
-                          selectedKeepId
-                        )
-                      }
-                      disabled={!selectedKeepId || mergeDocProcessing[row.employee_id]}
-                    >
-                      {mergeDocProcessing[row.employee_id] ? 'جارٍ الدمج...' : 'دمج وحذف المكررات'}
-                    </button>
-                  </div>
+                <div key={idx} className="fm-cluster">
+                  <div className="fm-cluster-head"><strong>مجموعة #{idx + 1}</strong><Badge tone="neutral">{cluster.ids.length} سجلات</Badge></div>
+                  {cluster.employees?.map((emp) => (
+                    <label key={emp.id} className="fm-pick">
+                      <input type="radio" name={`canonical-${idx}`} checked={selectedCanonicals[idx] === emp.id} onChange={() => setSelectedCanonicals((prev) => ({ ...prev, [idx]: emp.id }))} />
+                      <span>
+                        <strong>{fullName(emp)}</strong>
+                        <span className="fm-meta">معرف: <bdi>{emp.id}</bdi> · الهوية: <bdi>{emp.id_or_residency_number || '—'}</bdi> · الميلاد: <bdi>{formatDob(emp.date_of_birth_gregorian)}</bdi></span>
+                      </span>
+                    </label>
+                  ))}
+                  <div><Button variant="primary" icon="transfer" loading={mergeProcessing[keepId]} onClick={() => handleMergeDuplicates(cluster, idx)}>دمج وحذف المكررات</Button></div>
                 </div>
               );
             })}
           </div>
-        </div>
+        </Card>
       )}
 
-      {!loadingAbnormalDates && abnormalDates.length > 0 && (
-        <div className="duplicates-section">
-          <h2>مستندات الفروع مع تواريخ غير طبيعية</h2>
-          <p style={{ marginBottom: '1rem', color: '#666' }}>
-            سنوات أقل من 2000 ميلادي أو أقل من 1400 هجري
-          </p>
-          {(() => {
-            // Group by branch
-            const groupedByBranch = abnormalDates.reduce((acc, doc) => {
-              const branchId = doc.branch_id || 'unknown';
-              const branchName = doc.branch_name || 'غير محدد';
-              if (!acc[branchId]) {
-                acc[branchId] = { branchName, docs: [] };
-              }
-              acc[branchId].docs.push(doc);
-              return acc;
-            }, {});
-
-            return Object.entries(groupedByBranch).map(([branchId, { branchName, docs }]) => (
-              <div key={branchId} className="branch-group" style={{ marginBottom: '2rem', border: '1px solid #ddd', borderRadius: '8px', padding: '1rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3 style={{ margin: 0 }}>
-                    {branchName} ({docs.length} مستند)
-                  </h3>
-                  <button
-                    className="btn btn-warning"
-                    onClick={() => handleNotifyAbnormalDatesBranch(parseInt(branchId), branchName)}
-                    disabled={notifyingAbnormalDates[branchId]}
-                    title="إرسال تنبيه للفرع (مدة الرد: يوم واحد)"
-                  >
-                    {notifyingAbnormalDates[branchId] ? 'جاري الإرسال...' : '🔔 تنبيه الفرع'}
-                  </button>
+      {!loadingDuplicateDocs && duplicateDocs.length > 0 && (
+        <Card title="مستندات مكررة حسب النوع" subtitle="باستثناء الأنواع المسموح بتعددها. اختر المستند الذي يُبقى">
+          <div className="fm-clusters">
+            {duplicateDocs.map((row, idx) => {
+              const key = `${row.employee_id}:${row.document_type}`;
+              const selectedKeepId = mergeDocProcessing[key] || null;
+              return (
+                <div key={idx} className="fm-cluster">
+                  <div className="fm-cluster-head">
+                    <strong>موظف #{row.employee_id}</strong><Badge tone="info">{row.document_type}</Badge><Badge tone="neutral">عدد: {row.doc_count}</Badge>
+                  </div>
+                  {row.documents?.map((doc) => (
+                    <label key={doc.id} className="fm-pick">
+                      <input type="radio" name={`doc-${row.employee_id}-${row.document_type}`} checked={selectedKeepId === doc.id} onChange={() => setMergeDocProcessing((prev) => ({ ...prev, [key]: doc.id }))} />
+                      <span>
+                        <strong><bdi>{doc.file_name || 'غير مسمى'}</bdi></strong>
+                        <span className="fm-meta">معرف: <bdi>{doc.id}</bdi> · الرفع: {dateOnly(doc.uploaded_at)} · نشط: {doc.is_active ? 'نعم' : 'لا'}</span>
+                      </span>
+                    </label>
+                  ))}
+                  <div><Button variant="primary" icon="transfer" loading={mergeDocProcessing[row.employee_id] === true} disabled={!selectedKeepId} onClick={() => handleMergeDocs(row.employee_id, row.document_type, selectedKeepId)}>دمج وحذف المكررات</Button></div>
                 </div>
-                <div className="table-container">
-                  <table className="employees-table">
-                    <thead>
-                      <tr>
-                        <th>نوع المستند</th>
-                        <th>اسم الملف</th>
-                        <th>تاريخ الإصدار</th>
-                        <th>تاريخ الانتهاء</th>
-                        <th>الإجراءات</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {docs.map((doc) => {
-                        const issueGYear = getYearFromGregorian(doc.issue_date);
-                        const issueHYear = getYearFromHijri(doc.issue_date_hijri);
-                        const expiryGYear = getYearFromGregorian(doc.expiry_date);
-                        const expiryHYear = getYearFromHijri(doc.expiry_date_hijri);
-                        const edited = editingDates[doc.id] || {};
-                        const hasChanges = Object.keys(edited).length > 0;
-
-                        return (
-                          <tr key={doc.id} className="abnormal-date-row">
-                            <td>{doc.document_type}</td>
-                            <td>{doc.file_name}</td>
-                            <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                <div>
-                                  <label style={{ fontSize: '0.875rem', display: 'block', marginBottom: '0.25rem' }}>
-                                    ميلادي:
-                                  </label>
-                                  <input
-                                    type="date"
-                                    value={edited.issue_date !== undefined
-                                      ? (edited.issue_date || '')
-                                      : (doc.issue_date ? (typeof doc.issue_date === 'string' ? doc.issue_date.split('T')[0] : doc.issue_date) : '')}
-                                    onChange={(e) => handleDateEdit(doc.id, 'issue_date', e.target.value)}
-                                    className={issueGYear && issueGYear < 2000 ? 'abnormal-input' : ''}
-                                    style={{
-                                      padding: '0.25rem 0.5rem',
-                                      border: '1px solid #ccc',
-                                      borderRadius: '4px',
-                                      width: '100%',
-                                      maxWidth: '200px'
-                                    }}
-                                  />
-                                  {issueGYear && issueGYear < 2000 && (
-                                    <span style={{ color: 'red', marginLeft: '0.5rem', fontSize: '0.875rem' }}>
-                                      ⚠️ سنة {issueGYear}
-                                    </span>
-                                  )}
-                                </div>
-                                <div>
-                                  <label style={{ fontSize: '0.875rem', display: 'block', marginBottom: '0.25rem' }}>
-                                    هجري (DD/MM/YYYY):
-                                  </label>
-                                  <input
-                                    type="text"
-                                    placeholder="DD/MM/YYYY"
-                                    value={edited.issue_date_hijri !== undefined
-                                      ? (edited.issue_date_hijri || '')
-                                      : (doc.issue_date_hijri || '')}
-                                    onChange={(e) => handleDateEdit(doc.id, 'issue_date_hijri', e.target.value)}
-                                    className={issueHYear && issueHYear < 1400 ? 'abnormal-input' : ''}
-                                    style={{
-                                      padding: '0.25rem 0.5rem',
-                                      border: '1px solid #ccc',
-                                      borderRadius: '4px',
-                                      width: '100%',
-                                      maxWidth: '200px'
-                                    }}
-                                  />
-                                  {issueHYear && issueHYear < 1400 && (
-                                    <span style={{ color: 'red', marginLeft: '0.5rem', fontSize: '0.875rem' }}>
-                                      ⚠️ سنة {issueHYear}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                            <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                <div>
-                                  <label style={{ fontSize: '0.875rem', display: 'block', marginBottom: '0.25rem' }}>
-                                    ميلادي:
-                                  </label>
-                                  <input
-                                    type="date"
-                                    value={edited.expiry_date !== undefined
-                                      ? (edited.expiry_date || '')
-                                      : (doc.expiry_date ? (typeof doc.expiry_date === 'string' ? doc.expiry_date.split('T')[0] : doc.expiry_date) : '')}
-                                    onChange={(e) => handleDateEdit(doc.id, 'expiry_date', e.target.value)}
-                                    className={expiryGYear && expiryGYear < 2000 ? 'abnormal-input' : ''}
-                                    style={{
-                                      padding: '0.25rem 0.5rem',
-                                      border: '1px solid #ccc',
-                                      borderRadius: '4px',
-                                      width: '100%',
-                                      maxWidth: '200px'
-                                    }}
-                                  />
-                                  {expiryGYear && expiryGYear < 2000 && (
-                                    <span style={{ color: 'red', marginLeft: '0.5rem', fontSize: '0.875rem' }}>
-                                      ⚠️ سنة {expiryGYear}
-                                    </span>
-                                  )}
-                                </div>
-                                <div>
-                                  <label style={{ fontSize: '0.875rem', display: 'block', marginBottom: '0.25rem' }}>
-                                    هجري (DD/MM/YYYY):
-                                  </label>
-                                  <input
-                                    type="text"
-                                    placeholder="DD/MM/YYYY"
-                                    value={edited.expiry_date_hijri !== undefined
-                                      ? (edited.expiry_date_hijri || '')
-                                      : (doc.expiry_date_hijri || '')}
-                                    onChange={(e) => handleDateEdit(doc.id, 'expiry_date_hijri', e.target.value)}
-                                    className={expiryHYear && expiryHYear < 1400 ? 'abnormal-input' : ''}
-                                    style={{
-                                      padding: '0.25rem 0.5rem',
-                                      border: '1px solid #ccc',
-                                      borderRadius: '4px',
-                                      width: '100%',
-                                      maxWidth: '200px'
-                                    }}
-                                  />
-                                  {expiryHYear && expiryHYear < 1400 && (
-                                    <span style={{ color: 'red', marginLeft: '0.5rem', fontSize: '0.875rem' }}>
-                                      ⚠️ سنة {expiryHYear}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                            <td>
-                              {hasChanges && (
-                                <button
-                                  className="btn btn-primary btn-sm"
-                                  onClick={() => handleSaveDates(doc.id)}
-                                  disabled={savingDates[doc.id]}
-                                >
-                                  {savingDates[doc.id] ? 'جارٍ الحفظ...' : 'حفظ'}
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ));
-          })()}
-        </div>
-      )}
-
-      {
-        !loadingBranchDocuments && branchDocuments.length > 0 && (
-          <div className="duplicates-section">
-            <h2>مستندات الفروع مع تواريخ ناقصة</h2>
-            {
-              <div className="branch-docs-section">
-                <div className="bulk-actions" style={{ marginBottom: '1rem' }}>
-                  <button
-                    className="btn btn-primary"
-                    onClick={handleBulkConvert}
-                    disabled={selectedBranchDocs.size === 0 || Object.values(convertingDocs).some(v => v)}
-                  >
-                    {Object.values(convertingDocs).some(v => v)
-                      ? 'جارٍ التحويل...'
-                      : `تحويل المحدد (${selectedBranchDocs.size})`}
-                  </button>
-                  <span style={{ marginLeft: '1rem' }}>
-                    إجمالي المستندات الناقصة: {branchDocuments.length}
-                  </span>
-                </div>
-                <div className="table-container">
-                  <table className="employees-table">
-                    <thead>
-                      <tr>
-                        <th>
-                          <input
-                            type="checkbox"
-                            checked={selectedBranchDocs.size === branchDocuments.length && branchDocuments.length > 0}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedBranchDocs(new Set(branchDocuments.map(d => d.id)));
-                              } else {
-                                setSelectedBranchDocs(new Set());
-                              }
-                            }}
-                          />
-                        </th>
-                        <th>الفرع</th>
-                        <th>نوع المستند</th>
-                        <th>اسم الملف</th>
-                        <th>تاريخ الإصدار</th>
-                        <th>تاريخ الانتهاء</th>
-                        <th>الإجراءات</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {branchDocuments.map((doc) => {
-                        const needsIssueConversion = (doc.has_issue_gregorian && !doc.has_issue_hijri) ||
-                          (doc.has_issue_hijri && !doc.has_issue_gregorian);
-                        const needsExpiryConversion = (doc.has_expiry_gregorian && !doc.has_expiry_hijri) ||
-                          (doc.has_expiry_hijri && !doc.has_expiry_gregorian);
-                        const needsConversion = needsIssueConversion || needsExpiryConversion;
-
-                        return (
-                          <tr key={doc.id}>
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={selectedBranchDocs.has(doc.id)}
-                                onChange={() => toggleBranchDoc(doc.id)}
-                              />
-                            </td>
-                            <td>{doc.branch_name}</td>
-                            <td>{doc.document_type}</td>
-                            <td>{doc.file_name}</td>
-                            <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                <div>
-                                  ميلادي: {doc.issue_date ? (
-                                    <span className="valid-badge">{formatDateDisplay(doc.issue_date)}</span>
-                                  ) : (
-                                    <span className="missing-badge">❌ مفقود</span>
-                                  )}
-                                </div>
-                                <div>
-                                  هجري: {doc.issue_date_hijri ? (
-                                    <span className="valid-badge">{doc.issue_date_hijri}</span>
-                                  ) : (
-                                    <span className="missing-badge">❌ مفقود</span>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                            <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                <div>
-                                  ميلادي: {doc.expiry_date ? (
-                                    <span className="valid-badge">{formatDateDisplay(doc.expiry_date)}</span>
-                                  ) : (
-                                    <span className="missing-badge">❌ مفقود</span>
-                                  )}
-                                </div>
-                                <div>
-                                  هجري: {doc.expiry_date_hijri ? (
-                                    <span className="valid-badge">{doc.expiry_date_hijri}</span>
-                                  ) : (
-                                    <span className="missing-badge">❌ مفقود</span>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                            <td>
-                              <button
-                                className="btn btn-primary btn-sm"
-                                onClick={() => handleConvertDates(doc.id)}
-                                disabled={convertingDocs[doc.id] || !needsConversion}
-                                title={needsConversion ? 'تحويل التواريخ' : 'لا يحتاج تحويل'}
-                              >
-                                {convertingDocs[doc.id] ? 'جارٍ...' : 'تحويل'}
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            }
+              );
+            })}
           </div>
-        )
-      }
+        </Card>
+      )}
 
-      {
-        !loadingPaperContractDocs && paperContractDocs.length > 0 && (
-          <div className="duplicates-section">
-            <h2>مستندات التأمين الطبي لموظفي العقد الورقي</h2>
-            {
-              <div className="duplicates-list">
-                {paperContractDocs.map((row, idx) => (
-                  <div key={idx} className="duplicate-cluster-card">
-                    <div className="cluster-header">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={selectedPaperEmployees.has(row.employee_id)}
-                          onChange={() => togglePaperEmployee(row.employee_id)}
-                        />{' '}
-                        موظف #{row.employee_id}
-                      </label>
-                      <span>العقد: {row.contract_type}</span>
-                      <span>المستندات: {row.documents?.length || 0}</span>
-                    </div>
-                    <div className="cluster-body">
-                      {row.documents?.map((doc) => (
-                        <div key={doc.id} className="duplicate-row">
-                          <div className="duplicate-info">
-                            <div className="dup-name">ملف: {doc.file_name || 'غير مسمى'}</div>
-                            <div className="dup-meta">
-                              <span>معرف المستند: {doc.id}</span>
-                              <span>تاريخ الرفع: {doc.uploaded_at?.split('T')[0] || '—'}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+      {!loadingAbnormalDates && abnormalDates.length > 0 && groupBy(abnormalDates, 'branch_id', 'branch_name').map((group) => (
+        <Card
+          key={group.id}
+          title={`تواريخ غير طبيعية · ${group.name}`}
+          subtitle={`${group.rows.length} مستند · سنوات أقل من 2000 ميلادي أو 1400 هجري`}
+          actions={<Button size="sm" variant="warning" icon="bell" loading={notifyingAbnormalDates[group.id]} onClick={() => handleNotifyAbnormalDatesBranch(parseInt(group.id, 10), group.name)}>تنبيه الفرع</Button>}
+          flush
+        >
+          <DataTable columns={abnormalColumns} rows={group.rows} rowKey="id" />
+        </Card>
+      ))}
+
+      {!loadingBranchDocuments && branchDocuments.length > 0 && (
+        <Card
+          title="مستندات الفروع مع تواريخ ناقصة"
+          subtitle={`إجمالي المستندات الناقصة: ${branchDocuments.length}`}
+          actions={<Button size="sm" variant="primary" icon="refresh" disabled={selectedBranchDocs.size === 0 || Object.values(convertingDocs).some(Boolean)} onClick={handleBulkConvert}>تحويل المحدد ({selectedBranchDocs.size})</Button>}
+          flush
+        >
+          <DataTable columns={branchDocColumns} rows={branchDocuments} rowKey="id" selectable selectedKeys={selectedBranchDocs} onSelectionChange={setSelectedBranchDocs} />
+        </Card>
+      )}
+
+      {!loadingPaperContractDocs && paperContractDocs.length > 0 && (
+        <Card
+          title="مستندات التأمين الطبي لموظفي العقد الورقي"
+          subtitle="حدّد الموظفين لحذف مستندات التأمين الطبي"
+          actions={<Button size="sm" variant="danger" icon="trash" loading={processingPaperDelete} disabled={selectedPaperEmployees.size === 0} onClick={askDeletePaperDocs}>حذف للمحددين ({selectedPaperEmployees.size})</Button>}
+        >
+          <div className="fm-clusters">
+            {paperContractDocs.map((row, idx) => (
+              <div key={idx} className="fm-cluster">
+                <label className="fm-cluster-head">
+                  <input type="checkbox" checked={selectedPaperEmployees.has(row.employee_id)} onChange={() => togglePaperEmployee(row.employee_id)} />
+                  <strong>موظف #{row.employee_id}</strong>
+                  <Badge tone="info">العقد: {row.contract_type}</Badge>
+                  <Badge tone="neutral">المستندات: {row.documents?.length || 0}</Badge>
+                </label>
+                {row.documents?.map((doc) => (
+                  <div key={doc.id} className="fm-pick">
+                    <span>
+                      <strong><bdi>{doc.file_name || 'غير مسمى'}</bdi></strong>
+                      <span className="fm-meta">معرف: <bdi>{doc.id}</bdi> · الرفع: {dateOnly(doc.uploaded_at)}</span>
+                    </span>
                   </div>
                 ))}
-                <div className="cluster-actions">
-                  <button
-                    className="btn btn-danger"
-                    onClick={handleDeletePaperDocs}
-                    disabled={processingPaperDelete || selectedPaperEmployees.size === 0}
-                  >
-                    {processingPaperDelete ? 'جارٍ الحذف...' : 'حذف التأمين الطبي للموظفين المحددين'}
-                  </button>
-                </div>
               </div>
-            }
+            ))}
           </div>
-        )
-      }
+        </Card>
+      )}
 
-      {
-        !loadingInvalidSalary && invalidSalaryEmployees.length > 0 && (
-          <div className="duplicates-section">
-            <h2>موظفون برواتب غير صحيحة</h2>
-            <p style={{ marginBottom: '1rem', color: '#666' }}>
-              الموظفون برواتب أقل من 500 ريال (باستثناء الصفر) أو أكثر من 15000 ريال
-            </p>
-            {
-              <div className="table-container">
-                <table className="employees-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>اسم الموظف</th>
-                      <th>الفرع</th>
-                      <th>الراتب الأساسي</th>
-                      <th>الدبلات</th>
-                      <th>إجمالي الراتب</th>
-                      <th>الحالة</th>
-                      <th>الإجراءات</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invalidSalaryEmployees.map((employee) => {
-                      const baseSalary = parseFloat(employee.base_salary || 0);
-                      // Calculate total salary = all allowances
-                      const total = employee.total_salary != null
-                        ? parseFloat(employee.total_salary)
-                        : baseSalary + parseFloat(employee.housing_allowance || 0) +
-                        parseFloat(employee.transportation_allowance || 0) + parseFloat(employee.end_of_service_allowance || 0) +
-                        parseFloat(employee.annual_leave_allowance || 0) + parseFloat(employee.other_allowances || 0);
-                      // Calculate total allowances for display
-                      const totalAllowances = parseFloat(employee.housing_allowance || 0) +
-                        parseFloat(employee.transportation_allowance || 0) + parseFloat(employee.end_of_service_allowance || 0) +
-                        parseFloat(employee.annual_leave_allowance || 0) + parseFloat(employee.other_allowances || 0);
-                      let status = '';
-                      if (total > 0 && total < 500) {
-                        status = '🔴 منخفض جداً (< 500)';
-                      } else if (total > 15000) {
-                        status = '🔵 مرتفع جداً (> 15000)';
-                      }
+      {!loadingInvalidSalary && invalidSalaryEmployees.length > 0 && (
+        <Card title="موظفون برواتب غير صحيحة" subtitle="رواتب أقل من 500 ريال (باستثناء الصفر) أو أكثر من 15000 ريال" flush>
+          <DataTable columns={salaryColumns(true)} rows={invalidSalaryEmployees} rowKey="id" />
+        </Card>
+      )}
 
-                      return (
-                        <tr key={employee.id}>
-                          <td>{employee.id}</td>
-                          <td>
-                            <button
-                              className="link-button"
-                              onClick={() => navigate(`/employees/${employee.id}`)}
-                            >
-                              {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
-                            </button>
-                          </td>
-                          <td>{employee.branch_name || 'N/A'}</td>
-                          <td>{baseSalary.toFixed(2)}</td>
-                          <td>{totalAllowances.toFixed(2)}</td>
-                          <td><strong>{total.toFixed(2)}</strong></td>
-                          <td>{status}</td>
-                          <td>
-                            <button
-                              className="btn btn-primary btn-sm"
-                              onClick={() => navigate(`/employees/${employee.id}`)}
-                              title="تعديل البيانات"
-                            >
-                              تعديل
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            }
-          </div>
-        )
-      }
+      {!loadingZeroSalary && zeroSalaryEmployees.length > 0 && groupBy(zeroSalaryEmployees, 'branch_id', 'branch_name').map((group) => (
+        <Card
+          key={group.id}
+          title={`موظفون براتب صفر · ${group.name}`}
+          subtitle={`${group.rows.length} موظف · الراتب الأساسي + البدلات = 0`}
+          actions={<Button size="sm" variant="warning" icon="bell" loading={notifyingZeroSalary[group.id]} onClick={() => handleNotifyZeroSalaryBranch(parseInt(group.id, 10), group.name)}>تنبيه الفرع</Button>}
+          flush
+        >
+          <DataTable columns={salaryColumns(false)} rows={group.rows} rowKey="id" />
+        </Card>
+      ))}
 
-      {
-        !loadingZeroSalary && zeroSalaryEmployees.length > 0 && (
-          <div className="duplicates-section">
-            <h2>موظفون براتب صفر</h2>
-            <p style={{ marginBottom: '1rem', color: '#666' }}>
-              الموظفون الذين لم يتم تحديد راتب لهم (الراتب الأساسي + البدلات = 0)
-            </p>
-            {
-              <>
-                <p style={{ marginBottom: '1rem', fontWeight: 'bold' }}>
-                  عدد الموظفين: {zeroSalaryEmployees.length}
-                </p>
-                {/* Group by branch */}
-                {(() => {
-                  const groupedByBranch = zeroSalaryEmployees.reduce((acc, emp) => {
-                    const branchId = emp.branch_id || 'unknown';
-                    const branchName = emp.branch_name || 'غير محدد';
-                    if (!acc[branchId]) {
-                      acc[branchId] = { branchName, employees: [] };
-                    }
-                    acc[branchId].employees.push(emp);
-                    return acc;
-                  }, {});
-
-                  return Object.entries(groupedByBranch).map(([branchId, { branchName, employees }]) => (
-                    <div key={branchId} className="branch-group" style={{ marginBottom: '2rem', border: '1px solid #ddd', borderRadius: '8px', padding: '1rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                        <h3 style={{ margin: 0 }}>
-                          {branchName} ({employees.length} موظف)
-                        </h3>
-                        <button
-                          className="btn btn-warning"
-                          onClick={() => handleNotifyZeroSalaryBranch(parseInt(branchId), branchName)}
-                          disabled={notifyingZeroSalary[branchId]}
-                          title="إرسال تنبيه للفرع (مدة الرد: يوم واحد)"
-                        >
-                          {notifyingZeroSalary[branchId] ? 'جاري الإرسال...' : '🔔 تنبيه الفرع'}
-                        </button>
-                      </div>
-                      <div className="table-container">
-                        <table className="employees-table">
-                          <thead>
-                            <tr>
-                              <th>ID</th>
-                              <th>اسم الموظف</th>
-                              <th>الراتب الأساسي</th>
-                              <th>البدلات</th>
-                              <th>الإجراءات</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {employees.map((employee) => (
-                              <tr key={employee.id}>
-                                <td>{employee.id}</td>
-                                <td>
-                                  <button
-                                    className="link-button"
-                                    onClick={() => navigate(`/employees/${employee.id}`)}
-                                  >
-                                    {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
-                                  </button>
-                                </td>
-                                <td>{parseFloat(employee.base_salary || 0).toFixed(2)}</td>
-                                <td>{parseFloat(employee.other_allowances || 0).toFixed(2)}</td>
-                                <td>
-                                  <button
-                                    className="btn btn-primary btn-sm"
-                                    onClick={() => navigate(`/employees/${employee.id}`)}
-                                    title="تعديل البيانات"
-                                  >
-                                    تعديل
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ));
-                })()}
-              </>
-            }
-          </div>
-        )
-      }
-
-      {
-        employees.length > 0 && (
-          <>
-            <div className="employees-table-container">
-              <table className="employees-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>اسم الموظف</th>
-                    <th>الرقم الوظيفي</th>
-                    <th>الفرع</th>
-                    <th>الجنسية</th>
-                    <th>تاريخ الميلاد الهجري</th>
-                    <th>تاريخ الميلاد الميلادي</th>
-                    <th>العمر</th>
-                    <th>المجالات الناقصة</th>
-                    <th>الإجراءات</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {employees.map((employee) => (
-                    <tr key={employee.id} className={employee.is_invalid_age ? 'invalid-age-row' : ''}>
-                      <td>{employee.id}</td>
-                      <td>
-                        <button
-                          className="link-button"
-                          onClick={() => navigateToEmployee(employee.id)}
-                        >
-                          {employee.first_name} {employee.second_name} {employee.third_name} {employee.fourth_name}
-                        </button>
-                      </td>
-                      <td>{employee.employee_id_number || 'N/A'}</td>
-                      <td>{employee.branch_name || 'N/A'}</td>
-                      <td>{employee.nationality || 'N/A'}</td>
-                      <td>
-                        {employee.date_of_birth_hijri ? (
-                          employee.date_of_birth_hijri
-                        ) : (
-                          <span className="missing-badge">❌ مفقود</span>
-                        )}
-                      </td>
-                      <td>
-                        {employee.date_of_birth_gregorian ? (
-                          employee.date_of_birth_gregorian?.split('T')[0] || employee.date_of_birth_gregorian
-                        ) : (
-                          <span className="missing-badge">❌ مفقود</span>
-                        )}
-                      </td>
-                      <td>
-                        {employee.age !== null ? (
-                          <span className={employee.is_invalid_age ? 'invalid-age' : ''}>
-                            {employee.age} سنة
-                            {employee.is_invalid_age && <span className="invalid-icon"> ⚠️</span>}
-                          </span>
-                        ) : (
-                          <span className="missing-badge">-</span>
-                        )}
-                      </td>
-                      <td>
-                        {employee.invalid_fields && employee.invalid_fields.length > 0 ? (
-                          <div className="missing-fields-list">
-                            {employee.invalid_fields.slice(0, 3).map((field, idx) => (
-                              <span key={idx} className="missing-field-badge">
-                                {field}
-                              </span>
-                            ))}
-                            {employee.invalid_fields.length > 3 && (
-                              <span className="more-fields">+{employee.invalid_fields.length - 3} أخرى</span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="valid-badge">لا توجد</span>
-                        )}
-                      </td>
-                      <td>
-                        <div className="action-buttons">
-                          <button
-                            className="btn btn-primary btn-sm"
-                            onClick={() => handleEdit(employee)}
-                            disabled={processing[employee.id]}
-                            title="تعديل"
-                          >
-                            تعديل
-                          </button>
-                          <button
-                            className="btn btn-warning btn-sm"
-                            onClick={() => openConfirmModal(employee, 'notify')}
-                            disabled={processing[employee.id]}
-                            title="إشعار الفرع"
-                          >
-                            {processing[employee.id] ? 'جاري...' : 'إشعار الفرع'}
-                          </button>
-                          <button
-                            className="btn btn-danger btn-sm"
-                            onClick={() => openConfirmModal(employee, 'delete')}
-                            disabled={processing[employee.id]}
-                            title="حذف"
-                          >
-                            حذف
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="pagination">
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))}
-                  disabled={currentPage === 0}
-                >
-                  السابق
-                </button>
-                <span className="pagination-info">
-                  صفحة {currentPage + 1} من {totalPages}
-                </span>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1))}
-                  disabled={currentPage >= totalPages - 1}
-                >
-                  التالي
-                </button>
-              </div>
-            )}
-          </>
-        )
-      }
-
-      {/* Confirmation Modal */}
-      {
-        showConfirmModal && selectedEmployee && (
-          <div className="modal-overlay" onClick={() => setShowConfirmModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h2>تأكيد الإجراء</h2>
-              {actionType === 'notify' && (
-                <>
-                  <p>
-                    هل أنت متأكد من إرسال إشعار للفرع بخصوص الموظف:
-                    <br />
-                    <strong>
-                      {selectedEmployee.first_name} {selectedEmployee.second_name} {selectedEmployee.third_name} {selectedEmployee.fourth_name}
-                    </strong>
-                    <br />
-                    ({selectedEmployee.branch_name})
-                  </p>
-                  {selectedEmployee.invalid_fields && selectedEmployee.invalid_fields.length > 0 && (
-                    <div className="missing-fields-modal">
-                      <p><strong>المجالات غير الصحيحة:</strong></p>
-                      <ul>
-                        {selectedEmployee.invalid_fields.map((field, idx) => (
-                          <li key={idx}>{field}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </>
-              )}
-              {actionType === 'delete' && (
-                <p>
-                  هل أنت متأكد من حذف الموظف:
-                  <br />
-                  <strong>
-                    {selectedEmployee.first_name} {selectedEmployee.second_name} {selectedEmployee.third_name} {selectedEmployee.fourth_name}
-                  </strong>
-                  <br />
-                  <span className="warning-text">⚠️ هذا الإجراء لا يمكن التراجع عنه</span>
-                </p>
-              )}
-              <div className="modal-actions">
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setShowConfirmModal(false)}
-                >
-                  إلغاء
-                </button>
-                <button
-                  className={`btn ${actionType === 'delete' ? 'btn-danger' : 'btn-primary'}`}
-                  onClick={confirmAction}
-                >
-                  تأكيد
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      }
-    </div >
+      {employees.length > 0 && (
+        <Card title="موظفون ببيانات ناقصة أو غير صحيحة" subtitle="تواريخ ميلاد مفقودة أو أعمار غير منطقية" flush>
+          <DataTable columns={employeeColumns} rows={employees} rowKey="id" rowClassName={(e) => (e.is_invalid_age ? 'fm-invalid-row' : '')} />
+          {totalPages > 1 && (
+            <Pagination page={currentPage + 1} pageSize={pageSize} total={totalCount} onPageChange={(p) => setCurrentPage(p - 1)} pageSizeOptions={[pageSize]} />
+          )}
+        </Card>
+      )}
+    </Page>
   );
 };
 
