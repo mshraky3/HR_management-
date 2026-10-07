@@ -1465,6 +1465,15 @@ const Employees = () => {
       for (const file of filesToCheck) {
         if (!file) continue;
 
+        // Only the types the server accepts (same list as the inputs' accept attribute)
+        if (!/\.(pdf|jpe?g|png)$/i.test(file.name || "")) {
+          showWarning(`نوع الملف "${file.name}" غير مدعوم. يُسمح فقط بملفات PDF و JPG و PNG.`);
+          if (isEvent && inputElement) {
+            inputElement.value = ""; // Clear the input
+          }
+          return;
+        }
+
         // Validate file size (same limit as the server)
         if (file.size > MAX_UPLOAD_BYTES) {
           showWarning(fileTooLargeMessage(file.name));

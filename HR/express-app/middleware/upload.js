@@ -67,6 +67,15 @@ export const validateUploadedFile = (req, res, next) => {
     });
   }
 
+  // The MIME type comes from the client; make sure the bytes really are that type
+  // (direct uploads get the same check in acceptDirectUpload).
+  if (req.file.buffer && !req.file.directKey && !fileMatchesType(req.file.buffer, req.file.mimetype)) {
+    return res.status(400).json({
+      success: false,
+      message: 'محتوى الملف لا يطابق نوعه. يُسمح فقط بملفات PDF والصور.'
+    });
+  }
+
   // Direct uploads (acceptDirectUpload) never passed through this function,
   // so they get the larger limit; multipart files are capped by Vercel.
   const maxMB = req.file.directKey ? MAX_DIRECT_UPLOAD_MB : MAX_API_UPLOAD_MB;
