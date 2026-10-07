@@ -1,68 +1,131 @@
 /**
- * Term Management Page
- * Manage academic year divisions and semesters for schools and daycare centers
- * Main Manager only
+ * Academic years and terms (head office), per branch type. Create a year with its two terms, adjust the term
+ * names and dates, and complete a year (which moves every employee not carried over to "pending").
  */
-
 import { useState, useEffect } from 'react';
+import {
+  Page, PageHeader, Card, Button, Badge, Modal, FormField, Input, Select, Alert, EmptyState, Skeleton, useConfirm,
+} from '../ui';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import { useConfirm } from '../ui';
 import { termsAPI, academicYearsAPI, yearCycleAPI } from '../utils/api';
 import { formatDate } from '../utils/dateConverters';
 import './TermManagement.css';
 
-const TermManagement = () => {
+const EMPTY_YEAR = {
+  branch_type: 'school', year_label: '', term1_name: '', term1_start_date: '', term1_end_date: '',
+  term2_name: '', term2_start_date: '', term2_end_date: '',
+};
+
+const TYPE_OPTIONS = [{ value: 'school', label: 'مدرسة' }, { value: 'healthcare_center', label: 'مركز رعاية نهارية' }];
+const SECTIONS = [
+  { type: 'school', title: 'المدارس', empty: 'لا توجد سنوات دراسية للمدارس' },
+  { type: 'healthcare_center', title: 'مراكز الرعاية النهارية', empty: 'لا توجد سنوات دراسية لمراكز الرعاية النهارية' },
+];
+
+/** Returns an Arabic message for the first problem with the two terms' dates, or '' when they are fine. */
+function termDatesProblem(d) {
+  if (d.term1_start_date && d.term1_end_date && new Date(d.term1_start_date) > new Date(d.term1_end_date)) return 'تاريخ بداية الفصل الأول يجب أن يكون قبل تاريخ النهاية';
+  if (d.term2_start_date && d.term2_end_date && new Date(d.term2_start_date) > new Date(d.term2_end_date)) return 'تاريخ بداية الفصل الثاني يجب أن يكون قبل تاريخ النهاية';
+  if (d.term1_end_date && d.term2_start_date && new Date(d.term1_end_date) >= new Date(d.term2_start_date)) return 'يجب أن يبدأ الفصل الثاني بعد انتهاء الفصل الأول';
+  return '';
+}
+
+const termState = (term) => {
+  if (!term) return null;
+  const now = new Date();
+  if (now >= new Date(term.start_date) && now <= new Date(term.end_date)) return { label: 'جاري الآن', tone: 'success' };
+  if (now < new Date(term.start_date)) return { label: 'قادم', tone: 'info' };
+  return { label: 'منتهٍ', tone: 'neutral' };
+};
+
+function TermDatesFields({ values, onChange, prefix, title }) {
+  return (
+    <fieldset className="tm-term">
+      <legend>{title}</legend>
+      <div className="tm-grid">
+        <FormField label="الاسم" required>
+          <Input value={values[`${prefix}_name`]} onChange={(e) => onChange({ [`${prefix}_name`]: e.target.value })} />
+        </FormField>
+        <FormField label="تاريخ البداية" required>
+          <Input type="date" value={values[`${prefix}_start_date`]} onChange={(e) => onChange({ [`${prefix}_start_date`]: e.target.value })} />
+        </FormField>
+        <FormField label="تاريخ النهاية" required>
+          <Input type="date" value={values[`${prefix}_end_date`]} onChange={(e) => onChange({ [`${prefix}_end_date`]: e.target.value })} />
+        </FormField>
+      </div>
+    </fieldset>
+  );
+}
+
+function YearCard({ year, onComplete, onEdit }) {
+  const now = new Date();
+  const isCurrent = year.is_current || (now >= new Date(year.year_start) && now <= new Date(year.year_end));
+  const isInactive = !isCurrent && !year.is_completed;
+
+  return (
+    <article className={`tm-year${isCurrent ? ' is-current' : ''}`}>
+      <header>
+        <h3>{year.year_label}</h3>
+        <span className="tm-badges">
+          {isCurrent && <Badge tone="success" dot>الحالية</Badge>}
+          {year.is_completed && <Badge tone="neutral">مكتملة</Badge>}
+          {isInactive && <Badge tone="warning">غير نشطة</Badge>}
+        </span>
+      </header>
+
+      <dl className="tm-dates">
+        <div><dt>بداية السنة</dt><dd>{formatDate(year.year_start)}</dd></div>
+        <div><dt>نهاية السنة</dt><dd>{formatDate(year.year_end)}</dd></div>
+      </dl>
+
+      {[{ n: 'الأول', term: year.term1 }, { n: 'الثاني', term: year.term2 }].filter((t) => t.term).map(({ n, term }) => {
+        const state = termState(term);
+        return (
+          <div key={n} className="tm-term-row">
+            <div>
+              <strong>الفصل {n}</strong>
+              <span className="tm-muted">{term.term_name}</span>
+              <span className="tm-muted"><bdi>{formatDate(term.start_date)}</bdi> – <bdi>{formatDate(term.end_date)}</bdi></span>
+            </div>
+            {state && <Badge tone={state.tone}>{state.label}</Badge>}
+          </div>
+        );
+      })}
+
+      {!year.is_completed && (
+        <footer>
+          <Button size="sm" variant="secondary" icon="edit" onClick={() => onEdit(year)}>تعديل</Button>
+          <Button size="sm" variant="warning" icon="check-circle" onClick={() => onComplete(year.id)}>إتمام السنة</Button>
+        </footer>
+      )}
+    </article>
+  );
+}
+
+export default function TermManagement() {
   const { isMainManager } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const { confirm, prompt } = useConfirm();
 
-  const [academicYears, setAcademicYears] = useState([]);
+  const [years, setYears] = useState({ school: [], healthcare_center: [] });
   const [loading, setLoading] = useState(true);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [formData, setFormData] = useState({
-    branch_type: 'school',
-    year_label: '',
-    term1_name: '',
-    term1_start_date: '',
-    term1_end_date: '',
-    term2_name: '',
-    term2_start_date: '',
-    term2_end_date: ''
-  });
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState(EMPTY_YEAR);
   const [submitting, setSubmitting] = useState(false);
-  const [_editingYear, setEditingYear] = useState(null);
+  const [editing, setEditing] = useState(null); // { year, values }
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState('');
 
-  useEffect(() => {
-    if (!isMainManager()) {
-      return;
-    }
-    loadAcademicYears();
-  }, [isMainManager]);
-
-  const loadAcademicYears = async () => {
+  const loadYears = async () => {
     try {
       setLoading(true);
       const response = await academicYearsAPI.getAll();
-
       if (response.data.success) {
-        // Group by branch type
-        const grouped = {
-          school: [],
-          healthcare_center: []
-        };
-
-        (response.data.data || []).forEach(year => {
-          if (grouped[year.branch_type]) {
-            grouped[year.branch_type].push(year);
-          }
-        });
-
-        // Sort by year_start descending
-        grouped.school.sort((a, b) => new Date(b.year_start) - new Date(a.year_start));
-        grouped.healthcare_center.sort((a, b) => new Date(b.year_start) - new Date(a.year_start));
-
-        setAcademicYears(grouped);
+        const grouped = { school: [], healthcare_center: [] };
+        (response.data.data || []).forEach((y) => { if (grouped[y.branch_type]) grouped[y.branch_type].push(y); });
+        Object.values(grouped).forEach((list) => list.sort((a, b) => new Date(b.year_start) - new Date(a.year_start)));
+        setYears(grouped);
       }
     } catch (error) {
       console.error('Error loading academic years:', error);
@@ -72,86 +135,45 @@ const TermManagement = () => {
     }
   };
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => {
-      const updated = { ...prev, [name]: value };
+  useEffect(() => {
+    if (isMainManager()) loadYears();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMainManager]);
 
-      // Auto-fill term names when year_label changes
-      if (name === 'year_label' && value.trim()) {
-        const yearLabel = value.trim();
-        const autoTerm1 = `الفصل الأول - ${yearLabel}`;
-        const autoTerm2 = `الفصل الثاني - ${yearLabel}`;
+  // The term names follow the year label until the user types their own
+  const changeForm = (patch) => setForm((prev) => {
+    const next = { ...prev, ...patch };
+    if (patch.year_label !== undefined && patch.year_label.trim()) {
+      const label = patch.year_label.trim();
+      const prevLabel = prev.year_label.trim();
+      if (!prev.term1_name || prev.term1_name === `الفصل الأول - ${prevLabel}`) next.term1_name = `الفصل الأول - ${label}`;
+      if (!prev.term2_name || prev.term2_name === `الفصل الثاني - ${prevLabel}`) next.term2_name = `الفصل الثاني - ${label}`;
+    }
+    return next;
+  });
 
-        // Only auto-fill if empty or matches previous auto-pattern
-        const prevAutoTerm1 = prev.year_label ? `الفصل الأول - ${prev.year_label.trim()}` : '';
-        const prevAutoTerm2 = prev.year_label ? `الفصل الثاني - ${prev.year_label.trim()}` : '';
+  const closeCreate = () => { if (!submitting) { setCreateOpen(false); setForm(EMPTY_YEAR); } };
 
-        if (!prev.term1_name || prev.term1_name === prevAutoTerm1) {
-          updated.term1_name = autoTerm1;
-        }
-        if (!prev.term2_name || prev.term2_name === prevAutoTerm2) {
-          updated.term2_name = autoTerm2;
-        }
-      }
-
-      return updated;
-    });
-  };
-
-  const handleSubmit = async (e) => {
+  const submitCreate = async (e) => {
     e.preventDefault();
-
-    // Validation
-    if (!formData.year_label.trim()) {
-      showWarning('يرجى إدخال تسمية السنة الدراسية');
-      return;
-    }
-
-    if (!formData.term1_name.trim() || !formData.term1_start_date || !formData.term1_end_date) {
-      showWarning('يرجى إدخال بيانات الفصل الأول');
-      return;
-    }
-
-    if (!formData.term2_name.trim() || !formData.term2_start_date || !formData.term2_end_date) {
-      showWarning('يرجى إدخال بيانات الفصل الثاني');
-      return;
-    }
-
-    // Validate dates
-    if (new Date(formData.term1_start_date) > new Date(formData.term1_end_date)) {
-      showWarning('تاريخ بداية الفصل الأول يجب أن يكون قبل تاريخ النهاية');
-      return;
-    }
-
-    if (new Date(formData.term2_start_date) > new Date(formData.term2_end_date)) {
-      showWarning('تاريخ بداية الفصل الثاني يجب أن يكون قبل تاريخ النهاية');
-      return;
-    }
-
-    if (new Date(formData.term1_end_date) >= new Date(formData.term2_start_date)) {
-      showWarning('يجب أن يبدأ الفصل الثاني بعد انتهاء الفصل الأول');
-      return;
-    }
-
+    if (!form.year_label.trim()) { showWarning('يرجى إدخال تسمية السنة الدراسية'); return; }
+    if (!form.term1_name.trim() || !form.term1_start_date || !form.term1_end_date) { showWarning('يرجى إدخال بيانات الفصل الأول'); return; }
+    if (!form.term2_name.trim() || !form.term2_start_date || !form.term2_end_date) { showWarning('يرجى إدخال بيانات الفصل الثاني'); return; }
+    const problem = termDatesProblem(form);
+    if (problem) { showWarning(problem); return; }
     try {
       setSubmitting(true);
       const response = await termsAPI.createAcademicYear({
-        branch_type: formData.branch_type,
-        year_label: formData.year_label.trim(),
-        term1_name: formData.term1_name.trim(),
-        term1_start_date: formData.term1_start_date,
-        term1_end_date: formData.term1_end_date,
-        term2_name: formData.term2_name.trim(),
-        term2_start_date: formData.term2_start_date,
-        term2_end_date: formData.term2_end_date
+        branch_type: form.branch_type,
+        year_label: form.year_label.trim(),
+        term1_name: form.term1_name.trim(), term1_start_date: form.term1_start_date, term1_end_date: form.term1_end_date,
+        term2_name: form.term2_name.trim(), term2_start_date: form.term2_start_date, term2_end_date: form.term2_end_date,
       });
-
       if (response.data.success) {
         showSuccess('تم إنشاء السنة الدراسية والفصلين بنجاح');
-        setShowCreateForm(false);
-        resetForm();
-        loadAcademicYears();
+        setCreateOpen(false);
+        setForm(EMPTY_YEAR);
+        loadYears();
       }
     } catch (error) {
       console.error('Error creating academic year:', error);
@@ -161,24 +183,41 @@ const TermManagement = () => {
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      branch_type: 'school',
-      year_label: '',
-      term1_name: '',
-      term1_start_date: '',
-      term1_end_date: '',
-      term2_name: '',
-      term2_start_date: '',
-      term2_end_date: ''
+  const openEdit = (year) => {
+    const day = (value) => (value ? value.slice(0, 10) : '');
+    setEditError('');
+    setEditing({
+      year,
+      values: {
+        term1_name: year.term1?.term_name || '', term1_start_date: day(year.term1?.start_date), term1_end_date: day(year.term1?.end_date),
+        term2_name: year.term2?.term_name || '', term2_start_date: day(year.term2?.start_date), term2_end_date: day(year.term2?.end_date),
+      },
     });
-    setEditingYear(null);
   };
 
-  const handleCompleteYear = async (yearId) => {
-    // Ending a year moves every employee who was not carried into the new year to "pending" and archives the
-    // closing year's beneficiaries, for ALL branches of the type. Show exactly what will change first.
-    const year = [...(academicYears.school || []), ...(academicYears.healthcare_center || [])].find((y) => y.id === yearId);
+  const saveEdit = async () => {
+    const { year, values } = editing;
+    const problem = termDatesProblem(values);
+    if (problem) { setEditError(problem); return; }
+    try {
+      setSaving(true);
+      if (year.term1) await termsAPI.update(year.term1.id, { term_name: values.term1_name.trim(), start_date: values.term1_start_date, end_date: values.term1_end_date });
+      if (year.term2) await termsAPI.update(year.term2.id, { term_name: values.term2_name.trim(), start_date: values.term2_start_date, end_date: values.term2_end_date });
+      setEditing(null);
+      showSuccess('تم حفظ التعديلات بنجاح');
+      loadYears();
+    } catch (error) {
+      console.error('Error saving term edits:', error);
+      showError(error.response?.data?.message || 'فشل حفظ التعديلات');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const completeYear = async (yearId) => {
+    // Ending a year moves every employee not carried into the new year to "pending" and archives the closing
+    // year's beneficiaries, for ALL branches of the type. Show exactly what will change first.
+    const year = [...years.school, ...years.healthcare_center].find((y) => y.id === yearId);
     let preview = null;
     try {
       if (year?.branch_type) preview = (await yearCycleAPI.getEndYearPreview(year.branch_type)).data.data;
@@ -199,16 +238,10 @@ const TermManagement = () => {
 
     const message = lines.join('\n\n');
     if (unconfirmed.length > 0 || !preview) {
-      // Risky: make the head office type the word, not just click.
+      // Risky: make head office type the word, not just click.
       const typed = await prompt({
-        title: 'إتمام السنة الدراسية',
-        message,
-        label: 'اكتب كلمة «إتمام» للتأكيد',
-        multiline: false,
-        required: true,
-        tone: 'danger',
-        confirmText: 'إتمام السنة',
-        requiredMessage: 'اكتب كلمة إتمام للمتابعة',
+        title: 'إتمام السنة الدراسية', message, label: 'اكتب كلمة «إتمام» للتأكيد', multiline: false, required: true,
+        tone: 'danger', confirmText: 'إتمام السنة', requiredMessage: 'اكتب كلمة إتمام للمتابعة',
       });
       if (typed !== 'إتمام') {
         if (typed !== null) showError('لم تُكتب كلمة التأكيد بشكل صحيح');
@@ -222,7 +255,7 @@ const TermManagement = () => {
       const response = await academicYearsAPI.completeYear(yearId);
       if (response.data.success) {
         showSuccess('تم إتمام السنة الدراسية بنجاح');
-        loadAcademicYears();
+        loadYears();
       }
     } catch (error) {
       console.error('Error completing year:', error);
@@ -231,456 +264,78 @@ const TermManagement = () => {
   };
 
   if (!isMainManager()) {
-    return (
-      <div className="term-management-page">
-        <h1>غير مصرح</h1>
-        <p>هذه الصفحة متاحة فقط للمدير الرئيسي</p>
-      </div>
-    );
+    return <Page><PageHeader title="غير مصرح" /><Card><EmptyState icon="shield" title="هذه الصفحة متاحة فقط للمدير الرئيسي" /></Card></Page>;
   }
 
   return (
-    <div className="term-management-page">
-      <div className="page-header">
-        <h1>إدارة تقسيم السنة الدراسية</h1>
-        <button
-          className="btn btn-primary"
-          onClick={() => setShowCreateForm(!showCreateForm)}
-        >
-          {showCreateForm ? 'إلغاء' : 'إضافة سنة دراسية جديدة'}
-        </button>
-      </div>
+    <Page>
+      <PageHeader
+        title="السنة الدراسية والفصول"
+        subtitle="إدارة تقسيم السنة الدراسية لكل نوع من الفروع"
+        actions={<Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>إضافة سنة دراسية جديدة</Button>}
+      />
 
-      {/* Create Form */}
-      {showCreateForm && (
-        <div className="create-form-card">
-          <h2>إضافة سنة دراسية جديدة</h2>
-          <form onSubmit={handleSubmit}>
-            <div className="form-row">
-              <div className="form-group">
-                <label>نوع الفرع *</label>
-                <select
-                  name="branch_type"
-                  value={formData.branch_type}
-                  onChange={handleInputChange}
-                  required
-                >
-                  <option value="school">مدرسة</option>
-                  <option value="healthcare_center">مركز رعاية نهارية</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>تسمية السنة الدراسية *</label>
-                <input
-                  type="text"
-                  name="year_label"
-                  value={formData.year_label}
-                  onChange={handleInputChange}
-                  placeholder="مثال: 2025/2026"
-                  required
-                />
-                <span className="form-helper">الصيغة: سنة البداية/سنة النهاية</span>
-              </div>
+      {SECTIONS.map(({ type, title, empty }) => (
+        <Card key={type} title={title} subtitle={loading ? undefined : `${years[type].length} سنة`}>
+          {loading ? (
+            <Skeleton lines={3} height={16} />
+          ) : years[type].length === 0 ? (
+            <EmptyState compact icon="calendar" title={empty} />
+          ) : (
+            <div className="tm-years">
+              {years[type].map((year) => <YearCard key={year.id} year={year} onComplete={completeYear} onEdit={openEdit} />)}
             </div>
+          )}
+        </Card>
+      ))}
 
-            <p className="auto-fill-hint">
-              سيتم تعبئة اسم الفصل تلقائياً بناءً على تسمية السنة — يمكنك تعديله يدوياً
-            </p>
-
-            <div className="terms-section">
-              <h3>الفصل الدراسي الأول</h3>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>اسم الفصل الأول *</label>
-                  <input
-                    type="text"
-                    name="term1_name"
-                    value={formData.term1_name}
-                    onChange={handleInputChange}
-                    placeholder="مثال: الفصل الأول - 2025/2026"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>تاريخ البداية *</label>
-                  <input
-                    type="date"
-                    name="term1_start_date"
-                    value={formData.term1_start_date}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>تاريخ النهاية *</label>
-                  <input
-                    type="date"
-                    name="term1_end_date"
-                    value={formData.term1_end_date}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="terms-section">
-              <h3>الفصل الدراسي الثاني</h3>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>اسم الفصل الثاني *</label>
-                  <input
-                    type="text"
-                    name="term2_name"
-                    value={formData.term2_name}
-                    onChange={handleInputChange}
-                    placeholder="مثال: الفصل الثاني - 2025/2026"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>تاريخ البداية *</label>
-                  <input
-                    type="date"
-                    name="term2_start_date"
-                    value={formData.term2_start_date}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>تاريخ النهاية *</label>
-                  <input
-                    type="date"
-                    name="term2_end_date"
-                    value={formData.term2_end_date}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="info-section">
-              <h3>السنة الدراسية (يتم حسابها تلقائياً)</h3>
-              <p className="info-text">
-                <strong>بداية السنة الدراسية:</strong> تاريخ بداية الفصل الأول<br />
-                <strong>نهاية السنة الدراسية:</strong> تاريخ نهاية الفصل الثاني<br />
-                <br />
-                يتم استخدام السنة الدراسية الكاملة لتحديد موعد تغيير حالة الموظفين عند إتمام السنة.
-              </p>
-            </div>
-
-            <div className="form-actions">
-              <button type="submit" className="btn btn-primary" disabled={submitting}>
-                {submitting ? 'جاري الحفظ...' : 'حفظ'}
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={resetForm}>
-                إلغاء
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Academic Years List */}
-      {loading ? (
-        <div className="loading">جاري التحميل...</div>
-      ) : (
-        <div className="academic-years-list">
-          {/* Schools */}
-          <div className="branch-type-section">
-            <h2>المدارس</h2>
-            {academicYears.school && academicYears.school.length > 0 ? (
-              <div className="years-grid">
-                {academicYears.school.map(year => (
-                  <AcademicYearCard
-                    key={year.id}
-                    year={year}
-                    onComplete={handleCompleteYear}
-                    onUpdate={loadAcademicYears}
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="empty-state">لا توجد سنوات دراسية للمدارس</p>
-            )}
-          </div>
-
-          {/* Healthcare Centers */}
-          <div className="branch-type-section">
-            <h2>مراكز الرعاية النهارية</h2>
-            {academicYears.healthcare_center && academicYears.healthcare_center.length > 0 ? (
-              <div className="years-grid">
-                {academicYears.healthcare_center.map(year => (
-                  <AcademicYearCard
-                    key={year.id}
-                    year={year}
-                    onComplete={handleCompleteYear}
-                    onUpdate={loadAcademicYears}
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="empty-state">لا توجد سنوات دراسية لمراكز الرعاية النهارية</p>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Helper: determine term date status
-const getTermStatus = (term) => {
-  if (!term) return null;
-  const now = new Date();
-  const start = new Date(term.start_date);
-  const end = new Date(term.end_date);
-  if (now >= start && now <= end) return 'active';
-  if (now < start) return 'upcoming';
-  return 'past';
-};
-
-const termStatusLabels = {
-  active: 'جاري الآن',
-  upcoming: 'قادم',
-  past: 'منتهي'
-};
-
-// Academic Year Card Component
-const AcademicYearCard = ({ year, onComplete, onUpdate }) => {
-  const { showError, showSuccess } = useNotification();
-  const [editing, setEditing] = useState(false);
-  const [editData, setEditData] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [validationError, setValidationError] = useState('');
-
-  // Derive "current" status from dates, not just the is_current flag
-  const now = new Date();
-  const yearStart = new Date(year.year_start);
-  const yearEnd = new Date(year.year_end);
-  const isCurrentByDate = now >= yearStart && now <= yearEnd;
-  const isCurrent = year.is_current || isCurrentByDate;
-  const isInactive = !isCurrent && !year.is_completed;
-
-  const startEditing = () => {
-    setEditData({
-      term1_name: year.term1?.term_name || '',
-      term1_start_date: year.term1?.start_date ? year.term1.start_date.slice(0, 10) : '',
-      term1_end_date: year.term1?.end_date ? year.term1.end_date.slice(0, 10) : '',
-      term2_name: year.term2?.term_name || '',
-      term2_start_date: year.term2?.start_date ? year.term2.start_date.slice(0, 10) : '',
-      term2_end_date: year.term2?.end_date ? year.term2.end_date.slice(0, 10) : '',
-    });
-    setValidationError('');
-    setEditing(true);
-  };
-
-  const cancelEditing = () => {
-    setEditing(false);
-    setEditData({});
-    setValidationError('');
-  };
-
-  const handleEditChange = (e) => {
-    const { name, value } = e.target;
-    setEditData(prev => ({ ...prev, [name]: value }));
-    setValidationError('');
-  };
-
-  const handleSave = async () => {
-    // Client-side validation
-    if (editData.term1_start_date && editData.term1_end_date &&
-      new Date(editData.term1_start_date) > new Date(editData.term1_end_date)) {
-      setValidationError('تاريخ بداية الفصل الأول يجب أن يكون قبل تاريخ النهاية');
-      return;
-    }
-    if (editData.term2_start_date && editData.term2_end_date &&
-      new Date(editData.term2_start_date) > new Date(editData.term2_end_date)) {
-      setValidationError('تاريخ بداية الفصل الثاني يجب أن يكون قبل تاريخ النهاية');
-      return;
-    }
-    if (editData.term1_end_date && editData.term2_start_date &&
-      new Date(editData.term1_end_date) >= new Date(editData.term2_start_date)) {
-      setValidationError('يجب أن يبدأ الفصل الثاني بعد انتهاء الفصل الأول');
-      return;
-    }
-
-    try {
-      setSaving(true);
-
-      if (year.term1) {
-        await termsAPI.update(year.term1.id, {
-          term_name: editData.term1_name.trim(),
-          start_date: editData.term1_start_date,
-          end_date: editData.term1_end_date,
-        });
-      }
-
-      if (year.term2) {
-        await termsAPI.update(year.term2.id, {
-          term_name: editData.term2_name.trim(),
-          start_date: editData.term2_start_date,
-          end_date: editData.term2_end_date,
-        });
-      }
-
-      setEditing(false);
-      showSuccess('تم حفظ التعديلات بنجاح');
-      if (onUpdate) onUpdate();
-    } catch (error) {
-      console.error('Error saving term edits:', error);
-      showError(error.response?.data?.message || 'فشل حفظ التعديلات');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const cardClass = [
-    'academic-year-card',
-    isCurrent ? 'current' : '',
-    year.is_completed ? 'completed' : '',
-    isInactive ? 'inactive' : '',
-    editing ? 'editing' : ''
-  ].filter(Boolean).join(' ');
-
-  return (
-    <div className={cardClass}>
-      <div className="card-header">
-        <h3>{year.year_label}</h3>
-        <div className="card-badges">
-          {isCurrent && <span className="badge current-badge">الحالية</span>}
-          {year.is_completed && <span className="badge completed-badge">مكتملة</span>}
-          {isInactive && <span className="badge inactive-badge">غير نشطة</span>}
-        </div>
-      </div>
-
-      <div className="card-body">
-        <div className="year-dates">
-          <div className="date-item">
-            <span className="label">بداية السنة:</span>
-            <span className="value">{formatDate(year.year_start)}</span>
-          </div>
-          <div className="date-item">
-            <span className="label">نهاية السنة:</span>
-            <span className="value">{formatDate(year.year_end)}</span>
-          </div>
-        </div>
-
-        {editing ? (
+      <Modal
+        open={createOpen}
+        onClose={closeCreate}
+        title="إضافة سنة دراسية جديدة"
+        size="lg"
+        footer={(
           <>
-            {year.term1 && (
-              <div className="term-info term-edit">
-                <h4>الفصل الأول</h4>
-                <div className="edit-field">
-                  <label>الاسم:</label>
-                  <input type="text" name="term1_name" value={editData.term1_name} onChange={handleEditChange} />
-                </div>
-                <div className="edit-dates-row">
-                  <div className="edit-field">
-                    <label>البداية:</label>
-                    <input type="date" name="term1_start_date" value={editData.term1_start_date} onChange={handleEditChange} />
-                  </div>
-                  <div className="edit-field">
-                    <label>النهاية:</label>
-                    <input type="date" name="term1_end_date" value={editData.term1_end_date} onChange={handleEditChange} />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {year.term2 && (
-              <div className="term-info term-edit">
-                <h4>الفصل الثاني</h4>
-                <div className="edit-field">
-                  <label>الاسم:</label>
-                  <input type="text" name="term2_name" value={editData.term2_name} onChange={handleEditChange} />
-                </div>
-                <div className="edit-dates-row">
-                  <div className="edit-field">
-                    <label>البداية:</label>
-                    <input type="date" name="term2_start_date" value={editData.term2_start_date} onChange={handleEditChange} />
-                  </div>
-                  <div className="edit-field">
-                    <label>النهاية:</label>
-                    <input type="date" name="term2_end_date" value={editData.term2_end_date} onChange={handleEditChange} />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {validationError && (
-              <div className="edit-validation-error">{validationError}</div>
-            )}
-          </>
-        ) : (
-          <>
-            {year.term1 && (
-              <div className="term-info">
-                <h4>
-                  الفصل الأول: {year.term1.term_name}
-                  {(() => {
-                    const status = getTermStatus(year.term1);
-                    return status ? <span className={`term-status ${status}`}>{termStatusLabels[status]}</span> : null;
-                  })()}
-                </h4>
-                <p>{formatDate(year.term1.start_date)} - {formatDate(year.term1.end_date)}</p>
-              </div>
-            )}
-
-            {year.term2 && (
-              <div className="term-info">
-                <h4>
-                  الفصل الثاني: {year.term2.term_name}
-                  {(() => {
-                    const status = getTermStatus(year.term2);
-                    return status ? <span className={`term-status ${status}`}>{termStatusLabels[status]}</span> : null;
-                  })()}
-                </h4>
-                <p>{formatDate(year.term2.start_date)} - {formatDate(year.term2.end_date)}</p>
-              </div>
-            )}
+            <Button variant="secondary" onClick={closeCreate} disabled={submitting}>إلغاء</Button>
+            <Button variant="primary" type="submit" form="tm-create" loading={submitting}>حفظ</Button>
           </>
         )}
-      </div>
+      >
+        <form id="tm-create" onSubmit={submitCreate} className="ui-form-stack" noValidate>
+          <div className="tm-grid">
+            <FormField label="نوع الفرع" required>
+              <Select value={form.branch_type} onChange={(e) => changeForm({ branch_type: e.target.value })} options={TYPE_OPTIONS} />
+            </FormField>
+            <FormField label="تسمية السنة الدراسية" required hint="الصيغة: سنة البداية/سنة النهاية">
+              <Input value={form.year_label} onChange={(e) => changeForm({ year_label: e.target.value })} placeholder="مثال: 2025/2026" dir="ltr" />
+            </FormField>
+          </div>
+          <Alert tone="info">يُملأ اسم كل فصل تلقائياً من تسمية السنة، ويمكنك تعديله. تبدأ السنة بتاريخ بداية الفصل الأول وتنتهي بتاريخ نهاية الفصل الثاني، وبها يُحدَّد موعد تغيير حالة الموظفين عند إتمام السنة.</Alert>
+          <TermDatesFields values={form} onChange={changeForm} prefix="term1" title="الفصل الدراسي الأول" />
+          <TermDatesFields values={form} onChange={changeForm} prefix="term2" title="الفصل الدراسي الثاني" />
+        </form>
+      </Modal>
 
-      <div className="card-actions">
-        {editing ? (
+      <Modal
+        open={Boolean(editing)}
+        onClose={() => !saving && setEditing(null)}
+        title={editing ? `تعديل فصول ${editing.year.year_label}` : ''}
+        size="lg"
+        footer={(
           <>
-            <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
-              {saving ? 'جاري الحفظ...' : 'حفظ التعديلات'}
-            </button>
-            <button className="btn btn-secondary btn-sm" onClick={cancelEditing} disabled={saving}>
-              إلغاء
-            </button>
-          </>
-        ) : (
-          <>
-            {!year.is_completed && (
-              <>
-                <button className="btn btn-outline btn-sm" onClick={startEditing}>
-                  تعديل
-                </button>
-                <div>
-                  <button className="btn btn-warning btn-sm" onClick={() => onComplete(year.id)}>
-                    إتمام السنة
-                  </button>
-                  <p className="complete-year-hint">سيتم تغيير حالة جميع الموظفين إلى &quot;قيد الانتظار&quot;</p>
-                </div>
-              </>
-            )}
+            <Button variant="secondary" onClick={() => setEditing(null)} disabled={saving}>إلغاء</Button>
+            <Button variant="primary" loading={saving} onClick={saveEdit}>حفظ التعديلات</Button>
           </>
         )}
-      </div>
-    </div>
+      >
+        {editing && (
+          <div className="ui-form-stack">
+            {editing.year.term1 && <TermDatesFields values={editing.values} onChange={(patch) => { setEditError(''); setEditing((prev) => ({ ...prev, values: { ...prev.values, ...patch } })); }} prefix="term1" title="الفصل الأول" />}
+            {editing.year.term2 && <TermDatesFields values={editing.values} onChange={(patch) => { setEditError(''); setEditing((prev) => ({ ...prev, values: { ...prev.values, ...patch } })); }} prefix="term2" title="الفصل الثاني" />}
+            {editError && <Alert tone="danger">{editError}</Alert>}
+          </div>
+        )}
+      </Modal>
+    </Page>
   );
-};
-
-export default TermManagement;
-
+}
