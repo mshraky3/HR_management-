@@ -113,6 +113,7 @@ const Employees = () => {
     contract_type: "",
     contract_start_date: "",
     contract_end_date: "",
+    work_start_date: "",
     base_salary: "",
     housing_allowance: "",
     transportation_allowance: "",
@@ -845,6 +846,10 @@ const Employees = () => {
         data.contract_end_date_gregorian = data.contract_end_date;
         delete data.contract_end_date;
       }
+
+      // Work start date (first day of work); null clears it
+      data.work_start_date_gregorian = data.work_start_date || null;
+      delete data.work_start_date;
 
       // Clear ID expiry dates for Saudi employees (their IDs don't expire)
       if (isSaudiNationality) {
@@ -1686,6 +1691,7 @@ const Employees = () => {
           employee.contract_start_date_gregorian,
         ),
         contract_end_date: toInputDate(employee.contract_end_date_gregorian),
+        work_start_date: toInputDate(employee.work_start_date_gregorian),
         base_salary: employee.base_salary || "",
         housing_allowance: employee.housing_allowance || "",
         transportation_allowance: employee.transportation_allowance || "",
@@ -1818,6 +1824,7 @@ const Employees = () => {
       contract_type: "",
       contract_start_date: "",
       contract_end_date: "",
+      work_start_date: "",
       base_salary: "",
       housing_allowance: "",
       transportation_allowance: "",
@@ -2650,6 +2657,21 @@ const Employees = () => {
                             })
                           }
                           placeholder="تاريخ نهاية العقد"
+                        />
+                      </div>
+
+                      <div className="form-group col-3">
+                        <label>تاريخ مباشرة العمل</label>
+                        <input
+                          type="date"
+                          value={formData.work_start_date}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              work_start_date: e.target.value,
+                            })
+                          }
+                          placeholder="تاريخ مباشرة العمل"
                         />
                       </div>
 

@@ -27,6 +27,7 @@ const NULLABLE_TEXT_FIELDS = [
   'graduation_year', 'university_gpa',
   'date_of_birth_hijri', 'date_of_birth_gregorian', 'id_expiry_date_hijri', 'id_expiry_date_gregorian',
   'contract_start_date_hijri', 'contract_start_date_gregorian', 'contract_end_date_hijri', 'contract_end_date_gregorian',
+  'work_start_date_hijri', 'work_start_date_gregorian',
   'passport_issue_date', 'passport_expiry_date', 'residency_issue_date', 'bank_iban',
 ];
 
@@ -89,6 +90,14 @@ export function validateEmployeeFields(body, existing = null) {
     if (value === undefined || value === null || value === '') continue;
     if (existing && String(existing[field] ?? '') === String(value)) continue;
     if (!rule.test(String(value))) errors.push(rule.message);
+  }
+
+  const workStart = body.work_start_date_gregorian;
+  if (workStart) {
+    const iso = String(workStart).slice(0, 10);
+    const valid = /^\d{4}-\d{2}-\d{2}$/.test(iso) && !Number.isNaN(new Date(iso).getTime());
+    if (!valid) errors.push('تاريخ مباشرة العمل غير صالح');
+    else if (iso > new Date(Date.now() + 366 * 86400000).toISOString().slice(0, 10)) errors.push('تاريخ مباشرة العمل بعيد جداً في المستقبل');
   }
 
   const start = body.contract_start_date_gregorian;

@@ -38,6 +38,7 @@ export const FILE_FIELDS = [
   { value: 'other_allowances', label: 'بدلات أخرى' },
   { value: 'graduation_year', label: 'سنة التخرج' },
   { value: 'university_gpa', label: 'المعدل التراكمي' },
+  { value: 'work_start_date_gregorian', label: 'تاريخ مباشرة العمل' },
   { value: 'passport_number', label: 'رقم الجواز' },
   { value: 'passport_issue_date', label: 'تاريخ إصدار الجواز' },
   { value: 'passport_expiry_date', label: 'تاريخ انتهاء الجواز' },

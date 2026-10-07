@@ -7,7 +7,7 @@ const FIELD_LABELS = {
   id_or_residency_number: 'رقم الهوية/الإقامة', employee_id_number: 'رقم الموظف', nationality: 'الجنسية',
   job_title: 'المسمى الوظيفي', occupation: 'المهنة', phone_number: 'الجوال', email: 'البريد الإلكتروني',
   bank_iban: 'الآيبان', bank_name: 'البنك', national_address: 'العنوان الوطني', contract_type: 'نوع العقد',
-  contract_start_date_gregorian: 'بداية العقد', contract_end_date_gregorian: 'نهاية العقد',
+  contract_start_date_gregorian: 'بداية العقد', contract_end_date_gregorian: 'نهاية العقد', work_start_date_gregorian: 'تاريخ مباشرة العمل',
   base_salary: 'الراتب الأساسي', housing_allowance: 'بدل السكن', transportation_allowance: 'بدل النقل',
   date_of_birth_gregorian: 'تاريخ الميلاد', id_expiry_date_gregorian: 'انتهاء الهوية', gender: 'الجنس',
   religion: 'الديانة', marital_status: 'الحالة الاجتماعية', educational_qualification: 'المؤهل', specialization: 'التخصص',

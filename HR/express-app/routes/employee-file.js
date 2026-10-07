@@ -156,6 +156,7 @@ const getFieldLabel = (field) => {
     passport_expiry_date: 'تاريخ انتهاء الجواز',
     passport_issue_place: 'مكان إصدار الجواز',
     residency_issue_date: 'تاريخ إصدار الإقامة',
+    work_start_date_gregorian: 'تاريخ مباشرة العمل',
     data_completion_status: 'حالة إكمال البيانات'
   };
   return labels[field] || field;
@@ -203,6 +204,7 @@ const getFieldValue = (employee, field, branches) => {
     case 'passport_issue_date':
     case 'passport_expiry_date':
     case 'residency_issue_date':
+    case 'work_start_date_gregorian':
       return formatDate(employee[field]);
     case 'base_salary':
     case 'housing_allowance':

@@ -201,6 +201,8 @@ export async function initializeDatabase() {
       contract_start_date_gregorian DATE,
       contract_end_date_hijri VARCHAR(50),
       contract_end_date_gregorian DATE,
+      work_start_date_hijri VARCHAR(50),
+      work_start_date_gregorian DATE,
       years_of_experience_in_same_institution INTEGER DEFAULT 0,
       years_of_experience_in_company INTEGER DEFAULT 0,
       base_salary DECIMAL(10,2),

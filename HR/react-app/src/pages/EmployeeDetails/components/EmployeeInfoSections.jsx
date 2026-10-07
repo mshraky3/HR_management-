@@ -206,6 +206,12 @@ const EmployeeInfoSections = ({ employee, branches }) => (
                     )}
                   </tr>
                 )}
+              {employee.work_start_date_gregorian && (
+                <tr>
+                  <th>تاريخ مباشرة العمل</th>
+                  <td colSpan="3">{formatDate(employee.work_start_date_gregorian)}</td>
+                </tr>
+              )}
               {employee.years_of_experience_in_same_institution !== undefined &&
                 employee.years_of_experience_in_same_institution !== null && (
                   <tr>

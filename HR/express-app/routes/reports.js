@@ -232,6 +232,8 @@ const getFieldLabel = (field) => {
     contract_start_date_gregorian: 'تاريخ بداية العقد (ميلادي)',
     contract_end_date_hijri: 'تاريخ نهاية العقد (هجري)',
     contract_end_date_gregorian: 'تاريخ نهاية العقد (ميلادي)',
+    work_start_date_hijri: 'تاريخ مباشرة العمل (هجري)',
+    work_start_date_gregorian: 'تاريخ مباشرة العمل (ميلادي)',
     contract_days_remaining: 'الأيام المتبقية للعقد',
     years_of_experience_in_same_institution: 'سنوات الخبرة في نفس المؤسسة',
     years_of_experience_in_company: 'سنوات الخبرة في الشركة',
@@ -284,6 +286,7 @@ const getFieldValue = (employee, field, branches) => {
     case 'id_expiry_date_hijri':
     case 'contract_start_date_hijri':
     case 'contract_end_date_hijri':
+    case 'work_start_date_hijri':
       return employee[field] || '-';
     case 'id_expiry_date_gregorian':
     case 'passport_issue_date':
@@ -291,6 +294,7 @@ const getFieldValue = (employee, field, branches) => {
     case 'residency_issue_date':
     case 'contract_start_date_gregorian':
     case 'contract_end_date_gregorian':
+    case 'work_start_date_gregorian':
       return formatDate(employee[field]);
     case 'base_salary':
     case 'housing_allowance':

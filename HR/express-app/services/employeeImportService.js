@@ -36,6 +36,7 @@ export const COLUMNS = [
   { key: 'contract_type', header: 'نوع العقد (قوى/ورقي)', required: false, width: 18 },
   { key: 'contract_start_date', header: 'بداية العقد (YYYY-MM-DD)', required: false, width: 22 },
   { key: 'contract_end_date', header: 'نهاية العقد (YYYY-MM-DD)', required: false, width: 22 },
+  { key: 'work_start_date', header: 'تاريخ مباشرة العمل (YYYY-MM-DD)', required: false, width: 26 },
 ];
 
 const norm = (v) => String(v ?? '').replace(/[ً-ٰٟـ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -58,7 +59,7 @@ export async function buildTemplate() {
     first_name: 'محمد', second_name: 'أحمد', third_name: 'علي', fourth_name: 'السالم', id_or_residency_number: '1000000000',
     nationality: 'السعودية', job_title: 'معلم', gender: 'ذكر', date_of_birth: '1990-05-17', phone_number: '0500000000',
     email: 'name@example.com', bank_iban: 'SA0000000000000000000000', bank_name: 'مصرف الراجحي', national_address: 'ABCD1234',
-    contract_type: 'قوى', contract_start_date: '2026-09-01', contract_end_date: '2027-06-30',
+    contract_type: 'قوى', contract_start_date: '2026-09-01', contract_end_date: '2027-06-30', work_start_date: '2024-09-01',
   });
   ws.getRow(2).font = { color: { argb: 'FF94A3B8' }, italic: true };
 
@@ -163,6 +164,8 @@ export function validateRow(values) {
   const end = toIsoDate(body.contract_end_date);
   if (start === 'invalid') errors.push('بداية العقد غير صالحة');
   if (end === 'invalid') errors.push('نهاية العقد غير صالحة');
+  const workStart = toIsoDate(body.work_start_date);
+  if (workStart === 'invalid') errors.push('تاريخ مباشرة العمل غير صالح (استخدم YYYY-MM-DD)');
 
   const fieldErrors = validateEmployeeFields({
     id_or_residency_number: body.id_or_residency_number, phone_number: body.phone_number, email: body.email,
@@ -197,6 +200,8 @@ export function validateRow(values) {
     contract_type: body.contract_type || null,
     contract_start_date_gregorian: start && start !== 'invalid' ? start : null,
     contract_end_date_gregorian: end && end !== 'invalid' ? end : null,
+    work_start_date_gregorian: workStart && workStart !== 'invalid' ? workStart : null,
+    work_start_date_hijri: workStart && workStart !== 'invalid' ? formatHijriToString(gregorianToHijri(workStart)) : null,
   };
   return { data, errors };
 }

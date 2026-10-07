@@ -51,6 +51,7 @@ const availableFields = [
   { value: 'contract_start_date_gregorian', label: 'تاريخ بداية العقد (ميلادي)' },
   { value: 'contract_end_date_hijri', label: 'تاريخ نهاية العقد (هجري)' },
   { value: 'contract_end_date_gregorian', label: 'تاريخ نهاية العقد (ميلادي)' },
+  { value: 'work_start_date_gregorian', label: 'تاريخ مباشرة العمل' },
   { value: 'contract_days_remaining', label: 'الأيام المتبقية للعقد' },
   { value: 'national_address', label: 'العنوان الوطني' },
   { value: 'years_of_experience_in_same_institution', label: 'سنوات الخبرة في نفس المؤسسة' },
@@ -135,7 +136,7 @@ const fullNameOf = (emp) => {
 
 const DATE_FIELDS = new Set([
   'date_of_birth_gregorian', 'id_expiry_date_gregorian', 'passport_issue_date', 'passport_expiry_date',
-  'residency_issue_date', 'contract_start_date_gregorian', 'contract_end_date_gregorian',
+  'residency_issue_date', 'contract_start_date_gregorian', 'contract_end_date_gregorian', 'work_start_date_gregorian',
 ]);
 const TRANSLATED_FIELDS = new Set(['gender', 'id_type', 'marital_status', 'religion', 'status', 'data_completion_status']);
 
