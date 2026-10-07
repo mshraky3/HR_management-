@@ -3,7 +3,7 @@ export { default as Button, IconButton } from './Button';
 export { default as Badge, StatusBadge, EMPLOYEE_STATUS_META, ARCHIVED_STATUS_OPTIONS, employeeStatusLabel } from './Badge';
 export { default as Modal } from './Modal';
 export { ConfirmProvider, useConfirm } from './ConfirmProvider';
-export { FormField, Input, Textarea, Select, SearchInput, Checkbox } from './forms';
+export { FormField, Input, Textarea, Select, SearchInput, Checkbox, Chip, ChipGroup } from './forms';
 export { Spinner, Skeleton, TableSkeleton, EmptyState, ErrorState, Alert } from './feedback';
 export { PageHeader, Page, Card, StatCard, Tabs, Toolbar } from './layout';
 export { default as DataTable, Pagination, RowActions } from './DataTable';

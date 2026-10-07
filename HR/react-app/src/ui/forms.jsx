@@ -84,3 +84,27 @@ export const Checkbox = forwardRef(function Checkbox({ label, className = '', ..
     </label>
   );
 });
+
+/**
+ * Chip: a pill that toggles on and off (multi-select filters, field pickers).
+ *   <ChipGroup label="الجنسية"><Chip selected={on} onClick={toggle}>سعودي</Chip></ChipGroup>
+ * Uses aria-pressed, so a screen reader announces the state without relying on colour.
+ */
+export function Chip({ selected = false, onClick, children, className = '', ...props }) {
+  return (
+    <button
+      type="button"
+      className={`ui-chip${selected ? ' is-selected' : ''}${className ? ` ${className}` : ''}`}
+      aria-pressed={selected}
+      onClick={onClick}
+      {...props}
+    >
+      {selected && <Icon name="check" size={14} />}
+      <span>{children}</span>
+    </button>
+  );
+}
+
+export function ChipGroup({ children, className = '', ...props }) {
+  return <div className={`ui-chip-group${className ? ` ${className}` : ''}`} role="group" {...props}>{children}</div>;
+}
