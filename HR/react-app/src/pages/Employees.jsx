@@ -13,7 +13,7 @@ import {
 } from "../utils/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useNotification } from "../contexts/NotificationContext";
-import { useConfirm } from '../ui';
+import { useConfirm, Button, Alert, Icon, Spinner } from '../ui';
 import { DEFAULT_BANK_PLACEHOLDER } from "../components/BankSelect";
 import {
   isSaudi as isSaudiHelper,
@@ -47,6 +47,7 @@ import {
 // TablePage.css is now loaded in App.jsx to prevent FOUC
 // import './TablePage.css';
 import "./Employees.css";
+import './EmployeeForm.css';
 import NationalitySelect from "../components/NationalitySelect.jsx";
 import NameInput from "../components/NameInput.jsx";
 import UnifiedDatePicker from "../components/UnifiedDatePicker.jsx";
@@ -331,7 +332,7 @@ const Employees = () => {
   }, [formData.nationality]);
 
   // Check if form data is valid for saving
-  const isFormValid = () => {
+  const _isFormValid = () => {
     // Check nationality is selected
     if (!formData.nationality) return false;
 
@@ -1970,130 +1971,59 @@ const Employees = () => {
         <div className="employee-form-page">
           <div className="form-page-header">
             <h1>{editingEmployee ? "تعديل الموظف" : "إضافة موظف جديد"}</h1>
-            <button
-              onClick={() => {
+            <Button variant="secondary" icon="arrow-end" onClick={() => {
                 setShowForm(false);
                 resetForm();
                 setEditingEmployee(null);
-              }}
-              className="btn-secondary btn-lg"
-            >
+              }}>
               إلغاء والعودة للقائمة
-            </button>
+            </Button>
           </div>
 
           <div className="employee-form-container">
             {formStep === 1 && !editingEmployee && isMainManager() && (
-              <div style={{ padding: "2rem" }}>
-                <h3
-                  style={{
-                    marginBottom: "2rem",
-                    textAlign: "center",
-                    fontSize: "1.5rem",
-                    fontWeight: "700",
-                    color: "#2c3e50",
-                  }}
-                >
-                  اختر نوع الفرع للموظف الجديد
-                </h3>
-                <div className="branch-type-selection">
+              <div className="ef-step">
+                <h3 className="ef-step-title">اختر نوع الفرع للموظف الجديد</h3>
+                <div className="ef-type-grid">
                   <button
                     type="button"
+                    className="ef-type-card"
                     onClick={() => {
                       setSelectedBranchType("healthcare_center");
-                      const firstBranch = branches.find(
-                        (b) =>
-                          b.branch_type === "healthcare_center" && b.is_active,
-                      );
+                      const firstBranch = branches.find((b) => b.branch_type === "healthcare_center" && b.is_active);
                       if (firstBranch) {
-                        setFormData((prev) => ({
-                          ...prev,
-                          branch_id: firstBranch.id,
-                        }));
+                        setFormData((prev) => ({ ...prev, branch_id: firstBranch.id }));
                       }
                       setFormStep(2);
                     }}
-                    className="branch-type-button"
                   >
-                    <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>
-                      🏥
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "1.25rem",
-                        fontWeight: "700",
-                        color: "#2c3e50",
-                      }}
-                    >
-                      مركز رعاية صحية
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "0.9rem",
-                        color: "#7f8c8d",
-                        marginTop: "0.5rem",
-                      }}
-                    >
-                      للموظفين في المراكز الصحية
-                    </div>
+                    <span className="ef-type-icon"><Icon name="building" size={28} /></span>
+                    <strong>مركز رعاية صحية</strong>
+                    <span className="ef-muted">للموظفين في المراكز الصحية</span>
                   </button>
                   <button
                     type="button"
+                    className="ef-type-card"
                     onClick={() => {
                       setSelectedBranchType("school");
-                      const firstBranch = branches.find(
-                        (b) => b.branch_type === "school" && b.is_active,
-                      );
+                      const firstBranch = branches.find((b) => b.branch_type === "school" && b.is_active);
                       if (firstBranch) {
-                        setFormData((prev) => ({
-                          ...prev,
-                          branch_id: firstBranch.id,
-                        }));
+                        setFormData((prev) => ({ ...prev, branch_id: firstBranch.id }));
                       }
                       setFormStep(2);
                     }}
-                    className="branch-type-button"
                   >
-                    <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>
-                      🏫
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "1.25rem",
-                        fontWeight: "700",
-                        color: "#2c3e50",
-                      }}
-                    >
-                      مدرسة
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "0.9rem",
-                        color: "#7f8c8d",
-                        marginTop: "0.5rem",
-                      }}
-                    >
-                      للموظفين في المدارس
-                    </div>
+                    <span className="ef-type-icon"><Icon name="graduation-cap" size={28} /></span>
+                    <strong>مدرسة</strong>
+                    <span className="ef-muted">للموظفين في المدارس</span>
                   </button>
                 </div>
-                <div
-                  style={{
-                    marginTop: "2rem",
-                    textAlign: "center",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowForm(false);
-                      resetForm();
-                      setEditingEmployee(null);
-                    }}
-                    className="btn-secondary btn-lg"
-                  >
-                    إلغاء والعودة
-                  </button>
+                <div>
+                  <Button variant="ghost" onClick={() => {
+                setShowForm(false);
+                resetForm();
+                setEditingEmployee(null);
+              }}>إلغاء والعودة</Button>
                 </div>
               </div>
             )}
@@ -2103,52 +2033,20 @@ const Employees = () => {
               (!isMainManager() && user?.branch_id)) && (
                 <form onSubmit={handleSubmit} className="employee-form">
                   {isMainManager() && (
-                    <div className="info-card" style={{ gridColumn: "span 12" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          flexWrap: "wrap",
-                          gap: "1rem",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                          }}
-                        >
-                          <span style={{ fontSize: "1.5rem" }}>
-                            {isHealthcareCenter(currentBranchType)
-                              ? "🏥"
-                              : isSchool(currentBranchType)
-                                ? "🏫"
-                                : "📋"}
-                          </span>
-                          <strong>نوع الفرع: </strong>
-                          <span>
-                            {currentBranchType
-                              ? isHealthcareCenter(currentBranchType)
-                                ? "مركز رعاية صحية"
-                                : isSchool(currentBranchType)
-                                  ? "مدرسة"
-                                  : "غير محدد"
-                              : "غير محدد"}
-                          </span>
-                        </div>
-                        {!editingEmployee && (
-                          <button
-                            type="button"
-                            onClick={() => setFormStep(1)}
-                            className="btn-secondary btn-sm"
-                            style={{ padding: "0.5rem 1rem" }}
-                          >
-                            تغيير النوع
-                          </button>
-                        )}
-                      </div>
+                    <div className="col-12 ef-typebar">
+                      <span>
+                        <strong>نوع الفرع: </strong>
+                        {currentBranchType
+                          ? isHealthcareCenter(currentBranchType)
+                            ? "مركز رعاية صحية"
+                            : isSchool(currentBranchType)
+                              ? "مدرسة"
+                              : "غير محدد"
+                          : "غير محدد"}
+                      </span>
+                      {!editingEmployee && (
+                        <Button size="sm" variant="secondary" onClick={() => setFormStep(1)}>تغيير النوع</Button>
+                      )}
                     </div>
                   )}
 
@@ -2156,115 +2054,44 @@ const Employees = () => {
 
                   {/* Help section for new employees */}
                   {!editingEmployee && (
-                    <div
-                      className="info-card"
-                      style={{
-                        gridColumn: "span 12",
-                        background: "#e3f2fd",
-                        borderColor: "#2196f3",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: "1rem",
-                        }}
-                      >
-                        <span style={{ fontSize: "2rem" }}>💡</span>
-                        <div>
-                          <h4
-                            style={{
-                              margin: "0 0 0.5rem 0",
-                              fontSize: "1.1rem",
-                              fontWeight: "700",
-                              color: "#1976d2",
-                            }}
-                          >
-                            إرشادات إضافة موظف جديد
-                          </h4>
-                          <ul
-                            style={{
-                              margin: "0.5rem 0 0 1.5rem",
-                              fontSize: "0.95rem",
-                              lineHeight: "1.8",
-                              color: "#424242",
-                            }}
-                          >
-                            <li>
-                              ابدأ باختيار <strong>الجنسية</strong> أولاً - ستظهر
-                              الحقول المناسبة تلقائياً
-                            </li>
-                            <li>
-                              الحقول المميزة بـ{" "}
-                              <span
-                                style={{ color: "#e74c3c", fontWeight: "700" }}
-                              >
-                                *
-                              </span>{" "}
-                              هي حقول إلزامية
-                            </li>
-                            <li>
-                              يمكنك تعبئة الحقول الإضافية لاحقاً من خلال التعديل
-                            </li>
-                            <li>
-                              المستندات يمكن رفعها في القسم الرابع أو لاحقاً
-                            </li>
-                          </ul>
-                        </div>
-                      </div>
+                    <div className="col-12">
+                      <Alert tone="info" title="إرشادات إضافة موظف جديد">
+                        <ul className="ef-help">
+                          <li>ابدأ باختيار <strong>الجنسية</strong> أولاً - ستظهر الحقول المناسبة تلقائياً</li>
+                          <li>الحقول المميزة بـ <span className="ef-required">*</span> هي حقول إلزامية</li>
+                          <li>يمكنك تعبئة الحقول الإضافية لاحقاً من خلال التعديل</li>
+                          <li>المستندات يمكن رفعها في القسم الرابع أو لاحقاً</li>
+                        </ul>
+                      </Alert>
                     </div>
                   )}
 
                   {/* الجنسية أولاً - تظهر فقط في البداية */}
                   <div className="form-group col-12 nationality-highlight">
                     <NationalitySelect
-                      label="الجنسية *"
+                      label="الجنسية"
                       value={formData.nationality}
                       onChange={handleNationalityChange}
                       required
                     />
                     {formData.nationality && (
-                      <div
-                        className="info-card success"
-                        style={{ marginTop: "1rem" }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <span style={{ fontSize: "1.25rem" }}>✓</span>
-                          <span style={{ fontWeight: "600" }}>
-                            {isSaudi()
-                              ? "مواطن سعودي - سيتم إظهار الحقول المطلوبة للمواطنين"
-                              : "مقيم - سيتم إظهار الحقول المطلوبة للمقيمين"}
-                          </span>
-                        </div>
-                      </div>
+                      <p className="ef-nationality-note">
+                        {isSaudi()
+                          ? "مواطن سعودي - سيتم إظهار الحقول المطلوبة للمواطنين"
+                          : "مقيم - سيتم إظهار الحقول المطلوبة للمقيمين"}
+                      </p>
                     )}
                   </div>
 
                   {/* باقي الحقول تظهر فقط بعد اختيار الجنسية */}
                   {formData.nationality && (
                     <>
-                      <h3
-                        className="col-12"
-                        style={{
-                          background: "var(--section-bg-1)",
-                        }}
-                      >
-                        <span style={{ fontSize: "1.25rem" }}>📋</span>
-                        القسم الأول: المعلومات الأساسية ومعلومات الإثبات الشخصي
-                      </h3>
+                      <h3 className="col-12 ef-section">القسم الأول: المعلومات الأساسية ومعلومات الإثبات الشخصي</h3>
 
-                      <h4 className="col-12">👤 الاسم الكامل</h4>
+                      <h4 className="col-12">الاسم الكامل</h4>
                       <div className="form-group col-12">
                         <NameInput
-                          label="الاسم الكامل (4 أسماء) *"
+                          label="الاسم الكامل (4 أسماء)"
                           value={{
                             first: formData.first_name,
                             second: formData.second_name,
@@ -2300,7 +2127,7 @@ const Employees = () => {
                       {isNonSaudi(formData.nationality) && (
                         <div className="form-group col-3">
                           <UnifiedDatePicker
-                            label="تاريخ انتهاء الهوية/الإقامة *"
+                            label="تاريخ انتهاء الهوية/الإقامة"
                             hijriValue={formData.id_expiry_date_hijri}
                             gregorianValue={formData.id_expiry_date_gregorian}
                             onChange={handleIdExpiryChange}
@@ -2323,7 +2150,7 @@ const Employees = () => {
                       {/* تاريخ الميلاد - مطلوب للجميع */}
                       <div className="form-group col-3">
                         <UnifiedDatePicker
-                          label="تاريخ الميلاد *"
+                          label="تاريخ الميلاد"
                           hijriValue={formData.date_of_birth_hijri}
                           gregorianValue={formData.date_of_birth_gregorian}
                           onChange={handleDateOfBirthChange}
@@ -2472,7 +2299,7 @@ const Employees = () => {
 
                       <div className="form-group col-12">
                         <BankSelect
-                          label="معلومات البنك *"
+                          label="معلومات البنك"
                           value={formData.bank_name}
                           onChange={(value) =>
                             setFormData((prev) => ({ ...prev, bank_name: value }))
@@ -2513,7 +2340,7 @@ const Employees = () => {
                       {/* معلومات الإثبات الشخصي - جزء من القسم الأول */}
                       <div className="form-group col-3">
                         <ReligionSelect
-                          label="الديانة *"
+                          label="الديانة"
                           value={formData.religion}
                           onChange={(value) =>
                             setFormData({ ...formData, religion: value })
@@ -2524,7 +2351,7 @@ const Employees = () => {
 
                       <div className="form-group col-3">
                         <MaritalStatusSelect
-                          label="الحالة الاجتماعية *"
+                          label="الحالة الاجتماعية"
                           value={formData.marital_status}
                           onChange={(value) =>
                             setFormData({ ...formData, marital_status: value })
@@ -2692,15 +2519,7 @@ const Employees = () => {
                       </div>
 
                       {/* ========== القسم الثاني: المعلومات التعليمية ========== */}
-                      <h3
-                        className="col-12"
-                        style={{
-                          background: "var(--section-bg-2)",
-                        }}
-                      >
-                        <span style={{ fontSize: "1.25rem" }}>🎓</span>
-                        القسم الثاني: المعلومات التعليمية
-                      </h3>
+                      <h3 className="col-12 ef-section">القسم الثاني: المعلومات التعليمية</h3>
 
                       <div className="form-group col-4">
                         <label>المؤهل التعليمي</label>
@@ -2796,15 +2615,7 @@ const Employees = () => {
                         </>
                       )}
                       {/* ========== القسم الثالث: الراتب والبدلات ========== */}
-                      <h3
-                        className="col-12"
-                        style={{
-                          background: "var(--section-bg-3)",
-                        }}
-                      >
-                        <span style={{ fontSize: "1.25rem" }}>💰</span>
-                        القسم الثالث: الراتب والبدلات
-                      </h3>
+                      <h3 className="col-12 ef-section">القسم الثالث: الراتب والبدلات</h3>
 
                       <div className="form-group col-3">
                         <label>الراتب الأساسي</label>
@@ -2904,15 +2715,7 @@ const Employees = () => {
 
 
                       {/* ========== القسم الرابع: المستندات ========== */}
-                      <h3
-                        className="col-12"
-                        style={{
-                          background: "var(--section-bg-4)",
-                        }}
-                      >
-                        <span style={{ fontSize: "1.25rem" }}>📄</span>
-                        القسم الرابع: المستندات
-                      </h3>
+                      <h3 className="col-12 ef-section">القسم الرابع: المستندات</h3>
 
                       <div className="documents-section col-12">
                         {/* Common documents for all types */}
@@ -2931,7 +2734,7 @@ const Employees = () => {
                               style={{
                                 marginTop: "6px",
                                 padding: "6px 8px",
-                                background: "#d4edda",
+                                background: "var(--success-soft)",
                                 border: "1px solid #28a745",
                                 borderRadius: "4px",
                                 fontSize: "11px",
@@ -3076,24 +2879,24 @@ const Employees = () => {
                                         style={{
                                           marginBottom: "12px",
                                           padding: "12px 14px",
-                                          background: "#e7f3ff",
+                                          background: "var(--primary-soft)",
                                           border: "1px solid #b3d9ff",
                                           borderRadius: "8px",
                                           fontSize: "13px",
-                                          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                          boxShadow: "0 1px 3px var(--border)",
                                         }}
                                       >
                                         <div
                                           style={{
                                             fontWeight: "600",
                                             marginBottom: "8px",
-                                            color: "#0056b3",
+                                            color: "var(--primary-dark)",
                                             display: "flex",
                                             alignItems: "center",
                                             gap: "6px",
                                           }}
                                         >
-                                          <span>📋</span>
+                                          <span></span>
                                           <span>
                                             يوجد{" "}
                                             {
@@ -3110,7 +2913,7 @@ const Employees = () => {
                                               style={{
                                                 marginTop: "6px",
                                                 padding: "8px 10px",
-                                                background: "#fff",
+                                                background: "var(--surface)",
                                                 borderRadius: "6px",
                                                 border: "1px solid #d1ecf1",
                                                 fontSize: "12px",
@@ -3122,10 +2925,10 @@ const Employees = () => {
                                               <div
                                                 style={{
                                                   fontWeight: "500",
-                                                  color: "#333",
+                                                  color: "var(--text)",
                                                 }}
                                               >
-                                                📄{" "}
+                                                {" "}
                                                 {doc.filename ||
                                                   doc.file_name ||
                                                   "مستند"}
@@ -3134,7 +2937,7 @@ const Employees = () => {
                                                 <span
                                                   style={{
                                                     fontSize: "11px",
-                                                    color: "#666",
+                                                    color: "var(--text-muted)",
                                                   }}
                                                 >
                                                   تم الرفع:{" "}
@@ -3148,11 +2951,11 @@ const Employees = () => {
                                           style={{
                                             marginTop: "8px",
                                             fontSize: "12px",
-                                            color: "#0056b3",
+                                            color: "var(--primary-dark)",
                                             fontStyle: "italic",
                                           }}
                                         >
-                                          ℹ️ إضافة ملفات جديدة لن تؤثر على الملفات
+                                          إضافة ملفات جديدة لن تؤثر على الملفات
                                           الموجودة (يمكن إضافة حتى 5 ملفات)
                                         </div>
                                       </div>
@@ -3170,7 +2973,7 @@ const Employees = () => {
                                             alignItems: "center",
                                             justifyContent: "space-between",
                                             fontSize: "12px",
-                                            background: "#f5f5f5",
+                                            background: "var(--gray-100)",
                                             padding: "4px 8px",
                                             borderRadius: "4px",
                                             marginBottom: "4px",
@@ -3195,7 +2998,7 @@ const Employees = () => {
                                               )
                                             }
                                             style={{
-                                              color: "#d32f2f",
+                                              color: "var(--danger)",
                                               border: "none",
                                               background: "none",
                                               cursor: "pointer",
@@ -3237,24 +3040,24 @@ const Employees = () => {
                                     style={{
                                       marginBottom: "12px",
                                       padding: "12px 14px",
-                                      background: "#e7f3ff",
+                                      background: "var(--primary-soft)",
                                       border: "1px solid #b3d9ff",
                                       borderRadius: "8px",
                                       fontSize: "13px",
-                                      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                      boxShadow: "0 1px 3px var(--border)",
                                     }}
                                   >
                                     <div
                                       style={{
                                         fontWeight: "600",
                                         marginBottom: "8px",
-                                        color: "#0056b3",
+                                        color: "var(--primary-dark)",
                                         display: "flex",
                                         alignItems: "center",
                                         gap: "6px",
                                       }}
                                     >
-                                      <span>📋</span>
+                                      <span></span>
                                       <span>
                                         يوجد{" "}
                                         {
@@ -3271,7 +3074,7 @@ const Employees = () => {
                                           style={{
                                             marginTop: "6px",
                                             padding: "8px 10px",
-                                            background: "#fff",
+                                            background: "var(--surface)",
                                             borderRadius: "6px",
                                             border: "1px solid #d1ecf1",
                                             fontSize: "12px",
@@ -3283,10 +3086,10 @@ const Employees = () => {
                                           <div
                                             style={{
                                               fontWeight: "500",
-                                              color: "#333",
+                                              color: "var(--text)",
                                             }}
                                           >
-                                            📄{" "}
+                                            {" "}
                                             {doc.filename ||
                                               doc.file_name ||
                                               "مستند"}
@@ -3295,7 +3098,7 @@ const Employees = () => {
                                             <span
                                               style={{
                                                 fontSize: "11px",
-                                                color: "#666",
+                                                color: "var(--text-muted)",
                                               }}
                                             >
                                               تم الرفع:{" "}
@@ -3309,11 +3112,11 @@ const Employees = () => {
                                       style={{
                                         marginTop: "8px",
                                         fontSize: "12px",
-                                        color: "#0056b3",
+                                        color: "var(--primary-dark)",
                                         fontStyle: "italic",
                                       }}
                                     >
-                                      ℹ️ إضافة ملفات جديدة لن تؤثر على الملفات
+                                      إضافة ملفات جديدة لن تؤثر على الملفات
                                       الموجودة (يمكن إضافة حتى 5 ملفات)
                                     </div>
                                   </div>
@@ -3328,7 +3131,7 @@ const Employees = () => {
                                       alignItems: "center",
                                       justifyContent: "space-between",
                                       fontSize: "12px",
-                                      background: "#f5f5f5",
+                                      background: "var(--gray-100)",
                                       padding: "4px 8px",
                                       borderRadius: "4px",
                                       marginBottom: "4px",
@@ -3350,7 +3153,7 @@ const Employees = () => {
                                         removeDocument("additional_courses", idx)
                                       }
                                       style={{
-                                        color: "#d32f2f",
+                                        color: "var(--danger)",
                                         border: "none",
                                         background: "none",
                                         cursor: "pointer",
@@ -3416,24 +3219,24 @@ const Employees = () => {
                                         style={{
                                           marginBottom: "12px",
                                           padding: "12px 14px",
-                                          background: "#e7f3ff",
+                                          background: "var(--primary-soft)",
                                           border: "1px solid #b3d9ff",
                                           borderRadius: "8px",
                                           fontSize: "13px",
-                                          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                          boxShadow: "0 1px 3px var(--border)",
                                         }}
                                       >
                                         <div
                                           style={{
                                             fontWeight: "600",
                                             marginBottom: "8px",
-                                            color: "#0056b3",
+                                            color: "var(--primary-dark)",
                                             display: "flex",
                                             alignItems: "center",
                                             gap: "6px",
                                           }}
                                         >
-                                          <span>📋</span>
+                                          <span></span>
                                           <span>
                                             يوجد{" "}
                                             {
@@ -3450,7 +3253,7 @@ const Employees = () => {
                                               style={{
                                                 marginTop: "6px",
                                                 padding: "8px 10px",
-                                                background: "#fff",
+                                                background: "var(--surface)",
                                                 borderRadius: "6px",
                                                 border: "1px solid #d1ecf1",
                                                 fontSize: "12px",
@@ -3462,10 +3265,10 @@ const Employees = () => {
                                               <div
                                                 style={{
                                                   fontWeight: "500",
-                                                  color: "#333",
+                                                  color: "var(--text)",
                                                 }}
                                               >
-                                                📄{" "}
+                                                {" "}
                                                 {doc.filename ||
                                                   doc.file_name ||
                                                   "مستند"}
@@ -3474,7 +3277,7 @@ const Employees = () => {
                                                 <span
                                                   style={{
                                                     fontSize: "11px",
-                                                    color: "#666",
+                                                    color: "var(--text-muted)",
                                                   }}
                                                 >
                                                   تم الرفع:{" "}
@@ -3488,11 +3291,11 @@ const Employees = () => {
                                           style={{
                                             marginTop: "8px",
                                             fontSize: "12px",
-                                            color: "#0056b3",
+                                            color: "var(--primary-dark)",
                                             fontStyle: "italic",
                                           }}
                                         >
-                                          ℹ️ إضافة ملفات جديدة لن تؤثر على الملفات
+                                          إضافة ملفات جديدة لن تؤثر على الملفات
                                           الموجودة (يمكن إضافة حتى 5 ملفات)
                                         </div>
                                       </div>
@@ -3510,7 +3313,7 @@ const Employees = () => {
                                             alignItems: "center",
                                             justifyContent: "space-between",
                                             fontSize: "12px",
-                                            background: "#f5f5f5",
+                                            background: "var(--gray-100)",
                                             padding: "4px 8px",
                                             borderRadius: "4px",
                                             marginBottom: "4px",
@@ -3535,7 +3338,7 @@ const Employees = () => {
                                               )
                                             }
                                             style={{
-                                              color: "#d32f2f",
+                                              color: "var(--danger)",
                                               border: "none",
                                               background: "none",
                                               cursor: "pointer",
@@ -3668,24 +3471,24 @@ const Employees = () => {
                                     style={{
                                       marginBottom: "12px",
                                       padding: "12px 14px",
-                                      background: "#e7f3ff",
+                                      background: "var(--primary-soft)",
                                       border: "1px solid #b3d9ff",
                                       borderRadius: "8px",
                                       fontSize: "13px",
-                                      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                                      boxShadow: "0 1px 3px var(--border)",
                                     }}
                                   >
                                     <div
                                       style={{
                                         fontWeight: "600",
                                         marginBottom: "8px",
-                                        color: "#0056b3",
+                                        color: "var(--primary-dark)",
                                         display: "flex",
                                         alignItems: "center",
                                         gap: "6px",
                                       }}
                                     >
-                                      <span>📋</span>
+                                      <span></span>
                                       <span>
                                         يوجد{" "}
                                         {
@@ -3702,7 +3505,7 @@ const Employees = () => {
                                           style={{
                                             marginTop: "6px",
                                             padding: "8px 10px",
-                                            background: "#fff",
+                                            background: "var(--surface)",
                                             borderRadius: "6px",
                                             border: "1px solid #d1ecf1",
                                             fontSize: "12px",
@@ -3714,10 +3517,10 @@ const Employees = () => {
                                           <div
                                             style={{
                                               fontWeight: "500",
-                                              color: "#333",
+                                              color: "var(--text)",
                                             }}
                                           >
-                                            📄{" "}
+                                            {" "}
                                             {doc.filename ||
                                               doc.file_name ||
                                               "مستند"}
@@ -3726,7 +3529,7 @@ const Employees = () => {
                                             <span
                                               style={{
                                                 fontSize: "11px",
-                                                color: "#666",
+                                                color: "var(--text-muted)",
                                               }}
                                             >
                                               تم الرفع:{" "}
@@ -3740,11 +3543,11 @@ const Employees = () => {
                                       style={{
                                         marginTop: "8px",
                                         fontSize: "12px",
-                                        color: "#0056b3",
+                                        color: "var(--primary-dark)",
                                         fontStyle: "italic",
                                       }}
                                     >
-                                      ℹ️ إضافة ملفات جديدة لن تؤثر على الملفات
+                                      إضافة ملفات جديدة لن تؤثر على الملفات
                                       الموجودة (يمكن إضافة حتى 5 ملفات)
                                     </div>
                                   </div>
@@ -3759,7 +3562,7 @@ const Employees = () => {
                                       alignItems: "center",
                                       justifyContent: "space-between",
                                       fontSize: "12px",
-                                      background: "#f5f5f5",
+                                      background: "var(--gray-100)",
                                       padding: "4px 8px",
                                       borderRadius: "4px",
                                       marginBottom: "4px",
@@ -3781,7 +3584,7 @@ const Employees = () => {
                                         removeDocument("additional_courses", idx)
                                       }
                                       style={{
-                                        color: "#d32f2f",
+                                        color: "var(--danger)",
                                         border: "none",
                                         background: "none",
                                         cursor: "pointer",
@@ -3813,108 +3616,39 @@ const Employees = () => {
                         )}
                       </div>
 
-                      <div
-                        className="form-actions"
-                        style={{ gridColumn: "span 12" }}
-                      >
-                        <button
+                      <div className="form-actions ef-actions">
+                        <Button
                           type="submit"
-                          className={`btn-primary btn-lg ${isFormValid() ? "btn-ready" : ""}`}
-                          disabled={
-                            saving || uploadingDocuments || !formData.nationality
-                          }
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: "0.5rem",
-                          }}
+                          variant="primary"
+                          size="lg"
+                          icon="check"
+                          loading={saving || uploadingDocuments}
+                          disabled={!formData.nationality}
                         >
-                          {saving ? (
-                            <>
-                              <span
-                                className="spinner"
-                                style={{
-                                  display: "inline-block",
-                                  width: "16px",
-                                  height: "16px",
-                                }}
-                              ></span>
-                              جاري الحفظ...
-                            </>
-                          ) : uploadingDocuments ? (
-                            <>
-                              <span
-                                className="spinner"
-                                style={{
-                                  display: "inline-block",
-                                  width: "16px",
-                                  height: "16px",
-                                }}
-                              ></span>
-                              جاري رفع الملفات...
-                            </>
-                          ) : (
-                            <>
-                              <span style={{ fontSize: "1.1rem" }}>💾</span>
-                              {editingEmployee ? "تحديث الموظف" : "حفظ الموظف"}
-                            </>
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowForm(false);
-                            resetForm();
-                            setEditingEmployee(null);
-                          }}
-                          className="btn-secondary btn-lg"
+                          {saving ? "جاري الحفظ..." : uploadingDocuments ? "جاري رفع الملفات..." : editingEmployee ? "تحديث الموظف" : "حفظ الموظف"}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="lg"
                           disabled={saving || uploadingDocuments}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: "0.5rem",
-                          }}
+                          onClick={() => {
+                setShowForm(false);
+                resetForm();
+                setEditingEmployee(null);
+              }}
                         >
-                          <span style={{ fontSize: "1.1rem" }}>❌</span>
                           إلغاء
-                        </button>
+                        </Button>
                       </div>
                     </>
                   )}
 
                   {/* Loading Overlay */}
                   {(saving || uploadingDocuments) && (
-                    <div
-                      style={{
-                        position: "fixed",
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        backgroundColor: "rgba(0, 0, 0, 0.5)",
-                        zIndex: 9999,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexDirection: "column",
-                        gap: "20px",
-                      }}
-                    >
-                      <div className="spinner-large"></div>
-                      <div
-                        style={{
-                          color: "white",
-                          fontSize: "18px",
-                          fontWeight: "bold",
-                        }}
-                      >
-                        {saving ? "جاري حفظ البيانات..." : "جاري رفع الملفات..."}
-                      </div>
-                      <div style={{ color: "white", fontSize: "14px" }}>
-                        الرجاء الانتظار ولا تغلق الصفحة
-                      </div>
+                    <div className="ef-busy" role="status" aria-live="polite">
+                      <Spinner size={40} />
+                      <strong>{saving ? "جاري حفظ البيانات..." : "جاري رفع الملفات..."}</strong>
+                      <span>الرجاء الانتظار ولا تغلق الصفحة</span>
                     </div>
                   )}
                 </form>
