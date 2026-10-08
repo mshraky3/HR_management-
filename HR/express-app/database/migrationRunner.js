@@ -43,6 +43,9 @@ export async function runMigrations() {
         const files = readdirSync(MIGRATIONS_DIR)
             .filter(f => f.endsWith('.js'))
             .sort();
+        // One failing migration must not block the ones after it (it blocked the newest one for a day on
+        // 2026-10-08). Failures are collected and reported at the end.
+        const failures = [];
 
         for (const file of files) {
             if (applied.has(file)) {
@@ -77,14 +80,18 @@ export async function runMigrations() {
                     attempt++;
                     const isTransient = TRANSIENT_CODES.has(err.code) || TRANSIENT_CODES.has(err.errno);
                     if (!isTransient || attempt >= maxAttempts) {
-                        log.error(`Migration failed: ${file}`, { error: err.message });
-                        throw err;
+                        log.error(`Migration failed: ${file}`, { error: err.message, code: err.code });
+                        failures.push({ file, error: err.message });
+                        break;
                     }
                     const delay = 2000 * attempt;
                     log.warn(`Migration ${file}: connection dropped, retrying in ${delay}ms (${attempt}/${maxAttempts})`);
                     await new Promise(r => setTimeout(r, delay));
                 }
             }
+        }
+        if (failures.length > 0) {
+            throw new Error(`${failures.length} migration(s) failed: ${failures.map(f => f.file).join(', ')}`);
         }
     } catch (error) {
         log.error('Migration runner error', { error: error.message });

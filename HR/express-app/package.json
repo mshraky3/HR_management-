@@ -12,7 +12,7 @@
     "test:email": "node scripts/test-email-send.mjs",
     "policy:report": "node scripts/policy-scope-report.mjs",
     "policy:check": "node scripts/policy-scope-report.mjs --strict",
-    "test": "node --test --test-concurrency=1 test/*.test.js"
+    "test": "node --test --test-force-exit --test-concurrency=1 test/*.test.js"
   },
   "keywords": [],
   "author": "",

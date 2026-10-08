@@ -4,6 +4,7 @@
  */
 
 import express from "express";
+import { ensureCriticalSchema } from "../database/criticalSchema.js";
 import { authenticate } from "../middleware/auth.js";
 import {
   checkBranchAccess,
@@ -3196,6 +3197,9 @@ router.post(
       // Branch managers have req.user.id = branch.id (not a users table FK)
       // created_by/updated_by reference users(id), so use null for branch managers
       const auditUserId = req.user.role === 'branch_manager' ? null : req.user.id;
+
+      // A create runs inside a transaction, where a missing column cannot be repaired and retried: check first.
+      await ensureCriticalSchema();
 
       await sql.begin(async (tx) => {
         employee = await Employee.create(

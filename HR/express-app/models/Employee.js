@@ -6,6 +6,7 @@
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
 import { completeCalendarPairs } from '../utils/calendarPairs.js';
+import { healAndRetry } from '../database/criticalSchema.js';
 
 /**
  * Universal employee search: one term matched against the name (full or any part), ID / residency number,
@@ -486,7 +487,7 @@ export const Employee = {
         }
       }
 
-      const [employee] = await db`
+      const [employee] = await healAndRetry(() => db`
         INSERT INTO employees (
           employee_id_number, branch_id, first_name, second_name, third_name, fourth_name,
           occupation, nationality, date_of_birth_hijri, date_of_birth_gregorian,
@@ -526,7 +527,7 @@ export const Employee = {
           ${academicYear || null}, ${registrationTermId || null}, ${registrationTermId || null}
         )
         RETURNING *
-      `;
+      `);
 
       return employee;
     } catch (error) {
@@ -601,7 +602,7 @@ export const Employee = {
 
       values.push(updates.updated_at, updates.updated_by);
 
-      const result = await sql.unsafe(query, values);
+      const result = await healAndRetry(() => sql.unsafe(query, values));
       return result[0] || null;
     } catch (error) {
       log.error('Error updating employee', { error: error.message, code: error.code, detail: error.detail });

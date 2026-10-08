@@ -15,6 +15,7 @@ import { resolveRequestScope } from './middleware/requestScope.js';
 import sql, { testConnection } from './config/database.js';
 import logger, { httpLogger, log } from './utils/logger.js';
 import { initializeDailyAlerts } from './utils/dailyAlerts.js';
+import { ensureCriticalSchema } from './database/criticalSchema.js';
 
 dotenv.config();
 
@@ -116,13 +117,30 @@ let releaseSchemaGate;
 const schemaGate = new Promise((resolve) => { releaseSchemaGate = resolve; });
 
 async function ensureSchemaCurrent() {
+  // Columns the code needs are guaranteed first, whatever the migration table or fingerprint say (never throws).
+  await ensureCriticalSchema();
+
   let fingerprint = null;
   try {
     const fp = await schemaFingerprint();
     fingerprint = fp.full;
     const [row] = await sql`SELECT fingerprint FROM schema_fingerprint WHERE id = 1`.catch(() => []);
     if (row?.fingerprint === fingerprint && process.env.FORCE_DB_INIT !== 'true') {
-      log.info('Schema unchanged since last init - skipping DDL and migrations');
+      // The fingerprint only says "this code was initialised once". If the newest migration is not recorded the
+      // database is behind the code anyway (2026-10-08: it said "unchanged" while migration 028 was missing).
+      const newest = readdirSync(new URL('./database/migrations/', import.meta.url)).filter((f) => f.endsWith('.js')).sort().pop();
+      const [recorded] = await sql`SELECT 1 AS ok FROM schema_migrations WHERE name = ${newest}`.catch(() => []);
+      if (recorded) {
+        log.info('Schema unchanged since last init - skipping DDL and migrations');
+        return;
+      }
+      log.warn('Fingerprint is current but the newest migration is not recorded; running pending migrations', { newest });
+      try {
+        const { runMigrations } = await import('./database/migrationRunner.js');
+        await runMigrations();
+      } catch (error) {
+        log.warn('Pending migrations failed (the critical columns are still guaranteed)', { error: error.message });
+      }
       return;
     }
     const codeUnchanged = typeof row?.fingerprint === 'string'
@@ -221,7 +239,7 @@ startup().catch(err => {
 // Hold requests until the schema gate opens (see schemaGate above). Bounded,
 // so a slow or unreachable database cannot hold a request past the function
 // limit: after the wait the request is served anyway, as it was before.
-const SCHEMA_WAIT_MS = 8000;
+const SCHEMA_WAIT_MS = 25000;
 let schemaReady = false;
 schemaGate.then(() => { schemaReady = true; });
 app.use((req, res, next) => {

@@ -4,6 +4,8 @@
  */
 
 import express from 'express';
+import sql from '../config/database.js';
+import { schemaState } from '../database/criticalSchema.js';
 import authRoutes from './auth.js';
 import userRoutes from './users.js';
 import branchRoutes from './branches.js';
@@ -37,6 +39,24 @@ const lazy = (load) => {
 // Health check
 router.get('/health', (req, res) => {
   res.json({ success: true, message: 'HRM API is running' });
+});
+
+// Schema self-report (no secrets): are the columns the code needs present, and what is the newest recorded migration.
+router.get('/health/schema', async (req, res) => {
+  try {
+    const state = schemaState();
+    const [latest] = await sql`SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1`.catch(() => []);
+    res.json({
+      success: true,
+      critical: state.errorCode ? 'error' : 'ok',
+      checkedAt: state.checkedAt,
+      repaired: state.applied,
+      errorCode: state.errorCode,
+      latestMigration: latest?.name || null,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'schema report failed' });
+  }
 });
 
 // Mount route modules
