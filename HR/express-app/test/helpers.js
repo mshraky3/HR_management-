@@ -22,6 +22,9 @@ process.env.INIT_DB_ON_STARTUP = 'false';
 process.env.EMAIL_GATEWAY_MODE = 'off';
 process.env.NODE_ENV = 'test';
 process.env.RATE_LIMIT_DISABLED = 'true';
+// Never reach a real SMTP server from a test run (the transporter verifies its connection at import).
+process.env.SMTP_HOST = '127.0.0.1';
+process.env.SMTP_PORT = '1';
 
 const { default: sql } = await import('../config/database.js');
 const { default: app } = await import('../server.js');

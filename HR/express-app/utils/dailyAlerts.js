@@ -105,7 +105,8 @@ export function initializeDailyAlerts() {
     };
 
     // Check every minute
-    setInterval(checkTime, 60 * 1000);
+    // unref: the timer must never be the only thing keeping a process (or a test run) alive
+    setInterval(checkTime, 60 * 1000).unref?.();
 
     log.info('Daily alerts scheduler initialized (runs at 8:00 AM)');
 }

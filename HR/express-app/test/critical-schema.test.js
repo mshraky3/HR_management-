@@ -1,4 +1,4 @@
-import { test, after } from 'node:test';
+import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { sql, closeAll, api } from './helpers.js';
 import { ensureCriticalSchema, healAndRetry, CRITICAL_COLUMNS, schemaState } from '../database/criticalSchema.js';
@@ -7,6 +7,8 @@ const present = async () => (await sql`
   SELECT column_name FROM information_schema.columns
   WHERE table_schema = current_schema() AND table_name = 'employees' AND column_name LIKE 'work_start_date%'`).map((r) => r.column_name).sort();
 
+// A request only passes once the startup schema guard has finished, so it cannot race with the drops below.
+before(async () => { await api('/api/health'); });
 after(async () => { await closeAll(); });
 
 test('ensureCriticalSchema adds a dropped critical column and reports it', async () => {
