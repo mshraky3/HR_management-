@@ -117,9 +117,6 @@ let releaseSchemaGate;
 const schemaGate = new Promise((resolve) => { releaseSchemaGate = resolve; });
 
 async function ensureSchemaCurrent() {
-  // Columns the code needs are guaranteed first, whatever the migration table or fingerprint say (never throws).
-  await ensureCriticalSchema();
-
   let fingerprint = null;
   try {
     const fp = await schemaFingerprint();
@@ -200,6 +197,27 @@ async function ensureSchemaCurrent() {
 // Initialize database and test connection on startup
 // Note: On Vercel serverless, this runs on cold start
 // Database initialization is idempotent (safe to run multiple times)
+// The cheap guard that runs on EVERY cold start, even with INIT_DB_ON_STARTUP=false (which production has had since
+// Jun 23 to save CPU, so the full init and the migrations never ran there; that caused the outages of 2026-10-03
+// and 2026-10-08). Two small queries when nothing is pending:
+//  1. the columns the code needs exist (database/criticalSchema.js), and are added if not;
+//  2. the newest migration is recorded; if not, the pending migrations run now (they are idempotent and
+//     isolated from each other, so one bad migration cannot block the rest).
+async function ensureSchemaGuard() {
+  await ensureCriticalSchema();
+  try {
+    const newest = readdirSync(new URL('./database/migrations/', import.meta.url)).filter((f) => f.endsWith('.js')).sort().pop();
+    const [recorded] = await sql`SELECT 1 AS ok FROM schema_migrations WHERE name = ${newest}`.catch(() => []);
+    if (!recorded) {
+      log.warn('Newest migration is not recorded; running pending migrations', { newest });
+      const { runMigrations } = await import('./database/migrationRunner.js');
+      await runMigrations();
+    }
+  } catch (error) {
+    log.warn('Schema guard: pending migrations did not all apply (critical columns are still guaranteed)', { error: error.message });
+  }
+}
+
 async function startup() {
   try {
     await testDbConnection();
@@ -207,6 +225,8 @@ async function startup() {
     // Don't block startup if DB test fails - connection will be retried on first request
     log.warn('Database connection test failed on startup, will retry on first request');
   }
+
+  await ensureSchemaGuard();
 
   // Initialize database tables (idempotent - safe to run multiple times)
   // Only run if not in Vercel or if explicitly enabled
