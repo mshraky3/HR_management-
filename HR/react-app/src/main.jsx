@@ -19,12 +19,15 @@ import "./styles/tokens.css";
 import "./styles/design-system.css";
 import "./ui/ui.css";
 import { initErrorTracking } from "./utils/errorTracking.js";
+import { installPreloadErrorGuard } from "./utils/chunkReload.js";
 import { StrictMode } from "react";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import App from "./App.jsx";
 
 // Initialize error tracking for email notifications on critical errors
 initErrorTracking();
+// A page chunk that fails to load (tab older than the latest deployment): reload once
+installPreloadErrorGuard();
 
 const safeToString = (v) => {
   try {

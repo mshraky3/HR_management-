@@ -61,12 +61,21 @@ router.post('/', optionalAuth, async (req, res) => {
         };
 
         // Log the error
-        log.error('Frontend error reported', {
-            errorType: errorData.errorType,
-            endpoint: errorData.endpoint,
-            statusCode: errorData.statusCode,
-            userId: errorData.userId,
-        });
+        if (errorData.errorType === 'CHUNK_LOAD_ERROR') {
+            // A page file that failed to load and was fixed by the automatic reload (no alert email)
+            log.info('Frontend chunk load error fixed by automatic reload', {
+                errorMessage: errorData.message,
+                page: errorData.page,
+                userId: errorData.userId,
+            });
+        } else {
+            log.error('Frontend error reported', {
+                errorType: errorData.errorType,
+                endpoint: errorData.endpoint,
+                statusCode: errorData.statusCode,
+                userId: errorData.userId,
+            });
+        }
 
         // Send the email before answering: on Vercel the function is frozen once the
         // response is sent, so a fire-and-forget send can be dropped silently.

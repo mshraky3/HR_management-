@@ -15,6 +15,7 @@
     "clean:win": "if exist node_modules\\.vite rmdir /s /q node_modules\\.vite && if exist dist rmdir /s /q dist",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "node --test src/utils/chunkReload.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

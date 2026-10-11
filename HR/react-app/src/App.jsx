@@ -27,6 +27,8 @@ import Login from "./pages/Login.jsx";
 import { BackendErrorProvider } from "./contexts/BackendErrorContext.jsx";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
 import { NotificationProvider } from "./contexts/NotificationContext.jsx";
+import { reloadOnceForChunkError, takeChunkReloadRecovery } from "./utils/chunkReload.js";
+import { reportChunkReloadRecovered } from "./utils/errorTracking.js";
 
 // Login page - loaded immediately (critical for first render)
 
@@ -38,27 +40,22 @@ const PageLoading = () => (
   </div>
 );
 
-// Recover from stale hashed chunks after a new deployment by reloading once.
+// Recover from stale hashed chunks after a new deployment by reloading once (utils/chunkReload.js).
 const lazyRetry = (importer) =>
   lazy(async () => {
-    const retryKey = "lazy-chunk-retry";
-    const hasRetried = window.sessionStorage.getItem(retryKey) === "1";
     try {
       const mod = await importer();
-      window.sessionStorage.removeItem(retryKey);
+      try {
+        const recovered = takeChunkReloadRecovery();
+        if (recovered) reportChunkReloadRecovered(recovered); // logged, not mailed
+      } catch { } // logging must never break a page that loaded
       return mod;
     } catch (error) {
-      const message = error?.message || "";
-      const isChunkError =
-        message.includes("Failed to fetch dynamically imported module") ||
-        message.includes("ChunkLoadError");
-
-      if (isChunkError && !hasRetried) {
-        window.sessionStorage.setItem(retryKey, "1");
-        window.location.reload();
+      if (reloadOnceForChunkError(error)) {
+        // The page is reloading: keep the loading spinner rather than flash (and mail) the error page
+        return new Promise(() => {});
       }
-
-      throw error;
+      throw error; // not a chunk error, or the reload did not fix it: error boundary, alert as before
     }
   });
 

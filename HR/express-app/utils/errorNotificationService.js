@@ -111,8 +111,15 @@ function markErrorSent(errorKey) {
 /**
  * Determine error severity
  */
-function getErrorSeverity(errorData) {
+export function getErrorSeverity(errorData) {
   const { statusCode, errorType, endpoint } = errorData;
+
+  // A page chunk that failed to load and was fixed by the frontend's automatic reload
+  // (react-app utils/chunkReload.js): logged, not mailed. If the reload does not fix it,
+  // the frontend reports a RENDER_ERROR instead, which stays HIGH below.
+  if (errorType === 'CHUNK_LOAD_ERROR') {
+    return 'LOW';
+  }
 
   // Critical errors
   if (statusCode >= 500 || errorType === 'DATABASE_ERROR' || errorType === 'CONNECTION_ERROR') {

@@ -4,6 +4,7 @@
  */
 
 import { API_URL } from '../config/api.js';
+import { isChunkLoadError, isChunkReloadPending } from './chunkReload.js';
 
 // Configuration
 const ERROR_REPORT_ENDPOINT = `${API_URL}/api/error-report`;
@@ -40,6 +41,7 @@ export const ErrorTypes = {
     UNKNOWN_ERROR: 'UNKNOWN_ERROR',
     CONNECTION_ERROR: 'CONNECTION_ERROR',
     TIMEOUT_ERROR: 'TIMEOUT_ERROR',
+    CHUNK_LOAD_ERROR: 'CHUNK_LOAD_ERROR', // page chunk failed to load, fixed by the automatic reload
 };
 
 /**
@@ -294,6 +296,9 @@ export function reportApiError(error, config = {}) {
  * Report a render/component error (for Error Boundaries)
  */
 export function reportRenderError(error, errorInfo) {
+    // The page is already reloading to fetch the new chunks (utils/chunkReload.js)
+    if (isChunkLoadError(error) && isChunkReloadPending()) return;
+
     const errorKey = `RENDER:${error.message}`;
 
     if (isRateLimited(errorKey)) {
@@ -313,6 +318,8 @@ export function reportRenderError(error, errorInfo) {
         stackTrace: error.stack,
         additionalInfo: {
             componentStack: errorInfo?.componentStack,
+            // A chunk that still failed after the automatic reload (left out for other errors)
+            chunkLoadError: isChunkLoadError(error) || undefined,
             url: window.location.href,
             timestamp: new Date().toISOString(),
         },
@@ -326,6 +333,8 @@ export function reportRenderError(error, errorInfo) {
  * Report an unhandled error
  */
 export function reportUnhandledError(error, source = 'window') {
+    if (isChunkLoadError(error) && isChunkReloadPending()) return;
+
     const errorKey = `UNHANDLED:${source}:${error.message}`;
 
     if (isRateLimited(errorKey)) {
@@ -345,6 +354,39 @@ export function reportUnhandledError(error, source = 'window') {
         stackTrace: error.stack,
         additionalInfo: {
             source,
+            url: window.location.href,
+            timestamp: new Date().toISOString(),
+        },
+    };
+
+    markReported(errorKey);
+    sendErrorReport(errorData);
+}
+
+/**
+ * Report a page chunk that failed to load and was fixed by the automatic reload.
+ * Sent as CHUNK_LOAD_ERROR, which the backend logs at low severity without an alert email.
+ */
+export function reportChunkReloadRecovered({ message, page, at } = {}) {
+    const errorKey = `CHUNK_RECOVERED:${message}`;
+
+    if (isRateLimited(errorKey)) {
+        return;
+    }
+
+    const userInfo = getUserInfo();
+
+    const errorData = {
+        errorType: ErrorTypes.CHUNK_LOAD_ERROR,
+        message: message || 'Chunk load error',
+        page: page || window.location.pathname,
+        userAgent: navigator.userAgent,
+        userId: userInfo?.userId,
+        username: userInfo?.username,
+        branchId: userInfo?.branchId,
+        additionalInfo: {
+            recoveredByReload: true,
+            reloadedAt: Number.isNaN(new Date(at).getTime()) ? undefined : new Date(at).toISOString(),
             url: window.location.href,
             timestamp: new Date().toISOString(),
         },
@@ -423,6 +465,7 @@ export default {
     reportApiError,
     reportRenderError,
     reportUnhandledError,
+    reportChunkReloadRecovered,
     initErrorTracking,
     ErrorTypes,
     ErrorSeverity,
