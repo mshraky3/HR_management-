@@ -122,6 +122,9 @@ const Beneficiaries = () => {
     const [decidingId, setDecidingId] = useState(null);
     const [reasonModal, setReasonModal] = useState({ show: false, candidate: null, reason: '' });
     const [confirmModal, setConfirmModal] = useState({ show: false, note: '' });
+    // New-term rows still awaiting review that the step-by-step review does not list (they block "confirm 100%").
+    const [unreviewedNew, setUnreviewedNew] = useState([]);
+    const [markingReviewed, setMarkingReviewed] = useState(false);
 
     // Guided review: one beneficiary at a time, in source order.
     const [reviewIndex, setReviewIndex] = useState(0);
@@ -205,13 +208,16 @@ const Beneficiaries = () => {
                 } else {
                     loadBranchStats(currentTerm.id);
                     // Branch managers land straight on the review when there is work to do.
-                    const status = await loadRolloverStatus();
-                    if (status?.is_active) {
+                    // Not awaited: the rollover status and candidate list are the slowest calls on this
+                    // page, and the branch used to stare at "جاري التحميل…" until both finished. The
+                    // page now opens with the beneficiary list and the review tab fills in behind it.
+                    loadRolloverStatus().then(async (status) => {
+                        if (!status?.is_active) return;
                         await loadRolloverCandidates({ jumpToFirstUnfinished: true });
                         if (status.counts.undecided > 0 || status.counts.pending_review > 0) {
                             setActiveTab('rollover');
                         }
-                    }
+                    }).catch((err) => console.error('Error loading rollover data:', err));
                 }
             }
         } catch (error) {
@@ -331,11 +337,40 @@ const Beneficiaries = () => {
         return null;
     };
 
+    const loadUnreviewedNew = async () => {
+        if (isMainManager() && !filters.branch_id) {
+            setUnreviewedNew([]);
+            return;
+        }
+        try {
+            const res = await beneficiariesAPI.getRolloverUnreviewed(rolloverParams());
+            if (res.data.success) setUnreviewedNew(res.data.data || []);
+        } catch (error) {
+            console.error('Error loading unreviewed beneficiaries:', error);
+        }
+    };
+
+    const handleMarkNewReviewed = async (ids) => {
+        if (!ids?.length || markingReviewed) return;
+        setMarkingReviewed(true);
+        try {
+            const res = await beneficiariesAPI.markRolloverReviewed(rolloverParams({ beneficiary_ids: ids }));
+            showSuccess(res.data?.message || 'تمت المراجعة');
+            await Promise.all([loadUnreviewedNew(), loadRolloverStatus()]);
+        } catch (error) {
+            showError(error.response?.data?.message || 'فشل في تحديث حالة المراجعة');
+        } finally {
+            setMarkingReviewed(false);
+        }
+    };
+
     const loadRolloverCandidates = async ({ jumpToFirstUnfinished = false } = {}) => {
         if (isMainManager() && !filters.branch_id) {
             setRolloverCandidates([]);
+            setUnreviewedNew([]);
             return;
         }
+        loadUnreviewedNew();
         try {
             setRolloverLoading(true);
             const res = await beneficiariesAPI.getRolloverCandidates(rolloverParams());
@@ -386,7 +421,7 @@ const Beneficiaries = () => {
     // are the opposite of done: they have no place in the new year at all.
     const isCandidateDone = (c) =>
         c.continuity_status === 'not_continuing' ||
-        (c.continuity_status === 'continuing' && c.target_id && c.target_review_status !== 'pending');
+        (c.continuity_status === 'continuing' && c.target_id && !c.target?.is_archived && c.target_review_status !== 'pending');
 
     const currentCandidate = rolloverCandidates[reviewIndex] || null;
 
@@ -725,7 +760,7 @@ const Beneficiaries = () => {
             if (isMainManager()) { loadStats(); loadStaffingRequirements(); }
             if (!isMainManager()) loadBranchStats(filters.term_id || activeTerm?.id);
             // Keeps the rollover checklist's "new beneficiaries added" count honest.
-            if (rolloverStatus?.is_active) loadRolloverStatus();
+            if (rolloverStatus?.is_active) { loadRolloverStatus(); loadUnreviewedNew(); }
         } catch (error) {
             const msg = error.response?.data?.message || 'فشل في حفظ البيانات';
             showError(msg);
@@ -987,7 +1022,10 @@ const Beneficiaries = () => {
         undecided: rolloverCandidates.filter(c => !c.continuity_status).length,
         continuing: rolloverCandidates.filter(c => c.continuity_status === 'continuing').length,
         notContinuing: rolloverCandidates.filter(c => c.continuity_status === 'not_continuing').length,
-        pendingReview: rolloverCandidates.filter(c => c.continuity_status === 'continuing' && c.target_review_status === 'pending').length,
+        // Includes the new-term rows the step-by-step review does not walk: the server counts them too and
+        // refuses "confirm 100%" while any remain.
+        pendingReview: rolloverCandidates.filter(c => c.continuity_status === 'continuing' && c.target_review_status === 'pending').length
+            + unreviewedNew.length,
     };
     rolloverLive.decided = rolloverLive.continuing + rolloverLive.notContinuing;
     const rolloverCanConfirm = rolloverLive.undecided === 0 && rolloverLive.pendingReview === 0;
@@ -1021,7 +1059,7 @@ const Beneficiaries = () => {
         rolloverCandidates, rolloverRemaining, decidingId, handleMarkContinuing, setReasonModal, reviewForm, setReviewForm,
         availableBuses, reviewBusId, setReviewBusId, handleStartRollover, savingReview, handleSaveReview, goToNextUnfinished,
         rolloverFilter, setRolloverFilter, filteredCandidates, openInGuidedReview, isCandidateDone, handleUnconfirmReview,
-        rolloverCanConfirm, setConfirmModal,
+        rolloverCanConfirm, setConfirmModal, unreviewedNew, markingReviewed, handleMarkNewReviewed, openEditModal, canEdit: Boolean(canEdit), confirm,
     };
 
     return (
@@ -1157,7 +1195,7 @@ const Beneficiaries = () => {
                 open={reasonModal.show}
                 onClose={() => setReasonModal({ show: false, candidate: null, reason: '' })}
                 title="عدم استمرار المستفيد"
-                description={`سيتم نقل بيانات «${reasonModal.candidate?.beneficiary_name || ''}» إلى الأرشيف.`}
+                description={`سيتم نقل بيانات «${reasonModal.candidate?.beneficiary_name || ''}» إلى الأرشيف.${reasonModal.candidate?.target_id ? ' وسيُحذف أيضاً سجله في الفصل الجديد ومقعده في الحافلة (إن وُجد).' : ''}`}
                 size="sm"
                 footer={(
                     <>

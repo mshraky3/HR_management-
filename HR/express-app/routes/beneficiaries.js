@@ -20,6 +20,7 @@ import {
     resolveRolloverTerms,
     getRolloverStatus,
     getRolloverCandidates,
+    getUnreviewedNewRows,
     startRollover,
     applyDecisions,
     confirmReview,
@@ -494,6 +495,24 @@ router.get('/rollover/candidates', requireManager, async (req, res) => {
         res.json({ success: true, data: rows });
     } catch (error) {
         handleRolloverError(error, req, res, 'فشل في جلب بيانات المراجعة');
+    }
+});
+
+/**
+ * GET /api/beneficiaries/rollover/unreviewed
+ * New-term beneficiaries still awaiting review that the step-by-step review does not list.
+ * They block "confirm 100%", so the branch needs to see and clear them.
+ */
+router.get('/rollover/unreviewed', requireManager, async (req, res) => {
+    try {
+        const branchId = resolveRolloverBranch(req);
+        if (!branchId) {
+            return res.status(400).json({ success: false, message: 'يجب تحديد الفرع' });
+        }
+        const rows = await getUnreviewedNewRows(branchId, { targetTermId: req.query.target_term_id });
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        handleRolloverError(error, req, res, 'فشل في جلب المستفيدين الذين لم تُراجع بياناتهم');
     }
 });
 
@@ -1249,7 +1268,12 @@ router.put('/:id', requireManager, async (req, res) => {
 
         // Cannot edit archived records
         if (beneficiary.is_archived) {
-            return res.status(400).json({ success: false, message: 'لا يمكن تعديل بيانات مؤرشفة' });
+            return res.status(400).json({
+                success: false,
+                message: beneficiary.carried_from_beneficiary_id
+                    ? 'سجل هذا المستفيد في الفصل الجديد مؤرشف. اضغط «إعادة تفعيله» في خطوة المراجعة ثم عدّل بياناته'
+                    : 'لا يمكن تعديل بيانات مؤرشفة'
+            });
         }
 
         // Verify term is still active

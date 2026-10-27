@@ -711,6 +711,36 @@ const Beneficiary = {
     },
 
     /**
+     * Rows of the new term that are still "pending review" but that the step-by-step review can never
+     * show, because it walks LAST term's beneficiaries and these have no row there: they were entered
+     * directly in the new term, or lost the link to their source (carried_from is ON DELETE SET NULL).
+     * They still count towards pending_review, so the branch could not confirm 100% and had no way to
+     * find or clear them (2026-10-27: 29 rows in one branch, the screen said 213 of 213 done).
+     */
+    async findUnreviewedUnlisted(branchId, termId, sourceTermId) {
+        try {
+            return await sql`
+                SELECT b.*
+                FROM beneficiaries b
+                WHERE b.branch_id = ${branchId}
+                  AND b.term_id = ${termId}
+                  AND b.is_archived = false
+                  AND b.carry_review_status = 'pending'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM beneficiaries src
+                    WHERE src.id = b.carried_from_beneficiary_id
+                      AND src.branch_id = b.branch_id
+                      AND src.term_id = ${sourceTermId || 0}
+                  )
+                ORDER BY b.sequence_number
+            `;
+        } catch (error) {
+            log.error('Error finding unreviewed unlisted beneficiaries:', error);
+            throw error;
+        }
+    },
+
+    /**
      * Archive every still-active beneficiary of one branch in one term.
      */
     async archiveByTermAndBranch(termId, branchId) {

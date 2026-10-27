@@ -211,13 +211,31 @@ export const getRolloverStatus = async (branchId, { targetTermId, readOnly = fal
           )
     `;
 
+    // Advisory too: "continuing" beneficiaries whose new-term row is archived or missing. They are
+    // invisible in the live list and cannot be edited, so without this warning a branch can finish
+    // its review with these students silently absent from the new term.
+    const [continuingGap] = sourceTerm
+        ? await sql`
+            SELECT COUNT(*)::int AS n,
+                   (ARRAY_AGG(src.beneficiary_name ORDER BY src.sequence_number))[1:5] AS names
+            FROM beneficiaries src
+            LEFT JOIN beneficiaries tgt ON tgt.carried_from_beneficiary_id = src.id
+            WHERE src.branch_id = ${branchId}
+              AND src.term_id = ${sourceTerm.id}
+              AND src.continuity_status = 'continuing'
+              AND (tgt.id IS NULL OR tgt.is_archived = true)
+        `
+        : [{ n: 0, names: [] }];
+
     const counts = {
         ...sourceCounts,
         ...targetCounts,
         decided: sourceCounts.continuing + sourceCounts.not_continuing,
         target_buses: busCounts.target_buses,
         transport_without_bus: transportGap.n,
-        transport_without_bus_names: transportGap.names || []
+        transport_without_bus_names: transportGap.names || [],
+        continuing_without_active_row: continuingGap.n,
+        continuing_without_active_row_names: continuingGap.names || []
     };
     delete counts.last_change_at;
 
@@ -259,6 +277,16 @@ export const getRolloverCandidates = async (branchId, { targetTermId, status } =
     if (!status || status === 'all') return rows;
     if (status === 'undecided') return rows.filter(r => !r.continuity_status);
     return rows.filter(r => r.continuity_status === status);
+};
+
+/**
+ * New-term rows awaiting review that the step-by-step review does not list (see
+ * Beneficiary.findUnreviewedUnlisted). Empty when there is nothing to clear.
+ */
+export const getUnreviewedNewRows = async (branchId, { targetTermId } = {}) => {
+    const { targetTerm, sourceTerm } = await resolveRolloverTerms(branchId, { targetTermId });
+    if (!targetTerm) return [];
+    return Beneficiary.findUnreviewedUnlisted(branchId, targetTerm.id, sourceTerm?.id);
 };
 
 /**
@@ -461,29 +489,26 @@ export const applyDecisions = async ({ branchId, targetTermId, decisions, actor 
                     continue;
                 }
 
-                // Reversing an earlier "continuing" means removing the row we created in
-                // the new term — but only while it is untouched and has no bus seat.
+                // Reversing an earlier "continuing" removes the row we created in the new
+                // term together with its bus seat. This used to be refused once the row had
+                // been reviewed or seated ("delete him from the new term first"), but the
+                // branch had no way to do that: an archived new-term row cannot be edited or
+                // deleted, so the beneficiary could never be marked "not continuing". The
+                // reason the branch typed is the confirmation; the removed data stays
+                // recoverable from the source row, which is kept (archived).
                 const [target] = await tx`
-                    SELECT id, carry_review_status, beneficiary_name FROM beneficiaries
+                    SELECT id, beneficiary_name FROM beneficiaries
                     WHERE carried_from_beneficiary_id = ${beneficiaryId}
                 `;
                 if (target) {
-                    const [busSeat] = await tx`
-                        SELECT bs.id FROM bus_students bs
-                        INNER JOIN bus_transportation bt ON bt.id = bs.bus_id
-                        WHERE bs.term_id = ${targetTerm.id}
+                    await tx`
+                        DELETE FROM bus_students bs
+                        USING bus_transportation bt
+                        WHERE bs.bus_id = bt.id
                           AND bt.branch_id = ${branchId}
+                          AND bs.term_id = ${targetTerm.id}
                           AND LOWER(TRIM(bs.student_full_name)) = LOWER(TRIM(${target.beneficiary_name}))
                     `;
-                    if (target.carry_review_status !== 'pending' || busSeat) {
-                        results.push({
-                            beneficiary_id: beneficiaryId,
-                            ok: false,
-                            conflict: true,
-                            error: 'تم تعديل بيانات المستفيد في الفصل الجديد. يرجى حذفه من قائمة الفصل الجديد أولاً'
-                        });
-                        continue;
-                    }
                     await tx`DELETE FROM beneficiaries WHERE id = ${target.id}`;
                 }
 
@@ -519,10 +544,10 @@ export const applyDecisions = async ({ branchId, targetTermId, decisions, actor 
                 if (existing) {
                     await tx`
                         UPDATE beneficiaries
-                        SET carried_from_beneficiary_id = ${beneficiaryId}, updated_at = CURRENT_TIMESTAMP
+                        SET carried_from_beneficiary_id = ${beneficiaryId}, is_archived = false, updated_at = CURRENT_TIMESTAMP
                         WHERE id = ${existing.id}
                     `;
-                    target = existing;
+                    target = { ...existing, is_archived: false };
                     skippedReason = 'already_present';
                 } else {
                     target = await Beneficiary.createFromSource(tx, {
@@ -548,6 +573,20 @@ export const applyDecisions = async ({ branchId, targetTermId, decisions, actor 
                 }
             } else {
                 skippedReason = 'already_carried';
+                // The new-term row exists but is archived (e.g. by an archive run or the
+                // term-5 list sync): it cannot be edited, so the branch could neither review
+                // nor reverse it. Choosing "continuing" again is the explicit way to bring
+                // it back into the live list.
+                if (target.is_archived) {
+                    const [reactivated] = await tx`
+                        UPDATE beneficiaries
+                        SET is_archived = false, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ${target.id}
+                        RETURNING *
+                    `;
+                    target = reactivated || target;
+                    skippedReason = 'reactivated';
+                }
             }
 
             await tx`

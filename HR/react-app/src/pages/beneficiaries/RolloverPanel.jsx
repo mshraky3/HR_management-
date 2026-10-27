@@ -46,7 +46,35 @@ export default function RolloverPanel(r) {
     decidingId, handleMarkContinuing, setReasonModal, reviewForm, setReviewForm, availableBuses, reviewBusId, setReviewBusId,
     handleStartRollover, savingReview, handleSaveReview, goToNextUnfinished, rolloverFilter, setRolloverFilter,
     filteredCandidates, openInGuidedReview, isCandidateDone, handleUnconfirmReview, rolloverCanConfirm, setConfirmModal,
+    unreviewedNew = [], markingReviewed, handleMarkNewReviewed, openEditModal, canEdit, confirm,
   } = r;
+
+  const markAllReviewed = async () => {
+    const ok = await confirm({
+      title: 'تأكيد المراجعة',
+      message: `هل راجعت بيانات هؤلاء المستفيدين (${unreviewedNew.length}) وتؤكد صحتها؟ سيُسجَّلون كمراجَعين ولن يمنعوا تأكيد اكتمال البيانات.`,
+      confirmText: 'نعم، تمت مراجعتهم',
+    });
+    if (ok) handleMarkNewReviewed(unreviewedNew.map((b) => b.id));
+  };
+
+  const unreviewedColumns = [
+    { key: 'n', header: '#', width: '3rem', mobileHidden: true, render: (_, i) => i + 1 },
+    { key: 'beneficiary_name', header: 'اسم المستفيد', mobilePrimary: true, render: (b) => <strong>{b.beneficiary_name}</strong> },
+    { key: 'civil_id', header: 'السجل المدني', mobileHidden: true, render: (b) => <bdi>{b.civil_id}</bdi> },
+    { key: 'contact_number', header: 'التواصل', mobileHidden: true, render: (b) => <bdi>{b.contact_number}</bdi> },
+    { key: 'services', header: 'الخدمات', render: (b) => <ServiceBadges row={b} /> },
+    { key: 'free_student', header: 'مجاني', mobileHidden: true, render: (b) => (b.free_student ? <Badge tone="success">مجاني</Badge> : '—') },
+    {
+      key: 'actions', header: '', align: 'end',
+      render: (b) => (
+        <span className="bn-switch">
+          {canEdit && <Button size="sm" variant="secondary" onClick={() => openEditModal(b)}>تعديل</Button>}
+          <Button size="sm" variant="primary" disabled={markingReviewed} onClick={() => handleMarkNewReviewed([b.id])}>تمت المراجعة</Button>
+        </span>
+      ),
+    },
+  ];
 
   const goAdd = () => { setActiveTab('data'); setTimeout(openAddModal, 0); };
 
@@ -234,6 +262,13 @@ export default function RolloverPanel(r) {
                           لم يتم إنشاء سجل هذا المستفيد في الفصل الجديد.
                         </Alert>
                       )}
+                      {/* The new-term row exists but is archived: it is hidden from the live list and cannot be
+                          edited, so saving the review fails. Re-applying "continuing" brings it back. */}
+                      {currentCandidate.target_id && currentCandidate.target?.is_archived && (
+                        <Alert tone="warning" action={<Button size="sm" variant="primary" disabled={decidingId === currentCandidate.id} onClick={() => handleMarkContinuing(currentCandidate)}>إعادة تفعيله</Button>}>
+                          سجل هذا المستفيد في الفصل الجديد مؤرشف، لذلك لا يظهر في القوائم ولا يمكن تعديله. اضغط «إعادة تفعيله» ليعود إلى قائمة هذا العام ثم راجع بياناته، أو اختر «لن يستمر».
+                        </Alert>
+                      )}
                     </div>
                   ) : (
                     <div className="bn-answer">
@@ -244,7 +279,7 @@ export default function RolloverPanel(r) {
                   )}
                 </Step>
 
-                {currentCandidate.continuity_status === 'continuing' && reviewForm && (
+                {currentCandidate.continuity_status === 'continuing' && reviewForm && !currentCandidate.target?.is_archived && (
                   <Step
                     n={2}
                     title="راجع بياناته وعدّل ما تغيّر"
@@ -255,7 +290,7 @@ export default function RolloverPanel(r) {
                   </Step>
                 )}
 
-                {currentCandidate.continuity_status === 'continuing' && reviewForm?.transport_service && (
+                {currentCandidate.continuity_status === 'continuing' && reviewForm?.transport_service && !currentCandidate.target?.is_archived && (
                   <Step n={3} title="خدمة النقل مفعلة — اختر الحافلة" state={reviewBusId ? 'done' : 'active'}>
                     {availableBuses.length === 0 ? (
                       <Alert
@@ -277,7 +312,7 @@ export default function RolloverPanel(r) {
                   </Step>
                 )}
 
-                {currentCandidate.continuity_status === 'continuing' && reviewForm && (
+                {currentCandidate.continuity_status === 'continuing' && reviewForm && !currentCandidate.target?.is_archived && (
                   <Step n={4} title="احفظ وانتقل للمستفيد التالي" state="active">
                     <div className="bn-switch">
                       <Button variant="primary" size="lg" iconEnd="arrow-end" loading={savingReview} onClick={handleSaveReview}>حفظ والانتقال للمستفيد التالي</Button>
@@ -315,6 +350,19 @@ export default function RolloverPanel(r) {
         </>
       )}
 
+      {/* New-term students waiting for review that the step-by-step review does not walk. The server counts them
+          and refuses "confirm 100%" while any remain, so they must be visible here. */}
+      {unreviewedNew.length > 0 && (
+        <Card
+          title={`مستفيدون في الفصل الجديد لم تُراجع بياناتهم (${unreviewedNew.length})`}
+          subtitle="هؤلاء مسجَّلون في الفصل الجديد لكن ليس لهم سجل في الفصل السابق، ولذلك لا تظهر أسماؤهم في المراجعة خطوة بخطوة. راجع بياناتهم ثم اضغط «تمت المراجعة»."
+          actions={<Button size="sm" variant="primary" disabled={markingReviewed} onClick={markAllReviewed}>تمت مراجعة الجميع</Button>}
+          flush
+        >
+          <DataTable columns={unreviewedColumns} rows={unreviewedNew} rowKey="id" emptyIcon="check-circle" emptyTitle="لا يوجد" />
+        </Card>
+      )}
+
       {/* Final step: add the new intake, then confirm */}
       <Card title="الخطوة الأخيرة — تأكيد اكتمال البيانات">
         <div className="ui-form-stack">
@@ -333,6 +381,21 @@ export default function RolloverPanel(r) {
               <Button size="sm" variant={rolloverAllDone ? 'primary' : 'secondary'} icon="plus" onClick={goAdd}>إضافة مستفيد جديد</Button>
             </li>
           </ul>
+
+          {rolloverStatus.counts.continuing_without_active_row > 0 && (
+            <Alert
+              tone="warning"
+              title={`${rolloverStatus.counts.continuing_without_active_row} مستفيد «مستمر» بدون سجل فعّال في الفصل الجديد`}
+            >
+              {rolloverStatus.counts.continuing_without_active_row_names?.length > 0 && (
+                <div>
+                  {rolloverStatus.counts.continuing_without_active_row_names.join('، ')}
+                  {rolloverStatus.counts.continuing_without_active_row > rolloverStatus.counts.continuing_without_active_row_names.length && ' …'}
+                </div>
+              )}
+              <div>سجلهم في الفصل الجديد مؤرشف أو محذوف، فلن يظهروا في قوائم هذا العام. افتح كل واحد منهم من «عرض القائمة كاملة» واضغط «إعادة تفعيله» أو «لن يستمر».</div>
+            </Alert>
+          )}
 
           {rolloverStatus.counts.transport_without_bus > 0 && (
             <Alert

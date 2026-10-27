@@ -1429,6 +1429,10 @@ export const beneficiariesAPI = {
   getRolloverOverview: (params = {}) =>
     api.get('/api/beneficiaries/rollover/overview', { params }),
 
+  // New-term rows awaiting review that the step-by-step review does not list
+  getRolloverUnreviewed: (params = {}) =>
+    api.get('/api/beneficiaries/rollover/unreviewed', { params }),
+
   startRollover: (data = {}) =>
     api.post('/api/beneficiaries/rollover/start', data),
 

@@ -82,7 +82,7 @@ const getDocumentTypeLabel = (documentType) => {
     'bank_iban': 'مستند الآيبان',
     'primary_qualification': 'المؤهل الأساسي',
     'employment_contract': 'عقد العمل',
-    'additional_courses': 'الدورات الإضافية',
+    'additional_courses': 'مستندات إضافية',
     'passport': 'جواز السفر',
     'professional_license': 'الترخيص المهني',
     'experience_certificate': 'شهادة الخبرة',

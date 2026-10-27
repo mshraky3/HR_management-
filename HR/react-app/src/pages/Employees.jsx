@@ -3031,7 +3031,7 @@ const Employees = () => {
                               )}
                             <div className="form-group col-3">
                               <label>
-                                الدورات الإضافية (يمكن إضافة حتى 5 ملفات)
+                                مستندات إضافية (أي مستند آخر، مثل طلب إجازة سنوية — حتى 5 ملفات)
                               </label>
                               {existingDocuments.additional_courses &&
                                 existingDocuments.additional_courses.length >
@@ -3462,7 +3462,7 @@ const Employees = () => {
                               )}
                             <div className="form-group col-3">
                               <label>
-                                الدورات الإضافية (يمكن إضافة حتى 5 ملفات)
+                                مستندات إضافية (أي مستند آخر، مثل طلب إجازة سنوية — حتى 5 ملفات)
                               </label>
                               {existingDocuments.additional_courses &&
                                 existingDocuments.additional_courses.length >
