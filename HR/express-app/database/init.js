@@ -5,6 +5,7 @@
 
 import { createTable, executeQuery, sql } from '../db-helpers.js';
 import { log } from '../utils/logger.js';
+import { ensureBranchRecordTables } from './branchRecordsSchema.js';
 
 /**
  * Create all database tables
@@ -2073,6 +2074,9 @@ export async function initializeDatabase() {
     } catch (error) {
       log.info('user_otp_tokens indexes already exist or skipped');
     }
+
+    // Healthcare-branch achievements and partnerships (migration 030; same DDL as the migration)
+    await ensureBranchRecordTables(sql);
 
     return { success: true, message: 'Database initialization completed successfully' };
 

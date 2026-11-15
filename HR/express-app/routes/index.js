@@ -66,6 +66,8 @@ router.use('/branches', branchRoutes);
 router.use('/employees', lazy(() => import('./employees.js')));
 router.use('/documents', lazy(() => import('./documents.js')));
 router.use('/branch-documents', lazy(() => import('./branch-documents.js')));
+router.use('/branch-achievements', lazy(() => import('./branch-achievements.js')));
+router.use('/branch-partnerships', lazy(() => import('./branch-partnerships.js')));
 router.use('/reports', lazy(() => import('./reports.js')));
 router.use('/employee-file', lazy(() => import('./employee-file.js')));
 router.use('/notifications', notificationRoutes);

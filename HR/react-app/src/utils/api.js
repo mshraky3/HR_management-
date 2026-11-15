@@ -153,6 +153,11 @@ const getCacheTTL = (url) => {
     return CACHE_TTL.NONE;
   }
 
+  // Branch achievements / partnerships - lists are re-read right after every save or delete
+  if (url.includes('/api/branch-achievements') || url.includes('/api/branch-partnerships')) {
+    return CACHE_TTL.NONE;
+  }
+
   // Employee data - short cache (changes frequently, but allow minimal caching)
   if (url.includes('/api/employees')) {
     return CACHE_TTL.SHORT; // 5 seconds
@@ -903,6 +908,44 @@ export const branchDocumentsAPI = {
       responseType: 'blob'
     }),
 };
+
+// Branch records of healthcare centres: achievements (thank-you certificates) and partnerships.
+// Same contract for both; the optional file can go straight to R2 when it is larger than the API limit.
+const createBranchRecordAPI = (base) => ({
+  getAll: (filters = {}) => {
+    const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+    return api.get(base, { params: cleanFilters });
+  },
+
+  upload: (formData) =>
+    sendWithLargeFile('post', base, formData, `${base}/upload-url`, {
+      branch_id: formData.get('branch_id'),
+    }),
+
+  // JSON update, no file involved (fields not sent are kept; send '' to clear one)
+  update: (id, data) =>
+    api.put(`${base}/${id}`, data),
+
+  // multipart update: replace the file and/or remove_file='true'
+  updateWithFile: (id, formData) =>
+    sendWithLargeFile('put', `${base}/${id}`, formData, `${base}/upload-url`, {
+      record_id: id,
+    }),
+
+  download: (id) =>
+    api.get(`${base}/${id}/download`, { responseType: 'blob' }),
+
+  delete: (id) =>
+    api.delete(`${base}/${id}`),
+});
+
+export const branchAchievementsAPI = createBranchRecordAPI('/api/branch-achievements');
+export const branchPartnershipsAPI = createBranchRecordAPI('/api/branch-partnerships');
 
 // Reports API
 export const reportsAPI = {

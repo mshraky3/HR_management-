@@ -37,6 +37,11 @@ export function uploadBranchDocumentToBlob(fileBuffer, fileName, mimeType, branc
   return uploadFile(`branches/${branchId}/${documentType}`, fileBuffer, fileName, mimeType, [branchId, documentType]);
 }
 
+/** Branch achievement / partnership file -> branches/{id}/{kind}/... (kind: 'achievements' | 'partnerships'). */
+export function uploadBranchRecordFile(fileBuffer, fileName, mimeType, branchId, kind) {
+  return uploadFile(`branches/${branchId}/${kind}`, fileBuffer, fileName, mimeType, [branchId, kind]);
+}
+
 export function uploadRequestAttachmentToBlob(fileBuffer, fileName, mimeType, requestId) {
   return uploadFile(`requests/${requestId}/attachments`, fileBuffer, fileName, mimeType, [requestId]);
 }

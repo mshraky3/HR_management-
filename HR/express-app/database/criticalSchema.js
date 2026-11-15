@@ -8,6 +8,7 @@
  */
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
+import { BRANCH_RECORD_TABLES, ensureBranchRecordTables } from './branchRecordsSchema.js';
 
 export const CRITICAL_COLUMNS = [
   { table: 'employees', column: 'work_start_date_hijri', ddl: 'VARCHAR(50)' },
@@ -30,6 +31,17 @@ export async function ensureCriticalSchema(db = sql) {
     const present = new Set(rows.map((r) => `${r.table_name}.${r.column_name}`));
     const missing = CRITICAL_COLUMNS.filter((c) => !present.has(`${c.table}.${c.column}`));
     const applied = [];
+
+    // Whole tables the code needs (migration 030): create them if absent (same DDL as the migration).
+    const tableRows = await db`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = current_schema() AND table_name = ANY(${BRANCH_RECORD_TABLES})`;
+    const haveTables = new Set(tableRows.map((r) => r.table_name));
+    if (BRANCH_RECORD_TABLES.some((t) => !haveTables.has(t))) {
+      await ensureBranchRecordTables(db);
+      for (const t of BRANCH_RECORD_TABLES) if (!haveTables.has(t)) applied.push(`table:${t}`);
+    }
+
     for (const { table, column, ddl } of missing) {
       // identifiers come from the constant list above, never from input
       await db.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${ddl}`);
@@ -52,8 +64,9 @@ export async function healAndRetry(fn) {
   try {
     return await fn();
   } catch (error) {
-    if (error?.code !== '42703') throw error;
-    log.warn('Missing column during a query; repairing the critical schema and retrying once', { error: error.message });
+    // 42703 = missing column, 42P01 = missing table (the branch achievements / partnerships tables)
+    if (error?.code !== '42703' && error?.code !== '42P01') throw error;
+    log.warn('Missing column or table during a query; repairing the critical schema and retrying once', { error: error.message });
     const result = await ensureCriticalSchema();
     if (result.errorCode) throw error;
     return await fn();

@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Page, PageHeader, Card, StatCard, Button, Badge, Icon, Modal, FormField, Input, Select, Textarea, Alert, EmptyState,
-  Skeleton, RowActions, useConfirm,
+  Skeleton, RowActions, Tabs, useConfirm,
 } from '../ui';
 import { branchDocumentsAPI, branchesAPI, setDocumentBranchMapping } from '../utils/api';
 import { downloadFile } from '../utils/downloadFile';
@@ -17,6 +17,8 @@ import { formatDate } from '../utils/dateConverters';
 import { RESTRICTED_DOCUMENT_TYPES } from '../utils/documentRestrictions';
 import UnifiedDatePicker from '../components/UnifiedDatePicker.jsx';
 import BankSelect from '../components/BankSelect.jsx';
+import AchievementsPanel from '../components/branch-records/AchievementsPanel.jsx';
+import PartnershipsPanel from '../components/branch-records/PartnershipsPanel.jsx';
 import { MAX_UPLOAD_MB, MAX_UPLOAD_BYTES, fileTooLargeMessage } from '../utils/uploadLimits';
 import './BranchDocuments.css';
 
@@ -108,7 +110,7 @@ export default function BranchDocuments() {
   const { isMainManager, user } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const { confirm } = useConfirm();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isMain = isMainManager();
 
   const [documents, setDocuments] = useState([]);
@@ -134,6 +136,16 @@ export default function BranchDocuments() {
 
   const currentBranch = useMemo(() => branches.find((b) => b.id === branchId) || null, [branches, branchId]);
   const currentBranchType = currentBranch?.branch_type || null;
+
+  // Healthcare centres also keep certificates and partnerships; the tab lives in the URL (?tab=achievements|partnerships)
+  const isHealthcare = currentBranchType === 'healthcare_center';
+  const tabParam = searchParams.get('tab');
+  const section = isHealthcare && (tabParam === 'achievements' || tabParam === 'partnerships') ? tabParam : 'documents';
+  const setSection = (next) => setSearchParams((prev) => {
+    const params = new URLSearchParams(prev);
+    if (next === 'documents') params.delete('tab'); else params.set('tab', next);
+    return params;
+  }, { replace: true });
 
   // ---- loading ---------------------------------------------------------------------------------------------------------
   useEffect(() => {
@@ -416,6 +428,34 @@ export default function BranchDocuments() {
     );
   }
 
+  const sectionTabs = isHealthcare && (
+    <Tabs
+      value={section}
+      onChange={setSection}
+      items={[
+        { id: 'documents', label: 'المستندات', icon: 'folder' },
+        { id: 'achievements', label: 'شهادات الشكر', icon: 'award' },
+        { id: 'partnerships', label: 'الشراكات', icon: 'users' },
+      ]}
+    />
+  );
+
+  if (section !== 'documents') {
+    return (
+      <Page>
+        <PageHeader
+          title="مستندات الفرع"
+          subtitle={`${currentBranch.branch_name} · مركز رعاية نهارية`}
+          back={isMain ? '/branches-monitoring' : undefined}
+        />
+        {sectionTabs}
+        <div role="tabpanel" aria-labelledby={`tab-${section}`} className="ui-form-stack">
+          {section === 'achievements' ? <AchievementsPanel branchId={branchId} /> : <PartnershipsPanel branchId={branchId} />}
+        </div>
+      </Page>
+    );
+  }
+
   const initialLoading = !branchesLoaded || (loading && documents.length === 0);
   const typeNote = TYPE_NOTES[uploadData.document_type];
 
@@ -427,6 +467,7 @@ export default function BranchDocuments() {
         back={isMain ? '/branches-monitoring' : undefined}
         actions={<Button variant="primary" icon="upload" onClick={() => openUpload()}>رفع مستند</Button>}
       />
+      {sectionTabs}
 
       <div className="ui-grid-stats">
         <StatCard label="المستندات المطلوبة" value={counts.total} icon="folder" tone="primary" loading={initialLoading} />

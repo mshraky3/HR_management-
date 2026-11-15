@@ -19,6 +19,8 @@ import { RESTRICTED_DOCUMENT_TYPES } from '../utils/documentRestrictions';
 import { downloadFile } from '../utils/downloadFile';
 import { BRANCH_DOCUMENT_LABELS as DOCUMENT_TYPE_LABELS } from '../utils/branchDocumentLabels';
 import UnifiedDatePicker from '../components/UnifiedDatePicker.jsx';
+import AchievementsPanel from '../components/branch-records/AchievementsPanel.jsx';
+import PartnershipsPanel from '../components/branch-records/PartnershipsPanel.jsx';
 import { MAX_UPLOAD_BYTES, fileTooLargeMessage } from '../utils/uploadLimits';
 import './BranchDocumentsManagement.css';
 
@@ -34,7 +36,7 @@ export default function BranchDocumentsManagement() {
   const { isMainManager, isBranchOperationsManager, user } = useAuth();
   const { showError, showSuccess, showWarning } = useNotification();
   const { confirm } = useConfirm();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isMain = isMainManager();
   const isOps = isBranchOperationsManager();
 
@@ -354,6 +356,40 @@ export default function BranchDocumentsManagement() {
   const statsLoading = initialLoading || (documentsLoading && allDocuments.length === 0);
   const formTypeOptions = (formMode === 'edit' ? Object.keys(DOCUMENT_TYPE_LABELS) : uploadableTypes).map((t) => ({ value: t, label: label(t) }));
 
+  // Healthcare centres also keep certificates and partnerships: an outer section bar (?section=achievements|partnerships)
+  const hasHealthcare = branches.some((b) => b.branch_type === 'healthcare_center');
+  const sectionParam = searchParams.get('section');
+  const section = hasHealthcare && (sectionParam === 'achievements' || sectionParam === 'partnerships') ? sectionParam : 'documents';
+  const setSection = (next) => setSearchParams((prev) => {
+    const params = new URLSearchParams(prev);
+    if (next === 'documents') params.delete('section'); else params.set('section', next);
+    return params;
+  }, { replace: true });
+  const sectionTabs = hasHealthcare && (
+    <Tabs
+      value={section}
+      onChange={setSection}
+      ariaLabel="أقسام مستندات الفروع"
+      items={[
+        { id: 'documents', label: 'المستندات', icon: 'folder' },
+        { id: 'achievements', label: 'شهادات الشكر', icon: 'award' },
+        { id: 'partnerships', label: 'الشراكات', icon: 'users' },
+      ]}
+    />
+  );
+
+  if (section !== 'documents') {
+    return (
+      <Page>
+        <PageHeader title="مستندات الفروع" subtitle="شهادات الشكر والشراكات لمراكز الرعاية النهارية" />
+        {sectionTabs}
+        <div role="tabpanel" aria-labelledby={`tab-${section}`} className="ui-form-stack">
+          {section === 'achievements' ? <AchievementsPanel /> : <PartnershipsPanel />}
+        </div>
+      </Page>
+    );
+  }
+
   return (
     <Page>
       <PageHeader
@@ -361,6 +397,7 @@ export default function BranchDocumentsManagement() {
         subtitle={documentsLoading ? 'جاري تحديث المستندات…' : 'ما الذي رفعته الفروع وما الذي ينقصها'}
         actions={<Button variant="primary" icon="plus" onClick={() => openUpload()}>رفع مستند جديد</Button>}
       />
+      {sectionTabs}
 
       {isMain && (
         <Card title="إنشاء ملف PDF" subtitle="دمج المستندات في ملف واحد جاهز للطباعة أو الإرسال">
