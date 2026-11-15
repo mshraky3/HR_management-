@@ -21,6 +21,10 @@
 
 .br-preview { display: block; max-width: 100%; max-height: 70vh; margin-inline: auto; object-fit: contain; border-radius: var(--radius-md); }
 
+/* small link under a date picker */
+.br-clear { background: none; border: 0; padding: 0.25rem 0; color: var(--primary); font: inherit; font-size: var(--font-size-xs); cursor: pointer; text-decoration: underline; }
+.br-clear:hover { color: var(--primary-hover); }
+
 /* Section switcher above the page content (documents / achievements / partnerships) */
 .br-sections { margin-block-end: 0.5rem; }
 

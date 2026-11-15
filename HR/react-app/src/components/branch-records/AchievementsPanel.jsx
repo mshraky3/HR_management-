@@ -6,16 +6,15 @@
  *
  * List with one search box, add / edit / delete, optional file (preview, download).
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Card, Button, Modal, FormField, Input, Select, Textarea, SearchInput, Toolbar, DataTable, useConfirm } from '../../ui';
 import { branchAchievementsAPI } from '../../utils/api';
 import { useNotification } from '../../contexts/NotificationContext';
 import { formatDate } from '../../utils/dateConverters';
-import { uploadErrorMessage } from '../../utils/uploadLimits';
 import UnifiedDatePicker from '../UnifiedDatePicker.jsx';
 import { RecordFileField, RecordFileName, RecordActions, RecordPreviewModal } from './RecordParts';
 import {
-  isoDay, errorText, useDebouncedValue, useRecordList, useHealthcareBranches, useRecordFiles,
+  isoDay, errorText, saveErrorText, useDebouncedValue, useRecordList, useHealthcareBranches, useRecordFiles,
 } from './recordHelpers';
 import './BranchRecords.css';
 
@@ -34,6 +33,9 @@ export default function AchievementsPanel({ branchId = null }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  // Synchronous guards: React state updates are too slow to stop a fast double click or a double Enter.
+  const busyRef = useRef(false);
+  const deletingRef = useRef(new Set());
 
   const debouncedSearch = useDebouncedValue(search.trim(), 300);
   const { branches } = useHealthcareBranches(allBranches);
@@ -89,6 +91,8 @@ export default function AchievementsPanel({ branchId = null }) {
       achievement_date_hijri: form.achievement_date_hijri,
     };
 
+    if (busyRef.current) return;
+    busyRef.current = true;
     try {
       setSaving(true);
       if (mode === 'create') {
@@ -114,13 +118,22 @@ export default function AchievementsPanel({ branchId = null }) {
       setForm(EMPTY_FORM);
       reload();
     } catch (error) {
-      showError(uploadErrorMessage(error) || (mode === 'create' ? 'فشل إضافة السجل' : 'فشل تحديث السجل'));
+      showError(saveErrorText(error, mode === 'create' ? 'فشل إضافة السجل' : 'فشل تحديث السجل'));
+      // someone else may have removed it, or the access changed: show the real list again
+      if ([403, 404].includes(error?.response?.status)) reload();
     } finally {
+      busyRef.current = false;
       setSaving(false);
     }
   };
 
   const remove = async (row) => {
+    if (deletingRef.current.has(row.id)) return;
+    deletingRef.current.add(row.id);
+    try { await removeNow(row); } finally { deletingRef.current.delete(row.id); }
+  };
+
+  const removeNow = async (row) => {
     const ok = await confirm({
       title: 'حذف الشهادة أو الإنجاز',
       message: `هل أنت متأكد من حذف «${row.title}»؟`,
@@ -134,6 +147,7 @@ export default function AchievementsPanel({ branchId = null }) {
       reload();
     } catch (error) {
       showError(await errorText(error, 'فشل الحذف'));
+      if ([403, 404].includes(error?.response?.status)) reload();
     }
   };
 
@@ -217,6 +231,7 @@ export default function AchievementsPanel({ branchId = null }) {
       </Card>
 
       <Modal
+        closeOnOverlay={false}
         open={Boolean(mode)}
         onClose={closeForm}
         title={mode === 'edit' ? 'تعديل شهادة أو إنجاز' : 'إضافة شهادة أو إنجاز'}
@@ -247,13 +262,18 @@ export default function AchievementsPanel({ branchId = null }) {
             <Input value={form.issuer} onChange={(e) => set({ issuer: e.target.value })} maxLength={255} />
           </FormField>
           <div className="br-form-grid">
-            <UnifiedDatePicker
-              label="التاريخ"
-              hijriValue={form.achievement_date_hijri}
-              gregorianValue={form.achievement_date}
-              onChange={(hijri, gregorian) => set({ achievement_date_hijri: hijri, achievement_date: gregorian })}
-              dateType="general"
-            />
+            <div>
+              <UnifiedDatePicker
+                label="التاريخ"
+                hijriValue={form.achievement_date_hijri}
+                gregorianValue={form.achievement_date}
+                onChange={(hijri, gregorian) => set({ achievement_date_hijri: hijri, achievement_date: gregorian })}
+                dateType="general"
+              />
+              {(form.achievement_date || form.achievement_date_hijri) && (
+                <button type="button" className="br-clear" onClick={() => set({ achievement_date: '', achievement_date_hijri: '' })}>مسح التاريخ</button>
+              )}
+            </div>
           </div>
           <FormField label="الوصف">
             <Textarea rows={3} value={form.description} onChange={(e) => set({ description: e.target.value })} maxLength={5000} />

@@ -6,16 +6,15 @@
  *
  * List with one search box and a government / private filter, add / edit / delete, optional contract file.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Card, Button, Badge, Modal, FormField, Input, Select, Textarea, SearchInput, Toolbar, DataTable, CopyText, useConfirm } from '../../ui';
 import { branchPartnershipsAPI } from '../../utils/api';
 import { useNotification } from '../../contexts/NotificationContext';
 import { formatDate } from '../../utils/dateConverters';
-import { uploadErrorMessage } from '../../utils/uploadLimits';
 import UnifiedDatePicker from '../UnifiedDatePicker.jsx';
 import { RecordFileField, RecordFileName, RecordActions, RecordPreviewModal } from './RecordParts';
 import {
-  isoDay, daysUntilDay, errorText, useDebouncedValue, useRecordList, useHealthcareBranches, useRecordFiles,
+  isoDay, daysUntilDay, errorText, saveErrorText, useDebouncedValue, useRecordList, useHealthcareBranches, useRecordFiles,
 } from './recordHelpers';
 import './BranchRecords.css';
 
@@ -67,6 +66,9 @@ export default function PartnershipsPanel({ branchId = null }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  // Synchronous guards: React state updates are too slow to stop a fast double click or a double Enter.
+  const busyRef = useRef(false);
+  const deletingRef = useRef(new Set());
 
   const debouncedSearch = useDebouncedValue(search.trim(), 300);
   const { branches } = useHealthcareBranches(allBranches);
@@ -133,6 +135,8 @@ export default function PartnershipsPanel({ branchId = null }) {
     TEXT_KEYS.forEach((key) => { values[key] = String(form[key] ?? '').trim(); });
     DATE_KEYS.forEach((key) => { values[key] = form[key] || ''; });
 
+    if (busyRef.current) return;
+    busyRef.current = true;
     try {
       setSaving(true);
       if (mode === 'create') {
@@ -158,13 +162,21 @@ export default function PartnershipsPanel({ branchId = null }) {
       setForm(EMPTY_FORM);
       reload();
     } catch (error) {
-      showError(uploadErrorMessage(error) || (mode === 'create' ? 'فشل إضافة الشراكة' : 'فشل تحديث الشراكة'));
+      showError(saveErrorText(error, mode === 'create' ? 'فشل إضافة الشراكة' : 'فشل تحديث الشراكة'));
+      if ([403, 404].includes(error?.response?.status)) reload();
     } finally {
+      busyRef.current = false;
       setSaving(false);
     }
   };
 
   const remove = async (row) => {
+    if (deletingRef.current.has(row.id)) return;
+    deletingRef.current.add(row.id);
+    try { await removeNow(row); } finally { deletingRef.current.delete(row.id); }
+  };
+
+  const removeNow = async (row) => {
     const ok = await confirm({
       title: 'حذف الشراكة',
       message: `هل أنت متأكد من حذف الشراكة مع «${row.partner_name}»؟`,
@@ -178,6 +190,7 @@ export default function PartnershipsPanel({ branchId = null }) {
       reload();
     } catch (error) {
       showError(await errorText(error, 'فشل الحذف'));
+      if ([403, 404].includes(error?.response?.status)) reload();
     }
   };
 
@@ -293,6 +306,7 @@ export default function PartnershipsPanel({ branchId = null }) {
       </Card>
 
       <Modal
+        closeOnOverlay={false}
         open={Boolean(mode)}
         onClose={closeForm}
         title={mode === 'edit' ? 'تعديل الشراكة' : 'إضافة شراكة'}
@@ -336,20 +350,30 @@ export default function PartnershipsPanel({ branchId = null }) {
             </FormField>
           </div>
           <div className="br-form-grid">
-            <UnifiedDatePicker
-              label="تاريخ بداية العقد"
-              hijriValue={form.contract_start_date_hijri}
-              gregorianValue={form.contract_start_date}
-              onChange={(hijri, gregorian) => set({ contract_start_date_hijri: hijri, contract_start_date: gregorian })}
-              dateType="general"
-            />
-            <UnifiedDatePicker
-              label="تاريخ نهاية العقد"
-              hijriValue={form.contract_end_date_hijri}
-              gregorianValue={form.contract_end_date}
-              onChange={(hijri, gregorian) => set({ contract_end_date_hijri: hijri, contract_end_date: gregorian })}
-              dateType="general"
-            />
+            <div>
+              <UnifiedDatePicker
+                label="تاريخ بداية العقد"
+                hijriValue={form.contract_start_date_hijri}
+                gregorianValue={form.contract_start_date}
+                onChange={(hijri, gregorian) => set({ contract_start_date_hijri: hijri, contract_start_date: gregorian })}
+                dateType="general"
+              />
+              {(form.contract_start_date || form.contract_start_date_hijri) && (
+                <button type="button" className="br-clear" onClick={() => set({ contract_start_date: '', contract_start_date_hijri: '' })}>مسح التاريخ</button>
+              )}
+            </div>
+            <div>
+              <UnifiedDatePicker
+                label="تاريخ نهاية العقد"
+                hijriValue={form.contract_end_date_hijri}
+                gregorianValue={form.contract_end_date}
+                onChange={(hijri, gregorian) => set({ contract_end_date_hijri: hijri, contract_end_date: gregorian })}
+                dateType="general"
+              />
+              {(form.contract_end_date || form.contract_end_date_hijri) && (
+                <button type="button" className="br-clear" onClick={() => set({ contract_end_date: '', contract_end_date_hijri: '' })}>مسح التاريخ</button>
+              )}
+            </div>
           </div>
           <FormField label="الوصف">
             <Textarea rows={3} {...text('description')} maxLength={5000} />

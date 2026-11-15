@@ -14,6 +14,19 @@ export function RecordFileField({ currentName, file, onFileChange, removeCurrent
 
   const pick = (e) => {
     const picked = e.target.files?.[0] || null;
+    // Catch the obvious mistakes now (the "all files" option of the picker lets anything through)
+    if (picked && !/^(application\/pdf|image\/(jpe?g|png|gif))$/i.test(picked.type) && !/\.(pdf|jpe?g|png|gif)$/i.test(picked.name)) {
+      showWarning('نوع الملف غير مدعوم. اختر ملف PDF أو صورة (JPG أو PNG أو GIF).');
+      e.target.value = '';
+      onFileChange(null);
+      return;
+    }
+    if (picked && picked.size === 0) {
+      showWarning('الملف المختار فارغ. اختر ملفاً آخر.');
+      e.target.value = '';
+      onFileChange(null);
+      return;
+    }
     if (picked && picked.size > MAX_UPLOAD_BYTES) {
       showWarning(fileTooLargeMessage(picked.name));
       e.target.value = '';

@@ -225,6 +225,44 @@ test('search also matches the branch name (head office view)', async () => {
   assert.ok(hit.body.data.every((r) => r.branch_id === H1.id));
 });
 
+test('hostile text: control characters are stripped, NUL no longer breaks, non-text values are refused', async () => {
+  const nul = await api('/api/branch-achievements', { method: 'POST', token: h1Token, body: { branch_id: H1.id, title: 'a b‮ c' } });
+  assert.equal(nul.status, 201, JSON.stringify(nul.body));
+  assert.equal(nul.body.data.title, 'ab c');
+  for (const bad of [{ a: 1 }, ['x'], true]) {
+    const r = await api('/api/branch-achievements', { method: 'POST', token: h1Token, body: { branch_id: H1.id, title: bad } });
+    assert.equal(r.status, 400, JSON.stringify(bad));
+  }
+  const search = await api('/api/branch-achievements?search=%00', { token: h1Token });
+  assert.equal(search.status, 200);
+});
+
+test('a very long file name is shortened (extension kept) instead of failing', async () => {
+  const res = await form('/api/branch-achievements', { token: h1Token, fields: { branch_id: H1.id, title: 'اسم ملف طويل' }, file: { bytes: PDF('long'), name: 'ع'.repeat(400) + '.pdf' } });
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  assert.ok(Array.from(res.body.data.file_name).length <= 150);
+  assert.ok(res.body.data.file_name.endsWith('.pdf'));
+});
+
+test('upload-url rejects a missing or non-numeric size', async () => {
+  for (const size of [undefined, 'abc', 0, -5]) {
+    const r = await api('/api/branch-achievements/upload-url', { method: 'POST', token: h1Token, body: { branch_id: H1.id, file_name: 'a.pdf', content_type: 'application/pdf', size } });
+    assert.equal(r.status, 400, String(size));
+  }
+});
+
+test('an invisible-only title is refused; partnerships can be found by phone number', async () => {
+  const blank = await api('/api/branch-achievements', { method: 'POST', token: h1Token, body: { branch_id: H1.id, title: '​​' } });
+  assert.equal(blank.status, 400);
+  const p = await api('/api/branch-partnerships', { method: 'POST', token: h1Token, body: { branch_id: H1.id, partner_name: 'جهة الهاتف', partner_type: 'private', contact_phone: '0555123987' } });
+  assert.equal(p.status, 201);
+  const found = await api('/api/branch-partnerships?search=555123', { token: h1Token });
+  assert.ok(found.body.data.some((r) => r.id === p.body.data.id));
+  await api(`/api/branch-partnerships/${p.body.data.id}`, { method: 'DELETE', token: h1Token }); // keep the later list assertions exact
+  const odd = await api('/api/branch-partnerships/upload-url', { method: 'POST', token: h1Token, body: { branch_id: H1.id, file_name: { a: 1 }, content_type: 'application/pdf', size: 5 * 1024 * 1024 } });
+  assert.ok(odd.status < 500, 'a non-text file_name must not crash the route');
+});
+
 // ---- access control ---------------------------------------------------------------------------------------------------------
 test('access: another branch cannot see, read, edit, download or delete a record', async () => {
   const list = await api('/api/branch-achievements', { token: h2Token });

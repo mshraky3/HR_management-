@@ -36,10 +36,25 @@ import { log } from '../utils/logger.js';
 const HEALTHCARE = 'healthcare_center';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}/;
 
+// Control characters (incl. NUL, which Postgres rejects) and bidi override marks (which can flip how a title is shown)
+// never belong in these text fields. Tab, line feed and carriage return are kept (descriptions may have lines).
+const UNWANTED_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g;
+
+/** Text from the client: only strings and numbers count (an object or array sent by mistake is treated as empty). */
 const clean = (value) => {
-  if (value === undefined || value === null) return null;
-  const text = String(value).trim();
-  return text === '' ? null : text;
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const text = String(value).replace(UNWANTED_CHARS, '').trim();
+  // invisible characters only (zero-width space etc.) is the same as nothing typed
+  return text.replace(/[​-‍⁠﻿]/g, '') === '' ? null : text;
+};
+
+/** Keeps a stored file name (and the storage key made from it) short: at most `max` characters, extension kept. */
+export const limitFileName = (name, max = 150) => {
+  const chars = Array.from(String(name || 'file'));
+  if (chars.length <= max) return chars.join('');
+  const text = chars.join('');
+  const ext = (text.match(/\.[A-Za-z0-9]{1,8}$/) || [''])[0];
+  return Array.from(text.slice(0, text.length - ext.length)).slice(0, max - ext.length).join('') + ext;
 };
 
 const fail = (res, status, message) => res.status(status).json({ success: false, message });
@@ -158,7 +173,8 @@ export function createBranchRecordRouter(spec) {
   // ---- signed URL for files above the API limit ------------------------------------------------------------------
   router.post('/upload-url', async (req, res) => {
     try {
-      const { file_name: fileName, content_type: contentType, size } = req.body || {};
+      const { content_type: contentType, size } = req.body || {};
+      const fileName = typeof req.body?.file_name === 'string' ? req.body.file_name : 'file';
       let branchId = parseInt(req.body?.branch_id, 10);
       if (req.body?.record_id) {
         const record = await loadRecord(parseInt(req.body.record_id, 10));
@@ -167,10 +183,11 @@ export function createBranchRecordRouter(spec) {
       }
       if (!branchId || !contentType) return fail(res, 400, 'معرف الفرع والملف مطلوبان');
       if (!isValidMimeType(contentType)) return fail(res, 400, 'نوع الملف غير مدعوم. يُسمح فقط بملفات PDF والصور.');
+      if (!Number.isFinite(Number(size)) || Number(size) <= 0) return fail(res, 400, 'حجم الملف غير صحيح');
       if (Number(size) > MAX_DIRECT_UPLOAD_BYTES) return fail(res, 400, directFileTooLargeMessage());
       if (!allowedBranch(req, branchId)) return fail(res, 403, 'ليس لديك صلاحية على هذا الفرع');
       if (!(await requireHealthcareBranch(res, branchId))) return undefined;
-      const key = buildDirectUploadKey(`branches/${branchId}/${spec.kind}/`, fileName);
+      const key = buildDirectUploadKey(`branches/${branchId}/${spec.kind}/`, limitFileName(fileName));
       const uploadUrl = await presignR2Put(key, contentType);
       return res.json({ success: true, data: { upload_url: uploadUrl, key } });
     } catch (error) {
@@ -254,18 +271,20 @@ export function createBranchRecordRouter(spec) {
     dateValidators,
     async (req, res) => {
       let storedUrl = null;
+      // a file the browser already sent straight to R2 must not be left behind when the request is refused
+      const discardDirect = async () => { if (req.file?.directKey) await fileStore.remove(req.file.url); };
       try {
         const branchId = parseInt(req.body.branch_id, 10);
-        if (!branchId) return fail(res, 400, 'معرف الفرع مطلوب');
-        if (!allowedBranch(req, branchId)) return fail(res, 403, 'ليس لديك صلاحية على هذا الفرع');
-        if (!(await requireHealthcareBranch(res, branchId))) return undefined;
+        if (!branchId) { await discardDirect(); return fail(res, 400, 'معرف الفرع مطلوب'); }
+        if (!allowedBranch(req, branchId)) { await discardDirect(); return fail(res, 403, 'ليس لديك صلاحية على هذا الفرع'); }
+        if (!(await requireHealthcareBranch(res, branchId))) { await discardDirect(); return undefined; }
 
         const built = buildRow(req.body);
-        if (built.error) return fail(res, 400, built.error);
+        if (built.error) { await discardDirect(); return fail(res, 400, built.error); }
         const row = { ...built.row, branch_id: branchId, created_by_name: actorFromReq(req).name };
 
         if (req.file) {
-          const fileName = fixFilenameEncoding(req.file.originalname);
+          const fileName = limitFileName(fixFilenameEncoding(req.file.originalname));
           storedUrl = req.file.directKey
             ? req.file.url
             : (await fileStore.put(req.file.buffer, fileName, req.file.mimetype, branchId, spec.kind)).url;
@@ -292,9 +311,13 @@ export function createBranchRecordRouter(spec) {
     '/:id',
     uploadSingle,
     acceptDirectUpload(async (req) => {
-      const id = parseId(req);
-      const record = id ? await loadRecord(id) : null;
-      return record ? `branches/${record.branch_id}/${spec.kind}/` : null;
+      try {
+        const id = parseId(req);
+        const record = id ? await loadRecord(id) : null;
+        return record ? `branches/${record.branch_id}/${spec.kind}/` : null;
+      } catch {
+        return null; // refused as an invalid file reference (400)
+      }
     }),
     optionalFile,
     dateValidators,
@@ -316,7 +339,7 @@ export function createBranchRecordRouter(spec) {
 
         const removeFile = String(req.body.remove_file) === 'true';
         if (req.file) {
-          const fileName = fixFilenameEncoding(req.file.originalname);
+          const fileName = limitFileName(fixFilenameEncoding(req.file.originalname));
           storedUrl = req.file.directKey
             ? req.file.url
             : (await fileStore.put(req.file.buffer, fileName, req.file.mimetype, record.branch_id, spec.kind)).url;

@@ -8,6 +8,7 @@ import { branchesAPI } from '../../utils/api';
 import { downloadFile } from '../../utils/downloadFile';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { fileTooLargeMessage } from '../../utils/uploadLimits';
 
 export const HEALTHCARE = 'healthcare_center';
 export const ACCEPTED_FILES = '.pdf,.jpg,.jpeg,.png,.gif';
@@ -27,6 +28,14 @@ export const daysUntilDay = (value) => {
 };
 
 /** Arabic message of a failed request; also reads the JSON error of a failed blob (download) request. */
+/** Arabic text for a failed save: the server's message, else a plain Arabic fallback (never a raw English error). */
+export const saveErrorText = (error, fallback) => {
+  if (error?.response?.data?.message) return error.response.data.message;
+  if (error?.response?.status === 413) return fileTooLargeMessage();
+  if (!error?.response) return 'تعذر الاتصال بالخادم. تحقق من الإنترنت ثم حاول مرة أخرى.';
+  return fallback;
+};
+
 export const errorText = async (error, fallback) => {
   const data = error?.response?.data;
   if (typeof Blob !== 'undefined' && data instanceof Blob) {
@@ -154,19 +163,26 @@ export function useRecordFiles(api) {
 
   const openPreview = async (row) => {
     if (!localStorage.getItem('token')) { showWarning('يرجى تسجيل الدخول مرة أخرى'); return; }
+    // A PDF opens in a new tab. Browsers only allow that straight from the click, so the tab is opened first
+    // and pointed at the file once it has been fetched.
+    const isImage = Boolean(row.mime_type?.startsWith('image/'));
+    const win = isImage ? null : window.open('', '_blank');
     try {
       setPreviewLoading(row.id);
       const response = await api.download(row.id);
       if (!(response.data instanceof Blob)) throw new Error('Invalid response format');
       const url = URL.createObjectURL(response.data);
-      if (row.mime_type?.startsWith('image/')) {
+      if (isImage) {
         setPreview({ row, url });
-      } else {
-        const win = window.open(url, '_blank');
-        if (!win) showWarning('يرجى السماح للنافذة المنبثقة بفتح ملف PDF');
+      } else if (win) {
+        win.location.href = url;
         setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+      } else {
+        showWarning('يرجى السماح للنافذة المنبثقة بفتح ملف PDF، أو استخدم زر التحميل');
+        URL.revokeObjectURL(url);
       }
     } catch (error) {
+      if (win) win.close();
       showError(`فشل عرض الملف: ${await errorText(error, 'تعذر عرض الملف')}`);
     } finally {
       setPreviewLoading(null);

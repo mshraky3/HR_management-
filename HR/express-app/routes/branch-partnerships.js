@@ -21,7 +21,7 @@ export default createBranchRecordRouter({
   ],
   enumFields: [{ name: 'partner_type', values: PARTNER_TYPES, required: true, label: 'نوع الشراكة' }],
   dateFields: ['contract_start_date', 'contract_end_date'],
-  searchFields: ['partner_name', 'service_type', 'description', 'contact_name'],
+  searchFields: ['partner_name', 'service_type', 'description', 'contact_name', 'contact_phone'],
   orderBy: sql`r.created_at DESC`,
   extraFilters: (req) => (PARTNER_TYPES.includes(req.query.partner_type)
     ? [{ column: 'partner_type', value: req.query.partner_type }]
