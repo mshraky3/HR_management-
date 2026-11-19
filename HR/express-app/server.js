@@ -14,7 +14,6 @@ import { optionalAuth } from './middleware/auth.js';
 import { resolveRequestScope } from './middleware/requestScope.js';
 import sql, { testConnection } from './config/database.js';
 import logger, { httpLogger, log } from './utils/logger.js';
-import { initializeDailyAlerts } from './utils/dailyAlerts.js';
 import { ensureCriticalSchema } from './database/criticalSchema.js';
 
 dotenv.config();
@@ -241,13 +240,8 @@ async function startup() {
     releaseSchemaGate();
   }
 
-  // Initialize daily alerts for main manager
-  try {
-    initializeDailyAlerts();
-    log.info('Daily alerts initialized - will check at 8:00 AM');
-  } catch (error) {
-    log.warn('Failed to initialize daily alerts', { error: error.message });
-  }
+  // Daily alerts are no longer started from here (the old 60 s timer is gone): a Vercel cron calls
+  // GET /api/cron/daily-alerts (routes/cron.js), which stays OFF until DAILY_ALERTS_ENABLED=true.
 }
 
 // Run startup asynchronously (don't block server start)
