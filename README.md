@@ -51,6 +51,13 @@ The database host check only relaxes TLS for `localhost`, so a production URL is
 ## Tests
 `HR/express-app`: `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:54329/hrscratch npm test`. Integration tests run the real app against a local scratch database and refuse any non-localhost host.
 
+## Error e-mail
+Server errors (HTTP 500), failed login-code e-mails and error reports from the web app are mailed to the developer address (CRITICAL and HIGH only, 5-minute cooldown per error type and endpoint, 20 per hour per instance).
+- **Routing.** Error mail follows `EMAIL_GATEWAY_MODE`, like every other HR mail: `off` (default) sends by direct SMTP; `on` sends through the e-mail gateway and falls back to direct SMTP when the gateway fails or rejects the call; `shadow` sends by SMTP and only records in the gateway.
+- **Timing.** The error handlers wait for the mail, at most 8 seconds (`ERROR_MAIL_TIMEOUT_MS` overrides), then answer anyway. A slow or dead mail server never breaks a response.
+- **Logs.** Errors are written with `console.error` and warnings with `console.warn`, so the Vercel runtime logs show them. Secrets stay redacted.
+- **`ERROR_HEARTBEAT_ENABLED`**: must be exactly `true` (default off). The daily cron `GET /api/cron/daily-alerts` then also sends one short plain mail to the error-report address only, with the date and the result of one self-check (SMTP verify, gateway health in mode `on`). It runs even when `DAILY_ALERTS_ENABLED` is off, is skipped by `?dry=1`, and a failure never affects the alerts. If this mail stops arriving, the error-mail path or the cron is down.
+
 ## Notes
 - Schema changes are numbered migrations in `HR/express-app/database/migrations`. A cheap schema guard runs on every cold start.
 - Built and maintained by [Mahmoud Alshraky](https://alshraky.xyz).

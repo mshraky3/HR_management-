@@ -6,11 +6,14 @@
 import { log } from './logger.js';
 import { emailTransporter } from './emailService.js';
 
-import { createEmailClient } from './email-client.js';
+import { createEmailClient, GatewayError } from './email-client.js';
 
 /**
- * Error alerts go through the central gateway so they are rationed, digested
- * and origin-gated like everything else. Legacy SMTP stays as the fallback.
+ * Error alerts follow the same switch as every other HR mail, EMAIL_GATEWAY_MODE
+ * (same client, same reading of the variable as emailService.js):
+ *   off     (default) direct SMTP only, exactly as before; the gateway is never called
+ *   shadow  direct SMTP sends; the gateway only records what it would do
+ *   on      the gateway sends; direct SMTP is the fallback (see deliverErrorMail)
  */
 const _gateway = createEmailClient({
   baseUrl: process.env.EMAIL_GATEWAY_URL,
@@ -19,14 +22,49 @@ const _gateway = createEmailClient({
   legacy: (p) => emailTransporter.sendMail({
     from: p.from, to: p.to, subject: p.subject, html: p.html, text: p.text,
   }),
-  log: () => {},
+  log: (m, e) => log.warn(`[gateway] ${m}`, { error: e }),
 });
+
+const ERROR_MAIL_FROM_NAME = 'نظام الإنذارات - HR System';
 
 function sendViaGateway({ fromName, to, subject, html, text, event, severity, sourceOrigin, idempotencyKey }) {
   return _gateway.send({
     from: `"${fromName}" <${process.env.MAIL_FROM_ADDRESS}>`,
     fromName, to, subject, html, text, event, severity, sourceOrigin, idempotencyKey,
   });
+}
+
+/**
+ * Single delivery point for error mail. With EMAIL_GATEWAY_MODE=off this is one direct
+ * SMTP send, identical to the old code. With mode "on" the gateway client already falls
+ * back to SMTP on network errors, timeouts and 5xx; this adds the cases it deliberately
+ * does not: a gateway 4xx (bad key, bad payload) or a "failed" outcome. For an alert to
+ * the owner, silence is the worst result, so a rejection by the gateway must not end in
+ * "no mail". A deliberate gateway decision (suppressed, dropped, throttled, duplicate)
+ * is still respected. An error thrown by SMTP itself is never retried.
+ */
+async function deliverErrorMail({ to, subject, html, text, event, severity, sourceOrigin }) {
+  const mail = { to, subject, html, text };
+  try {
+    const result = await sendViaGateway({
+      fromName: ERROR_MAIL_FROM_NAME, ...mail, event, severity, sourceOrigin,
+    });
+    if (result && (result.status === 'failed' || result.status === 'error')) {
+      throw new GatewayError('http', `gateway outcome ${result.status}`, 502, result);
+    }
+    return result;
+  } catch (err) {
+    if (!(err instanceof GatewayError)) throw err;
+    log.warn('Error mail: gateway did not send, using direct SMTP', { kind: err.kind, status: err.status });
+    return emailTransporter.sendMail({
+      from: `"${ERROR_MAIL_FROM_NAME}" <${process.env.MAIL_FROM_ADDRESS}>`, ...mail,
+    });
+  }
+}
+
+/** The mail only counts as sent when the gateway says "sent" (SMTP results carry no status). */
+function gatewayStatusOf(result) {
+  return result && typeof result.status === 'string' ? result.status : null;
 }
 
 // Developer email for error notifications
@@ -454,26 +492,34 @@ export async function sendErrorNotification(errorData) {
       timestamp: errorData.timestamp || new Date().toISOString(),
     }, frequencyInfo);
 
-    const mailOptions = {
-      from: `"نظام الإنذارات - HR System" <${process.env.MAIL_FROM_ADDRESS}>`,
+    const result = await deliverErrorMail({
       to: DEVELOPER_EMAIL,
       subject,
       html: htmlContent,
       text: `خطأ في النظام\n\nنوع الخطأ: ${errorType}\nالرسالة: ${errorData.message}\nEndpoint: ${errorData.method} ${endpoint}\nStatus: ${statusCode}\nالتكرار: ${errorCount} مرة\n\nالرجاء التحقق من سجلات الخادم.`,
-    };
-
-    const result = await emailTransporter.sendMail(mailOptions);
+      event: 'hr.owner.system_error',
+      severity,
+      sourceOrigin: errorData.sourceOrigin,
+    });
     markErrorSent(errorKey);
 
+    const gatewayStatus = gatewayStatusOf(result);
+    if (gatewayStatus && gatewayStatus !== 'sent') {
+      // The gateway answered on purpose (dropped / throttled / suppressed / duplicate): nothing went out.
+      log.warn('Error notification not sent by the gateway', { errorType, endpoint, gatewayStatus, reason: result.reason });
+      return { success: false, reason: `gateway_${gatewayStatus}` };
+    }
+
+    const messageId = result?.messageId || result?.id;
     log.info('Error notification email sent', {
       errorType,
       endpoint,
-      messageId: result.messageId,
+      messageId,
       errorCount,
       totalErrorsLastHour,
     });
 
-    return { success: true, messageId: result.messageId };
+    return { success: true, messageId };
   } catch (error) {
     log.error('Failed to send error notification email', { error: error.message });
     return { success: false, error: error.message };
@@ -530,7 +576,154 @@ function sanitizeData(data) {
   return sanitized;
 }
 
+// ── awaited sends, OTP failures, heartbeat ─────────────────────────────────
+
+/** Hard limit for one awaited error-mail send, so a slow SMTP server never hangs a response. */
+export const DEFAULT_ERROR_MAIL_TIMEOUT_MS = 8000;
+
+/** ERROR_MAIL_TIMEOUT_MS overrides the 8 s default (read at call time; used by the tests). */
+function errorMailTimeoutMs() {
+  const n = Number(process.env.ERROR_MAIL_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_ERROR_MAIL_TIMEOUT_MS;
+}
+
+/**
+ * Runs `work` and gives up waiting after `ms`. Never rejects and never throws: a failure or
+ * a timeout comes back as { success: false, ... }. On timeout the work itself is not
+ * cancelled (it may still finish if the process stays alive); we only stop waiting for it.
+ */
+export async function settleWithin(work, ms = errorMailTimeoutMs()) {
+  let timer;
+  const guarded = Promise.resolve()
+    .then(work)
+    .catch((e) => ({ success: false, error: e?.message || String(e) }));
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve({ success: false, reason: 'timeout' }), ms);
+  });
+  try {
+    const result = await Promise.race([guarded, timeout]);
+    if (result?.reason === 'timeout') {
+      log.error('Error notification timed out', { timeoutMs: ms });
+    }
+    return result;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Report a backend error and wait for the mail (up to the timeout). Use this in the
+ * request path instead of fire-and-forget: on Vercel the function can be frozen as soon
+ * as the response is sent, which drops a mail that is still on its way. Never throws.
+ */
+export function reportBackendErrorAwaited(error, req) {
+  return settleWithin(() => reportBackendError(error, req));
+}
+
+/** Keeps only a short, harmless token (class names, status codes); never free text. */
+function safeToken(value) {
+  if (value === undefined || value === null) return 'unknown';
+  return String(value).replace(/[^\w.:-]/g, '').slice(0, 40) || 'unknown';
+}
+
+/**
+ * Mail the owner that a login code could not be sent. Carries only the account kind
+ * ("branch" or "user"), the error class and the status; never the code, the address or the
+ * phone number. Goes through the normal cooldown: one mail per 5 minutes per kind.
+ * Awaited with the hard timeout; never throws.
+ */
+export function reportOtpSendFailure({ kind, errorName, errorStatus } = {}) {
+  const cls = safeToken(errorName);
+  const status = safeToken(errorStatus);
+  return settleWithin(() => sendErrorNotification({
+    errorType: 'OTP_SEND_FAILED',
+    message: `Login code e-mail could not be sent (${cls}, status ${status})`,
+    endpoint: `OTP:${safeToken(kind)}`,
+    method: 'POST',
+    statusCode: 500,
+    additionalInfo: { accountKind: safeToken(kind), errorClass: cls, errorStatus: status },
+    timestamp: new Date().toISOString(),
+  }));
+}
+
+/**
+ * One check of the error-mail path, without sending anything: which route is configured,
+ * whether SMTP answers (nodemailer verify) and, in gateway mode "on", whether the gateway
+ * answers its health call. Returns booleans and short words only.
+ */
+export async function runErrorMailSelfCheck() {
+  const mode = _gateway.mode;
+  const check = {
+    mode,
+    smtpConfigured: Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS && process.env.MAIL_FROM_ADDRESS),
+    gatewayConfigured: Boolean(process.env.EMAIL_GATEWAY_URL && process.env.EMAIL_GATEWAY_KEY),
+    smtpVerify: 'failed',
+    gatewayHealth: 'skipped',
+    ok: false,
+  };
+
+  const verified = await settleWithin(async () => {
+    await emailTransporter.verify();
+    return { success: true };
+  });
+  check.smtpVerify = verified.success ? 'ok' : (verified.reason === 'timeout' ? 'timeout' : 'failed');
+
+  if (mode === 'on') {
+    const health = await settleWithin(async () => {
+      await _gateway.health();
+      return { success: true };
+    });
+    check.gatewayHealth = health.success ? 'ok' : (health.reason === 'timeout' ? 'timeout' : 'failed');
+  }
+
+  check.ok = check.smtpConfigured && check.smtpVerify === 'ok' && check.gatewayHealth !== 'failed' && check.gatewayHealth !== 'timeout';
+  return check;
+}
+
+/**
+ * Daily "the error-mail path is alive" mail. One short plain-text message to the error-report
+ * recipient only (the same address the error mails use). Never throws.
+ * The count of error mails sent in the last 24 h is left out on purpose: the counters live in
+ * memory per serverless instance, so the cron instance cannot know them.
+ */
+export async function sendErrorHeartbeat({ now = new Date() } = {}) {
+  try {
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(now);
+    const check = await runErrorMailSelfCheck();
+    const lines = [
+      'HR system: error-mail heartbeat',
+      `Date (Riyadh): ${date}`,
+      `Self-check: ${check.ok ? 'OK' : 'FAILED'}`,
+      `  mail route mode: ${check.mode}`,
+      `  SMTP configured: ${check.smtpConfigured ? 'yes' : 'no'}`,
+      `  SMTP verify: ${check.smtpVerify}`,
+      `  gateway health: ${check.gatewayHealth}`,
+      '',
+      'If this mail stops arriving, the error-mail path or the daily cron is down.',
+    ];
+    const result = await settleWithin(() => deliverErrorMail({
+      to: DEVELOPER_EMAIL,
+      subject: `[HR] Error-mail heartbeat ${date}: ${check.ok ? 'OK' : 'self-check FAILED'}`,
+      text: lines.join('\n'),
+      event: 'hr.owner.error_heartbeat',
+    }), errorMailTimeoutMs());
+    const gatewayStatus = gatewayStatusOf(result);
+    const sent = result?.success !== false && (!gatewayStatus || gatewayStatus === 'sent');
+    return {
+      sent,
+      selfCheck: check,
+      ...(sent ? {} : { reason: result?.reason || (gatewayStatus ? `gateway_${gatewayStatus}` : 'send_failed') }),
+    };
+  } catch (e) {
+    log.error('Error heartbeat failed', { error: e?.message });
+    return { sent: false, reason: 'heartbeat_failed' };
+  }
+}
+
 export default {
   sendErrorNotification,
   reportBackendError,
+  reportBackendErrorAwaited,
+  reportOtpSendFailure,
+  sendErrorHeartbeat,
 };

@@ -1,4 +1,4 @@
-import { reportBackendError } from './errorNotificationService.js';
+import { reportBackendErrorAwaited } from './errorNotificationService.js';
 import { log } from './logger.js';
 
 /**
@@ -21,7 +21,20 @@ const CLIENT_ERROR_CODES = {
     '22003': 'قيمة رقمية خارج النطاق المسموح',                                 // numeric_value_out_of_range
 };
 
-export function handleRouteError(error, req, res, defaultMessage = 'حدث خطأ في الخادم') {
+/**
+ * Answers a failed request. It is async because a 500 now waits (hard timeout) for the alert
+ * mail; call sites that `return handleRouteError(...)` from an async route need no change.
+ * It never rejects: a call site that does not await it cannot cause an unhandled rejection.
+ */
+export async function handleRouteError(error, req, res, defaultMessage = 'حدث خطأ في الخادم') {
+    try {
+        return await respondToRouteError(error, req, res, defaultMessage);
+    } catch (e) {
+        log.error('handleRouteError failed', { error: e?.message });
+    }
+}
+
+async function respondToRouteError(error, req, res, defaultMessage) {
     const isDev = process.env.NODE_ENV !== 'production';
 
     const clientMessage = CLIENT_ERROR_CODES[error?.code];
@@ -43,9 +56,8 @@ export function handleRouteError(error, req, res, defaultMessage = 'حدث خط�
         });
     }
 
-    reportBackendError(error, req).catch(e => {
-        log.error('Failed to send error notification', { error: e.message });
-    });
+    // Wait for the mail (hard timeout, never throws), see errorHandler.js.
+    await reportBackendErrorAwaited(error, req);
     return res.status(500).json({
         success: false,
         message: isDev ? (error.message || defaultMessage) : defaultMessage,

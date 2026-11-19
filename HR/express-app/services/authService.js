@@ -17,6 +17,7 @@ import crypto from 'crypto';
 import sql from '../config/database.js';
 import { log } from '../utils/logger.js';
 import { sendOTPEmail } from '../utils/emailService.js';
+import { reportOtpSendFailure } from '../utils/errorNotificationService.js';
 import { clientIp } from '../middleware/rateLimit.js';
 
 export const OTP_EXPIRY_MINUTES = 10;
@@ -162,6 +163,8 @@ export async function sendOtp(kind, accountId, email, displayName) {
   const emailResult = await sendOTPEmail(email, code, displayName);
   if (!emailResult.success) {
     log.error('Failed to send OTP email', { kind, accountId, error: emailResult.error });
+    // Owner alert (cooldown applies); never carries the code, the address or the phone number.
+    await reportOtpSendFailure({ kind, errorName: emailResult.errorName, errorStatus: emailResult.errorStatus });
     return { ok: false, reason: 'email_failed' };
   }
   return { ok: true };
