@@ -102,6 +102,28 @@ const sanitizeMetadata = (metadata) => {
   return sanitizeObject(sanitized);
 };
 
+/**
+ * Console output for the logger. Errors go through console.error and warnings through
+ * console.warn, so the Vercel runtime logs show them with an error / warning level (winston's
+ * default Console transport writes everything to stdout, which Vercel shows as plain info).
+ * The message was already formatted, and redacted by sanitizeMetadata, before it gets here.
+ */
+const LEVEL = Symbol.for('level');
+const MESSAGE = Symbol.for('message');
+
+export class LevelConsoleTransport extends winston.transports.Console {
+  log(info, callback) {
+    const level = info[LEVEL];
+    if (level === 'error' || level === 'warn') {
+      setImmediate(() => this.emit('logged', info));
+      (level === 'error' ? console.error : console.warn)(info[MESSAGE]);
+      if (callback) callback();
+      return;
+    }
+    super.log(info, callback);
+  }
+}
+
 // Create the logger instance
 const logger = winston.createLogger({
   level: level(),
@@ -109,7 +131,7 @@ const logger = winston.createLogger({
   format: process.env.NODE_ENV === 'production' ? prodFormat : devFormat,
   transports: [
     // Console transport
-    new winston.transports.Console({
+    new LevelConsoleTransport({
       // Only show logs if not in test environment
       silent: process.env.NODE_ENV === 'test',
     }),

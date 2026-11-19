@@ -323,7 +323,14 @@ export async function sendOTPEmail(toEmail, code, branchName) {
     return { success: true, messageId: result.messageId };
   } catch (error) {
     log.error('Failed to send OTP email', { to: toEmail, error: error.message });
-    return { success: false, error: error.message };
+    // errorName / errorStatus: class and status only, so a caller can report the failure
+    // without copying the message (which may contain the recipient address).
+    return {
+      success: false,
+      error: error.message,
+      errorName: error.name,
+      errorStatus: error.status ?? error.responseCode ?? error.code ?? error.kind,
+    };
   }
 }
 

@@ -3,11 +3,11 @@
  * Centralized error handling with email notifications for critical errors
  */
 
-import { logError, log } from '../utils/logger.js';
-import { reportBackendError } from '../utils/errorNotificationService.js';
+import { logError } from '../utils/logger.js';
+import { reportBackendErrorAwaited } from '../utils/errorNotificationService.js';
 import { fileTooLargeMessage } from './upload.js';
 
-export const errorHandler = (err, req, res, next) => {
+export const errorHandler = async (err, req, res, next) => {
   logError(err, { path: req.path, method: req.method });
 
   // Database errors
@@ -80,10 +80,9 @@ export const errorHandler = (err, req, res, next) => {
   // For 500 errors, send email notification
   const statusCode = err.status || 500;
   if (statusCode >= 500) {
-    // Send email notification asynchronously (don't block response)
-    reportBackendError(err, req).catch(e => {
-      log.error('Failed to send error notification', { error: e.message });
-    });
+    // Wait for the mail (hard timeout, never throws): on Vercel the function can be frozen
+    // once the response is sent, which would drop a mail that is still on its way.
+    await reportBackendErrorAwaited(err, req);
   }
 
   // Default error
