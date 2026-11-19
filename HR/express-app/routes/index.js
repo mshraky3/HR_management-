@@ -90,6 +90,7 @@ router.use('/employee-expiry', lazy(() => import('./employee-expiry.js')));
 router.use('/tasks', lazy(() => import('./tasks.js')));
 router.use('/employee-import', lazy(() => import('./employee-import.js')));
 router.use('/year-cycle', lazy(() => import('./year-cycle.js')));
+router.use('/cron', lazy(() => import('./cron.js')));
 
 export default router;
 
